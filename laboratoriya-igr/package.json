@@ -1,0 +1,14 @@
+{
+  "name": "laboratoriya-igr",
+  "version": "1.0.0",
+  "description": "Локальная платформа курса «Лаборатория игр»: уроки геймдизайна с генерацией HTML-игр через Qwen",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "license": "UNLICENSED",
+  "private": true
+}

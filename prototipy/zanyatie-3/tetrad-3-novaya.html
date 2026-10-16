@@ -1,0 +1,751 @@
+<title>Тетрадь занятия 3</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Unbounded:wght@600;800&family=Golos+Text:wght@400;600;700&display=swap">
+<style>
+/* Тетрадь урока 3: вкладки-чекпоинты, закрытые учителем показаны замком. Геймпад водит рамку по кнопкам. */
+:root{
+  --bg:#0d0b1a; --panel:#17142b; --raise:#1f1b3a; --line:#2f2a55; --ink:#f4f0ff; --muted:#a49cc9;
+  --hot:#ffcf3a; --good:#45e39a; --bad:#ff5a6e; --dice:#ff7ad9;
+  --m:#5cc8ff; --d:#ffcf3a; --a:#ff7ad9;
+  --display:'Unbounded',system-ui,sans-serif; --body:'Golos Text',system-ui,sans-serif;
+  color-scheme:dark;
+}
+body{background:var(--bg);color:var(--ink);font:16px/1.45 var(--body);margin:0}
+.wrap{max-width:880px;margin:0 auto;padding-block:20px 90px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));display:flex;flex-direction:column;gap:16px}
+.brand{font:800 13px var(--display);letter-spacing:.12em;text-transform:uppercase;color:var(--hot)}
+h1{font:800 clamp(24px,5vw,38px)/1.1 var(--display);margin:0}
+.tabs{display:flex;gap:6px;flex-wrap:wrap}
+.tab{font:700 14px var(--body);background:var(--panel);color:var(--muted);border:1px solid var(--line);border-radius:999px;padding:8px 14px;cursor:pointer}
+.tab[aria-selected="true"]{color:#1a1300;background:var(--hot);border-color:var(--hot)}
+.tab:disabled{cursor:not-allowed;opacity:.5}
+.tab.done::after{content:" ✓";color:var(--good)}
+.tab[aria-selected="true"].done::after{color:#1a1300}
+button:focus-visible,textarea:focus-visible,a:focus-visible,input:focus-visible{outline:2px solid var(--ink);outline-offset:2px}
+.pf{outline:3px solid var(--hot)!important;outline-offset:2px}
+.box{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:18px;display:flex;flex-direction:column;gap:12px}
+.box h2{font:800 17px var(--display);margin:0}
+.box p{margin:0;color:var(--muted)}
+.box p b{color:var(--ink)}
+.lab{font-weight:700;font-size:14px}
+.sub{font-size:13px;color:var(--muted);margin-top:-6px}
+.chips{display:flex;flex-wrap:wrap;gap:8px}
+.chip{background:var(--bg);color:var(--ink);border:2px solid var(--line);border-radius:999px;padding:8px 14px;font:600 14px var(--body);cursor:pointer;text-align:left}
+.chip[aria-pressed="true"]{border-color:var(--hot);background:#2a2450}
+.chip:disabled{opacity:.35;cursor:not-allowed}
+.big{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:8px}
+.bc{background:var(--raise);color:var(--ink);border:2px solid var(--line);border-radius:14px;padding:12px;text-align:left;cursor:pointer;display:flex;flex-direction:column;gap:3px;font:600 15px var(--body)}
+.bc small{font:400 13px/1.35 var(--body);color:var(--muted)}
+.bc[aria-pressed="true"]{border-color:var(--hot);background:#2a2450}
+.bc[aria-pressed="true"] b::after{content:"  ✓";color:var(--hot)}
+.rowf{display:flex;gap:8px}
+.rowf textarea{flex:1;min-width:0}
+textarea{background:var(--bg);color:var(--ink);border:1px solid var(--line);border-radius:10px;font:15px/1.4 var(--body);padding:9px 11px;resize:vertical;min-height:44px;box-sizing:border-box;width:100%}
+textarea.dice{border-color:var(--dice);color:#ffd9f3}
+.die{flex:none;width:48px;border-radius:10px;border:1px solid var(--dice);background:rgba(255,122,217,.1);font-size:22px;cursor:pointer;color:var(--ink)}
+.tag{font-size:12px;color:var(--dice);min-height:1em}
+pre{white-space:pre-wrap;background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:12px;margin:0;font:13px/1.5 ui-monospace,Consolas,monospace}
+.btn{align-self:flex-start;font:800 15px var(--display);border:0;border-radius:12px;padding:12px 18px;cursor:pointer;background:var(--hot);color:#1a1300;text-decoration:none;display:inline-block}
+.btn.ghost{background:transparent;color:var(--ink);border:1px solid var(--line)}
+.btn:disabled{opacity:.4;cursor:not-allowed}
+.row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+kbd{font:600 12px ui-monospace,Consolas,monospace;border:1px solid var(--line);border-bottom-width:2px;border-radius:5px;padding:1px 6px;background:var(--bg)}
+/* лестница M D A */
+.lad{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
+.lad>div{border-radius:12px;padding:10px;background:var(--raise);border:1px solid var(--line);display:flex;flex-direction:column;gap:6px;min-width:0}
+.lad h3{margin:0;font:800 12px var(--display);letter-spacing:.08em}
+.lad .m h3{color:var(--m)} .lad .d h3{color:var(--d)} .lad .a h3{color:var(--a)}
+.lad .m{border-top:3px solid var(--m)} .lad .d{border-top:3px solid var(--d)} .lad .a{border-top:3px solid var(--a)}
+.lad ul{margin:0;padding-left:18px;display:grid;gap:4px;font-size:14px}
+.lad small{color:var(--muted);font-size:12.5px}
+/* сортировщик */
+.hud{display:flex;justify-content:space-between;font-size:14px;color:var(--muted);font-variant-numeric:tabular-nums}
+.hud b{color:var(--ink)}
+.card{font:800 clamp(18px,3.4vw,24px)/1.3 var(--display);text-align:center;padding:22px 12px;border:2px solid var(--line);border-radius:14px;background:var(--raise)}
+.card.own{border-style:dashed}
+.card.ok{border-color:var(--good)} .card.no{border-color:var(--bad);animation:shake .35s}
+@keyframes shake{25%{transform:translateX(-8px)}50%{transform:translateX(7px)}75%{transform:translateX(-4px)}}
+.opts{display:grid;gap:8px}
+.opt{font:800 15px var(--display);color:var(--ink);background:var(--raise);border:2px solid var(--line);border-radius:14px;padding:14px 6px;cursor:pointer}
+.opt:hover{border-color:var(--hot)}
+.why{text-align:center;font-size:15px;min-height:1.5em}
+.rule{border:1px dashed var(--line);border-radius:12px;padding:10px 12px;font-size:14px;display:grid;gap:3px}
+.rule b{font-family:var(--display);font-size:12px}
+/* шаги замысла */
+.steps{display:flex;gap:6px;flex-wrap:wrap}
+.step{font:700 13px var(--body);border-radius:999px;padding:6px 12px;border:1px solid var(--line);color:var(--muted);background:var(--bg);cursor:pointer}
+.step[aria-current="step"]{border-color:var(--hot);color:var(--ink)}
+.step.ok{color:var(--good);border-color:var(--good)}
+.meter{font-size:13px;color:var(--muted)}
+.meter b{color:var(--ink)}
+.nav{display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap}
+.desc{font-size:13.5px;color:var(--muted);min-height:1.3em}
+/* фабрика замысла: живые карты, сила, шкалы */
+.axes{display:flex;flex-wrap:wrap;gap:6px}
+.axes span{font-size:12.5px;color:var(--muted);border:1px solid;border-radius:10px;padding:5px 9px}
+.fx{font:700 13px var(--body);display:flex;gap:8px;flex-wrap:wrap;color:var(--ink);margin-top:2px}
+.cards3{display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:8px}
+.c3 canvas{width:100%;height:auto;aspect-ratio:16/9;border-radius:9px;display:block;margin-bottom:5px;background:#141133}
+.powl{font-size:14px;color:var(--muted)} .powl b{color:var(--ink)}
+.pow{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
+.pw{background:var(--raise);color:var(--ink);border:2px solid var(--line);border-radius:12px;padding:10px;cursor:pointer;display:flex;flex-direction:column;gap:2px;text-align:left;font:800 14px var(--display)}
+.pw small{font:400 12.5px/1.3 var(--body);color:var(--muted)}
+.pw canvas{width:100%;height:auto;aspect-ratio:16/9;border-radius:8px;display:block;margin-bottom:5px;background:#141133}
+.pw[aria-pressed="true"]{border-color:var(--hot);background:#2a2450}
+.sum{display:flex;flex-wrap:wrap;gap:6px 14px;font-size:13px;color:var(--muted);border:1px dashed var(--line);border-radius:10px;padding:8px 10px}
+.sum b{color:var(--ink)}
+.bigsim{width:100%;height:auto;aspect-ratio:16/9;border-radius:12px;display:block;background:#141133}
+.bars{display:flex;flex-direction:column;gap:8px}
+.barrow{display:grid;grid-template-columns:190px 1fr;gap:10px;align-items:center}
+.bl{display:flex;flex-direction:column;font-size:14px} .bl small{font-size:12px;color:var(--muted);line-height:1.3}
+.lvs{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:4px}
+.lv{font:700 13px var(--body);color:var(--muted);background:var(--bg);border:2px solid var(--line);border-radius:9px;padding:9px 2px;cursor:pointer;min-width:0}
+.lv.tg{border-style:dashed;border-color:var(--ac)}
+.lv[aria-pressed="true"]{background:var(--ac);border-color:var(--ac);color:#140f00;border-style:solid}
+.pwt{display:flex;flex-direction:column;gap:2px}
+@media (max-width:620px){.barrow{grid-template-columns:1fr;gap:4px}.cards3{grid-template-columns:repeat(2,minmax(0,1fr))}.c3{padding:8px}.pow{grid-template-columns:1fr}.pw{flex-direction:row;align-items:center;gap:10px;padding:8px}.pw canvas{width:56%;flex:none;margin:0}}
+.pad{position:fixed;left:0;right:0;bottom:0;background:rgba(13,11,26,.94);border-top:1px solid var(--line);padding:8px max(16px,env(safe-area-inset-left,0px)) calc(8px + env(safe-area-inset-bottom,0px));font-size:13px;color:var(--muted);text-align:center;z-index:5}
+@media (max-width:620px){.lad{grid-template-columns:1fr}}
+@media (prefers-reduced-motion:reduce){.card.no{animation:none}}
+</style>
+
+<div class="wrap">
+  <div class="brand">Лаборатория игр · занятие 3</div>
+  <h1>Механика, динамика, эстетика</h1>
+  <div class="tabs" role="tablist" id="tabs"></div>
+  <div id="panel"></div>
+</div>
+<div class="pad" id="padBar"></div>
+
+<script>
+const OPEN = 5; // сколько вкладок открыл учитель
+const GAME_URL = 'https://claude.ai/artifact/KC8cpEWaSgx5KwrBtf2TDr'; // 3D-игра ученика «Башня из облаков»
+const SNAKE_URL = 'https://claude.ai/artifact/D135NiygvZQFLcehzpdXRo';
+const TABS = ['0 · Вход', '1 · Лестница', '2 · Замысел', '3 · Твоя 3D-игра', '4 · Миссия', '5 · Чужие глаза'];
+const $ = s => document.querySelector(s);
+const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+const pick = a => a[Math.floor(Math.random() * a.length)];
+let AC = null;
+function beep(f, d = 0.09, type = 'triangle', v = 0.07, delay = 0) { try { AC = AC || new (window.AudioContext || window.webkitAudioContext)(); const t = AC.currentTime + delay, o = AC.createOscillator(), g = AC.createGain(); o.type = type; o.frequency.value = f; g.gain.setValueAtTime(v, t); g.gain.exponentialRampToValueAtTime(0.0001, t + d); o.connect(g); g.connect(AC.destination); o.start(t); o.stop(t + d + 0.02); } catch (e) {} }
+const win = () => [523, 659, 784, 1046].forEach((f, j) => beep(f, 0.15, 'triangle', 0.08, j * 0.08));
+
+/* ---------- состояние, сохраняется в браузере ученика ---------- */
+const st = {
+  tab: 0,
+  did: [], felt: [], layer: -1,          // вход
+  sortI: 0, sortOk: 0, sortAns: [], sortOrder: null, plI: 0, plOk: 0, plAns: [], plOrder: null, snakePl: '', // лестница
+  step: 0, aim: -1, goal: -1, verb: -1, threat: -1, pred: [], pow: { goal: 1, verb: 1, threat: 1 }, bars: [-1, -1, -1, -1, -1], // замысел
+  f: {},                                 // текстовые поля {v, d}
+};
+try { Object.assign(st, JSON.parse(localStorage.getItem('lab-t3n') || '{}')); } catch (e) {}
+function save() { try { localStorage.setItem('lab-t3n', JSON.stringify(st)); } catch (e) {} }
+
+/* ---------- вкладки ---------- */
+function tabDone(i) { return [st.layer === 0, st.plI >= PL_CARDS.length, !!promptReady()][i] || false; }
+function tabs() {
+  $('#tabs').innerHTML = TABS.map((t, i) => `<button class="tab${tabDone(i) ? ' done' : ''}" role="tab" type="button" data-i="${i}" aria-selected="${i === st.tab}" ${i >= OPEN ? 'disabled title="Откроет учитель"' : ''}>${i >= OPEN ? '🔒 ' : ''}${t}</button>`).join('');
+  document.querySelectorAll('.tab').forEach(b => b.onclick = () => go(+b.dataset.i));
+}
+function go(i) { if (i < 0 || i >= OPEN) return; st.tab = i; save(); tabs(); render(); pf = 0; padFocus(); scrollTo(0, 0); }
+function render() { [cp0, cp1, cp2, cp3, cp4][st.tab](); padBar(); }
+
+/* ---------- общие кусочки ---------- */
+function chipRow(el, list, key, max, pairs, cb) {
+  const sel = st[key];
+  el.innerHTML = list.map((x, i) => { const off = pairs && pairs[i] != null && sel.includes(pairs[i]); return `<button class="chip" type="button" data-i="${i}" aria-pressed="${sel.includes(i)}">${esc(x)}</button>`; }).join('');
+  el.dataset.g = key;
+  el.querySelectorAll('.chip').forEach(b => b.onclick = () => {
+    const i = +b.dataset.i, k = sel.indexOf(i);
+    if (k >= 0) sel.splice(k, 1); else { if (pairs && pairs[i] != null) { const j = sel.indexOf(pairs[i]); if (j >= 0) sel.splice(j, 1); } sel.push(i); if (sel.length > max) sel.shift(); }
+    beep(560 + i * 30); save(); chipRow(el, list, key, max, pairs, cb); cb && cb();
+  });
+}
+function field(box, k, label, deck, sub) {
+  const w = document.createElement('div');
+  w.innerHTML = `<div class="lab">${label}</div>${sub ? `<div class="sub">${sub}</div>` : ''}<div class="rowf"><textarea rows="1" aria-label="${esc(label)}"></textarea><button class="die" type="button" aria-label="Кубик: ${esc(label)}">🎲</button></div><div class="tag"></div>`;
+  box.appendChild(w);
+  const ta = w.querySelector('textarea'), tg = w.querySelector('.tag');
+  const sync = () => { const v = st.f[k] || { v: '', d: false }; if (ta.value !== v.v) ta.value = v.v; ta.classList.toggle('dice', !!v.d); tg.textContent = v.d ? '[кубик] поправь пару слов, и вариант станет твоим' : ''; ta.style.height = 'auto'; ta.style.height = ta.scrollHeight + 2 + 'px'; };
+  ta.oninput = () => { st.f[k] = { v: ta.value, d: false }; sync(); save(); upd(); };
+  w.querySelector('.die').onclick = () => { const d = typeof deck === 'function' ? deck() : deck; let v, n = 0; do { v = pick(d); } while (st.f[k] && v === st.f[k].v && ++n < 12); st.f[k] = { v, d: true }; sync(); beep(820, 0.06, 'square', 0.05); save(); upd(); };
+  sync();
+}
+const fv = k => (st.f[k] && st.f[k].v || '').trim();
+const ft = k => fv(k) ? fv(k) + (st.f[k].d ? ' [кубик]' : '') : '…';
+function answerBox(title, btn) {
+  return `<section class="box"><h2>${title}</h2><pre id="out"></pre><div class="row"><button class="btn" id="copy" type="button">${btn}</button></div></section>`;
+}
+function copyOut(e) {
+  const b = e.currentTarget, txt = $('#out').textContent;
+  const sel = () => { const r = document.createRange(); r.selectNodeContents($('#out')); const s = getSelection(); s.removeAllRanges(); s.addRange(r); b.textContent = 'Выдели и скопируй'; };
+  try { navigator.clipboard.writeText(txt).then(() => { b.textContent = 'Скопировано, пришли в чат'; win(); }, sel); } catch (err) { sel(); }
+}
+let upd = () => {};
+
+/* ========== 0 · ВХОД ========== */
+const SNAKE_M = ['Каждые 10 секунд голова и хвост меняются местами', 'За 2 секунды до разворота хвост мигает и тикает отсчёт', 'У стены змейка сама поворачивает', 'B — рывок на 1 секунду, перезарядка 4 секунды', 'Каждые 15 секунд змейка ползёт быстрее', 'Хычин: +1 к длине, очки растут с длиной'];
+const DID = ['Держал змейку короткой, чтобы разворот был не страшен', 'Перед разворотом уводил хвост в пустое место', 'Гнался за хычином напролом', 'Ждал разворота и только потом шёл за хычином', 'Жал рывок, чтобы успеть к хычину', 'Жал рывок, чтобы спастись', 'Кружил вдоль стен', 'Растил змейку ради рекорда'];
+const FELT = ['Азарт', 'Паника перед разворотом', 'Радость от неожиданности', 'Гордость за рекорд', 'Злость на себя', 'Спокойствие', 'Скука', 'Любопытство'];
+const LAYER = ['M · правила', 'D · что ты делал', 'A · что ты чувствовал'];
+function cp0() {
+  $('#panel').innerHTML = `
+  <section class="box">
+    <h2>Сыграй одну партию в свою змейку</h2>
+    <p>Это твоя «Змейка-перевёртыш». Сыграй одну партию и вернись сюда. Смотри не на очки, а на себя: что ты делал и что чувствовал.</p>
+    <div class="row"><a class="btn" href="${SNAKE_URL}" target="_blank" rel="noopener">Открыть змейку</a></div>
+  </section>
+  <section class="box">
+    <h2>Что ты делал?</h2><p>Отметь до трёх. Не что было в игре, а что делал именно ты.</p><div class="chips" id="did"></div>
+    <h2>Что ты чувствовал?</h2><p>Отметь до двух.</p><div class="chips" id="felt"></div>
+  </section>
+  <section class="box" id="ladBox"></section>
+  ${answerBox('Ответ учителю', 'Скопировать ответ')}`;
+  chipRow($('#did'), DID, 'did', 3, null, lad0);
+  chipRow($('#felt'), FELT, 'felt', 2, null, lad0);
+  $('#copy').onclick = copyOut; lad0();
+}
+function lad0() {
+  const box = $('#ladBox'), ready = st.did.length && st.felt.length;
+  if (!ready) { box.innerHTML = '<h2>Три слоя твоей игры</h2><p>Отметь, что делал и что чувствовал, и здесь сложится твоя змейка по слоям.</p>'; out0(); return; }
+  box.innerHTML = `<h2>Три слоя твоей игры</h2>
+    <div class="lad">
+      <div class="m"><h3>M · МЕХАНИКА</h3><ul>${SNAKE_M.map(x => `<li>${x}</li>`).join('')}</ul><small>Правила. Их написал дизайнер.</small></div>
+      <div class="d"><h3>D · ДИНАМИКА</h3><ul>${st.did.map(i => `<li>${DID[i]}</li>`).join('')}</ul><small>Что ты делал из-за этих правил.</small></div>
+      <div class="a"><h3>A · ЭСТЕТИКА</h3><ul>${st.felt.map(i => `<li>${FELT[i]}</li>`).join('')}</ul><small>Что ты почувствовал.</small></div>
+    </div>
+    <div class="lab">Ты дизайнер этой игры. Какой слой ты можешь поменять напрямую, ручкой?</div>
+    <div class="opts" id="layer" data-g="layer" style="grid-template-columns:repeat(3,minmax(0,1fr))">${LAYER.map((x, i) => `<button class="opt" type="button" data-i="${i}">${x}</button>`).join('')}</div>
+    <div class="why" id="layerWhy"></div>`;
+  const why = () => { $('#layerWhy').innerHTML = st.layer < 0 ? '' : st.layer === 0 ? '<b style="color:var(--good)">Верно.</b> Ручками меняются только правила. Как ты будешь играть и что почувствуешь, дизайнер не задаёт: это вырастает из правил у игрока. Весь урок про то, как из правил вырастить нужное чувство.' : `<b style="color:var(--bad)">Нет.</b> ${st.layer === 1 ? 'Ручки «держи змейку короткой» нет. Ты сам так решил, потому что правило разворота сделало длинную змейку опасной.' : 'Ручки «паника» нет. Паника пришла из отсчёта и разворота.'} Попробуй ещё.`; };
+  box.querySelectorAll('#layer .opt').forEach(b => b.onclick = () => { st.layer = +b.dataset.i; if (st.layer === 0) win(); else beep(200, 0.25, 'sawtooth', 0.06); save(); why(); tabs(); out0(); });
+  why(); out0();
+}
+function out0() {
+  if (!$('#out')) return;
+  $('#out').textContent = ['Занятие 3 · вход', `Делал: ${st.did.map(i => DID[i]).join('; ') || '—'}`, `Чувствовал: ${st.felt.map(i => FELT[i]).join(', ') || '—'}`, `Что меняет дизайнер напрямую: ${st.layer < 0 ? '—' : LAYER[st.layer] + (st.layer === 0 ? ' (верно)' : ' (ошибка)')}`].join('\n');
+}
+
+/* ========== 1 · ЛЕСТНИЦА ========== */
+const MDA3 = ['M · механика', 'D · динамика', 'A · эстетика'];
+function mdaCards() {
+  const own = [];
+  if (st.did.length) own.push([DID[st.did[0]], 1, 'Это ты делал сам, из-за правил. Динамика.', 1]);
+  if (st.felt.length) own.push([FELT[st.felt[0]], 2, 'Это ты чувствовал. Эстетика.', 1]);
+  return own.concat([
+    ['Голова и хвост меняются местами каждые 10 секунд', 0, 'Правило, его можно вписать в ручки. Механика.'],
+    ['Игрок перед разворотом уводит хвост в пустое место', 1, 'Так игрок ведёт себя из-за правил. Динамика.'],
+    ['Хычин даёт +1 к длине', 0, 'Число в правилах. Механика.'],
+    ['Кто первым выстроит три в ряд, тот победил', 0, 'Правило крестиков-ноликов. Механика.'],
+    ['После десятка партий все играют вничью', 1, 'Что делают игроки, когда выучили правила. Динамика.'],
+    ['Скука, когда исход партии известен заранее', 2, 'Чувство. Эстетика.'],
+    ['Первым ходом все ставят крестик в центр', 1, 'Поведение игроков, а не правило. Динамика.'],
+    ['Паника за секунду до разворота', 2, 'Чувство. Эстетика.'],
+  ]);
+}
+const PLS = ['Ощущения', 'Фантазия', 'Повествование', 'Вызов', 'Общение', 'Открытие', 'Самовыражение', 'Отдых'];
+const PL_HINT = { 'Ощущения': 'приятно двигаться, смотреть и слушать', 'Фантазия': 'я кто-то другой в другом мире', 'Повествование': 'со мной происходит история', 'Вызов': 'трудно, но я справляюсь', 'Общение': 'играю вместе с другими или против них', 'Открытие': 'хочу узнать, что будет дальше', 'Самовыражение': 'играю по-своему, в своём стиле', 'Отдых': 'спокойно, можно не напрягаться' };
+const PL_CARDS = [
+  ['Celeste: сотый раз прыгаешь в одном месте и наконец проходишь', 3, 'Трудность, которую преодолеваешь: вызов.'],
+  ['Among Us: врёшь друзьям в глаза, кто предатель', 4, 'Удовольствие от других людей: общение.'],
+  ['Stardew Valley: поливаешь грядки на своей ферме', 7, 'Никто не гонит, можно выдохнуть: отдых.'],
+  ['Minecraft: строишь свой замок, какого ни у кого нет', 6, 'Показываешь себя через то, что создал: самовыражение.'],
+  ['Subnautica: ныряешь глубже, чтобы узнать, что там внизу', 5, 'Тайна мира тянет вперёд: открытие.'],
+  ['Undertale: хочется узнать, чем закончится история каждого героя', 2, 'Сюжет и персонажи: повествование.'],
+  ['Beat Saber: рубишь кубы под музыку, руки двигаются сами', 0, 'Удовольствие для глаз, ушей и тела: ощущения.'],
+  ['Skyrim: ты драконорождённый в мире магии', 1, 'Побыть кем-то другим в другом мире: фантазия.'],
+];
+const shuffled = n => Array.from({ length: n }, (_, i) => i).sort(() => Math.random() - 0.5);
+function cp1() {
+  $('#panel').innerHTML = `
+  <section class="box">
+    <h2>Разложи по ступенькам</h2>
+    <p>Карты из твоей змейки и из крестиков-ноликов. Пунктирные карты написал ты сам на входе. Клавиши <kbd>1</kbd> <kbd>2</kbd> <kbd>3</kbd>, кнопки или геймпад.</p>
+    <div class="rule"><span><b style="color:var(--m)">M</b> можно вписать в правила или ручки</span><span><b style="color:var(--d)">D</b> в фразе есть «игрок делает»: это поведение</span><span><b style="color:var(--a)">A</b> это чувство</span></div>
+    <div id="s-mda"></div>
+  </section>
+  <section class="box"><h2>8 удовольствий Марка Леблана</h2><p>Эстетику удобно называть одним из восьми удовольствий. Какое здесь главное? Клавиши <kbd>1</kbd>–<kbd>8</kbd>.</p><div id="s-pl"></div></section>
+  <section class="box" id="snakePl"></section>
+  ${answerBox('Ответ учителю', 'Скопировать ответ')}`;
+  $('#copy').onclick = copyOut;
+  sorterMda(); sorterPl(); snakePl(); out1();
+}
+let lock = false, sortActive = null;
+function sorter(id, cards, opts, iKey, okKey, ansKey, ordKey, done) {
+  if (!st[ordKey] || st[ordKey].length !== cards.length) { st[ordKey] = shuffled(cards.length); st[iKey] = 0; st[okKey] = 0; st[ansKey] = []; }
+  const box = $('#' + id);
+  const draw = (msg, cls) => {
+    const fin = st[iKey] >= cards.length, c = fin ? null : cards[st[ordKey][st[iKey]]];
+    box.innerHTML = `<div class="hud"><span>Карта <b>${Math.min(st[iKey] + 1, cards.length)}</b>/${cards.length}</span><span>Верно <b>${st[okKey]}</b></span></div>
+      ${fin ? `<div class="card ok">Готово: ${st[okKey]} из ${cards.length}</div>` : `<div class="card ${cls || ''}${c[3] ? ' own' : ''}">${esc(c[0])}</div>`}
+      ${fin ? '' : `<div class="opts" data-g="${id}" style="grid-template-columns:repeat(${opts.length > 4 ? 4 : opts.length},minmax(0,1fr))">${opts.map((o, k) => `<button class="opt" type="button" data-k="${k}" style="${opts.length > 4 ? 'font-size:13px' : ''}">${o}</button>`).join('')}</div>`}
+      <div class="why">${msg || ''}</div>`;
+    box.querySelectorAll('.opt').forEach(b => b.onclick = () => choose(+b.dataset.k));
+    padFocus();
+  };
+  const choose = k => {
+    if (lock || st[iKey] >= cards.length) return;
+    const c = cards[st[ordKey][st[iKey]]], ok = c[1] === k; lock = true;
+    if (ok) { st[okKey]++; beep(880); beep(1320, 0.12, 'triangle', 0.07, 0.07); } else { beep(200, 0.25, 'sawtooth', 0.06); rumble(); }
+    st[ansKey].push([st[ordKey][st[iKey]], k]);
+    draw((ok ? '<b style="color:var(--good)">Верно.</b> ' : `<b style="color:var(--bad)">Мимо: ${opts[c[1]]}.</b> `) + c[2], ok ? 'ok' : 'no');
+    setTimeout(() => { st[iKey]++; lock = false; save(); draw(); if (st[iKey] >= cards.length) { win(); done && done(); } tabs(); out1(); }, ok ? 1100 : 2200);
+  };
+  sortActive = { id, choose, n: opts.length };
+  draw();
+}
+function sorterMda() { sorter('s-mda', mdaCards(), MDA3, 'sortI', 'sortOk', 'sortAns', 'sortOrder', () => { sorterPl(); }); }
+function sorterPl() {
+  if (st.sortI < mdaCards().length) { $('#s-pl').innerHTML = '<div class="why">Откроется после лестницы</div>'; sortActive = sortActive && sortActive.id === 's-mda' ? sortActive : sortActive; return; }
+  sorter('s-pl', PL_CARDS, PLS, 'plI', 'plOk', 'plAns', 'plOrder', snakePl);
+}
+function snakePl() {
+  const box = $('#snakePl');
+  if (st.plI < PL_CARDS.length) { box.innerHTML = '<h2>А в твоей змейке?</h2><p>Откроется после восьми удовольствий.</p>'; return; }
+  box.innerHTML = `<h2>А в твоей змейке?</h2><p>На входе ты чувствовал: <b>${st.felt.map(i => FELT[i]).join(', ') || '—'}</b>. Какое это удовольствие?</p><div class="big" data-g="snakepl">${PLS.map(p => `<button class="bc" type="button" data-p="${p}" aria-pressed="${st.snakePl === p}"><b>${p}</b><small>${PL_HINT[p]}</small></button>`).join('')}</div>`;
+  box.querySelectorAll('.bc').forEach(b => b.onclick = () => { st.snakePl = b.dataset.p; beep(650); save(); snakePl(); out1(); padFocus(); });
+}
+function out1() {
+  if (!$('#out')) return;
+  const cards = mdaCards(), err = (ans, cs, opts) => ans.filter(([k, v]) => cs[k] && cs[k][1] !== v).map(([k, v]) => `«${cs[k][0]}» → ${opts[v]}`);
+  const e1 = err(st.sortAns, cards, MDA3), e2 = err(st.plAns, PL_CARDS, PLS);
+  $('#out').textContent = ['Занятие 3 · лестница', `M/D/A: ${st.sortOk}/${cards.length}` + (e1.length ? ` (ошибки: ${e1.join('; ')})` : ''), `8 удовольствий: ${st.plOk}/${PL_CARDS.length}` + (e2.length ? ` (ошибки: ${e2.join('; ')})` : ''), `Удовольствие моей змейки: ${st.snakePl || '—'}`].join('\n');
+}
+
+/* ========== 2 · ЗАМЫСЕЛ ========== */
+// Пять шкал опыта. Те же шкалы игра меряет после партии.
+const AXES = [
+  { k: 'press', n: 'Давление', i: '🔥', c: '#ff5a6e', d: 'опасность рядом, удары' },
+  { k: 'tempo', n: 'Темп', i: '⚡', c: '#ffcf3a', d: 'быстро двигаться и часто жать A' },
+  { k: 'risk', n: 'Риск', i: '🎲', c: '#ff9a3a', d: 'брать цели рядом с опасностью, проскакивать впритирку' },
+  { k: 'explore', n: 'Исследование', i: '🗺', c: '#5cc8ff', d: 'обойти всё поле, искать новое' },
+  { k: 'calm', n: 'Покой', i: '🌿', c: '#45e39a', d: 'безопасно, можно не спешить' },
+];
+const AXK = Object.fromEntries(AXES.map(a => [a.k, a]));
+const LEVELS = ['нет', 'мало', 'средне', 'много', 'очень'];
+// Чтобы вышло удовольствие, шкалы должны лечь в эти коридоры
+const AIMS = {
+  'Вызов': { press: [3, 4], risk: [3, 4] },
+  'Ощущения': { tempo: [3, 4] },
+  'Открытие': { explore: [3, 4] },
+  'Отдых': { calm: [3, 4], press: [0, 1] },
+};
+const aimTxt = a => Object.entries(AIMS[a] || {}).map(([k, [lo, hi]]) => `${AXK[k].i} ${AXK[k].n} ${lo === hi ? lo : lo + '–' + hi}`).join(' и ');
+const C = (n, d, fx, pw) => ({ n, d, fx, pw });
+const GOAL = [
+  C('Собирать', 'на поле лежат цели, каждая даёт очки', { tempo: 1, explore: 1 }, ['1 цель на поле', '3 цели', '7 целей сразу']),
+  C('Охотиться', 'цели убегают, их надо догнать', { tempo: 2, risk: 1 }, ['вдвое медленнее тебя', 'на четверть медленнее', 'почти как ты']),
+  C('Найти выход', 'дверь каждый раз в новом месте, каждая следующая дальше', { explore: 3 }, ['дверь близко', 'дверь дальше', 'дверь на другом краю']),
+  C('Выжить', 'очки капают каждую секунду, продержись', { press: 1, calm: -1 }, ['раунд 40 секунд', '60 секунд', '90 секунд']),
+  C('Доставить', 'взять груз и отнести на базу, с грузом ты медленнее', { risk: 1, tempo: -1 }, ['груз почти не тормозит', 'медленнее на треть', 'вдвое медленнее']),
+  C('Защитить', 'в центре что-то ценное, не дай угрозе до него дойти', { press: 2, explore: -2 }, ['у сокровища 16 жизней', '10 жизней', '5 жизней']),
+  C('Гонка', 'пройти ворота по кругу быстрее своего рекорда', { tempo: 3, explore: -1 }, ['4 ворот', '5 ворот', '7 ворот']),
+  C('Построить', 'носить детали на площадку и строить башню', { calm: 1, risk: 1, tempo: -1 }, ['детали рядом, груз лёгкий', 'детали посреди поля', 'детали далеко, груз тяжёлый']),
+];
+const VERB = [
+  C('Рывок', 'короткий бросок, в рывке тебя нельзя ранить', { tempo: 2, risk: 1 }, ['короткий', 'средний', 'длинный']),
+  C('Прыжок', 'перепрыгнуть угрозу', { tempo: 1, risk: 1 }, ['низкий', 'средний', 'высокий']),
+  C('Щит', 'купол на время, долгая перезарядка', { calm: 1, press: -1 }, ['полсекунды', '1 секунда', '2,5 секунды']),
+  C('Выстрел', 'снаряд туда, куда смотришь', { press: -1, tempo: 1 }, ['раз в секунду', 'три раза в секунду', 'очередью']),
+  C('Магнит', 'пока держишь, цели летят к тебе, но ты медленнее', { calm: 2, risk: -1 }, ['тянет рядом', 'тянет с полэкрана', 'через всё поле']),
+  C('Замедление', 'пока держишь, мир медленный, энергия кончается', { calm: 2, tempo: -2 }, ['чуть медленнее', 'вдвое', 'почти стоп']),
+  C('Телепорт', 'мгновенно на несколько шагов вперёд', { explore: 1, press: -1 }, ['3 шага', '6 шагов', '11 шагов']),
+  C('Ловушка', 'ставишь капкан, угроза в нём застревает', { calm: 1, press: -1 }, ['держит 1 секунду', '3 секунды', '6 секунд']),
+  C('Толчок', 'волна отталкивает всё вокруг', { press: -1, risk: 1 }, ['волна маленькая', 'волна средняя', 'волна на полполя']),
+];
+const THREAT = [
+  C('Охотники', 'враги бегут за героем, их всё больше', { press: 3, tempo: 1 }, ['мало и медленные', 'с десяток, средние', 'толпа и быстрые']),
+  C('Метеоры', 'падают с неба, тень показывает место заранее', { press: 2, risk: 1 }, ['редко, маленькие', 'часто', 'ливень, большие']),
+  C('Патрули', 'ходят по прямым, путь виден линией', { press: 1, calm: 1 }, ['1–2 медленных', '2–5 средних', '4–9 быстрых']),
+  C('Сжатие', 'края поля горят и ползут к центру', { press: 2, explore: -2 }, ['ползёт медленно', 'ползёт заметно', 'быстро съедает поле']),
+  C('Поднимается лава', 'низины заливает, спасают только плато', { press: 2, explore: -1 }, ['поднимается медленно', 'поднимается заметно', 'заливает за секунды']),
+  C('Буря', 'ветер сносит героя, летят брёвна', { tempo: 1, press: 1 }, ['ветерок', 'ветер', 'ураган']),
+  C('Босс', 'один большой враг, перед ударом подсвечивает зону', { press: 2, risk: 2 }, ['бьёт редко', 'бьёт часто', 'бьёт почти без пауз']),
+  C('Никого', 'мирная игра без нападений', { calm: 3, press: -3 }, null),
+];
+const POWN = ['слабо', 'средне', 'сильно'];
+const fxTxt = fx => Object.entries(fx).map(([k, v]) => `<span title="${AXK[k].n}" style="color:${AXK[k].c}">${AXK[k].i}${(v > 0 ? '↑' : '↓').repeat(Math.abs(v))}</span>`).join(' ');
+const fxPlain = fx => Object.entries(fx).map(([k, v]) => `${AXK[k].n} ${(v > 0 ? '↑' : '↓').repeat(Math.abs(v))}`).join(', ');
+
+/* ---------- мини-схема игры для каждой карты: та же сила, что в 3D ---------- */
+// таблицы силы [слабо, средне, сильно]; такие же стоят в 3D-движке
+const GP = { items: [1, 3, 7], run: [0.45, 0.74, 0.95], door: [35, 70, 110], carry: [0.92, 0.72, 0.45], cargo: [35, 65, 105], hp: [16, 10, 5], gates: [4, 5, 7] };
+const VP = { dash: [0.1, 0.2, 0.38], jump: [55, 75, 100], shield: [0.5, 1.2, 2.5], shot: [0.9, 0.36, 0.12], mag: [25, 50, 95], slow: [0.7, 0.4, 0.15], tp: [15, 30, 55], trap: [1, 3, 6], push: [15, 30, 50] };
+const TPW = [{ fs: [0.6, 1, 1.45], se: [2.2, 1, 0.45], max: [4, 10, 18], start: [1, 1, 3] }, { se: [2.6, 1, 0.4], r: [0.7, 1, 1.45] }, { fs: [0.55, 1, 1.75], start: [1, 2, 4], max: [2, 5, 9], se: [2, 1, 0.6] }, { fs: [0.4, 1, 2.2], max: [0.6, 1, 1.25] }, { fs: [0.4, 1, 2.3] }, { fs: [0.45, 1, 2.2], se: [2, 1, 0.45] }, { bk: [1.8, 1, 0.5], fs: [0.7, 1, 1.4] }, {}];
+const SW = 160, SH = 90, SIMS = new Set();
+const sr = (a, b) => a + Math.random() * (b - a), sd = (a, b) => Math.hypot(a.x - b.x, a.y - b.y), cl = (v, a, b) => Math.max(a, Math.min(b, v));
+function simNew(cv, spec) {
+  const s = { cv, spec, vis: true }; simReset(s); SIMS.add(s);
+  if ('IntersectionObserver' in window) { s.io = new IntersectionObserver(es => es.forEach(e => s.vis = e.isIntersecting)); s.io.observe(cv); }
+  return s;
+}
+function simReset(s) {
+  const k = s.k = s.spec();
+  Object.assign(s, { t: 0, h: { x: 40, y: 45, vx: 0, vy: 0, z: 0, vz: 0, inv: 0, hit: 0, cd: 0.6, sh: 0, dash: 0, slow: 0, carry: false, tx: 80, ty: 45, wt: 0, ax: 1, ay: 0 }, items: [], runs: [], foes: [], pats: [], mets: [], logs: [], bul: [], traps: [], rings: [], border: 0, lava: 0, wind: sr(0, 6.28), windT: 0, boss: null, door: null, cargo: null, pad: null, tower: 0, gates: [], gi: 0, tre: null, score: 0, spT: 0, metT: 0, logT: 0, patT: 0, hits: 0, plats: [] });
+  const g = k.g, gp = k.gp, t = k.t, tp = k.tp;
+  if (g === 0 || g < 0) for (let i = 0; i < (g === 0 ? GP.items[gp] : 3); i++) s.items.push({ x: sr(12, 148), y: sr(10, 80) });
+  if (g === 1) for (let i = 0; i < 3; i++) s.runs.push({ x: sr(70, 150), y: sr(10, 80), vx: 0, vy: 0, wt: 0 });
+  if (g === 2) simDoor(s);
+  if (g === 4 || g === 7) { s.pad = { x: 14, y: 45 }; s.h.x = 26; simCargo(s); }
+  if (g === 5) { s.tre = { x: 80, y: 45, hp: GP.hp[gp], max: GP.hp[gp] }; s.h.x = 80; s.h.y = 62; }
+  if (g === 6) { const n = GP.gates[gp]; for (let i = 0; i < n; i++) { const a = i / n * 6.283 - 1.57; s.gates.push({ x: 80 + Math.cos(a) * 62, y: 45 + Math.sin(a) * 30 }); } s.h.x = 80; s.h.y = 12; }
+  if (t === 0) for (let i = 0; i < TPW[0].start[tp] + (k.more || 0); i++) simFoe(s);
+  if (t === 2) for (let i = 0; i < TPW[2].start[tp]; i++) simPat(s);
+  if (t === 4) s.plats = [[30, 24, 12], [122, 22, 13], [80, 58, 14], [24, 72, 10], [136, 72, 11]].map(([x, y, r]) => ({ x, y, r }));
+  if (t === 6) s.boss = { x: 128, y: 45, r: 12, t: 1.4 * TPW[6].bk[tp], atk: null };
+}
+function simDoor(s) { const d = GP.door[s.k.gp]; let p, n = 0; do { const a = sr(0, 6.283); p = { x: s.h.x + Math.cos(a) * d, y: s.h.y + Math.sin(a) * d * 0.6 }; } while ((p.x < 10 || p.x > 150 || p.y < 10 || p.y > 80) && ++n < 60); s.door = { x: cl(p.x, 10, 150), y: cl(p.y, 10, 80) }; }
+function simCargo(s) { s.cargo = { x: cl(s.pad.x + GP.cargo[s.k.gp] + sr(-6, 6), 20, 150), y: sr(14, 76) }; }
+function simFoe(s) { const side = Math.floor(sr(0, 4)); s.foes.push({ x: side === 0 ? 4 : side === 1 ? 156 : sr(10, 150), y: side === 2 ? 4 : side === 3 ? 86 : sr(8, 82), stuck: 0 }); }
+function simPat(s) { const a = sr(0, 6.283), v = 30 * TPW[2].fs[s.k.tp]; let x, y, n = 0; do { x = sr(20, 140); y = sr(12, 78); } while (Math.hypot(x - s.h.x, y - s.h.y) < 30 && ++n < 20); s.pats.push({ x, y, vx: Math.cos(a) * v, vy: Math.sin(a) * v, stuck: 0 }); }
+function simHurt(s, o) { const h = s.h; if (h.inv > 0 || h.sh > 0 || h.z > 4) return false; h.hit = 0.45; h.inv = 1; s.hits++; if (o) { const d = sd(h, o) || 1; h.x = cl(h.x + (h.x - o.x) / d * 8, 4, 156); h.y = cl(h.y + (h.y - o.y) / d * 8, 4, 86); } return true; }
+function simStep(s, dt) {
+  const k = s.k, h = s.h, g = k.g, v = k.v, t = k.t, tp = k.tp, vp = k.vp, gp = k.gp;
+  s.t += dt; if (s.t > 14 || (s.tre && s.tre.hp <= 0)) { simReset(s); return; }
+  h.cd -= dt; h.inv -= dt; h.hit -= dt; h.sh -= dt; h.dash -= dt; h.slow -= dt;
+  const wdt = dt * (h.slow > 0 ? VP.slow[vp] : 1);
+  const live = [...s.foes.filter(f => f.stuck <= 0), ...s.pats.filter(p => p.stuck <= 0), ...s.logs, ...s.mets.filter(m => m.t > 0 && m.t < 0.7), ...(s.boss ? [s.boss] : []), ...(s.boss && s.boss.atk ? [{ x: s.boss.atk.x, y: s.boss.atk.y, r: s.boss.atk.r }] : [])];
+  let near = Infinity, nd = null; for (const o of live) { const dd = sd(h, o) - (o.r || 4); if (dd < near) { near = dd; nd = o; } }
+  // цель по карте цели
+  let tx = h.tx, ty = h.ty;
+  const nearestOf = arr => { let b = null, bd = 1e9; for (const o of arr) { const dd = sd(h, o); if (dd < bd) { bd = dd; b = o; } } return b; };
+  if (g === 0 || g < 0) { const b = nearestOf(s.items); if (b) { tx = b.x; ty = b.y; } }
+  if (g === 1) { const b = nearestOf(s.runs); if (b) { tx = b.x; ty = b.y; } }
+  if (g === 2 && s.door) { tx = s.door.x; ty = s.door.y; }
+  if (g === 3) { h.wt -= dt; if (h.wt <= 0) { h.wt = 1.4; h.tx = sr(25, 135); h.ty = sr(18, 72); } tx = h.tx; ty = h.ty; }
+  if (g === 4 || g === 7) { const o = h.carry ? s.pad : s.cargo; if (o) { tx = o.x; ty = o.y; } }
+  if (g === 5) { let b = null, bd = 1e9; for (const f of s.foes.concat(s.pats)) { const dd = sd(f, s.tre); if (dd < bd) { bd = dd; b = f; } } if (b && bd < 50) { tx = (b.x + s.tre.x) / 2; ty = (b.y + s.tre.y) / 2; } else { tx = s.tre.x + 14 * Math.cos(s.t); ty = s.tre.y + 10 * Math.sin(s.t); } }
+  if (g === 6 && s.gates.length) { tx = s.gates[s.gi].x; ty = s.gates[s.gi].y; }
+  if (t === 4 && s.lava > 0.2) { const p = nearestOf(s.plats); if (p) { tx = p.x; ty = p.y; } }
+  // руль: к цели и прочь от опасности
+  let dx = tx - h.x, dy = ty - h.y; const dl = Math.hypot(dx, dy) || 1; dx /= dl; dy /= dl;
+  for (const o of live) { const dd = sd(h, o), R = 26 + (o.r || 4); if (dd < R && dd > 0.1) { const w = (R - dd) / R * 1.8; dx += (h.x - o.x) / dd * w; dy += (h.y - o.y) / dd * w; } }
+  if (t === 3) { const b = s.border; if (h.x < b + 12 || h.x > SW - b - 12 || h.y < b * 0.56 + 10 || h.y > SH - b * 0.56 - 10) { dx += (80 - h.x) / 40; dy += (45 - h.y) / 25; } }
+  const ml = Math.hypot(dx, dy) || 1; dx /= ml; dy /= ml; h.ax = dx; h.ay = dy;
+  const magItems = v === 4 ? s.items.concat(s.runs, s.cargo && !h.carry ? [s.cargo] : []).filter(o => sd(h, o) < VP.mag[vp]) : [];
+  const hs = 46 * (h.carry ? GP.carry[gp] : 1) * (magItems.length ? 0.55 : 1) * (h.dash > 0 ? 3 : 1);
+  h.vx += (dx * hs - h.vx) * Math.min(1, dt * 8); h.vy += (dy * hs - h.vy) * Math.min(1, dt * 8);
+  // кнопка A срабатывает сама, когда она нужна
+  if (v >= 0 && h.cd <= 0) {
+    const danger = near < 13;
+    if (v === 0 && danger) { h.dash = VP.dash[vp]; h.cd = 1.2; h.inv = Math.max(h.inv, h.dash + 0.05); }
+    if (v === 1 && danger && h.z <= 0) { h.vz = VP.jump[vp]; h.cd = 0.5; }
+    if (v === 2 && danger) { h.sh = VP.shield[vp]; h.cd = 3.6; }
+    if (v === 3) { const tg = nearestOf(s.foes.concat(s.pats, s.runs)); if (tg && sd(h, tg) < 85) { const a = Math.atan2(tg.y - h.y, tg.x - h.x); s.bul.push({ x: h.x, y: h.y, vx: Math.cos(a) * 150, vy: Math.sin(a) * 150, life: 0.8 }); h.cd = VP.shot[vp]; } }
+    if (v === 5 && near < 22) { h.slow = 1.6; h.cd = 3.2; }
+    if (v === 6 && danger) { s.rings.push({ x: h.x, y: h.y, r: 3, t: 0, c: '#5fe0ff' }); const d = VP.tp[vp]; h.x = cl(h.x + dx * d, 4, 156); h.y = cl(h.y + dy * d, 4, 86); s.rings.push({ x: h.x, y: h.y, r: 3, t: 0, c: '#5fe0ff' }); h.cd = 1.8; h.inv = 0.3; }
+    if (v === 7) { if (s.traps.length >= 3) s.traps.shift(); s.traps.push({ x: h.x, y: h.y }); h.cd = 2.4; }
+    if (v === 8 && danger) { const R = VP.push[vp]; s.rings.push({ x: h.x, y: h.y, r: 4, t: 0, max: R, c: '#ffffff' }); for (const f of s.foes.concat(s.pats, s.logs)) { const dd = sd(h, f); if (dd < R && dd > 0.1) { f.x = cl(f.x + (f.x - h.x) / dd * (R - dd + 6), 2, 158); f.y = cl(f.y + (f.y - h.y) / dd * (R - dd + 6), 2, 88); if (f.vx != null && s.pats.includes(f)) { const sp = Math.hypot(f.vx, f.vy); f.vx = (f.x - h.x) / dd * sp; f.vy = (f.y - h.y) / dd * sp; } } } h.cd = 2.4; }
+  }
+  for (const o of magItems) { const dd = sd(h, o) || 1; o.x += (h.x - o.x) / dd * 45 * dt; o.y += (h.y - o.y) / dd * 45 * dt; }
+  h.x = cl(h.x + h.vx * dt, 4, 156); h.y = cl(h.y + h.vy * dt, 4, 86);
+  if (h.z > 0 || h.vz > 0) { h.z += h.vz * dt; h.vz -= 260 * dt; if (h.z < 0) { h.z = 0; h.vz = 0; } }
+  // угрозы
+  if (t === 0) {
+    const P = TPW[0]; s.spT += wdt; if (s.spT >= 2 * P.se[tp] && s.foes.length < P.max[tp]) { s.spT = 0; simFoe(s); }
+    for (const f of s.foes) { if (f.stuck > 0) { f.stuck -= wdt; continue; } const tg = g === 5 ? s.tre : h, a = Math.atan2(tg.y - f.y, tg.x - f.x), sp = 26 * P.fs[tp]; f.x += Math.cos(a) * sp * wdt; f.y += Math.sin(a) * sp * wdt; for (const o of s.foes) if (o !== f) { const dd = sd(f, o); if (dd < 6 && dd > 0) { f.x += (f.x - o.x) / dd * 10 * wdt; f.y += (f.y - o.y) / dd * 10 * wdt; } } if (h.sh > 0 && sd(h, f) < 11) { f.x -= Math.cos(a) * 40 * dt; f.y -= Math.sin(a) * 40 * dt; } else if (sd(h, f) < 6) simHurt(s, f); if (g === 5 && sd(f, s.tre) < 6) { s.tre.hp--; s.rings.push({ x: s.tre.x, y: s.tre.y, r: 4, t: 0, c: '#ff5a6e' }); Object.assign(f, { x: Math.random() < 0.5 ? 4 : 156, y: sr(8, 82) }); } }
+  }
+  if (t === 1) {
+    s.metT += wdt; if (s.metT >= 0.6 * TPW[1].se[tp]) { s.metT = 0; const tg = g === 5 ? s.tre : h; s.mets.push({ x: cl(tg.x + sr(-28, 28), 6, 154), y: cl(tg.y + sr(-16, 16), 6, 84), t: 1, r: 11 * TPW[1].r[tp] }); }
+    for (const m of s.mets) { m.t -= wdt; if (m.t <= 0 && !m.done) { m.done = true; s.rings.push({ x: m.x, y: m.y, r: m.r * 0.5, t: 0, max: m.r * 1.4, c: '#ffb35c' }); if (sd(h, m) < m.r) simHurt(s, m); if (s.tre && sd(s.tre, m) < m.r) s.tre.hp--; } }
+    s.mets = s.mets.filter(m => m.t > -0.3);
+  }
+  if (t === 2) {
+    const P = TPW[2]; s.patT += wdt; if (s.patT >= 5 * P.se[tp] && s.pats.length < P.max[tp]) { s.patT = 0; simPat(s); }
+    for (const p of s.pats) { if (p.stuck > 0) { p.stuck -= wdt; continue; } p.x += p.vx * wdt; p.y += p.vy * wdt; if (p.x < 4 || p.x > 156) { p.vx *= -1; p.x = cl(p.x, 4, 156); } if (p.y < 4 || p.y > 86) { p.vy *= -1; p.y = cl(p.y, 4, 86); } if (h.sh > 0 && sd(h, p) < 11) { const sp = Math.hypot(p.vx, p.vy), dd = sd(h, p) || 1; p.vx = (p.x - h.x) / dd * sp; p.vy = (p.y - h.y) / dd * sp; } else if (sd(h, p) < 6) simHurt(s, p); if (g === 5 && sd(p, s.tre) < 7) { s.tre.hp--; p.vx *= -1; p.vy *= -1; } }
+  }
+  if (t === 3) { s.border = Math.min(34 * TPW[3].max[tp], s.border + 2.6 * TPW[3].fs[tp] * wdt); const b = s.border; if (h.x < b || h.x > SW - b || h.y < b * 0.56 || h.y > SH - b * 0.56) simHurt(s, { x: 80, y: 45 }) && Object.assign(h, { x: cl(h.x, b + 8, SW - b - 8), y: cl(h.y, b * 0.56 + 6, SH - b * 0.56 - 6) }); }
+  if (t === 4) { s.lava = Math.min(1, s.lava + 0.075 * TPW[4].fs[tp] * wdt); if (s.lava > 0.35 && h.z < 4 && !s.plats.some(p => sd(h, p) < p.r)) simHurt(s, null); }
+  if (t === 5) {
+    const P = TPW[5]; s.windT += wdt; if (s.windT > 4) { s.windT = 0; s.wind += sr(1, 2.4) * (Math.random() < 0.5 ? -1 : 1); }
+    h.x = cl(h.x + Math.cos(s.wind) * 16 * P.fs[tp] * dt, 4, 156); h.y = cl(h.y + Math.sin(s.wind) * 16 * P.fs[tp] * dt, 4, 86);
+    s.logT += wdt; if (s.logT >= 1.6 * P.se[tp]) { s.logT = 0; const side = sr(-1, 1); s.logs.push({ x: 80 - Math.cos(s.wind) * 90 - Math.sin(s.wind) * side * 45, y: 45 - Math.sin(s.wind) * 50 + Math.cos(s.wind) * side * 80, life: 4 }); }
+    for (const l of s.logs) { l.x += Math.cos(s.wind) * 44 * P.fs[tp] * wdt; l.y += Math.sin(s.wind) * 44 * P.fs[tp] * wdt; l.life -= wdt; if (sd(h, l) < 6) simHurt(s, l); }
+    s.logs = s.logs.filter(l => l.life > 0);
+  }
+  if (t === 6 && s.boss) {
+    const b = s.boss, P = TPW[6]; b.t -= wdt;
+    const tg = g === 5 ? s.tre : h, a = Math.atan2(tg.y - b.y, tg.x - b.x); b.x += Math.cos(a) * 7 * P.fs[tp] * wdt; b.y += Math.sin(a) * 7 * P.fs[tp] * wdt;
+    if (!b.atk && b.t <= 0) b.atk = { x: tg.x, y: tg.y, r: 15, t: 0.8 };
+    if (b.atk) { b.atk.t -= wdt; if (b.atk.t <= 0) { s.rings.push({ x: b.atk.x, y: b.atk.y, r: 6, t: 0, max: 20, c: '#ff5a6e' }); if (sd(h, b.atk) < b.atk.r) simHurt(s, b.atk); if (s.tre && sd(s.tre, b.atk) < b.atk.r) s.tre.hp -= 2; b.atk = null; b.t = 1.4 * P.bk[tp]; } }
+    if (sd(h, b) < b.r + 4) simHurt(s, b);
+  }
+  // ловушки и снаряды
+  for (const tr of s.traps) for (const f of s.foes.concat(s.pats)) if (f.stuck <= 0 && sd(tr, f) < 6) { f.stuck = VP.trap[vp]; tr.used = true; }
+  s.traps = s.traps.filter(tr => !tr.used);
+  for (const u of s.bul) { u.x += u.vx * dt; u.y += u.vy * dt; u.life -= dt; for (const arr of [s.foes, s.pats]) for (const f of arr) if (!f.dead && sd(u, f) < 5) { f.dead = true; u.life = 0; s.rings.push({ x: f.x, y: f.y, r: 2, t: 0, max: 9, c: '#ff5a6e' }); } for (const r of s.runs) if (!r.got && sd(u, r) < 5) { r.got = true; u.life = 0; } }
+  s.bul = s.bul.filter(u => u.life > 0); s.foes = s.foes.filter(f => !f.dead); s.pats = s.pats.filter(f => !f.dead);
+  // цели
+  const pop = (x, y) => { s.score++; s.rings.push({ x, y, r: 2, t: 0, max: 10, c: '#5fe0ff' }); };
+  if (g === 3 && Math.floor(s.t) > Math.floor(s.t - dt)) s.score++;
+  const b = s.border, by = b * 0.56;
+  for (const it of s.items) if (h.z < 4 && sd(h, it) < 6) { pop(it.x, it.y); Object.assign(it, { x: sr(12 + b, 148 - b), y: sr(10 + by, 80 - by) }); s.got = (s.got || 0) + 1; }
+  for (const r of s.runs) {
+    const dd = sd(h, r);
+    if (dd < 40 && dd > 0.1) { r.vx = (r.x - h.x) / dd * 46 * GP.run[gp]; r.vy = (r.y - h.y) / dd * 46 * GP.run[gp]; if (r.x < 10 || r.x > 150) r.vy += (r.y < 45 ? 1 : -1) * 30; if (r.y < 8 || r.y > 82) r.vx += (r.x < 80 ? 1 : -1) * 30; }
+    else { r.wt -= wdt; if (r.wt <= 0) { r.wt = sr(0.8, 2); const a = sr(0, 6.283); r.vx = Math.cos(a) * 10; r.vy = Math.sin(a) * 10; } }
+    r.x = cl(r.x + r.vx * wdt, 4, 156); r.y = cl(r.y + r.vy * wdt, 4, 86);
+    if (dd < 6 || r.got) { pop(r.x, r.y); Object.assign(r, { x: sr(20, 150), y: sr(10, 80), got: false }); }
+  }
+  if (s.door && sd(h, s.door) < 7) { pop(s.door.x, s.door.y); simDoor(s); }
+  if (s.cargo && !h.carry && sd(h, s.cargo) < 6) { h.carry = true; s.cargo = null; }
+  if (h.carry && sd(h, s.pad) < 9) { h.carry = false; s.tower++; pop(s.pad.x, s.pad.y); simCargo(s); }
+  if (s.gates.length && sd(h, s.gates[s.gi]) < 8) { pop(s.gates[s.gi].x, s.gates[s.gi].y); s.gi = (s.gi + 1) % s.gates.length; }
+  for (const r of s.rings) r.t += dt; s.rings = s.rings.filter(r => r.t < 0.45);
+}
+function dot(c, x, y, r, col) { c.fillStyle = col; c.beginPath(); c.arc(x, y, Math.max(0.1, r), 0, 6.283); c.fill(); }
+function simDraw(s) {
+  const c = s.cv.getContext('2d'), sc = s.cv.width / SW, k = s.k, h = s.h, T = s.t;
+  const Z = s.cv.width < 400 ? 1.6 : 1.15;
+  c.setTransform(sc, 0, 0, sc, 0, 0); c.fillStyle = '#141133'; c.fillRect(0, 0, SW, SH);
+  c.strokeStyle = 'rgba(255,255,255,.05)'; c.lineWidth = 0.4; c.beginPath(); for (let x = 10; x < SW; x += 10) { c.moveTo(x, 0); c.lineTo(x, SH); } for (let y = 10; y < SH; y += 10) { c.moveTo(0, y); c.lineTo(SW, y); } c.stroke();
+  if (k.t === 4) { c.fillStyle = `rgba(255,90,26,${0.15 + s.lava * 0.75})`; c.fillRect(0, 0, SW, SH); for (const p of s.plats) dot(c, p.x, p.y, p.r, '#6a6488'); }
+  if (k.t === 3) { const b = s.border, by = b * 0.56; c.fillStyle = `rgba(255,${110 + Math.sin(T * 18) * 40},40,.85)`; c.fillRect(0, 0, SW, by); c.fillRect(0, SH - by, SW, by); c.fillRect(0, 0, b, SH); c.fillRect(SW - b, 0, b, SH); }
+  if (k.t === 5) { c.strokeStyle = 'rgba(255,255,255,.35)'; c.lineWidth = 0.6; c.beginPath(); for (let i = 0; i < 14; i++) { const ph = (T * 0.9 + i * 0.37) % 1, ox = (i * 37) % 170 - 5, oy = (i * 23) % 95; const x = ox + Math.cos(s.wind) * ph * 60, y = oy + Math.sin(s.wind) * ph * 60; c.moveTo(x, y); c.lineTo(x + Math.cos(s.wind) * 7, y + Math.sin(s.wind) * 7); } c.stroke(); }
+  if (s.pad) { dot(c, s.pad.x, s.pad.y, 9, 'rgba(95,224,255,.3)'); if (k.g === 7) for (let i = 0; i < Math.min(s.tower, 14); i++) { c.fillStyle = i % 2 ? '#ffffff' : '#cfe0ff'; c.fillRect(s.pad.x - 5, s.pad.y - 3 - i * 3.4, 10, 3); } else { c.fillStyle = '#5fe0ff'; c.font = '700 7px Golos Text, sans-serif'; c.fillText('база ' + s.tower, s.pad.x - 10, s.pad.y + 3); } }
+  if (s.door) { c.fillStyle = '#45e39a'; c.fillRect(s.door.x - 4 * Z, s.door.y - 6 * Z, 8 * Z, 12 * Z); dot(c, s.door.x, s.door.y, 10, 'rgba(69,227,154,.18)'); }
+  if (s.tre) { c.fillStyle = '#ffcf3a'; c.beginPath(); c.moveTo(s.tre.x, s.tre.y - 7); c.lineTo(s.tre.x + 6, s.tre.y); c.lineTo(s.tre.x, s.tre.y + 7); c.lineTo(s.tre.x - 6, s.tre.y); c.fill(); c.fillStyle = '#45e39a'; c.fillRect(s.tre.x - 10, s.tre.y + 10, 20 * Math.max(0, s.tre.hp) / s.tre.max, 2); }
+  s.gates.forEach((gt, i) => { c.strokeStyle = i === s.gi ? '#ffcf3a' : 'rgba(255,255,255,.3)'; c.lineWidth = i === s.gi ? 1.6 : 0.8; c.beginPath(); c.arc(gt.x, gt.y, 6, 0, 6.283); c.stroke(); });
+  for (const it of s.items) { c.fillStyle = '#5fe0ff'; c.beginPath(); c.moveTo(it.x, it.y - 4 * Z); c.lineTo(it.x + 3 * Z, it.y); c.lineTo(it.x, it.y + 4 * Z); c.lineTo(it.x - 3 * Z, it.y); c.fill(); }
+  for (const r of s.runs) { dot(c, r.x, r.y, 3.6 * Z, '#5fe0ff'); const l = Math.sin(T * 20) * 1.5; c.fillStyle = '#5fe0ff'; c.fillRect(r.x - 2, r.y + 3 + l, 1.2, 2); c.fillRect(r.x + 1, r.y + 3 - l, 1.2, 2); }
+  if (s.cargo) { c.fillStyle = '#c77dff'; c.fillRect(s.cargo.x - 3 * Z, s.cargo.y - 3 * Z, 6 * Z, 6 * Z); }
+  for (const tr of s.traps) { c.strokeStyle = '#d8d8e8'; c.lineWidth = 0.8; const q = 3 * Z; c.strokeRect(tr.x - q, tr.y - q, 2 * q, 2 * q); c.beginPath(); c.moveTo(tr.x - q, tr.y - q); c.lineTo(tr.x + q, tr.y + q); c.moveTo(tr.x + q, tr.y - q); c.lineTo(tr.x - q, tr.y + q); c.stroke(); }
+  for (const m of s.mets) { if (m.t > 0) { dot(c, m.x, m.y, m.r * (1 - m.t * 0.6), 'rgba(0,0,0,.45)'); c.strokeStyle = 'rgba(255,90,60,.6)'; c.lineWidth = 0.6; c.beginPath(); c.arc(m.x, m.y, m.r, 0, 6.283); c.stroke(); const fy = m.y - m.t * 60; dot(c, m.x - m.t * 20, fy, 3, '#ff7a3c'); } else dot(c, m.x, m.y, m.r * 0.9, `rgba(255,170,80,${0.6 + m.t})`); }
+  for (const p of s.pats) { const sp = Math.hypot(p.vx, p.vy) || 1; c.strokeStyle = 'rgba(255,90,60,.45)'; c.lineWidth = 1.2; c.beginPath(); c.moveTo(p.x, p.y); c.lineTo(p.x + p.vx / sp * 26, p.y + p.vy / sp * 26); c.stroke(); dot(c, p.x, p.y, 4.4 * Z, p.stuck > 0 ? '#8a8aa0' : '#ff5a3c'); dot(c, p.x, p.y, 1.6 * Z, '#ffffff'); }
+  for (const f of s.foes) { const a = Math.atan2(h.y - f.y, h.x - f.x); c.fillStyle = f.stuck > 0 ? '#8a8aa0' : '#ff5a6e'; c.beginPath(); c.moveTo(f.x + Math.cos(a) * 5 * Z, f.y + Math.sin(a) * 5 * Z); c.lineTo(f.x + Math.cos(a + 2.4) * 4 * Z, f.y + Math.sin(a + 2.4) * 4 * Z); c.lineTo(f.x + Math.cos(a - 2.4) * 4 * Z, f.y + Math.sin(a - 2.4) * 4 * Z); c.fill(); }
+  for (const l of s.logs) { c.save(); c.translate(l.x, l.y); c.rotate(s.wind + 1.57); c.fillStyle = '#9a6a3a'; c.fillRect(-7 * Z, -1.6 * Z, 14 * Z, 3.2 * Z); c.restore(); }
+  if (s.boss) { const b = s.boss; if (b.atk) { dot(c, b.atk.x, b.atk.y, b.atk.r, `rgba(255,60,80,${0.15 + (1 - b.atk.t / 0.8) * 0.35})`); } dot(c, b.x, b.y, b.r, '#b8402e'); dot(c, b.x - 4, b.y - 3, 2, '#ffcf3a'); dot(c, b.x + 4, b.y - 3, 2, '#ffcf3a'); }
+  for (const u of s.bul) dot(c, u.x, u.y, 1.6 * Z, '#ffcf3a');
+  for (const r of s.rings) { const q = r.t / 0.45; c.strokeStyle = r.c; c.globalAlpha = 1 - q; c.lineWidth = 1.2; c.beginPath(); c.arc(r.x, r.y, r.r + (r.max || 8) * q, 0, 6.283); c.stroke(); c.globalAlpha = 1; }
+  // герой
+  dot(c, h.x, h.y + 2, 4 * Z, 'rgba(0,0,0,.35)');
+  if (h.dash > 0) { c.strokeStyle = 'rgba(255,207,58,.5)'; c.lineWidth = 3; c.beginPath(); c.moveTo(h.x, h.y); c.lineTo(h.x - h.vx * 0.12, h.y - h.vy * 0.12); c.stroke(); }
+  const hr = 4 * Z * (1 + h.z / 30); dot(c, h.x, h.y - h.z * 0.6, hr, h.hit > 0 ? '#ff5a6e' : (h.inv > 0 && Math.floor(T * 16) % 2 ? '#fff3b0' : '#ffcf3a'));
+  dot(c, h.x + h.ax * 2 * Z, h.y - h.z * 0.6 + h.ay * 2 * Z, 1.2 * Z, '#1a1300');
+  if (h.sh > 0) { c.strokeStyle = 'rgba(140,220,255,.9)'; c.lineWidth = 1; c.beginPath(); c.arc(h.x, h.y, 6 + 3 * Z, 0, 6.283); c.stroke(); dot(c, h.x, h.y, 6 + 3 * Z, 'rgba(140,220,255,.15)'); }
+  if (h.carry) { c.fillStyle = '#c77dff'; c.fillRect(h.x - 2.5 * Z, h.y - 6 - 5 * Z, 5 * Z, 5 * Z); }
+  if (k.v === 4) { c.strokeStyle = 'rgba(95,224,255,.35)'; c.lineWidth = 0.5; c.beginPath(); for (const o of s.items.concat(s.runs, s.cargo && !h.carry ? [s.cargo] : [])) if (sd(h, o) < VP.mag[k.vp]) { c.moveTo(h.x, h.y); c.lineTo(o.x, o.y); } c.stroke(); c.strokeStyle = 'rgba(95,224,255,.15)'; c.beginPath(); c.arc(h.x, h.y, VP.mag[k.vp], 0, 6.283); c.stroke(); }
+  if (h.slow > 0) { c.fillStyle = 'rgba(92,200,255,.14)'; c.fillRect(0, 0, SW, SH); }
+  c.font = `600 ${s.cv.width < 400 ? 9 : 6}px Golos Text, sans-serif`;
+  const ty = s.cv.width < 400 ? 10 : 8;
+  if (s.hits) { c.fillStyle = 'rgba(255,90,110,.95)'; c.fillText('удары: ' + s.hits, 4, ty); }
+  if (k.g !== 3) { c.fillStyle = 'rgba(95,224,255,.95)'; c.textAlign = 'right'; c.fillText('очки: ' + s.score, SW - 4, ty); c.textAlign = 'left'; }
+  if (k.g === 3) { const R = [40, 60, 90][k.gp]; c.fillStyle = 'rgba(255,255,255,.12)'; c.fillRect(60, 3, 96, 3); c.fillStyle = '#45e39a'; c.fillRect(60, 3, 96 * Math.max(0, 1 - T * (60 / R) / 14), 3); c.fillStyle = '#c9c3ea'; c.fillText('продержись ' + R + ' с', 60, s.cv.width < 400 ? 16 : 13); }
+}
+let simLast = 0;
+(function simLoop(now) {
+  const dt = Math.min(0.05, ((now || 0) - simLast) / 1000 || 0.016); simLast = now || 0;
+  for (const s of SIMS) { if (!s.cv.isConnected) { SIMS.delete(s); s.io && s.io.disconnect(); continue; } if (!s.vis) continue; simStep(s, dt); simDraw(s); }
+  requestAnimationFrame(simLoop);
+})();
+
+/* ---------- шаги замысла ---------- */
+if (st.fv !== 2) { st.fv = 2; st.step = 0; }  // новая фабрика: шаги пройти заново, тексты остаются
+if (!st.pow) st.pow = { goal: 1, verb: 1, threat: 1 };
+if (!Array.isArray(st.bars) || st.bars.length !== 5) st.bars = [-1, -1, -1, -1, -1];
+const STEPS = ['1 · Чувство', '2 · Цель', '3 · Кнопка A', '4 · Угроза', '5 · Мир и герой', '6 · Предсказание', '7 · Решения и промпт'];
+const LIST = { goal: GOAL, verb: VERB, threat: THREAT };
+const card = key => st[key] >= 0 ? LIST[key][st[key]] : null;
+const powOf = key => { const c = card(key); return c && c.pw ? POWN[st.pow[key]] : ''; };
+const cardLine = key => { const c = card(key); return c ? `${c.n}${c.pw ? `, сила «${POWN[st.pow[key]]}» (${c.pw[st.pow[key]]})` : ''}` : '…'; };
+function specFor(key, i, pw) {
+  const p = pw != null ? pw : i === st[key] ? st.pow[key] : 1;
+  // Выжить и Защитить без угрозы не видны, поэтому им слабые охотники
+  if (key === 'goal') return { g: i, v: -1, t: i === 3 || i === 5 ? 0 : -1, gp: p, vp: 1, tp: 0 };
+  if (key === 'verb') return { g: 0, v: i, t: 0, gp: 1, vp: p, tp: 0, more: 2 };
+  if (key === 'threat') return { g: 0, v: -1, t: i, gp: 1, vp: 1, tp: p };
+  return { g: st.goal, v: st.verb, t: st.threat, gp: st.pow.goal, vp: st.pow.verb, tp: st.pow.threat };
+}
+const DECK = {
+  name: ['Ночной аул', 'Лис против метеоров', 'Тихий сбор', 'Огненное кольцо', 'Почта нартов', 'Пчела без паники', 'Последний светлячок', 'Снеговик в пустыне', 'Башня из облаков', 'Лава и пироги', 'Сова-курьер', 'Буря над Лаго-Наки', 'Кот, который спасал рыбу', 'Ледяной марафон', 'Робот ищет выход', 'Сад на спине кита'],
+  hero: ['лис-почтальон', 'робот-пекарь', 'призрак из старой башни', 'пчела-курьер', 'котёнок-астронавт', 'черепаха-гонщица', 'снеговик, который боится солнца', 'медведь-пасечник', 'сова-библиотекарь', 'лягушка-фокусник', 'маленький дракон-повар', 'робот-садовник', 'девочка-изобретатель', 'старый горный пастух', 'светлячок-фонарщик', 'юный нарт'],
+  world: ['ночной аул', 'плато Лаго-Наки', 'неоновый рынок', 'облачная кухня', 'крыша небоскрёба', 'ледяная библиотека', 'подводный сад', 'остров на спине кита', 'пустынный караван-сарай', 'заброшенная фабрика игрушек', 'лес гигантских грибов', 'склон вулкана', 'парящие острова', 'станция на Луне', 'чайные террасы в горах', 'пещера Азиш-Тау'],
+  item: ['звёзды', 'письма', 'кристаллы', 'яблоки', 'искры', 'потерянные ноты', 'мёд', 'шестерёнки', 'светлячки', 'семена', 'ключи', 'рыбки', 'пироги', 'перья', 'капли росы', 'хычины'],
+  why: () => {
+    const aim = st.aim >= 0 ? PLS[st.aim] : 'Вызов', main = Object.keys(AIMS[aim] || { press: 1 })[0], ax = AXK[main], out = [];
+    ['goal', 'verb', 'threat'].forEach(key => { const c = card(key); if (!c) return; const v = c.fx[main] || 0; const pw = c.pw ? ` на силе «${POWN[st.pow[key]]}»` : '';
+      if (v > 0) out.push(`Шкалу «${ax.n}» поднимет карта «${c.n}»${pw}, потому что ${c.d}`);
+      if (v < 0) out.push(`Карта «${c.n}»${pw} будет мешать шкале «${ax.n}», потому что ${c.d}`);
+      if (!v) out.push(`Карта «${c.n}» почти не трогает «${ax.n}», зато ${fxPlain(c.fx).toLowerCase()}`); });
+    return out.length ? out : ['Главную шкалу сдвинет угроза, потому что от неё зависит, как игрок двигается'];
+  },
+  d1: () => [`Игрок чувствует: ${st.aim >= 0 ? PL_HINT[PLS[st.aim]] : 'трудно, но я справляюсь'}`, 'После каждой партии хочется сказать «ещё одну»', `Игрок переживает за героя: ${fv('hero') || 'герой'} кажется живым`, 'Каждая удачная секунда звучит и выглядит как маленький праздник', 'Страшно, но интересно заглянуть дальше', 'Можно выдохнуть и просто смотреть, как красиво'],
+  d2: () => ['Всё, что может ранить, видно на экране заранее', 'Перезарядка кнопки A видна полоской у героя', 'Удар всегда объясняется: видно, что тебя задело', 'Правила одинаковые для героя и угроз', 'Опасность появляется только там, где её видно'],
+  d3: () => { const it = fv('item') || 'цели', vb = st.verb >= 0 ? VERB[st.verb].n.toLowerCase() : 'кнопку A'; return [`Взять ${it} рядом с опасностью или обойти`, `Потратить ${vb} сейчас или приберечь`, `Остаться у края или выйти в центр за ${it}`, 'Идти короткой опасной дорогой или длинной безопасной', 'Рискнуть ради очков или сыграть надёжно']; },
+};
+const TEXTS = ['name', 'hero', 'world', 'item', 'why', 'd1', 'd2', 'd3'];
+function stepOk(i) { return [st.aim >= 0 && !!AIMS[PLS[st.aim]], st.goal >= 0, st.verb >= 0, st.threat >= 0, ['name', 'hero', 'world', 'item'].every(fv), st.bars.every(b => b >= 0) && !!fv('why'), ['d1', 'd2', 'd3'].every(fv)][i]; }
+function promptReady() { return STEPS.every((_, i) => stepOk(i)); }
+const NEED = ['Выбери одно из четырёх удовольствий, которые эта арена умеет мерить.', 'Выбери карту цели.', 'Выбери карту кнопки A.', 'Выбери карту угрозы.', 'Заполни четыре поля. Кубик подскажет, но лучше своими словами.', 'Поставь все пять шкал и напиши гипотезу.', 'Заполни три решения.'];
+function cp2() {
+  $('#panel').innerHTML = `
+  <section class="box">
+    <h2>Замысел с гипотезой</h2>
+    <p>Ты собираешь свою игру как дизайнер. Сначала решаешь, <b>что должен почувствовать игрок</b>. Потом по одной выбираешь <b>три карты правил</b> и их <b>силу</b>: на каждой карте живая схема показывает, как она работает. В конце до первой партии ты <b>предсказываешь пять шкал опыта</b>, а 3D-игра померит их же.</p>
+    <div class="steps" id="steps"></div>
+  </section>
+  <section class="box" id="stepBox"></section>`;
+  steps(); step();
+}
+function steps() {
+  $('#steps').innerHTML = STEPS.map((s, i) => `<button class="step${stepOk(i) ? ' ok' : ''}" type="button" data-i="${i}" ${i === st.step ? 'aria-current="step"' : ''}>${stepOk(i) ? '✓ ' : ''}${s}</button>`).join('');
+  $('#steps').dataset.g = 'steps';
+  if ($('#need') && stepOk(st.step)) $('#need').textContent = '';
+  document.querySelectorAll('.step').forEach(b => b.onclick = () => { st.step = +b.dataset.i; save(); steps(); step(); });
+}
+function navRow() { return `<div class="nav"><button class="btn ghost" type="button" id="back" ${st.step === 0 ? 'disabled' : ''}>← Назад</button><button class="btn" type="button" id="next">${st.step === 6 ? 'К промпту ↓' : 'Дальше →'}</button></div><div class="desc" id="need"></div>`; }
+function wireNav() {
+  $('#back').onclick = () => { if (st.step > 0) { st.step--; save(); steps(); step(); } };
+  $('#next').onclick = () => { if (!stepOk(st.step)) { $('#need').textContent = NEED[st.step]; beep(220, 0.2, 'sawtooth', 0.05); return; } if (st.step < 6) { st.step++; beep(760); save(); steps(); step(); scrollTo({ top: $('#stepBox').offsetTop - 10, behavior: 'smooth' }); } else $('#prompt').scrollIntoView({ behavior: 'smooth' }); };
+}
+function sumRow() {
+  const parts = ['goal', 'verb', 'threat'].filter(k => card(k)).map(k => `<span><b>${card(k).n}</b>${card(k).pw ? ` · ${POWN[st.pow[k]]}` : ''} ${fxTxt(card(k).fx)}</span>`);
+  return parts.length ? `<div class="sum">${st.aim >= 0 ? `<span>Чувство: <b>${PLS[st.aim]}</b> (${aimTxt(PLS[st.aim])})</span>` : ''}${parts.join('')}</div>` : '';
+}
+function aimStep(box) {
+  box.innerHTML = `<h2>1. Что должен почувствовать игрок?</h2><p>Это <b style="color:var(--a)">A</b>, эстетика. Ручки для чувства нет: его можно только вырастить из правил. Арена умеет мерить пять шкал опыта, и четыре удовольствия видны по ним. Под каждым написано, как должны лечь шкалы, чтобы оно получилось.</p><div class="axes">${AXES.map(a => `<span style="border-color:${a.c}"><b style="color:${a.c}">${a.i} ${a.n}</b> ${a.d}</span>`).join('')}</div><div class="big" id="aim" data-g="aim"></div>${navRow()}`;
+  const el = $('#aim');
+  el.innerHTML = PLS.map((p, i) => AIMS[p]
+    ? `<button class="bc" type="button" data-i="${i}" aria-pressed="${st.aim === i}"><b>${p}</b><small>${PL_HINT[p]}</small><span class="fx">${aimTxt(p)}</span></button>`
+    : `<button class="bc" type="button" disabled title="Его делают история, герои и другие люди, а не правила арены"><b>${p}</b><small>${PL_HINT[p]}</small><span class="fx" style="color:var(--muted)">не меряется на арене</span></button>`).join('');
+  el.querySelectorAll('.bc:not(:disabled)').forEach(b => b.onclick = () => { st.aim = +b.dataset.i; beep(560 + st.aim * 40); save(); aimStep(box); steps(); wireNav(); padFocus(); });
+}
+function cardStep(box, key, n, title, intro) {
+  const list = LIST[key];
+  box.innerHTML = `<h2>${n}. ${title}</h2><p>${intro}</p>${sumRow()}<div class="cards3" id="cards" data-g="cards"></div><div id="powBox"></div>${navRow()}`;
+  const el = $('#cards'), sims = [];
+  el.innerHTML = list.map((c, i) => `<button class="bc c3" type="button" data-i="${i}" aria-pressed="${st[key] === i}"><canvas width="320" height="180" aria-hidden="true"></canvas><b>${c.n}</b><small>${c.d}</small><span class="fx">${fxTxt(c.fx)}</span></button>`).join('');
+  el.querySelectorAll('.c3').forEach(b => { const i = +b.dataset.i; sims[i] = simNew(b.querySelector('canvas'), () => specFor(key, i));
+    b.onclick = () => { const old = st[key]; st[key] = i; beep(560 + i * 30); save(); steps(); el.querySelectorAll('.c3').forEach(x => x.setAttribute('aria-pressed', String(+x.dataset.i === i))); if (old >= 0 && sims[old]) simReset(sims[old]); simReset(sims[i]); powBox(); $('#powBox').scrollIntoView({ block: 'nearest', behavior: 'smooth' }); }; });
+  // сила: три живые схемы рядом, слабо, средне и сильно идут одновременно
+  const powBox = () => {
+    const c = card(key), pb = $('#powBox');
+    if (!c) { pb.innerHTML = '<p class="desc">Выбери карту. Анимация на карте показывает, как она работает в игре.</p>'; return; }
+    if (!c.pw) { pb.innerHTML = `<div class="powl"><b>${c.n}</b>: у этой карты нет силы.</div>`; return; }
+    pb.innerHTML = `<div class="powl">Сила карты <b>«${c.n}»</b>. Три схемы идут одновременно: сравни счётчики ударов и очков и выбери силу.</div><div class="pow" data-g="pow">${POWN.map((p, j) => `<button type="button" class="pw" data-j="${j}" aria-pressed="${st.pow[key] === j}"><canvas width="320" height="180" aria-hidden="true"></canvas><span class="pwt"><b>${p}</b><small>${c.pw[j]}</small></span></button>`).join('')}</div>`;
+    pb.querySelectorAll('.pw').forEach(b => { const j = +b.dataset.j; simNew(b.querySelector('canvas'), () => specFor(key, st[key], j));
+      b.onclick = () => { st.pow[key] = j; beep(500 + j * 200); save(); simReset(sims[st[key]]); pb.querySelectorAll('.pw').forEach(x => x.setAttribute('aria-pressed', String(+x.dataset.j === j))); steps(); }; });
+  };
+  powBox();
+}
+function predStep(box) {
+  const aim = st.aim >= 0 ? PLS[st.aim] : '', tg = AIMS[aim] || {};
+  box.innerHTML = `<h2>6. Предскажи пять шкал опыта</h2><p>Это <b style="color:var(--d)">D</b>, динамика. Ты её не задаёшь, но можешь угадать. Вот твоя игра схемой: три карты с твоей силой работают вместе. Посмотри на неё и поставь каждую шкалу: сколько этого будет в партии. Пунктиром отмечено, где шкала должна оказаться, чтобы вышло <b>«${aim || '…'}»</b>. 3D-игра померит те же пять шкал.</p>
+    <canvas id="big" class="bigsim" width="640" height="360" aria-label="Схема твоей игры"></canvas>${sumRow()}
+    <div class="bars" id="bars"></div><div id="fx" style="display:flex;flex-direction:column;gap:10px"></div>${navRow()}`;
+  simNew($('#big'), () => specFor('all'));
+  const draw = () => {
+    $('#bars').innerHTML = AXES.map((a, r) => { const t = tg[a.k]; return `<div class="barrow" data-g="bar${r}"><div class="bl"><b style="color:${a.c}">${a.i} ${a.n}</b><small>${a.d}</small></div><div class="lvs">${LEVELS.map((l, j) => `<button type="button" class="lv${t && j >= t[0] && j <= t[1] ? ' tg' : ''}" data-r="${r}" data-j="${j}" aria-pressed="${st.bars[r] === j}" style="--ac:${a.c}">${l}</button>`).join('')}</div></div>`; }).join('');
+    document.querySelectorAll('.lv').forEach(b => b.onclick = () => { st.bars[+b.dataset.r] = +b.dataset.j; beep(420 + (+b.dataset.j) * 110); save(); steps(); draw(); padFocus(); });
+  };
+  draw();
+  field($('#fx'), 'why', 'Гипотеза: какая карта сильнее всего сдвинет главную шкалу и почему?', DECK.why, `Главная шкала для «${aim || '…'}»: ${aimTxt(aim) || '…'}.`);
+}
+function step() {
+  const box = $('#stepBox'); upd = () => { steps(); if (st.step === 6) prompt2(); };
+  if (st.step === 0) aimStep(box);
+  if (st.step === 1) cardStep(box, 'goal', 2, 'Цель: ради чего игрок двигается', 'Это <b style="color:var(--m)">M</b>, механика: её ты задаёшь напрямую. Цель решает, куда игрок пойдёт. Метки под картой показывают, какие шкалы она обычно двигает вверх ↑ или вниз ↓.');
+  if (st.step === 2) cardStep(box, 'verb', 3, 'Кнопка A: главный глагол', 'Глагол решает, что игрок может сделать в трудную секунду. На схеме кнопка жмётся сама, когда она нужна. Сила меняет глагол в разы.');
+  if (st.step === 3) cardStep(box, 'threat', 4, 'Угроза: что мешает', 'Угроза решает, от чего игрок убегает. Сильнее всего чувство меняет именно она. Сравни силу «слабо» и «сильно» на одной карте.');
+  if (st.step === 4) {
+    box.innerHTML = `<h2>5. Мир и герой своими словами</h2><p>Это не правила, но они решают, кем себя почувствует игрок, и из них я соберу 3D-модели. Палитру, музыку и облик подберу по твоим словам. Кубик только подсказывает: поправь его вариант, и он станет твоим.</p>${sumRow()}<div id="fx" style="display:flex;flex-direction:column;gap:10px"></div>${navRow()}`;
+    const fx = $('#fx');
+    field(fx, 'name', 'Название игры', DECK.name); field(fx, 'hero', 'Кто герой', DECK.hero); field(fx, 'world', 'Где всё происходит', DECK.world); field(fx, 'item', 'Что герой собирает, ловит или спасает', DECK.item);
+  }
+  if (st.step === 5) predStep(box);
+  if (st.step === 6) {
+    box.innerHTML = `<h2>7. Три решения и промпт</h2><p>Что ты решил как дизайнер. Эти три строки игрок увидит перед стартом.</p><div id="fx" style="display:flex;flex-direction:column;gap:10px"></div>${navRow()}
+      <div class="lab" id="prompt">Промпт ИГРА</div><div class="meter" id="meter"></div><pre id="out"></pre><div class="row"><button class="btn" id="copy" type="button">Скопировать промпт</button></div><div class="desc" id="pneed"></div>`;
+    const fx = $('#fx');
+    field(fx, 'd1', 'Решение 1 · Чувство', DECK.d1); field(fx, 'd2', 'Решение 2 · Честность', DECK.d2); field(fx, 'd3', 'Решение 3 · Выбор', DECK.d3);
+    $('#copy').onclick = e => { if (!promptReady()) { const i = STEPS.findIndex((_, k) => !stepOk(k)); $('#pneed').textContent = `Не готов шаг ${i + 1}: ${NEED[i]}`; beep(220, 0.2, 'sawtooth', 0.05); return; } copyOut(e); tabs(); };
+    prompt2();
+  }
+  wireNav(); if (padOn) { const L = focusables(), f = L.findIndex(el => $('#stepBox').contains(el)); if (f >= 0) pf = f; } padFocus();
+}
+function prompt2() {
+  if (!$('#out')) return;
+  const own = TEXTS.filter(k => fv(k) && !st.f[k].d).length, aim = st.aim >= 0 ? PLS[st.aim] : '…';
+  $('#meter').innerHTML = `своими словами <b>${own}</b> из ${TEXTS.length}` + (own < 4 ? ' · поправь хотя бы 4 строки, чтобы игра была твоей' : '');
+  const c = key => { const x = card(key); return x ? `${x.n} (${x.d})${x.pw ? `, сила «${POWN[st.pow[key]]}»: ${x.pw[st.pow[key]]}` : ''}` : '…'; };
+  $('#out').textContent = `ИГРА: «${ft('name')}»
+Хочу подарить игроку удовольствие: ${aim} (${PL_HINT[aim] || '…'}). Для этого шкалы должны лечь так: ${aimTxt(aim) || '…'}.
+Герой: ${ft('hero')}. Мир: ${ft('world')}. Герой собирает, ловит или спасает: ${ft('item')}.
+Механика, три карты с силой: цель ${c('goal')}. Кнопка A: ${c('verb')}. Угроза: ${c('threat')}.
+Предсказание шкал опыта (0 нет, 1 мало, 2 средне, 3 много, 4 очень): ${AXES.map((a, r) => `${a.n} ${st.bars[r] >= 0 ? st.bars[r] : '…'}`).join(', ')}.
+Гипотеза: ${ft('why')}.
+Решения: 1) ${ft('d1')}. 2) ${ft('d2')}. 3) ${ft('d3')}.
+
+Как собрать: яркая детальная лоупольная 3D-игра в браузере. Модели героя, мира, целей и угрозы по словам выше; палитру, музыку и облик подобрать под мир. Плоские грани, насыщенные цвета, мягкие тени, туман и свет под настроение мира, частицы, анимации, звук. Камера сверху под углом. Раунд около минуты. Клавиатура и геймпад, подсказки кнопок в меню. Ручки геймдизайнера (Tab): три карты и сила каждой (слабо, средне, сильно), сила меняет игру в разы. Перед стартом экран с тремя решениями, а если правило поменялось, крупно показать, что именно. Музыка и края экрана реагируют на близость опасности. Игра меряет те же пять шкал и после партии показывает их рядом с предсказанием и прошлой партией, плюс «пульс партии»: график напряжения по секундам.`;
+}
+
+/* ========== 3 · ТВОЯ 3D-ИГРА ========== */
+function cp3() {
+  $('#panel').innerHTML = `<section class="box"><h2>Твоя 3D-игра</h2>${GAME_URL ? `<p>Сыграй две партии <b>как задумано</b>, ручки пока не трогай. После каждой партии игра покажет пять шкал опыта рядом с твоим предсказанием и прошлой партией, а ещё «пульс партии». Отметь, что ты почувствовал, и пришли результат кнопкой «Скопировать результат».</p><div class="row"><a class="btn" href="${GAME_URL}" target="_blank" rel="noopener">Играть</a></div>` : '<p>Пришли промпт из вкладки «Замысел», и я соберу по нему игру. Ссылка появится здесь.</p>'}</section>`;
+}
+
+/* ========== 4 · МИССИЯ ========== */
+function cp4() {
+  $('#panel').innerHTML = `<section class="box"><h2>Миссия «перекрась чувство»</h2>
+    <p>Ты целился в <b>«Открытие»</b>, а игра дала «Отдых». Попади в «Открытие», меняя <b>ровно одну</b> карту. У тебя две попытки.</p>
+    <ol style="margin:0;padding-left:20px;display:grid;gap:6px;color:var(--muted)">
+      <li>Открой игру и сыграй одну партию как задумано, чтобы появились итоги.</li>
+      <li>На экране итогов нажми <b style="color:var(--ink)">«Миссия: попытка 1»</b> (<kbd>C</kbd> или <kbd>B</kbd> на геймпаде).</li>
+      <li>Выбери одну карту: цель, кнопку A, угрозу или новую карту, поворот или камеру.</li>
+      <li>Предскажи, что теперь будут делать игроки, и напиши гипотезу, почему это даст «Открытие».</li>
+      <li>Сыграй, отметь чувство и посмотри, что сбылось. Потом вторая попытка.</li>
+    </ol>
+    <p>Ручки (Tab) в миссии не трогай: тогда изменений будет больше одного, и не понять, какое что сделало.</p>
+    <div class="row"><a class="btn" href="${GAME_URL}" target="_blank" rel="noopener">Открыть игру</a></div>
+    <p>В конце нажми в игре «Скопировать результат» и пришли его в чат.</p></section>`;
+}
+
+/* ---------- клавиатура ---------- */
+addEventListener('keydown', e => {
+  if (e.target.tagName === 'TEXTAREA') return;
+  if (st.tab === 1 && sortActive) { const n = parseInt(e.key, 10); if (n >= 1 && n <= sortActive.n && document.getElementById(sortActive.id).querySelector('.opt')) { sortActive.choose(n - 1); } }
+});
+
+/* ---------- геймпад: рамка ходит по кнопкам ---------- */
+let pf = 0, padOn = false, prev = [], prevAx = [0, 0], rep = 0;
+function focusables() { return [...document.querySelectorAll('#panel button:not(:disabled), #panel a.btn, #panel textarea')].filter(el => el.offsetParent !== null); }
+function padFocus() {
+  document.querySelectorAll('.pf').forEach(x => x.classList.remove('pf'));
+  if (!padOn) return;
+  const L = focusables(); if (!L.length) return; pf = Math.max(0, Math.min(L.length - 1, pf)); L[pf].classList.add('pf');
+}
+function grp(el) { const g = el.closest('[data-g]'); return g || el; }
+function move(dx, dy) {
+  const L = focusables(); if (!L.length) return;
+  if (dx) pf = (pf + dx + L.length) % L.length;
+  if (dy) { const g = grp(L[pf]); let i = pf; do { i += dy; } while (i >= 0 && i < L.length && grp(L[i]) === g); if (i >= 0 && i < L.length) { const g2 = grp(L[i]); if (dy < 0) while (i > 0 && grp(L[i - 1]) === g2) i--; pf = i; } }
+  padFocus(); const el = L[pf]; el && el.scrollIntoView({ block: 'nearest', behavior: 'smooth' }); beep(500, 0.03, 'square', 0.03);
+}
+function rumble() { try { const gp = [...navigator.getGamepads()].find(Boolean); gp && gp.vibrationActuator && gp.vibrationActuator.playEffect('dual-rumble', { duration: 180, strongMagnitude: 0.7, weakMagnitude: 0.4 }); } catch (e) {} }
+function padBar() {
+  $('#padBar').innerHTML = padOn
+    ? '🎮 <kbd>↑ ↓</kbd> ряд · <kbd>← →</kbd> выбор · <kbd>A</kbd> нажать · <kbd>X</kbd> кубик · <kbd>B</kbd> назад · <kbd>Start</kbd> дальше · <kbd>LB</kbd> <kbd>RB</kbd> вкладки'
+    : '⌨️ <kbd>Tab</kbd> по кнопкам · <kbd>Enter</kbd> нажать · в лестнице <kbd>1</kbd>–<kbd>8</kbd> · можно подключить геймпад';
+}
+(function poll() {
+  try {
+    const gp = navigator.getGamepads && [...navigator.getGamepads()].find(Boolean);
+    if (gp) {
+      if (!padOn) { padOn = true; padBar(); padFocus(); }
+      const b = gp.buttons.map(x => !!(x && x.pressed)), dn = i => b[i] && !prev[i];
+      const ax = gp.axes[0] || 0, ay = gp.axes[1] || 0;
+      const sx = ax > 0.55 ? 1 : ax < -0.55 ? -1 : 0, sy = ay > 0.55 ? 1 : ay < -0.55 ? -1 : 0;
+      const nx = sx !== prevAx[0] ? sx : 0, ny = sy !== prevAx[1] ? sy : 0; prevAx = [sx, sy];
+      if (dn(14) || nx < 0) move(-1, 0); if (dn(15) || nx > 0) move(1, 0);
+      if (dn(12) || ny < 0) move(0, -1); if (dn(13) || ny > 0) move(0, 1);
+      if (dn(0)) { const el = focusables()[pf]; if (el) { if (el.tagName === 'TEXTAREA') { const d = el.parentElement.querySelector('.die'); d && d.click(); } else el.click(); setTimeout(padFocus, 30); } }
+      if (dn(2)) { const el = focusables()[pf], d = el && el.closest('.rowf') && el.closest('.rowf').querySelector('.die'); if (d) { d.click(); setTimeout(padFocus, 30); } }
+      if (dn(1) && st.tab === 2 && $('#back')) { $('#back').click(); setTimeout(padFocus, 30); }
+      if (dn(9) && st.tab === 2 && $('#next')) { $('#next').click(); setTimeout(padFocus, 30); }
+      if (dn(4)) go(st.tab - 1); if (dn(5)) go(st.tab + 1);
+      prev = b;
+    }
+  } catch (e) {}
+  requestAnimationFrame(poll);
+})();
+tabs(); render();
+</script>

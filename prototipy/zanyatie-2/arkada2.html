@@ -1,0 +1,174 @@
+<title>Моя Аркада</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Unbounded:wght@600;800&family=Golos+Text:wght@400;600;700&display=swap">
+<style>
+/* Зал игровых автоматов: шкала XP сверху, сетка автоматов, полка достижений, линза-карта, открытие дня */
+:root{
+  --bg:#0d0b1a; --panel:#17142b; --line:#2f2a55; --ink:#f4f0ff; --muted:#a49cc9;
+  --hot:#ffcf3a; --good:#45e39a; --dice:#ff7ad9; --sky:#6aa8ff;
+  --display:'Unbounded',system-ui,sans-serif; --body:'Golos Text',system-ui,sans-serif;
+  color-scheme:dark;
+}
+body{background:var(--bg);color:var(--ink);font:16px/1.45 var(--body);margin:0}
+.wrap{max-width:960px;margin:0 auto;padding-block:20px 40px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));display:flex;flex-direction:column;gap:18px}
+.brand{font:800 13px var(--display);letter-spacing:.12em;text-transform:uppercase;color:var(--hot)}
+h1{font:800 clamp(26px,5.5vw,42px)/1.05 var(--display);margin:0}
+h2{font:800 16px var(--display);margin:0;letter-spacing:.02em}
+.xp{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:16px;display:flex;flex-direction:column;gap:10px}
+.xp .row{display:flex;flex-wrap:wrap;justify-content:space-between;gap:8px;align-items:baseline}
+.xp .big{font:800 30px var(--display);color:var(--hot);font-variant-numeric:tabular-nums}
+.bar{height:12px;background:var(--line);border-radius:6px;overflow:hidden}
+.bar i{display:block;height:100%;background:linear-gradient(90deg,var(--hot),var(--dice));width:0;transition:width 1.2s cubic-bezier(.2,.8,.2,1)}
+.xplist{display:flex;flex-wrap:wrap;gap:6px}
+.xplist span{font-size:13px;border:1px solid var(--line);border-radius:999px;padding:3px 10px;color:var(--muted)}
+.xplist b{color:var(--good)}
+.games{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:12px}
+.cab{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:14px;display:flex;flex-direction:column;gap:8px;min-width:0}
+.cab .tagl{font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);font-weight:600}
+.cab h3{font:800 17px/1.2 var(--display);margin:0}
+.cab p{margin:0;font-size:14px;color:var(--muted)}
+.cab .disc{font-size:13.5px;color:var(--ink);border-left:3px solid var(--dice);padding-left:8px}
+.cab a{align-self:flex-start;font:800 14px var(--display);color:#1a1300;background:var(--hot);border-radius:10px;padding:8px 14px;text-decoration:none;margin-top:auto}
+.cab a:focus-visible,.ach:focus-visible,.chip:focus-visible,.btn:focus-visible,.die:focus-visible,.lens:focus-visible{outline:2px solid var(--ink);outline-offset:2px}
+.cab.mine{border-color:var(--dice)}
+.achs{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px}
+.ach{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:12px;display:flex;flex-direction:column;gap:4px;align-items:center;text-align:center;cursor:pointer;color:var(--ink);font:inherit}
+.ach .ic{font-size:30px}
+.ach b{font-size:14px}
+.ach small{font-size:12px;color:var(--muted)}
+.ach.new{border-color:var(--hot);box-shadow:0 0 0 3px rgba(255,207,58,.18)}
+.ach.lock{opacity:.45;filter:grayscale(1)}
+.ach.pop{animation:pop .5s}
+@keyframes pop{40%{transform:scale(1.12)}}
+.lens{perspective:900px;background:none;border:0;padding:0;cursor:pointer;width:100%;font:inherit;color:inherit}
+.lens .in{position:relative;min-height:170px;transition:transform .6s;transform-style:preserve-3d}
+.lens.flip .in{transform:rotateY(180deg)}
+.lens .f,.lens .b{position:absolute;inset:0;backface-visibility:hidden;border-radius:16px;padding:18px;display:flex;flex-direction:column;justify-content:center;gap:8px;text-align:left}
+.lens .f{background:linear-gradient(135deg,#3a1d5c,#17142b);border:1px solid var(--dice)}
+.lens .b{background:var(--panel);border:1px solid var(--hot);transform:rotateY(180deg)}
+.lens .q{font:800 clamp(18px,3.4vw,24px)/1.25 var(--display)}
+.lens small{color:var(--muted)}
+.box{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:16px;display:flex;flex-direction:column;gap:10px}
+.chips{display:flex;flex-wrap:wrap;gap:8px}
+.chip{background:var(--bg);color:var(--ink);border:2px solid var(--line);border-radius:999px;padding:8px 14px;font:600 14px var(--body);cursor:pointer;text-align:left}
+.chip[aria-pressed="true"]{border-color:var(--hot);background:#2a2450}
+.rowf{display:flex;gap:8px}
+.rowf textarea{flex:1;min-width:0}
+textarea{background:var(--bg);color:var(--ink);border:1px solid var(--line);border-radius:10px;font:15px/1.4 var(--body);padding:9px 11px;resize:vertical;min-height:44px;box-sizing:border-box}
+textarea.dice{border-color:var(--dice)}
+.die{flex:none;width:48px;border-radius:10px;border:1px solid var(--dice);background:rgba(255,122,217,.1);font-size:22px;cursor:pointer;color:var(--ink)}
+.tag{font-size:12px;color:var(--dice);min-height:1em}
+pre{white-space:pre-wrap;background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:12px;margin:0;font:13px/1.5 ui-monospace,Consolas,monospace}
+.btn{align-self:flex-start;font:800 15px var(--display);border:0;border-radius:12px;padding:12px 18px;cursor:pointer;background:var(--hot);color:#1a1300}
+.toast{position:fixed;left:50%;bottom:calc(16px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);background:var(--hot);color:#1a1300;font:800 14px var(--display);padding:10px 16px;border-radius:12px;opacity:0;transition:opacity .3s;pointer-events:none;max-width:calc(100% - 32px)}
+.toast.on{opacity:1}
+@media (prefers-reduced-motion:reduce){.bar i,.lens .in{transition:none}.ach.pop{animation:none}}
+</style>
+
+<div class="wrap">
+  <div class="brand">Лаборатория игр · занятие 2 · чекпоинт 4</div>
+  <h1>Моя Аркада</h1>
+
+  <section class="xp" aria-label="Опыт за занятие">
+    <div class="row"><h2>Опыт за занятие 2</h2><div class="big" id="xpNum">0 XP</div></div>
+    <div class="bar"><i id="xpBar"></i></div>
+    <div class="xplist" id="xpList"></div>
+    <small style="color:var(--muted)">Прибавляется к XP занятия 1. Звания: Новичок 0 → Прототипёр 100 → Механик 250 → Левел-дизайнер 450 → Геймдизайнер 700 → Мастер игр 1000.</small>
+  </section>
+
+  <h2>Автоматы</h2>
+  <div class="games" id="games"></div>
+
+  <h2>Достижения <small style="font:400 13px var(--body);color:var(--muted)">нажми на значок</small></h2>
+  <div class="achs" id="achs"></div>
+
+  <h2>Линза №2 в колоду</h2>
+  <button class="lens" id="lens" type="button" aria-label="Перевернуть карту линзы">
+    <div class="in">
+      <div class="f"><small>Линза правил · нажми, чтобы перевернуть</small><div class="q">Какое одно правило изменило бы всё?</div></div>
+      <div class="b"><small>Как пользоваться</small><div>Возьми любую игру и представь, что меняешь в ней ровно одно правило. Сегодня ты так оживил решённые крестики-нолики бомбой и перевернул змейку. Задай себе этот вопрос, когда игра кажется скучной: обычно ей не нужно больше всего, ей нужно одно другое правило.</div></div>
+    </div>
+  </button>
+
+  <section class="box">
+    <h2>Открытие дня</h2>
+    <p style="margin:0;color:var(--muted);font-size:14px">Что ты понял про игры сегодня? Выбери готовое или напиши своё.</p>
+    <div class="chips" id="disc"></div>
+    <div class="rowf"><textarea id="t-own" rows="2" aria-label="Своё открытие"></textarea><button class="die" id="d-own" type="button" aria-label="Бросить кубик">🎲</button></div>
+    <div class="tag" id="g-own"></div>
+  </section>
+
+  <section class="box">
+    <h2>План следующей версии</h2>
+    <div class="chips" id="plan"></div>
+  </section>
+
+  <section class="box">
+    <h2>Итог для учителя</h2>
+    <pre id="out"></pre>
+    <button class="btn" id="copy" type="button">Скопировать итог</button>
+  </section>
+</div>
+<div class="toast" id="toast" role="status"></div>
+
+<script>
+const GAMES = [
+  { tag: 'Занятие 1 · твоя игра', t: 'Самолётик в телевизоре 2', p: 'Газ и тормоз, смена канала каждые 10 с. У тормоза четыре варианта цены.', d: 'Открытие: тормоз держался почти всегда, ему нужна цена. Плейтест версии 2 ещё впереди.', url: 'https://claude.ai/artifact/D6SDogHUEMNev4Wd5Lv563', mine: true },
+  { tag: 'Занятие 2 · общая игра', t: 'Крестики-нолики: одно правило', p: 'Классика против бота и пять правил в ручках, одно из них твоё: клетка-бомба.', d: 'Открытие: в решённой игре исход известен заранее. Сильнее всего игру оживило правило «три фишки».', url: 'https://claude.ai/artifact/Jfj3JfMyt8cTZ3hkn4BUSF' },
+  { tag: 'Занятие 2 · твоя игра', t: 'Змейка-перевёртыш 2', p: 'Голова и хвост меняются местами каждые 10 с, B даёт рывок. В версии 2 змейка сама поворачивает у стены.', d: 'Открытие: смерть от стены задавила главное правило, а выбор «длинная или безопасная» игрок не заметил. Рекорд 164.', url: 'https://claude.ai/artifact/D135NiygvZQFLcehzpdXRo', mine: true },
+  { tag: 'Занятие 2 · квиз', t: 'Разбери игру на детали', p: 'Сьютс и 8 формальных элементов. Пройди ещё раз, чтобы открыть «Знатока правил».', d: 'Результат: 7/8 и 5/10, 2497 очков. Пробел в ресурсах.', url: 'https://claude.ai/artifact/M7U1Swtvg6drBt581bRo7R' },
+];
+const ACHS = [
+  { ic: '🧩', t: 'Автор правила', d: 'Твоё правило встроено в общую игру класса (клетка-бомба).', on: true, new: true },
+  { ic: '🎮', t: 'Вторая игра', d: 'Собрал игру из классики и одного правила.', on: true, new: true },
+  { ic: '🎬', t: 'Прошёл продюсера', d: 'Решил обе развилки продюсера.', on: true },
+  { ic: '🔁', t: 'Вторая версия', d: 'Змейка-перевёртыш 2 по итогам плейтеста.', on: true },
+  { ic: '🧪', t: 'Плейтестер', d: 'Сдал отчёт плейтеста с цифрами из игры.', on: true },
+  { ic: '🏅', t: 'Знаток правил', d: 'Квиз без единой ошибки. Пока закрыт: пройди квиз ещё раз.', on: false },
+];
+const XP = [['вторая игра', 10], ['правка: версия 2', 15], ['плейтест', 5], ['правило в общей игре', 15]];
+const DISC = ['Игра скучная, когда исход известен заранее', 'Одно правило может оживить решённую игру', 'Наказание не должно заглушать главную механику', 'Выбор, которого игрок не замечает, не работает', 'Кубик даёт идеи, но замысел из одних кубиков спорит сам с собой'];
+const PLAN = ['Змейка: награда за еду, съеденную сразу после разворота', 'Змейка: длина мешает развороту, чтобы выбор стал заметным', 'Самолётик 2: плейтест четырёх цен тормоза', 'Крестики-нолики: бомба на поле 5×5'];
+const $ = s => document.querySelector(s);
+const st = { disc: null, plan: [], own: { v: '', d: false } };
+let toastT;
+function toast(t) { const el = $('#toast'); el.textContent = t; el.classList.add('on'); clearTimeout(toastT); toastT = setTimeout(() => el.classList.remove('on'), 2200); }
+function beep(f, d = 0.1, delay = 0) { try { const AC = window._ac || (window._ac = new AudioContext()); const t = AC.currentTime + delay, o = AC.createOscillator(), g = AC.createGain(); o.type = 'triangle'; o.frequency.value = f; g.gain.setValueAtTime(0.07, t); g.gain.exponentialRampToValueAtTime(0.0001, t + d); o.connect(g); g.connect(AC.destination); o.start(t); o.stop(t + d + 0.02); } catch (e) {} }
+
+$('#games').innerHTML = GAMES.map(g => `<article class="cab${g.mine ? ' mine' : ''}"><div class="tagl">${g.tag}</div><h3>${g.t}</h3><p>${g.p}</p><div class="disc">${g.d}</div><a href="${g.url}" target="_blank" rel="noopener">Играть</a></article>`).join('');
+$('#achs').innerHTML = ACHS.map((a, i) => `<button class="ach${a.on ? '' : ' lock'}${a.new ? ' new' : ''}" type="button" data-i="${i}"><span class="ic">${a.ic}</span><b>${a.t}</b><small>${a.on ? (a.new ? 'новое' : 'открыто') : 'закрыто'}</small></button>`).join('');
+document.querySelectorAll('.ach').forEach(b => b.onclick = () => { const a = ACHS[+b.dataset.i]; b.classList.remove('pop'); void b.offsetWidth; b.classList.add('pop'); toast(a.t + ': ' + a.d); if (a.on) [660, 880, 1320].forEach((f, i) => beep(f, 0.12, i * 0.07)); else beep(200, 0.2); });
+const total = XP.reduce((s, x) => s + x[1], 0);
+$('#xpList').innerHTML = XP.map(x => `<span>${x[0]} <b>+${x[1]}</b></span>`).join('') + '<span>квиз без ошибок <b style="color:var(--muted)">+10 закрыто</b></span>';
+requestAnimationFrame(() => { $('#xpBar').style.width = Math.min(100, total / 100 * 100) + '%'; let n = 0; const tick = () => { n = Math.min(total, n + 1); $('#xpNum').textContent = n + ' XP'; if (n < total) setTimeout(tick, 18); }; tick(); });
+$('#lens').onclick = () => { $('#lens').classList.toggle('flip'); beep(520, 0.1); };
+
+function chips(box, list, key, multi) {
+  const el = $(box);
+  el.innerHTML = list.map((x, i) => `<button class="chip" type="button" data-i="${i}" aria-pressed="false">${x}</button>`).join('');
+  el.querySelectorAll('.chip').forEach(b => b.onclick = () => {
+    const v = list[+b.dataset.i];
+    if (multi) { const a = st[key], k = a.indexOf(v); if (k >= 0) a.splice(k, 1); else a.push(v); b.setAttribute('aria-pressed', String(a.includes(v))); }
+    else { st[key] = st[key] === v ? null : v; el.querySelectorAll('.chip').forEach(c => c.setAttribute('aria-pressed', String(list[+c.dataset.i] === st[key]))); }
+    beep(600 + Math.random() * 300, 0.08); update();
+  });
+}
+chips('#disc', DISC, 'disc'); chips('#plan', PLAN, 'plan', true);
+$('#t-own').oninput = e => { st.own = { v: e.target.value, d: false }; e.target.classList.remove('dice'); $('#g-own').textContent = ''; update(); };
+$('#d-own').onclick = () => { let v; do { v = DISC[Math.floor(Math.random() * DISC.length)]; } while (v === st.own.v); st.own = { v, d: true }; $('#t-own').value = v; $('#t-own').classList.add('dice'); $('#g-own').textContent = '[кубик] поправь пару слов, и вариант станет твоим'; beep(800, 0.12); update(); };
+function update() {
+  $('#out').textContent = [
+    'Аркада · занятие 2',
+    `XP за занятие: ${total}`,
+    `Открытие дня: ${st.own.v ? st.own.v + (st.own.d ? ' [кубик]' : '') : st.disc || '—'}`,
+    `План: ${st.plan.join('; ') || '—'}`,
+  ].join('\n');
+}
+$('#copy').onclick = e => {
+  const b = e.currentTarget, txt = $('#out').textContent;
+  const sel = () => { const r = document.createRange(); r.selectNodeContents($('#out')); const s = getSelection(); s.removeAllRanges(); s.addRange(r); b.textContent = 'Выдели и скопируй'; };
+  try { navigator.clipboard.writeText(txt).then(() => b.textContent = 'Скопировано, пришли в чат', sel); } catch (err) { sel(); }
+};
+update();
+</script>

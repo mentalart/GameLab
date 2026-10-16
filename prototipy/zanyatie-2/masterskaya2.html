@@ -1,0 +1,181 @@
+<title>Мастерская одного правила</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Unbounded:wght@600;800&family=Golos+Text:wght@400;600;700&display=swap">
+<style>
+/* Верстак студии: шаги сверху вниз, у каждого поля кубик; итог собирается внизу */
+:root{
+  --bg:#0d0b1a; --panel:#17142b; --line:#2f2a55; --ink:#f4f0ff; --muted:#a49cc9;
+  --hot:#ffcf3a; --good:#45e39a; --dice:#ff7ad9;
+  --display:'Unbounded',system-ui,sans-serif; --body:'Golos Text',system-ui,sans-serif;
+  color-scheme:dark;
+}
+body{background:var(--bg);color:var(--ink);font:16px/1.45 var(--body);margin:0}
+.wrap{max-width:820px;margin:0 auto;padding-block:20px 40px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));display:flex;flex-direction:column;gap:16px}
+.brand{font:800 13px var(--display);letter-spacing:.12em;text-transform:uppercase;color:var(--hot)}
+h1{font:800 clamp(24px,5vw,38px)/1.1 var(--display);margin:0;text-wrap:balance}
+.lead{margin:0;color:var(--muted);max-width:62ch}
+.step{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:18px;display:flex;flex-direction:column;gap:12px}
+.step h2{font:800 17px var(--display);margin:0;display:flex;gap:10px;align-items:baseline}
+.step h2 span{color:var(--hot)}
+.step p{margin:0;color:var(--muted);font-size:14px}
+.field{display:flex;flex-direction:column;gap:6px}
+.field label{font-weight:700;font-size:14px}
+.field label em{font-style:normal;color:var(--muted);font-weight:400}
+.row{display:flex;gap:8px;align-items:stretch}
+.row textarea{flex:1;min-width:0}
+textarea{background:#0d0b1a;color:var(--ink);border:1px solid var(--line);border-radius:10px;font:15px/1.4 var(--body);padding:9px 11px;resize:vertical;min-height:44px;box-sizing:border-box}
+textarea:focus{outline:2px solid var(--hot);outline-offset:1px}
+textarea.dice{border-color:var(--dice)}
+.die{flex:none;width:48px;border-radius:10px;border:1px solid var(--dice);background:rgba(255,122,217,.1);font-size:22px;cursor:pointer;color:var(--ink)}
+.die:hover{background:rgba(255,122,217,.25)}
+.die:focus-visible,.pick:focus-visible,.btn:focus-visible{outline:2px solid var(--ink);outline-offset:2px}
+.die.roll{animation:roll .4s}
+@keyframes roll{50%{transform:rotate(200deg) scale(1.15)}}
+.tag{font-size:12px;color:var(--dice);min-height:1em}
+.picks{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
+.pick{background:#1f1b3a;border:2px solid var(--line);border-radius:14px;padding:12px;color:var(--ink);cursor:pointer;text-align:left;display:flex;flex-direction:column;gap:4px;font:700 16px var(--body)}
+.pick small{font-weight:400;color:var(--muted);font-size:13px}
+.pick[aria-pressed="true"]{border-color:var(--hot);background:#2a2450}
+.btns{display:flex;flex-wrap:wrap;gap:10px}
+.btn{font:800 15px var(--display);border:0;border-radius:12px;padding:12px 18px;cursor:pointer;background:var(--hot);color:#1a1300}
+.btn.alt{background:transparent;color:var(--ink);border:1px solid var(--dice)}
+pre{white-space:pre-wrap;background:#0d0b1a;border:1px solid var(--line);border-radius:10px;padding:12px;margin:0;font:13px/1.5 ui-monospace,Consolas,monospace;max-height:340px;overflow:auto}
+.meter{font-size:13px;color:var(--muted)}
+.meter b{color:var(--good)}
+@media (max-width:560px){.picks{grid-template-columns:1fr}}
+@media (prefers-reduced-motion:reduce){.die.roll{animation:none}}
+</style>
+
+<div class="wrap">
+  <div class="brand">Лаборатория игр · занятие 2 · чекпоинт 3</div>
+  <h1>Мастерская одного правила</h1>
+  <p class="lead">Кубик предлагает, автор решает. Брось 🎲, если нужна идея, но поправь хотя бы пару слов, чтобы вариант стал твоим. Нетронутые варианты кубика помечаются [кубик].</p>
+
+  <section class="step">
+    <h2><span>1</span>Правило для крестиков-ноликов</h2>
+    <p>Сначала сыграй в прототипе пресеты из ручек (Tab) и отметь, какое правило оживило игру сильнее всего.</p>
+    <div class="picks" id="best"></div>
+    <p>Теперь придумай своё. Учитель встроит его в прототип. Какое одно правило оживит решённую игру?</p>
+    <div id="f-xo"></div>
+  </section>
+
+  <section class="step">
+    <h2><span>2</span>Выбери классику</h2>
+    <div class="picks" id="picks"></div>
+  </section>
+
+  <section class="step">
+    <h2><span>3</span>Одно новое правило</h2>
+    <p>Только одно. Всё остальное в игре остаётся классическим.</p>
+    <div id="f-rule"></div>
+  </section>
+
+  <section class="step">
+    <h2><span>4</span>Три решения дизайнера</h2>
+    <div id="f-dec" style="display:flex;flex-direction:column;gap:12px"></div>
+  </section>
+
+  <section class="step">
+    <h2><span>5</span>Промпт по формуле «ИГРА»</h2>
+    <div id="f-igra" style="display:flex;flex-direction:column;gap:12px"></div>
+  </section>
+
+  <section class="step">
+    <h2><span>6</span>Замысел для учителя</h2>
+    <div class="meter" id="meter"></div>
+    <pre id="out" aria-live="polite"></pre>
+    <div class="btns">
+      <button class="btn" id="copy" type="button">Скопировать замысел</button>
+      <button class="btn alt" id="all" type="button">🎲 Бросить все кубики</button>
+    </div>
+  </section>
+</div>
+
+<script>
+const CLASSICS = {
+  snake: { name: 'Змейка', d: 'ешь еду, расти, не врежься в себя', rules: ['Змейка не растёт, а ускоряется с каждой едой', 'Хвост оставляет стену, которая исчезает через 5 секунд', 'Еда убегает от головы змейки', 'Каждые 10 секунд голова и хвост меняются местами', 'Есть можно только еду своего цвета, цвет меняется кнопкой B', 'Края поля — телепорты, но каждый переход стоит одно очко'] },
+  pong: { name: 'Пинг-понг', d: 'отбивай мяч ракеткой, забей сопернику', rules: ['Ракетка уменьшается с каждым отбитым мячом', 'Мяч невидим в середине поля', 'Каждый отбив добавляет на поле ещё один мяч', 'Гравитация тянет мяч вниз, как в теннисе', 'Нажми B в момент удара — получится сильный удар', 'Ворота медленно ездят вверх-вниз'] },
+  rps: { name: 'Камень-ножницы-бумага', d: 'выбери фигуру одновременно с соперником', rules: ['Каждая победа одной фигурой делает её слабее в следующем раунде', 'Раз за игру можно сыграть пятую фигуру «колодец»', 'Перед раундом ставишь очки на свою фигуру', 'Бот показывает свой выбор за секунду, но может передумать', 'Проигравший раунд выбирает, какую фигуру сопернику запретить', 'Ничья копит банк очков, его забирает следующий победитель'] },
+};
+const DECKS = {
+  xo: ['Раз за партию можно стереть любую фишку', 'Ставить можно только рядом с уже стоящей фишкой', 'Каждые 3 хода поле поворачивается на 90°', 'Центр закрыт до четвёртого хода', 'Клетка-бомба: фишка на ней взрывает соседей', 'Поле 5×5, но фишки соперника можно сдвигать на одну клетку'],
+  feel: ['Азарт «успею или нет»', 'Хитрость: обмануть бота', 'Паника, когда всё ускоряется', 'Смех от хаоса на поле', 'Гордость за точный удар в последний миг'],
+  honest: ['Новое правило написано на экране до начала партии', 'Угрозу видно заранее: метка, звук, вспышка', 'Бот играет по тем же правилам, что и я', 'Зона урона совпадает с тем, что нарисовано'],
+  choice: ['Рискнуть ради очков или сыграть надёжно', 'Потратить редкую способность сейчас или беречь', 'Атаковать или защищаться', 'Быстро или точно'],
+  i: ['Классика, которую я знаю наизусть, вдруг начинает удивлять', 'Спокойная игра, в которой одно правило делает каждую секунду нервной', 'Дуэль с ботом, который играет по моим же правилам'],
+  g: ['Влево-вправо, A — действие', '4 направления, B — особая способность', 'Только кнопка A, всё решает момент нажатия', 'Влево-вправо, A — удар, B — рывок'],
+  r: ['Партия 90 секунд, 3 жизни; новое правило видно с первой секунды', 'Игра до 7 очков, каждые 3 очка всё ускоряется', 'Бесконечный режим, рекорд на экране, сложность растёт каждые 15 секунд'],
+  a: ['Неоновый синтвейв', 'Тетрадный лист и шариковая ручка', 'Адыгейские узоры и горы Лаго-Наки', 'Пиксельная ретро-приставка', 'Мультяшная кухня, фишки — хычины'],
+};
+const FIELDS = [
+  { id: 'xo', box: 'f-xo', label: 'Моё правило', deck: () => DECKS.xo },
+  { id: 'rule', box: 'f-rule', label: 'Новое правило', hint: 'для выбранной классики', deck: () => CLASSICS[pick].rules },
+  { id: 'feel', box: 'f-dec', label: 'Чувство', hint: 'что игрок почувствует из-за нового правила', deck: () => DECKS.feel },
+  { id: 'honest', box: 'f-dec', label: 'Честность', hint: 'почему проигрыш не обидный', deck: () => DECKS.honest },
+  { id: 'choice', box: 'f-dec', label: 'Выбор', hint: 'какое решение игрок принимает снова и снова', deck: () => DECKS.choice },
+  { id: 'i', box: 'f-igra', label: 'И — идея и чувство', deck: () => DECKS.i },
+  { id: 'g', box: 'f-igra', label: 'Г — глагол и кнопки', hint: 'влево-вправо или 4 направления, A и B', deck: () => DECKS.g },
+  { id: 'r', box: 'f-igra', label: 'Р — правила', hint: 'цель, проигрыш, как растёт сложность', deck: () => DECKS.r },
+  { id: 'a', box: 'f-igra', label: 'А — атмосфера', deck: () => DECKS.a },
+];
+let pick = 'snake', best = '';
+const BEST = ['7×7, 4 в ряд', 'Чужая фишка', 'Гравитация', 'Три фишки', 'Ничего не помогло'];
+function renderBest() {
+  document.querySelector('#best').innerHTML = BEST.map(b => `<button class="pick" type="button" data-b="${b}" aria-pressed="${b === best}">${b}</button>`).join('');
+  document.querySelectorAll('[data-b]').forEach(x => x.onclick = () => { best = x.dataset.b; renderBest(); update(); });
+}
+const st = {}; // id -> { v, dice }
+const $ = s => document.querySelector(s);
+const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+
+function renderPicks() {
+  $('#picks').innerHTML = Object.entries(CLASSICS).map(([k, c]) => `<button class="pick" type="button" data-k="${k}" aria-pressed="${k === pick}">${c.name}<small>${c.d}</small></button>`).join('') ;
+  document.querySelectorAll('#picks .pick').forEach(b => b.onclick = () => { pick = b.dataset.k; renderPicks(); if (st.rule && st.rule.dice) roll('rule'); update(); });
+}
+function build() {
+  for (const f of FIELDS) {
+    st[f.id] = { v: '', dice: false };
+    const w = document.createElement('div'); w.className = 'field';
+    w.innerHTML = `<label for="t-${f.id}">${f.label}${f.hint ? ` <em>· ${f.hint}</em>` : ''}</label><div class="row"><textarea id="t-${f.id}" rows="1"></textarea><button class="die" type="button" id="d-${f.id}" aria-label="Бросить кубик: ${f.label}">🎲</button></div><div class="tag" id="g-${f.id}"></div>`;
+    $('#' + f.box).appendChild(w);
+    const ta = w.querySelector('textarea');
+    ta.addEventListener('input', () => { st[f.id].v = ta.value; st[f.id].dice = false; ta.classList.remove('dice'); $('#g-' + f.id).textContent = ''; update(); });
+    w.querySelector('.die').onclick = () => roll(f.id);
+  }
+}
+function roll(id) {
+  const f = FIELDS.find(x => x.id === id), deck = f.deck(), cur = st[id].v;
+  let v; do { v = deck[Math.floor(Math.random() * deck.length)]; } while (deck.length > 1 && v === cur);
+  st[id] = { v, dice: true };
+  const ta = $('#t-' + id); ta.value = v; ta.classList.add('dice');
+  $('#g-' + id).textContent = '[кубик] поправь пару слов, и вариант станет твоим';
+  const d = $('#d-' + id); d.classList.remove('roll'); void d.offsetWidth; d.classList.add('roll');
+  try { const AC = window._ac || (window._ac = new AudioContext()); const o = AC.createOscillator(), g = AC.createGain(); o.type = 'triangle'; o.frequency.setValueAtTime(300 + Math.random() * 400, AC.currentTime); o.frequency.exponentialRampToValueAtTime(900, AC.currentTime + 0.15); g.gain.setValueAtTime(0.06, AC.currentTime); g.gain.exponentialRampToValueAtTime(0.0001, AC.currentTime + 0.2); o.connect(g); g.connect(AC.destination); o.start(); o.stop(AC.currentTime + 0.22); } catch (e) {}
+  update();
+}
+function line(label, id) { const s = st[id]; return `${label}: ${s.v ? s.v + (s.dice ? ' [кубик]' : '') : '—'}`; }
+function update() {
+  const txt = [
+    'Занятие 2 · Мастерская одного правила',
+    `Сильнее всего оживило: ${best || '—'}`,
+    line('Правило для крестиков-ноликов', 'xo'),
+    `Классика: ${CLASSICS[pick].name}`,
+    line('Одно новое правило', 'rule'),
+    '', 'Три решения',
+    line('Чувство', 'feel'), line('Честность', 'honest'), line('Выбор', 'choice'),
+    '', 'ИГРА',
+    line('И', 'i'), line('Г', 'g'), line('Р', 'r'), line('А', 'a'),
+  ].join('\n');
+  $('#out').textContent = txt;
+  const filled = FIELDS.filter(f => st[f.id].v.trim()).length, own = FIELDS.filter(f => st[f.id].v.trim() && !st[f.id].dice).length;
+  $('#meter').innerHTML = `Заполнено <b>${filled}/${FIELDS.length}</b> · своими словами <b>${own}</b>${filled === FIELDS.length && own >= 3 ? ' · можно отправлять учителю' : filled === FIELDS.length ? ' · поправь хотя бы три варианта кубика' : ''}`;
+}
+$('#copy').onclick = e => {
+  const b = e.currentTarget, txt = $('#out').textContent;
+  const sel = () => { const r = document.createRange(); r.selectNodeContents($('#out')); const s = getSelection(); s.removeAllRanges(); s.addRange(r); b.textContent = 'Выдели и скопируй'; };
+  try { navigator.clipboard.writeText(txt).then(() => { b.textContent = 'Скопировано, пришли в чат'; setTimeout(() => b.textContent = 'Скопировать замысел', 2500); }, sel); } catch (err) { sel(); }
+};
+$('#all').onclick = () => FIELDS.forEach(f => { if (!st[f.id].v.trim() || st[f.id].dice) roll(f.id); });
+renderBest(); renderPicks(); build(); update();
+</script>

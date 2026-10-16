@@ -1,0 +1,721 @@
+<title>Змейка-перевёртыш 3</title>
+<style>
+:root{--bg:#0b1020;--panel:rgba(10,14,30,.92);--line:#2a3560;--accent:#7cf5a8;--accent-ink:#06140c;--text:#f2efe6;--muted:#9aa3c7;--danger:#ff5d6e;color-scheme:dark}
+[hidden]{display:none!important}
+html,body{height:100%;margin:0;background:#04060d;color:var(--text);font:15px/1.5 system-ui,-apple-system,'Segoe UI',sans-serif;overflow:hidden}
+#stage{position:relative;width:100%;height:100%}
+canvas{position:absolute;inset:0;width:100%;height:100%;display:block;touch-action:none}
+.topbtns{position:absolute;top:8px;right:8px;display:flex;gap:6px;z-index:8}
+.ghost{font:13px system-ui,sans-serif;color:var(--text);background:rgba(4,6,13,.75);border:1px solid var(--line);border-radius:8px;padding:5px 10px;cursor:pointer}
+.ghost:hover{border-color:var(--accent)}
+.ghost[aria-pressed="true"]{background:var(--accent);color:var(--accent-ink);border-color:var(--accent)}
+button:focus-visible{outline:2px solid var(--text);outline-offset:2px}
+.screen{position:absolute;inset:0;display:flex;padding:16px;background:rgba(4,6,13,.55);overflow:auto;z-index:6}
+.card{width:min(580px,100%);margin:auto;background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:20px;display:flex;flex-direction:column;gap:12px}
+.eyebrow{font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--accent);font-weight:600}
+h1,h2{margin:0;line-height:1.05;font-weight:800;text-wrap:balance}
+h1{font-size:clamp(28px,6vw,46px)}h2{font-size:clamp(22px,5vw,32px)}
+.sub{margin:0;color:var(--text);font-size:15px}
+.controls{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:6px 14px;font-size:13.5px;color:var(--muted)}
+kbd{font:12px ui-monospace,Consolas,monospace;color:var(--text);background:#04060d;border:1px solid var(--line);border-bottom-width:2px;border-radius:5px;padding:1px 6px;margin-right:6px}
+.hint{font-size:12.5px;color:var(--muted)}
+.decisions{border-top:1px dashed var(--line);padding-top:10px;font-size:13.5px;color:var(--muted)}
+.decisions ol{margin:4px 0 0;padding-left:20px;display:grid;gap:3px}
+.row{display:flex;flex-wrap:wrap;gap:10px;align-items:center}
+.btn{font:700 15px system-ui,sans-serif;background:var(--accent);color:var(--accent-ink);border:0;border-radius:10px;padding:11px 18px;cursor:pointer}
+.stats{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
+.stat{background:#04060d;border:1px solid var(--line);border-radius:10px;padding:8px 10px}
+.stat b{display:block;font-size:22px;font-variant-numeric:tabular-nums}
+.stat span{font-size:12px;color:var(--muted)}
+#panel{position:absolute;top:44px;right:8px;bottom:8px;width:min(300px,calc(100% - 16px));background:var(--panel);border:1px solid var(--accent);border-radius:12px;padding:14px;overflow:auto;display:flex;flex-direction:column;gap:12px;z-index:7}
+#panel h3{margin:0;font-size:15px;color:var(--accent)}
+#panel p{margin:0;font-size:12px;color:var(--muted)}
+.knob{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:2px 8px;font-size:12.5px}
+.knob output{color:var(--accent);font-variant-numeric:tabular-nums}
+.knob input{grid-column:1/-1;width:100%;accent-color:var(--accent);margin:0}
+.presets{display:flex;flex-wrap:wrap;gap:6px}
+.overnote{font-size:13.5px;color:var(--muted);margin:0}
+.overnote b{color:var(--text)}
+.knob.changed label::after{content:"  •";color:#ffb547}
+textarea.copy{width:100%;box-sizing:border-box;min-height:110px;background:#04060d;color:var(--accent);border:1px solid var(--line);border-radius:8px;font:11px/1.4 ui-monospace,Consolas,monospace}
+#errBox{position:absolute;left:12px;right:12px;bottom:12px;z-index:9;background:#2a0a10;border:1px solid var(--danger);border-radius:10px;padding:12px 14px;font-size:13px;color:#ffd6db}
+#errBox b{color:#fff}
+.touch{position:absolute;left:0;right:0;bottom:0;display:none;justify-content:space-between;align-items:flex-end;padding:0 10px 10px;pointer-events:none;z-index:5}
+.touch .grp{display:flex;gap:8px;align-items:flex-end}
+.tbtn{pointer-events:auto;width:58px;height:58px;border-radius:50%;border:1px solid var(--line);background:rgba(4,6,13,.55);color:var(--text);font:700 13px system-ui;touch-action:none;user-select:none;-webkit-user-select:none}
+.tbtn.on{background:var(--accent);color:var(--accent-ink)}
+@media (pointer:coarse){.touch{display:flex}}
+</style>
+<div id="stage">
+  <canvas id="cv" aria-label="Игровое поле"></canvas>
+  <div class="topbtns">
+    <button type="button" class="ghost" id="knobsBtn" aria-pressed="false">Ручки · Tab</button>
+    <button type="button" class="ghost" id="muteBtn" aria-pressed="false">Звук · M</button>
+  </div>
+  <aside id="panel" hidden aria-label="Ручки геймдизайнера">
+    <h3>Ручки геймдизайнера</h3>
+    <p>Каждое число меняет игру сразу. Изменённые ручки помечены точкой.</p>
+    <div class="presets" id="presets"></div>
+    <div id="knobs" style="display:flex;flex-direction:column;gap:10px"></div>
+    <div class="row"><button type="button" class="ghost" id="resetBtn">Сбросить</button><button type="button" class="ghost" id="copyBtn">Скопировать CONFIG</button></div>
+    <textarea class="copy" id="copyBox" hidden readonly aria-label="CONFIG"></textarea>
+  </aside>
+  <div class="screen" id="startScreen">
+    <div class="card">
+      <div class="eyebrow" id="eyebrow">Лаборатория игр</div>
+      <h1 id="gTitle">Игра</h1>
+      <p class="sub" id="gSub"></p>
+      <div class="controls" id="controls"></div>
+      <div class="hint" id="padHint"></div>
+      <div class="decisions" id="decBox"><div class="eyebrow">Что решил дизайнер</div><ol id="decisions"></ol></div>
+      <div class="row"><button type="button" class="btn" id="startBtn">Играть · пробел</button></div>
+    </div>
+  </div>
+  <div class="screen" id="overScreen" hidden>
+    <div class="card" role="status">
+      <div class="eyebrow" id="overEyebrow">Игра окончена</div>
+      <h2 id="overTitle">Конец партии</h2>
+      <div class="stats">
+        <div class="stat"><b id="stScore">0</b><span>очки</span></div>
+        <div class="stat"><b id="stTime">0</b><span>секунд</span></div>
+        <div class="stat"><b id="stBest">0</b><span>рекорд</span></div>
+      </div>
+      <p class="overnote" id="overNote"></p>
+      <div class="row"><button type="button" class="btn" id="againBtn">Ещё раз · пробел</button><button type="button" class="ghost" id="overKnobs">Открыть ручки</button></div>
+    </div>
+  </div>
+  <div class="screen" id="pauseScreen" hidden>
+    <div class="card"><div class="eyebrow">Пауза</div><h2>Игра на паузе</h2><div class="row"><button type="button" class="btn" id="resumeBtn">Продолжить · P</button></div></div>
+  </div>
+  <div id="errBox" hidden role="alert"></div>
+  <div class="touch" id="touch"></div>
+</div>
+
+<script>
+/* ===== Движок «Лаборатории игр». Код игры живёт в объекте GAME ниже. ===== */
+(function () {
+  const LW = 960, LH = 540;
+  const $ = s => document.querySelector(s);
+  const cv = $('#cv'), ctx = cv.getContext('2d'), stage = $('#stage');
+  let dpr = 1, sc = 1, ox = 0, oy = 0;
+  let G = null, state = 'menu', paused = false, errored = false;
+  const ENGINE_KNOBS = { shake: { value: 1, min: 0, max: 2, step: 0.1, label: 'Тряска экрана' }, juice: { value: 1, min: 0, max: 2, step: 0.1, label: 'Сочность частиц' } };
+  let DEFAULTS = {}, META = {};
+  const post = m => { try { parent.postMessage(Object.assign({ source: 'lab-game' }, m), '*'); } catch (e) {} };
+  const store = { get(k) { try { return localStorage.getItem(k); } catch (e) { return null; } }, set(k, v) { try { localStorage.setItem(k, v); } catch (e) {} } };
+
+  /* ---------- звук ---------- */
+  let AC = null, master = null, noiseBuf = null, muted = false;
+  function audio() {
+    if (AC) { if (AC.state === 'suspended') AC.resume(); return; }
+    try {
+      AC = new (window.AudioContext || window.webkitAudioContext)();
+      master = AC.createGain(); master.gain.value = 0.45; master.connect(AC.destination);
+      noiseBuf = AC.createBuffer(1, AC.sampleRate, AC.sampleRate);
+      const d = noiseBuf.getChannelData(0); for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+    } catch (e) { AC = null; }
+  }
+  function tone(freq, dur = 0.12, type = 'square', vol = 0.1, slideTo = 0, delay = 0) {
+    if (!AC || muted) return;
+    try {
+      const t = AC.currentTime + delay, o = AC.createOscillator(), gn = AC.createGain();
+      o.type = type; o.frequency.setValueAtTime(Math.max(20, freq), t);
+      if (slideTo) o.frequency.exponentialRampToValueAtTime(Math.max(20, slideTo), t + dur);
+      gn.gain.setValueAtTime(vol, t); gn.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+      o.connect(gn); gn.connect(master); o.start(t); o.stop(t + dur + 0.02);
+    } catch (e) {}
+  }
+  function noise(dur = 0.2, vol = 0.15, freq = 1000, delay = 0) {
+    if (!AC || muted) return;
+    try {
+      const t = AC.currentTime + delay, s = AC.createBufferSource(), f = AC.createBiquadFilter(), gn = AC.createGain();
+      s.buffer = noiseBuf; f.type = 'lowpass'; f.frequency.value = freq;
+      gn.gain.setValueAtTime(vol, t); gn.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+      s.connect(f); f.connect(gn); gn.connect(master); s.start(t); s.stop(t + dur + 0.02);
+    } catch (e) {}
+  }
+  const sfx = {
+    jump: () => tone(380, 0.1, 'square', 0.07, 760),
+    coin: () => { tone(880, 0.07, 'triangle', 0.1); tone(1320, 0.12, 'triangle', 0.1, 0, 0.06); },
+    hit: () => { tone(320, 0.3, 'sawtooth', 0.14, 70); noise(0.22, 0.2, 1600); },
+    explode: () => { noise(0.4, 0.25, 700); tone(110, 0.3, 'sine', 0.25, 40); },
+    power: () => [523, 659, 784, 1046].forEach((f, i) => tone(f, 0.1, 'square', 0.06, 0, i * 0.06)),
+    beep: () => tone(660, 0.1, 'square', 0.08),
+    whoosh: () => { noise(0.25, 0.1, 3000); tone(200, 0.25, 'sine', 0.08, 900); },
+    win: () => [523, 659, 784, 1046, 1318].forEach((f, i) => tone(f, 0.16, 'triangle', 0.1, 0, i * 0.09)),
+    lose: () => [784, 622, 523, 392].forEach((f, i) => tone(f, 0.22, 'triangle', 0.12, 0, i * 0.14)),
+  };
+
+  /* ---------- ввод ---------- */
+  const held = { left: false, right: false, up: false, down: false, a: false, b: false };
+  const kbHeld = { ...held }, touchHeld = { ...held }, padHeld = { ...held };
+  let prev = { ...held };
+  const pressed = { ...held }, released = { ...held };
+  let usesMove4 = false;
+  const KEYMAP = { ArrowLeft: 'left', KeyA: 'left', ArrowRight: 'right', KeyD: 'right', ArrowUp: 'up', KeyW: 'up', ArrowDown: 'down', KeyS: 'down', Space: 'a', KeyJ: 'a', KeyZ: 'a', ShiftLeft: 'b', ShiftRight: 'b', KeyX: 'b', KeyK: 'b' };
+  function mapKey(code) {
+    const k = KEYMAP[code];
+    if (!usesMove4 && (code === 'ArrowUp' || code === 'KeyW')) return 'a';
+    return k;
+  }
+  let padIdx = null, padPrev = [], padMode = false;
+  function setPadMode(on) {
+    if (on === padMode) return; padMode = on; renderControls();
+    $('#startBtn').textContent = on ? 'Играть · A' : 'Играть · пробел';
+    $('#againBtn').textContent = on ? 'Ещё раз · A' : 'Ещё раз · пробел';
+    $('#resumeBtn').textContent = on ? 'Продолжить · Start' : 'Продолжить · P';
+    $('#knobsBtn').textContent = on ? 'Ручки · Select' : 'Ручки · Tab';
+    $('#padHint').textContent = on ? 'Геймпад подключён: удары отдаются вибрацией. Клавиатура тоже работает.' : 'Есть геймпад? Нажми на нём любую кнопку, и подсказки переключатся на его кнопки.';
+  }
+  function pollPad() {
+    if (!navigator.getGamepads) return;
+    let pads; try { pads = navigator.getGamepads(); } catch (e) { return; }
+    let gp = padIdx != null ? pads[padIdx] : null;
+    if (!gp) for (const p of pads) if (p) { gp = p; padIdx = p.index; break; }
+    for (const k in padHeld) padHeld[k] = false;
+    if (!gp) return;
+    const b = gp.buttons.map(x => !!(x && x.pressed)), ax = gp.axes[0] || 0, ay = gp.axes[1] || 0;
+    padHeld.left = ax < -0.4 || !!b[14]; padHeld.right = ax > 0.4 || !!b[15];
+    padHeld.up = ay < -0.4 || !!b[12]; padHeld.down = ay > 0.4 || !!b[13];
+    padHeld.a = !!(b[0] || b[7]); padHeld.b = !!(b[1] || b[2] || b[6]);
+    if (!usesMove4 && padHeld.up && !b[0]) padHeld.a = padHeld.a || !!b[12];
+    if (b.some(Boolean) || Math.abs(ax) > 0.4 || Math.abs(ay) > 0.4) setPadMode(true);
+    const down = i => b[i] && !padPrev[i];
+    if (down(0)) confirmAction();
+    if (down(9)) { if (state === 'play') setPause(!paused); else confirmAction(); }
+    if (down(8)) togglePanel();
+    padPrev = b;
+  }
+  function rumble(ms = 150, strength = 0.6) {
+    try { const gp = padIdx != null && navigator.getGamepads()[padIdx]; if (gp && gp.vibrationActuator) gp.vibrationActuator.playEffect('dual-rumble', { duration: ms, strongMagnitude: strength, weakMagnitude: strength * 0.6 }); } catch (e) {}
+  }
+  addEventListener('gamepadconnected', e => { padIdx = e.gamepad.index; setPadMode(true); });
+  addEventListener('gamepaddisconnected', e => { if (padIdx === e.gamepad.index) { padIdx = null; padPrev = []; setPadMode(false); } });
+
+  addEventListener('keydown', e => {
+    audio(); setPadMode(false);
+    const code = e.code;
+    if (code === 'Tab') { e.preventDefault(); togglePanel(); return; }
+    if (e.target && e.target.type === 'range' && (code.startsWith('Arrow') || code === 'Home' || code === 'End')) return;
+    if (e.target && e.target.tagName === 'TEXTAREA') return;
+    const k = mapKey(code);
+    if (k) { e.preventDefault(); kbHeld[k] = true; }
+    if ((code === 'Space' || code === 'Enter') && !e.repeat) confirmAction();
+    if (code === 'KeyP' || code === 'Escape') setPause(!paused);
+    if (code === 'KeyM') toggleMute();
+    if (code === 'KeyR' && state !== 'menu') startGame();
+  });
+  addEventListener('keyup', e => { const k = mapKey(e.code); if (k) kbHeld[k] = false; });
+  addEventListener('blur', () => { for (const k in kbHeld) kbHeld[k] = false; });
+  addEventListener('pointerdown', () => audio(), { capture: true });
+
+  function buildTouch() {
+    const used = new Set(); (G.controls || []).forEach(c => used.add(c.input));
+    const L = [['left', '◀'], ['right', '▶']]; if (used.has('move4')) L.unshift(['up', '▲']), L.push(['down', '▼']);
+    const R = []; if (used.has('b')) R.push(['b', 'B']); if (used.has('a') || !used.size) R.push(['a', 'A']);
+    const mk = arr => '<div class="grp">' + arr.map(([k, t]) => `<button type="button" class="tbtn" data-k="${k}">${t}</button>`).join('') + '</div>';
+    $('#touch').innerHTML = mk(L) + mk(R);
+    document.querySelectorAll('.tbtn').forEach(b => {
+      const k = b.dataset.k;
+      b.addEventListener('pointerdown', e => { e.preventDefault(); audio(); b.classList.add('on'); if (state !== 'play') { confirmAction(); return; } touchHeld[k] = true; });
+      const up = () => { b.classList.remove('on'); touchHeld[k] = false; };
+      b.addEventListener('pointerup', up); b.addEventListener('pointercancel', up); b.addEventListener('pointerleave', up);
+    });
+  }
+  function readInput() {
+    for (const k in held) {
+      held[k] = kbHeld[k] || touchHeld[k] || padHeld[k];
+      pressed[k] = held[k] && !prev[k]; released[k] = !held[k] && prev[k];
+    }
+    prev = { ...held };
+  }
+
+  /* ---------- эффекты ---------- */
+  let particles = [], popups = [], shakeAmp = 0, flashA = 0, flashCol = '255,255,255', hitstop = 0;
+  const toArr = c => Array.isArray(c) ? c : [c || '#ffffff'];
+  function burst(x, y, o = {}) {
+    const n = Math.round((o.count == null ? 16 : o.count) * g.cfg.juice), cols = toArr(o.colors || o.color);
+    for (let i = 0; i < n && particles.length < 1500; i++) {
+      const a = o.angle != null ? o.angle + (Math.random() - 0.5) * (o.spread == null ? 1 : o.spread) : Math.random() * 6.2832;
+      const sp = (o.speed || 220) * (0.3 + Math.random() * 0.9), life = (o.life || 0.6) * (0.5 + Math.random() * 0.7);
+      particles.push({ x, y, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, life, max: life, size: (o.size || 4) * (0.6 + Math.random() * 0.8), color: cols[Math.floor(Math.random() * cols.length)], gy: o.gravity || 0, drag: o.drag == null ? 2 : o.drag });
+    }
+  }
+  function popup(x, y, text, color = '#ffffff', size = 18) { popups.push({ x, y, text: String(text), color, size, t: 0.9, max: 0.9 }); }
+
+  /* ---------- API для игры ---------- */
+  const g = {
+    W: LW, H: LH, t: 0, dt: 0, state: {}, cfg: {}, input: held, pressed, released,
+    score: 0, lives: 3, invuln: 0, best: 0, palette: {},
+    addScore(n, x, y) { g.score += n; if (x != null && y != null) popup(x, y, (n > 0 ? '+' : '') + n, g.palette.accent || '#ffe08a'); },
+    hurt(x, y) {
+      if (g.invuln > 0 || state !== 'play') return false;
+      g.lives--; g.invuln = 1.2; hitstop = 0.08; tele.hurts++;
+      g.shake(14); g.flash('#ff4d5e', 0.35); sfx.hit(); rumble(250, 0.9);
+      if (x != null) burst(x, y, { count: 22, speed: 320, colors: ['#ff4d5e', '#ffb35c', '#ffffff'] });
+      if (g.lives <= 0) g.gameOver();
+      return true;
+    },
+    gameOver(text) { if (state === 'play') endGame(text); },
+    win(text) { if (state === 'play') { sfx.win(); endGame(text || 'Победа!', true); } },
+    burst, popup,
+    shake(a = 8) { shakeAmp = Math.max(shakeAmp, a); },
+    flash(color = '#ffffff', a = 0.3) { const h = String(color).replace('#', ''); if (h.length === 6) { const n = parseInt(h, 16); flashCol = `${n >> 16},${(n >> 8) & 255},${n & 255}`; } flashA = Math.max(flashA, a); },
+    sfx, tone, noise, rumble,
+    blink() { return g.invuln > 0 && Math.floor(g.invuln * 16) % 2 === 0; },
+    rand: (a = 0, b = 1) => a + Math.random() * (b - a),
+    randInt: (a, b) => Math.floor(a + Math.random() * (b - a + 1)),
+    pick: arr => arr[Math.floor(Math.random() * arr.length)],
+    clamp: (v, a, b) => Math.max(a, Math.min(b, v)),
+    lerp: (a, b, k) => a + (b - a) * k,
+    dist: (a, b) => Math.hypot(a.x - b.x, a.y - b.y),
+    circleHit: (a, b) => Math.hypot(a.x - b.x, a.y - b.y) < (a.r || 0) + (b.r || 0),
+    rectHit: (a, b) => a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y,
+    text(str, x, y, o = {}) {
+      ctx.save(); ctx.font = `${o.weight || 700} ${o.size || 18}px ${o.font || 'system-ui, sans-serif'}`;
+      ctx.textAlign = o.align || 'left'; ctx.textBaseline = o.baseline || 'alphabetic';
+      ctx.fillStyle = o.color || '#ffffff'; ctx.fillText(String(str), x, y); ctx.restore();
+    },
+    count(name, n = 1) { tele.custom[name] = (tele.custom[name] || 0) + n; },
+  };
+
+  /* ---------- телеметрия ---------- */
+  let tele = null;
+  function resetTele() { tele = { held: { left: 0, right: 0, up: 0, down: 0, a: 0, b: 0 }, presses: { left: 0, right: 0, up: 0, down: 0, a: 0, b: 0 }, time: 0, hurts: 0, custom: {} }; }
+
+  /* ---------- безопасный вызов кода игры ---------- */
+  function call(name, ...args) {
+    if (errored || !G || typeof G[name] !== 'function') return;
+    try { G[name](...args); }
+    catch (e) { fail(`в функции ${name}()`, e); }
+  }
+  function fail(where, e) {
+    errored = true; state = 'menu';
+    const msg = (e && e.message) || String(e);
+    const box = $('#errBox'); box.hidden = false;
+    box.innerHTML = `<b>Ошибка в коде игры ${where}:</b> ${escapeHtml(msg)}<br>Нажми в уроке «Починить игру», Qwen увидит эту ошибку.`;
+    post({ type: 'error', where, message: msg, stack: String((e && e.stack) || '').split('\n').slice(0, 4).join('\n') });
+  }
+  const escapeHtml = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+  window.addEventListener('error', e => { if (!errored) fail('при загрузке', e.error || e.message); });
+
+  /* ---------- экраны ---------- */
+  const NAMES = {
+    kb: { move: '<kbd>← →</kbd> или <kbd>A D</kbd>', move4: '<kbd>стрелки</kbd> или <kbd>WASD</kbd>', a: '<kbd>Пробел</kbd>', b: '<kbd>Shift</kbd> или <kbd>X</kbd>' },
+    pad: { move: '<kbd>Стик / крестовина</kbd>', move4: '<kbd>Стик / крестовина</kbd>', a: '<kbd>A</kbd>', b: '<kbd>B</kbd>' },
+  };
+  function renderControls() {
+    if (!G) return;
+    const N = padMode ? NAMES.pad : NAMES.kb;
+    const rows = (G.controls || []).map(c => `<div>${N[c.input] || ''} ${escapeHtml(c.text || '')}</div>`);
+    rows.push(padMode ? '<div><kbd>Select</kbd>ручки · <kbd>Start</kbd>пауза</div>' : '<div><kbd>Tab</kbd>ручки · <kbd>P</kbd>пауза</div>');
+    $('#controls').innerHTML = rows.join('');
+  }
+  function confirmAction() {
+    audio();
+    if (errored) return;
+    if (state === 'menu') startGame();
+    else if (state === 'over' && overReady) startGame();
+    else if (paused) setPause(false);
+  }
+  let overReady = false;
+  function startGame() {
+    if (errored || !G) return;
+    state = 'play'; paused = false; overReady = false;
+    g.t = 0; g.score = 0; g.lives = 3; g.invuln = 0; g.state = {};
+    particles = []; popups = []; resetTele();
+    $('#startScreen').hidden = true; $('#overScreen').hidden = true; $('#pauseScreen').hidden = true;
+    call('start', g);
+    post({ type: 'start' });
+  }
+  function endGame(text, won) {
+    state = 'over';
+    if (!won) { sfx.lose(); g.shake(10); }
+    const s = Math.floor(g.score);
+    if (s > g.best) { g.best = s; store.set('lab-best-' + (G.title || ''), String(s)); }
+    $('#stScore').textContent = s; $('#stTime').textContent = Math.floor(tele.time); $('#stBest').textContent = g.best;
+    $('#overTitle').textContent = text || 'Конец партии';
+    $('#overEyebrow').textContent = won ? 'Победа' : 'Игра окончена';
+    let note = '';
+    const tm = Math.max(0.1, tele.time), pct = k => Math.round(tele.held[k] / tm * 100);
+    const lab = { a: 'A', b: 'B' };
+    const parts = (G.controls || []).filter(c => lab[c.input]).map(c => `<b>${escapeHtml(c.text || lab[c.input])}</b> (${lab[c.input]}) — ${pct(c.input)}% времени`);
+    if (parts.length && tele.time > 2) note = 'Телеметрия, сколько кнопка была зажата: ' + parts.join(', ') + '.';
+    if (G && typeof G.overNote === 'function') { try { const x = G.overNote(g, tele); if (x) note += (note ? '<br>' : '') + x; } catch (e) {} }
+    $('#overNote').innerHTML = note; $('#overNote').hidden = !note;
+    setTimeout(() => { $('#overScreen').hidden = false; overReady = true; }, 700);
+    post({ type: 'gameover', score: s, time: Math.round(tele.time * 10) / 10, won: !!won, telemetry: tele });
+  }
+  function setPause(v) {
+    if (state !== 'play') return;
+    paused = v; $('#pauseScreen').hidden = !v;
+    if (v) for (const k in kbHeld) kbHeld[k] = false;
+  }
+  function toggleMute() { muted = !muted; $('#muteBtn').setAttribute('aria-pressed', String(muted)); $('#muteBtn').textContent = muted ? 'Без звука · M' : 'Звук · M'; }
+
+  /* ---------- ручки ---------- */
+  function fmtK(k, v) { const m = META[k]; return m && m.names ? (m.names[Math.round(v)] || String(v)) : fmt(v, m ? m.step : 1); }
+  function fmt(v, st) { return st >= 1 ? String(Math.round(v)) : st >= 0.1 ? Number(v).toFixed(1) : Number(v).toFixed(2); }
+  function buildKnobs() {
+    const box = $('#knobs'); box.innerHTML = '';
+    Object.keys(META).forEach(k => {
+      const m = META[k], id = 'k-' + k.replace(/[^a-zA-Z0-9_-]/g, '');
+      const w = document.createElement('div'); w.className = 'knob';
+      w.innerHTML = `<label for="${id}">${escapeHtml(m.label || k)}</label><output id="${id}-o"></output><input type="range" id="${id}" min="${m.min}" max="${m.max}" step="${m.step}">`;
+      box.appendChild(w);
+      const inp = w.querySelector('input');
+      const sync = () => { inp.value = g.cfg[k]; w.querySelector('output').textContent = fmtK(k, g.cfg[k]); w.classList.toggle('changed', Math.abs(g.cfg[k] - DEFAULTS[k]) > 1e-9); };
+      inp.addEventListener('input', () => { g.cfg[k] = +inp.value; sync(); $('#copyBox').hidden = true; });
+      inp.addEventListener('change', () => inp.blur());
+      w._sync = sync; sync();
+    });
+  }
+  function buildPresets() {
+    const pr = $('#presets'); pr.innerHTML = '';
+    const P = Object.assign({ 'Как задумано': {} }, (G && G.presets) || {});
+    for (const name of Object.keys(P)) {
+      const b = document.createElement('button'); b.type = 'button'; b.className = 'ghost'; b.textContent = name;
+      b.addEventListener('click', () => { Object.assign(g.cfg, DEFAULTS, P[name]); syncKnobs(); call('onPreset', g, name); b.blur(); });
+      pr.appendChild(b);
+    }
+  }
+  function syncKnobs() { document.querySelectorAll('.knob').forEach(w => w._sync && w._sync()); }
+  function togglePanel(force) { const p = $('#panel'), open = force != null ? force : p.hidden; p.hidden = !open; $('#knobsBtn').setAttribute('aria-pressed', String(open)); }
+  $('#knobsBtn').addEventListener('click', e => { togglePanel(); e.currentTarget.blur(); });
+  $('#muteBtn').addEventListener('click', e => { toggleMute(); e.currentTarget.blur(); });
+  $('#resetBtn').addEventListener('click', () => { Object.assign(g.cfg, DEFAULTS); syncKnobs(); });
+  $('#copyBtn').addEventListener('click', e => {
+    const lines = Object.keys(META).map(k => `  ${k}: ${fmt(g.cfg[k], META[k].step)}, // ${META[k].label || ''}`);
+    const txt = 'const CONFIG = {\n' + lines.join('\n') + '\n};', box = $('#copyBox'), b = e.currentTarget;
+    const show = () => { box.value = txt; box.hidden = false; box.select(); b.textContent = 'Выдели и скопируй'; };
+    try { navigator.clipboard.writeText(txt).then(() => { b.textContent = 'Скопировано'; setTimeout(() => { b.textContent = 'Скопировать CONFIG'; }, 1500); }, show); } catch (err) { show(); }
+  });
+  $('#startBtn').addEventListener('click', () => { audio(); startGame(); });
+  $('#againBtn').addEventListener('click', () => startGame());
+  $('#resumeBtn').addEventListener('click', () => setPause(false));
+  $('#overKnobs').addEventListener('click', () => togglePanel(true));
+  document.addEventListener('visibilitychange', () => { if (document.hidden && state === 'play') setPause(true); });
+
+  /* ---------- размер ---------- */
+  function resize() {
+    const r = stage.getBoundingClientRect();
+    dpr = Math.min(2, window.devicePixelRatio || 1);
+    cv.width = Math.max(1, Math.round(r.width * dpr)); cv.height = Math.max(1, Math.round(r.height * dpr));
+    sc = Math.min(r.width / LW, r.height / LH); ox = (r.width - LW * sc) / 2; oy = (r.height - LH * sc) / 2;
+  }
+  addEventListener('resize', resize);
+
+  /* ---------- цикл ---------- */
+  let last = 0;
+  function frame(now) {
+    const dt = Math.min(0.033, Math.max(0, (now - last) / 1000)); last = now;
+    pollPad(); readInput();
+    if (state === 'play' && !paused && !errored) {
+      if (hitstop > 0) hitstop -= dt;
+      else {
+        g.t += dt; g.dt = dt; tele.time += dt;
+        for (const k in held) { if (held[k]) tele.held[k] += dt; if (pressed[k]) tele.presses[k]++; }
+        call('update', g, dt);
+        g.invuln = Math.max(0, g.invuln - dt);
+      }
+    }
+    if (!paused) {
+      for (const p of particles) { const k = Math.max(0, 1 - p.drag * dt); p.vx *= k; p.vy *= k; p.vy += p.gy * dt; p.x += p.vx * dt; p.y += p.vy * dt; p.life -= dt; }
+      particles = particles.filter(p => p.life > 0);
+      for (const p of popups) { p.t -= dt; p.y -= 32 * dt; }
+      popups = popups.filter(p => p.t > 0);
+      shakeAmp = Math.max(0, shakeAmp * (1 - dt * 9)); flashA = Math.max(0, flashA - dt * 1.8);
+    }
+    draw();
+    requestAnimationFrame(frame);
+  }
+  function draw() {
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.fillStyle = '#04060d'; ctx.fillRect(0, 0, cv.width, cv.height);
+    ctx.setTransform(dpr * sc, 0, 0, dpr * sc, dpr * ox, dpr * oy);
+    ctx.save();
+    ctx.beginPath(); ctx.rect(0, 0, LW, LH); ctx.clip();
+    ctx.fillStyle = g.palette.bg || '#0b1020'; ctx.fillRect(0, 0, LW, LH);
+    const s = shakeAmp * g.cfg.shake;
+    ctx.translate((Math.random() * 2 - 1) * s, (Math.random() * 2 - 1) * s);
+    ctx.save(); call('draw', g, ctx); ctx.restore();
+    for (const p of particles) { ctx.globalAlpha = Math.max(0, p.life / p.max); ctx.fillStyle = p.color; ctx.fillRect(p.x - p.size / 2, p.y - p.size / 2, p.size, p.size); }
+    ctx.globalAlpha = 1;
+    ctx.textAlign = 'center'; ctx.textBaseline = 'alphabetic';
+    for (const p of popups) { ctx.globalAlpha = Math.min(1, p.t / p.max * 1.6); ctx.font = `800 ${p.size}px system-ui, sans-serif`; ctx.fillStyle = 'rgba(0,0,0,.6)'; ctx.fillText(p.text, p.x + 1.5, p.y + 1.5); ctx.fillStyle = p.color; ctx.fillText(p.text, p.x, p.y); }
+    ctx.globalAlpha = 1;
+    ctx.restore();
+    if (state === 'play' || state === 'over') hud();
+    if (flashA > 0) { ctx.fillStyle = `rgba(${flashCol},${flashA})`; ctx.fillRect(0, 0, LW, LH); }
+  }
+  function hud() {
+    ctx.save();
+    ctx.fillStyle = 'rgba(4,6,13,.6)'; ctx.fillRect(8, 8, 250, 30);
+    ctx.font = '800 16px system-ui, sans-serif'; ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
+    ctx.fillStyle = '#ffffff'; ctx.fillText('ОЧКИ ' + String(Math.floor(g.score)).padStart(5, '0'), 16, 23);
+    let x = 150;
+    for (let i = 0; i < Math.max(0, Math.min(9, g.lives)); i++) { ctx.fillStyle = g.palette.accent || '#7cf5a8'; ctx.fillRect(x, 17, 11, 12); x += 15; }
+    ctx.restore();
+  }
+
+  /* ---------- запуск ---------- */
+  window.__labBoot = function () {
+    try {
+      G = (typeof GAME !== 'undefined') ? GAME : (window.GAME || null);
+    } catch (e) { G = null; }
+    resize(); resetTele();
+    if (!G || typeof G !== 'object') { if (!errored) fail('при загрузке', new Error('не найден объект GAME')); requestAnimationFrame(t => { last = t; frame(t); }); return; }
+    g.palette = Object.assign({ bg: '#0b1020', accent: '#7cf5a8' }, G.palette || {});
+    if (g.palette.accent) { document.documentElement.style.setProperty('--accent', g.palette.accent); }
+    const conf = Object.assign({}, G.config || {}, ENGINE_KNOBS);
+    Object.keys(conf).forEach(k => {
+      const c = conf[k];
+      if (c && typeof c === 'object' && typeof c.value === 'number') {
+        const span = Math.abs(c.value) || 1;
+        META[k] = { names: Array.isArray(c.names) ? c.names : null, label: c.label || k, min: typeof c.min === 'number' ? c.min : 0, max: typeof c.max === 'number' ? c.max : span * 3, step: typeof c.step === 'number' ? c.step : (span >= 10 ? 1 : 0.05) };
+        DEFAULTS[k] = c.value;
+      } else if (typeof c === 'number') { META[k] = { label: k, min: 0, max: Math.abs(c) * 3 || 1, step: Math.abs(c) >= 10 ? 1 : 0.05 }; DEFAULTS[k] = c; }
+    });
+    g.cfg = Object.assign({}, DEFAULTS);
+    usesMove4 = (G.controls || []).some(c => c.input === 'move4');
+    g.best = +store.get('lab-best-' + (G.title || '')) || 0;
+    document.title = G.title || 'Игра';
+    $('#gTitle').textContent = G.title || 'Игра';
+    $('#gSub').textContent = G.subtitle || '';
+    const dec = Array.isArray(G.decisions) ? G.decisions : [];
+    $('#decisions').innerHTML = dec.map(d => `<li>${escapeHtml(d)}</li>`).join('');
+    $('#decBox').hidden = !dec.length;
+    if (G.author) $('#eyebrow').textContent = 'Лаборатория игр · ' + G.author;
+    setPadMode(true); setPadMode(false);
+    buildKnobs(); buildPresets(); buildTouch();
+    if (!errored) { g.state = {}; call('start', g); }
+    post({ type: 'ready', title: G.title, decisions: dec });
+    requestAnimationFrame(t => { last = t; frame(t); });
+  };
+})();
+</script>
+<script>
+const COLS = 30, ROWS = 15, CELL = 30, OX = 30, OY = 72;
+const B_MODES = ['Рывок', 'Разворот вручную', 'Нет кнопки B'];
+const WALL_MODES = ['Смерть (версия 1)', 'Автоповорот (версия 2)', 'Сквозные стены'];
+const THEMES = [
+  { n: 'Лаго-Наки', sky: ['#0e2a3a', '#123a2e'], hill: '#1b4a3c', field: 'rgba(8,24,18,.82)', frame: '#7a1f2b', orn: '#e8b730', a: '#2fae6b', b: '#3cc47c', head: '#7cf5a8', food: '#e8b730' },
+  { n: 'Неон', sky: ['#14051f', '#2b0a3d'], hill: '#3d0f56', field: 'rgba(10,0,20,.88)', frame: '#ff2e88', orn: '#00e5ff', a: '#ff2e88', b: '#ff5fa8', head: '#ffffff', food: '#00e5ff' },
+  { n: 'Закат', sky: ['#3b2a5c', '#e08a6b'], hill: '#7a5a7e', field: 'rgba(60,40,70,.55)', frame: '#f3c58a', orn: '#fff1d6', a: '#f6d7b0', b: '#fbe6cc', head: '#ffffff', food: '#ffd36b' },
+  { n: 'Ночь', sky: ['#02040a', '#0a1224'], hill: '#0f1a30', field: 'rgba(0,0,0,.9)', frame: '#1f2a44', orn: '#5c7099', a: '#3d5a8a', b: '#4a6aa0', head: '#c8dcff', food: '#c8dcff' },
+];
+const PENTA_Z = [392, 440, 523, 587, 659, 784];
+const DIRS = { up: [0, -1], down: [0, 1], left: [-1, 0], right: [1, 0] };
+
+const GAME = {
+  title: 'Змейка-перевёртыш 3',
+  subtitle: 'Каждые 10 секунд голова и хвост меняются местами, у стены змейка сама поворачивает. Версия 3: в ручках появился пульт мира — палитра и музыка.',
+  controls: [
+    { input: 'move4', text: 'поворот' },
+    { input: 'b', text: 'рывок' },
+  ],
+  decisions: [
+    'Чувство: радость и увлечение от новизны на поле.',
+    'Честность: за 2 секунды до разворота хвост мигает и тикает отсчёт, стрелка показывает, куда поползёт голова.',
+    'Выбор: расти ради рекорда или держаться короткой, чтобы разворот был безопасным.',
+  ],
+  palette: { bg: '#123a2e', accent: '#e8b730' },
+  config: {
+    theme: { value: 0, min: 0, max: 3, step: 1, names: THEMES.map(t => t.n), label: 'Мир: палитра' },
+    music: { value: 0, min: 0, max: 2, step: 1, names: ['Тишина', 'Мягкие ноты', 'Быстрый бит'], label: 'Мир: музыка' },
+    wallMode: { value: 1, min: 0, max: 2, step: 1, names: WALL_MODES, label: 'Стены' },
+    bMode: { value: 0, min: 0, max: 2, step: 1, names: B_MODES, label: 'Кнопка B' },
+    swapTime: { value: 10, min: 3, max: 60, step: 1, label: 'Разворот раз в, с (60 — почти никогда)' },
+    warnTime: { value: 2, min: 0, max: 4, step: 0.1, label: 'Предупреждение до разворота, с' },
+    stepTime: { value: 0.13, min: 0.05, max: 0.3, step: 0.005, label: 'Шаг змейки, с (меньше — быстрее)' },
+    diffEvery: { value: 15, min: 5, max: 60, step: 1, label: 'Сложность растёт раз в, с' },
+    speedUp: { value: 0.008, min: 0, max: 0.03, step: 0.001, label: 'Шаг короче на, с' },
+    minStep: { value: 0.06, min: 0.03, max: 0.15, step: 0.005, label: 'Самый быстрый шаг, с' },
+    dashTime: { value: 1, min: 0.2, max: 3, step: 0.1, label: 'Рывок длится, с' },
+    dashCd: { value: 4, min: 0.5, max: 10, step: 0.5, label: 'Перезарядка рывка, с' },
+    swapCd: { value: 5, min: 1, max: 15, step: 0.5, label: 'Перезарядка ручного разворота, с' },
+    startLen: { value: 4, min: 2, max: 10, step: 1, label: 'Длина на старте' },
+    growPer: { value: 1, min: 1, max: 5, step: 1, label: 'Рост за хычин' },
+    pointsLen: { value: 1, min: 0, max: 3, step: 0.1, label: 'Очки за длину (×длина)' },
+  },
+  presets: {
+    'Версия 1': { wallMode: 0 },
+    'Новичок': { stepTime: 0.17, warnTime: 3, speedUp: 0.005 },
+    'Без переворота (классика)': { swapTime: 60 },
+    'Разворот вручную': { bMode: 1 },
+    'Безумие': { swapTime: 4, stepTime: 0.09, warnTime: 1 },
+  },
+
+  start(g) {
+    const s = g.state;
+    this.spawnSnake(g);
+    s.swapT = 0; s.diffT = 0; s.extraSpeed = 0; s.dash = 0; s.dashCd = 0; s.swapCdT = 0;
+    s.swaps = 0; s.maxLen = s.body.length; s.lastSwapAt = -9; s.ticked = -1;
+    this.placeFood(g);
+  },
+  spawnSnake(g) {
+    const s = g.state, n = Math.round(g.cfg.startLen), y = Math.floor(ROWS / 2);
+    s.body = []; for (let i = 0; i < n; i++) s.body.push({ x: 8 - i, y });
+    s.dir = 'right'; s.queue = []; s.acc = 0; s.grow = 0;
+  },
+  placeFood(g) {
+    const s = g.state; let p, tries = 0;
+    do { p = { x: g.randInt(0, COLS - 1), y: g.randInt(0, ROWS - 1) }; tries++; } while (tries < 500 && s.body.some(b => b.x === p.x && b.y === p.y));
+    s.food = p;
+  },
+  dirOf(a, b) { // направление из b в a
+    const dx = a.x - b.x, dy = a.y - b.y;
+    return dx > 0 ? 'right' : dx < 0 ? 'left' : dy > 0 ? 'down' : 'up';
+  },
+  swap(g) {
+    const s = g.state;
+    if (s.body.length < 2) return;
+    s.body.reverse(); s.dir = this.dirOf(s.body[0], s.body[1]); s.queue = [];
+    s.swapT = 0; s.swaps++; s.lastSwapAt = g.t;
+    g.sfx.whoosh(); g.flash('#e8b730', 0.25); g.rumble(120, 0.5); g.shake(5);
+    const h = s.body[0]; g.burst(OX + (h.x + 0.5) * CELL, OY + (h.y + 0.5) * CELL, { count: 18, colors: ['#e8b730', '#ffffff'] });
+  },
+  die(g) {
+    const s = g.state, h = s.body[0];
+    if (g.t - s.lastSwapAt < 1.5) g.count('смертей сразу после разворота');
+    g.hurt(OX + (h.x + 0.5) * CELL, OY + (h.y + 0.5) * CELL);
+    if (g.lives > 0) { this.spawnSnake(g); s.swapT = 0; }
+  },
+
+  out(p) { return p.x < 0 || p.y < 0 || p.x >= COLS || p.y >= ROWS; },
+  onBody(g, p) { return g.state.body.some(b => b.x === p.x && b.y === p.y); },
+  plan(g) { // автоповорот выбирается заранее и рисуется стрелкой: видно = правда
+    const s = g.state, h = s.body[0], [dx, dy] = DIRS[s.dir];
+    if (Math.round(g.cfg.wallMode) !== 1 || !this.out({ x: h.x + dx, y: h.y + dy })) { s.planned = null; return; }
+    const key = h.x + ',' + h.y + ',' + s.dir;
+    if (s.plannedKey === key) return;
+    const opts = (dx ? ['up', 'down'] : ['left', 'right']).filter(d => { const [ax, ay] = DIRS[d], p = { x: h.x + ax, y: h.y + ay }; return !this.out(p); });
+    const safe = opts.filter(d => { const [ax, ay] = DIRS[d]; return !this.onBody(g, { x: h.x + ax, y: h.y + ay }); });
+    const pool = safe.length ? safe : opts;
+    s.planned = pool.length ? g.pick(pool) : null; s.plannedKey = key;
+  },
+  update(g, dt) {
+    const s = g.state, c = g.cfg, mode = Math.round(c.bMode);
+    // ввод: очередь поворотов, без разворота на 180°
+    for (const k of ['up', 'down', 'left', 'right']) if (g.pressed[k]) {
+      const last = s.queue.length ? s.queue[s.queue.length - 1] : s.dir;
+      const [lx, ly] = DIRS[last], [nx, ny] = DIRS[k];
+      if (lx + nx !== 0 || ly + ny !== 0) { if (s.queue.length < 3 && k !== last) s.queue.push(k); }
+    }
+    // кнопка B
+    s.dashCd = Math.max(0, s.dashCd - dt); s.swapCdT = Math.max(0, s.swapCdT - dt); s.dash = Math.max(0, s.dash - dt);
+    if (g.pressed.b) {
+      if (mode === 0 && s.dashCd <= 0) { s.dash = c.dashTime; s.dashCd = c.dashCd + c.dashTime; g.sfx.power(); g.count('рывков'); }
+      else if (mode === 1 && s.swapCdT <= 0) { this.swap(g); s.swapCdT = c.swapCd; }
+      else g.tone(140, 0.08, 'square', 0.06);
+    }
+    // автоматический разворот
+    if (mode !== 1) {
+      s.swapT += dt;
+      const left = c.swapTime - s.swapT;
+      if (left <= c.warnTime && left > 0) { const sec = Math.ceil(left * 2); if (sec !== s.ticked) { s.ticked = sec; g.tone(sec <= 1 ? 1200 : 900, 0.05, 'square', 0.06); } }
+      if (left <= 0) { this.swap(g); s.ticked = -1; }
+    }
+    // музыка мира
+    const mus = Math.round(c.music); s.mt = (s.mt || 0) + dt;
+    if (mus === 1 && s.mt > 1.6) { s.mt = 0; g.tone(g.pick(PENTA_Z) / 2, 1.5, 'sine', 0.035); }
+    if (mus === 2 && s.mt > 0.22) { s.mt = 0; s.beatN = (s.beatN || 0) + 1; g.tone(s.beatN % 4 === 0 ? 110 : 220, 0.06, 'square', 0.04); }
+    // сложность
+    s.diffT += dt;
+    if (s.diffT >= c.diffEvery) { s.diffT = 0; s.extraSpeed += c.speedUp; g.popup(g.W / 2, 60, 'быстрее!', '#e8b730', 20); }
+    const step = Math.max(c.minStep, c.stepTime - s.extraSpeed) * (s.dash > 0 ? 0.5 : 1);
+    s.acc += dt;
+    while (s.acc >= step) {
+      s.acc -= step;
+      if (s.queue.length) s.dir = s.queue.shift();
+      const wm = Math.round(c.wallMode), h = s.body[0];
+      let [dx, dy] = DIRS[s.dir], nh = { x: h.x + dx, y: h.y + dy };
+      if (this.out(nh) && wm === 1) {
+        this.plan(g);
+        if (s.planned) { s.dir = s.planned; [dx, dy] = DIRS[s.dir]; nh = { x: h.x + dx, y: h.y + dy }; g.count('автоповоротов'); g.tone(700, 0.05, 'triangle', 0.05); }
+      }
+      if (this.out(nh) && wm === 2) { nh.x = (nh.x + COLS) % COLS; nh.y = (nh.y + ROWS) % ROWS; }
+      // стена = узорная рамка, ровно по краю поля
+      if (this.out(nh)) { this.die(g); return; }
+      const tailMoves = s.grow === 0;
+      const hit = s.body.some((b, i) => b.x === nh.x && b.y === nh.y && !(tailMoves && i === s.body.length - 1));
+      if (hit) { this.die(g); return; }
+      s.body.unshift(nh);
+      if (s.grow > 0) s.grow--; else s.body.pop();
+      if (nh.x === s.food.x && nh.y === s.food.y) {
+        s.grow += Math.round(c.growPer);
+        const pts = Math.round(10 + c.pointsLen * s.body.length);
+        g.addScore(pts, OX + (nh.x + 0.5) * CELL, OY + nh.y * CELL);
+        g.sfx.coin(); g.burst(OX + (nh.x + 0.5) * CELL, OY + (nh.y + 0.5) * CELL, { count: 14, colors: ['#e8b730', '#fff3c4'] });
+        this.placeFood(g);
+      }
+      s.maxLen = Math.max(s.maxLen, s.body.length + s.grow);
+    }
+  },
+
+  draw(g, ctx) {
+    const s = g.state, c = g.cfg, T = THEMES[Math.round(c.theme)] || THEMES[0];
+    // небо и горы Лаго-Наки с плоскими вершинами
+    const gr = ctx.createLinearGradient(0, 0, 0, g.H); gr.addColorStop(0, T.sky[0]); gr.addColorStop(1, T.sky[1]);
+    ctx.fillStyle = gr; ctx.fillRect(0, 0, g.W, g.H);
+    ctx.fillStyle = T.hill;
+    ctx.beginPath(); ctx.moveTo(0, 260); ctx.lineTo(120, 150); ctx.lineTo(300, 150); ctx.lineTo(420, 230); ctx.lineTo(560, 120); ctx.lineTo(760, 120); ctx.lineTo(880, 210); ctx.lineTo(960, 170); ctx.lineTo(960, 540); ctx.lineTo(0, 540); ctx.fill();
+    ctx.fillStyle = 'rgba(255,255,255,.18)'; ctx.fillRect(120, 150, 180, 6); ctx.fillRect(560, 120, 200, 6);
+    // поле
+    const W = COLS * CELL, H = ROWS * CELL;
+    ctx.fillStyle = T.field; ctx.fillRect(OX, OY, W, H);
+    ctx.strokeStyle = 'rgba(232,183,48,.06)'; ctx.lineWidth = 1;
+    for (let x = 1; x < COLS; x++) { ctx.beginPath(); ctx.moveTo(OX + x * CELL, OY); ctx.lineTo(OX + x * CELL, OY + H); ctx.stroke(); }
+    for (let y = 1; y < ROWS; y++) { ctx.beginPath(); ctx.moveTo(OX, OY + y * CELL); ctx.lineTo(OX + W, OY + y * CELL); ctx.stroke(); }
+    // узорная рамка: адыгейский орнамент-ромбы, стена совпадает с краем поля
+    ctx.fillStyle = T.frame; ctx.fillRect(OX - 12, OY - 12, W + 24, 12); ctx.fillRect(OX - 12, OY + H, W + 24, 12); ctx.fillRect(OX - 12, OY, 12, H); ctx.fillRect(OX + W, OY, 12, H);
+    ctx.fillStyle = T.orn;
+    const rh = (x, y) => { ctx.beginPath(); ctx.moveTo(x, y - 5); ctx.lineTo(x + 5, y); ctx.lineTo(x, y + 5); ctx.lineTo(x - 5, y); ctx.fill(); };
+    for (let x = OX; x <= OX + W; x += 20) { rh(x, OY - 6); rh(x, OY + H + 6); }
+    for (let y = OY + 20; y < OY + H; y += 20) { rh(OX - 6, y); rh(OX + W + 6, y); }
+    if (!s.body) return;
+    // хычин
+    const fx = OX + (s.food.x + 0.5) * CELL, fy = OY + (s.food.y + 0.5) * CELL;
+    ctx.fillStyle = T.food; ctx.beginPath(); ctx.ellipse(fx, fy, 11, 9, 0, 0, 6.283); ctx.fill();
+    ctx.strokeStyle = '#a36d12'; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(fx, fy, 5, 0, 6.283); ctx.stroke();
+    // змейка
+    const mode = Math.round(c.bMode), left = c.swapTime - s.swapT, warn = mode !== 1 && left <= c.warnTime;
+    const blinkOn = Math.floor(g.t * 8) % 2 === 0;
+    if (!g.blink()) s.body.forEach((b, i) => {
+      const x = OX + b.x * CELL, y = OY + b.y * CELL, tail = i === s.body.length - 1, head = i === 0;
+      let col = i % 2 ? T.a : T.b;
+      if (head) col = T.head;
+      if (tail && warn) col = blinkOn ? '#ffffff' : '#e8b730';
+      if (s.dash > 0 && !tail) col = head ? '#fff3c4' : '#e8d070';
+      ctx.fillStyle = col; ctx.fillRect(x + 2, y + 2, CELL - 4, CELL - 4);
+      if (head) { ctx.fillStyle = '#0b1a14'; const [dx, dy] = DIRS[s.dir]; ctx.fillRect(x + CELL / 2 + dx * 6 - 3 - dy * 6, y + CELL / 2 + dy * 6 - 3 - dx * 6, 5, 5); ctx.fillRect(x + CELL / 2 + dx * 6 - 3 + dy * 6, y + CELL / 2 + dy * 6 - 3 + dx * 6, 5, 5); }
+    });
+    // стрелка автоповорота у стены
+    this.plan(g);
+    if (s.planned && !g.blink()) {
+      const h = s.body[0], [dx, dy] = DIRS[s.planned], cx = OX + (h.x + 0.5) * CELL + dx * CELL * 0.8, cy = OY + (h.y + 0.5) * CELL + dy * CELL * 0.8;
+      ctx.fillStyle = '#7cf5a8'; ctx.beginPath(); ctx.moveTo(cx + dx * 9, cy + dy * 9); ctx.lineTo(cx - dy * 7, cy - dx * 7); ctx.lineTo(cx + dy * 7, cy + dx * 7); ctx.closePath(); ctx.fill();
+    }
+    // стрелка: куда поползёт голова после разворота
+    if (warn && s.body.length > 1) {
+      const t = s.body[s.body.length - 1], p = s.body[s.body.length - 2], d = this.dirOf(t, p), [dx, dy] = DIRS[d];
+      const cx = OX + (t.x + 0.5) * CELL + dx * CELL, cy = OY + (t.y + 0.5) * CELL + dy * CELL;
+      ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(cx - dx * 10, cy - dy * 10); ctx.lineTo(cx + dx * 8, cy + dy * 8); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(cx + dx * 10, cy + dy * 10); ctx.lineTo(cx + dx * 2 - dy * 7, cy + dy * 2 - dx * 7); ctx.lineTo(cx + dx * 2 + dy * 7, cy + dy * 2 + dx * 7); ctx.closePath(); ctx.fillStyle = '#ffffff'; ctx.fill();
+    }
+    // приборы
+    if (mode !== 1) g.text(warn ? 'РАЗВОРОТ ЧЕРЕЗ ' + Math.max(0, left).toFixed(1) : 'разворот через ' + Math.ceil(Math.max(0, left)), g.W / 2, 50, { size: warn ? 20 : 14, color: warn ? '#ffffff' : '#9fc9b4', align: 'center' });
+    const bText = mode === 0 ? (s.dash > 0 ? 'РЫВОК!' : s.dashCd > 0 ? 'рывок через ' + s.dashCd.toFixed(1) : 'рывок готов · B') : mode === 1 ? (s.swapCdT > 0 ? 'разворот через ' + s.swapCdT.toFixed(1) : 'разворот готов · B') : '';
+    if (bText) g.text(bText, g.W - 40, 50, { size: 14, color: '#e8b730', align: 'right' });
+    g.text('длина ' + s.body.length, 300, 30, { size: 14, color: '#9fc9b4' });
+  },
+
+  overNote(g, tele) {
+    const s = g.state;
+    return `Самая длинная змейка: <b>${s.maxLen}</b>. Разворотов: <b>${s.swaps}</b>. Смертей сразу после разворота: <b>${tele.custom['смертей сразу после разворота'] || 0}</b> из ${3}.` + (Math.round(g.cfg.bMode) === 0 ? ` Рывков: ${tele.custom['рывков'] || 0}.` : '') + (Math.round(g.cfg.wallMode) === 1 ? ` Автоповоротов у стены: ${tele.custom['автоповоротов'] || 0}.` : '');
+  },
+};
+
+</script>
+<script>window.__labBoot();</script>
+

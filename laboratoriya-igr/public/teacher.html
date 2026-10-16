@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Панель учителя</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Russo+One&family=Golos+Text:wght@400;500;600&display=swap">
+<link rel="stylesheet" href="/static/style.css">
+<style>
+.code{font-family:var(--display);font-size:clamp(44px,8vw,72px);color:var(--amber);line-height:1}
+.cpbtns{display:flex;flex-wrap:wrap;gap:8px}
+.cpbtn{font:inherit;color:var(--text);background:var(--card);border:1px solid var(--line);border-radius:12px;padding:10px 14px;cursor:pointer;text-align:left}
+.cpbtn b{display:block;font-family:var(--display);font-weight:400}
+.cpbtn span{font-size:13px;color:var(--muted)}
+.cpbtn[aria-pressed="true"]{border-color:var(--amber);background:#2a2213}
+.stats{display:flex;flex-wrap:wrap;gap:8px}
+.dot{display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--mint);margin-right:6px}
+.dot.idle{background:var(--line)}
+tr.click{cursor:pointer}
+tr.click:hover td{background:var(--card-2)}
+.drawer{position:fixed;top:0;right:0;bottom:0;width:min(560px,100%);background:var(--card);border-left:1px solid var(--line);overflow:auto;padding:20px;z-index:40;display:flex;flex-direction:column;gap:12px}
+pre{white-space:pre-wrap;background:var(--hall);border:1px solid var(--line);border-radius:10px;padding:10px;font:13px/1.5 ui-monospace,Consolas,monospace;margin:0}
+.tablewrap{overflow-x:auto}
+</style>
+</head>
+<body>
+<main id="main"></main>
+<script src="/static/teacher.js"></script>
+</body>
+</html>

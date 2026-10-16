@@ -1,0 +1,239 @@
+<title>Разбери игру на детали</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Unbounded:wght@600;800&family=Golos+Text:wght@400;600;700&display=swap">
+<style>
+/* Аркадный автомат-сортировщик: одна тёмная сцена, карточка в центре, кнопки-лотки снизу */
+:root{
+  --bg:#0d0b1a; --panel:#17142b; --line:#2f2a55; --ink:#f4f0ff; --muted:#a49cc9;
+  --hot:#ffcf3a; --good:#45e39a; --bad:#ff5a6e; --sky:#6aa8ff;
+  --display:'Unbounded',system-ui,sans-serif; --body:'Golos Text',system-ui,sans-serif;
+  color-scheme:dark;
+}
+html,body{height:100%}
+body{background:var(--bg);color:var(--ink);font:16px/1.45 var(--body);margin:0;overflow-x:hidden}
+.wrap{max-width:860px;margin:0 auto;padding-block:16px 28px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));display:flex;flex-direction:column;gap:14px;min-height:100%;box-sizing:border-box}
+.top{display:flex;flex-wrap:wrap;gap:8px 16px;align-items:center;justify-content:space-between}
+.brand{font:800 13px var(--display);letter-spacing:.12em;text-transform:uppercase;color:var(--hot)}
+.hud{display:flex;gap:14px;font:600 14px var(--body);color:var(--muted);font-variant-numeric:tabular-nums}
+.hud b{color:var(--ink);font-family:var(--display);font-weight:800}
+.combo{color:var(--hot)}
+.timer{height:6px;background:var(--line);border-radius:3px;overflow:hidden}
+.timer i{display:block;height:100%;background:var(--hot);width:100%;transition:width .1s linear}
+.stage{position:relative;background:var(--panel);border:1px solid var(--line);border-radius:18px;padding:22px;min-height:190px;display:flex;flex-direction:column;justify-content:center;gap:10px;text-align:center}
+.stage .eyebrow{font:600 12px var(--body);letter-spacing:.14em;text-transform:uppercase;color:var(--muted)}
+.card{font:800 clamp(19px,3.6vw,28px)/1.25 var(--display);text-wrap:balance}
+.src{font-size:13px;color:var(--muted)}
+.stage.ok{border-color:var(--good);box-shadow:0 0 0 3px rgba(69,227,154,.25)}
+.stage.no{border-color:var(--bad);animation:shake .35s}
+@keyframes shake{25%{transform:translateX(-8px)}50%{transform:translateX(7px)}75%{transform:translateX(-4px)}}
+@keyframes pop{from{transform:scale(.92);opacity:.3}to{transform:none;opacity:1}}
+.card.in{animation:pop .25s ease-out}
+.verdict{font:800 18px var(--display)}
+.verdict.ok{color:var(--good)} .verdict.no{color:var(--bad)}
+.why{font-size:15px;color:var(--ink);max-width:62ch;margin:0 auto}
+.bins{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px}
+.duo{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.bin{font:700 15px var(--body);color:var(--ink);background:#1f1b3a;border:2px solid var(--line);border-radius:14px;padding:12px 8px;cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:2px;min-width:0}
+.bin small{font-weight:400;font-size:12px;color:var(--muted);text-align:center}
+.bin .k{font:800 13px var(--display);color:var(--hot)}
+.bin.focus,.bin:hover{border-color:var(--hot);background:#2a2450}
+.bin:focus-visible{outline:2px solid var(--ink);outline-offset:2px}
+.bin.right{border-color:var(--good);background:rgba(69,227,154,.15)}
+.bin.wrong{border-color:var(--bad);background:rgba(255,90,110,.15)}
+.duo .bin{font:800 22px var(--display);padding:20px 8px}
+.hint{font-size:13px;color:var(--muted);text-align:center}
+kbd{font:600 12px ui-monospace,Consolas,monospace;border:1px solid var(--line);border-bottom-width:2px;border-radius:5px;padding:1px 6px;color:var(--ink);background:#0d0b1a}
+.go{font:800 16px var(--display);background:var(--hot);color:#1a1300;border:0;border-radius:12px;padding:13px 22px;cursor:pointer;align-self:center}
+.go:focus-visible{outline:2px solid var(--ink);outline-offset:3px}
+.result{display:flex;flex-direction:column;gap:12px;text-align:center}
+.big{font:800 clamp(40px,9vw,72px)/1 var(--display);color:var(--hot)}
+.ach{display:inline-flex;gap:8px;align-items:center;align-self:center;border:1px solid var(--hot);border-radius:999px;padding:6px 14px;font-weight:700}
+.ach.off{border-color:var(--line);color:var(--muted)}
+textarea{width:100%;box-sizing:border-box;background:#0d0b1a;color:var(--ink);border:1px solid var(--line);border-radius:10px;font:13px/1.4 ui-monospace,Consolas,monospace;padding:10px;min-height:90px}
+.legend{font-size:13px;color:var(--muted);text-align:center}
+@media (max-width:560px){.bins{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media (prefers-reduced-motion:reduce){.stage.no,.card.in{animation:none}}
+</style>
+
+<div class="wrap">
+  <div class="top">
+    <div class="brand">Лаборатория игр · занятие 2</div>
+    <div class="hud"><span>Раунд <b id="hRound">1</b>/2</span><span>Карта <b id="hCard">1</b>/<b id="hTotal">8</b></span><span>Очки <b id="hScore">0</b></span><span class="combo" id="hCombo"></span></div>
+  </div>
+  <div class="timer" aria-hidden="true"><i id="tbar"></i></div>
+  <div class="stage" id="stage" aria-live="polite"></div>
+  <div id="controls"></div>
+  <div class="hint" id="hint"></div>
+</div>
+
+<script>
+const R1 = [
+  { t: 'Пройти лабиринт в журнале карандашом, ни разу не оторвав его от бумаги', a: 1, why: 'Отрывать карандаш можно, но ты сам запретил себе. Добровольное необязательное препятствие: игра.' },
+  { t: 'Дойти домой по навигатору самой короткой дорогой', a: 0, why: 'Ты просто решаешь задачу самым удобным способом. Препятствий никто не выбирал: не игра.' },
+  { t: 'По дороге в школу не наступать на трещины в асфальте', a: 1, why: 'Классика Сьютса: ограничение лишнее, но ты его принял ради интереса.' },
+  { t: 'Решать контрольную, потому что задали', a: 0, why: 'Нет добровольности. Та же задача на олимпиаде, куда ты пошёл сам, уже ближе к игре.' },
+  { t: 'Подняться на плато Лаго-Наки пешком по тропе, хотя туда ведёт дорога', a: 1, why: 'Альпинизм у Сьютса главный пример: можно проще, но выбираешь трудный путь.' },
+  { t: 'Пройти «Самолётик», выключив тормоз в ручках', a: 1, why: 'Ты сам добавил препятствие. Так игроки придумывают челленджи и спидраны.' },
+  { t: 'Убрать комнату, потому что сказали родители', a: 0, why: 'Цель важна сама по себе, а условия навязаны. Не игра.' },
+  { t: 'Убрать комнату, пока играет одна песня, и ни секундой дольше', a: 1, why: 'Та же уборка, но добровольный таймер превратил её в игру. Одно правило меняет всё.' },
+];
+const EL = [
+  ['А', 'Игроки', 'кто играет'], ['Б', 'Цель', 'к чему стремишься'], ['В', 'Процедуры', 'как действуешь'], ['Г', 'Правила', 'можно и нельзя'],
+  ['Д', 'Ресурсы', 'ценно и кончается'], ['Е', 'Конфликт', 'что мешает'], ['Ж', 'Границы', 'где кончается игра'], ['З', 'Исход', 'чем кончается'],
+];
+const R2 = [
+  { t: 'Ты и бот', s: 'Крестики-нолики', a: 0, why: 'Кто участвует и в какой роли: игроки. Бывает один, двое, команда против команды.' },
+  { t: 'Собрать три в ряд раньше бота', s: 'Крестики-нолики', a: 1, why: 'То, к чему стремишься: цель.' },
+  { t: 'Стрелки выбирают клетку, пробел ставит крестик', s: 'Крестики-нолики', a: 2, why: 'Как именно ты действуешь: процедура. Правило говорит, что можно, процедура — как это сделать.' },
+  { t: 'Нельзя ставить крестик в занятую клетку', s: 'Крестики-нолики', a: 3, why: 'Запрет: правило.' },
+  { t: 'Шкала нагрева тормоза, её приходится экономить', s: 'Самолётик 2', a: 4, why: 'Ценное и кончается: ресурс. Так тормоз получил цену.' },
+  { t: 'Стены помех закрывают путь самолётику', s: 'Самолётик 2', a: 5, why: 'То, что мешает достичь цели: конфликт.' },
+  { t: 'Поле 3×3, за край ходить нельзя', s: 'Крестики-нолики', a: 6, why: 'Где начинается и кончается игровое пространство: границы.' },
+  { t: 'Победа, ничья или поражение', s: 'Крестики-нолики', a: 7, why: 'Чем всё заканчивается: исход. В решённой игре он известен заранее, отсюда скука.' },
+  { t: 'Три жизни самолётика', s: 'Самолётик 2', a: 4, why: 'Жизни тратятся и кончаются: ресурс.' },
+  { t: 'Каждый третий ход ставишь фишку соперника', s: 'Крестики-нолики · новое правило', a: 3, why: 'Это ограничение на ход, значит, правило. Процедура осталась прежней: выбрал клетку, нажал.' },
+];
+const TIME = 20;
+const $ = s => document.querySelector(s);
+let round = 1, idx = 0, deck = [], score = 0, combo = 0, phase = 'intro', tLeft = TIME, focus = 0, last = performance.now();
+const res = { r1: 0, r2: 0, miss: [] };
+let padMode = false;
+
+function shuffle(a) { a = a.slice(); for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; }
+
+/* звук */
+let AC = null;
+function beep(f, d = 0.1, type = 'square', v = 0.07, delay = 0) {
+  try {
+    AC = AC || new (window.AudioContext || window.webkitAudioContext)();
+    const t = AC.currentTime + delay, o = AC.createOscillator(), g = AC.createGain();
+    o.type = type; o.frequency.value = f; g.gain.setValueAtTime(v, t); g.gain.exponentialRampToValueAtTime(0.0001, t + d);
+    o.connect(g); g.connect(AC.destination); o.start(t); o.stop(t + d + 0.02);
+  } catch (e) {}
+}
+const sGood = () => { beep(880, 0.08, 'triangle', 0.1); beep(1320, 0.12, 'triangle', 0.1, 0.07); };
+const sBad = () => { beep(220, 0.25, 'sawtooth', 0.08); };
+const sMove = () => beep(520, 0.04, 'triangle', 0.05);
+function rumble(ms, s) { try { const gp = navigator.getGamepads && [...navigator.getGamepads()].find(Boolean); if (gp && gp.vibrationActuator) gp.vibrationActuator.playEffect('dual-rumble', { duration: ms, strongMagnitude: s, weakMagnitude: s }); } catch (e) {} }
+
+const K = (kb, pad) => padMode ? pad : kb;
+function hint() {
+  let t = '';
+  if (phase === 'q' && round === 1) t = K('<kbd>←</kbd> не игра · <kbd>→</kbd> игра · или нажми кнопку', '<kbd>◀</kbd> не игра · <kbd>▶</kbd> игра');
+  else if (phase === 'q') t = K('<kbd>стрелки</kbd> выбрать · <kbd>Пробел</kbd> ответить · или клавиши <kbd>1</kbd>–<kbd>8</kbd>, или клик', '<kbd>крестовина</kbd> выбрать · <kbd>A</kbd> ответить');
+  else if (phase !== 'end') t = K('<kbd>Пробел</kbd> дальше', '<kbd>A</kbd> дальше');
+  t += (t ? ' · ' : '') + (padMode ? 'геймпад подключён' : 'есть геймпад? нажми на нём любую кнопку');
+  $('#hint').innerHTML = t;
+}
+function hud() {
+  $('#hRound').textContent = round; $('#hCard').textContent = Math.min(idx + 1, deck.length); $('#hTotal').textContent = deck.length;
+  $('#hScore').textContent = score; $('#hCombo').textContent = combo >= 2 ? 'серия ×' + combo : '';
+}
+
+function intro() {
+  phase = 'intro';
+  const r1 = round === 1;
+  $('#stage').className = 'stage';
+  $('#stage').innerHTML = r1
+    ? `<div class="eyebrow">Раунд 1 · Игра или не игра?</div><div class="card in">Сьютс: игра — это добровольная попытка преодолеть необязательные препятствия</div><div class="why">8 ситуаций. Реши за ${TIME} секунд: это игра или нет? Быстрый верный ответ даёт бонус, серия верных умножает очки.</div>`
+    : `<div class="eyebrow">Раунд 2 · Разбери игру на детали</div><div class="card in">8 формальных элементов Трейси Фуллертон</div><div class="why">Деталь из Крестиков-ноликов или Самолётика летит на ленту. Отправь её в нужный лоток. 10 деталей, две с подвохом.</div>`;
+  $('#controls').innerHTML = `<div style="display:flex;justify-content:center"><button class="go" id="goBtn" type="button">${r1 ? 'Поехали' : 'Ко второму раунду'}</button></div>`;
+  $('#goBtn').onclick = next; $('#goBtn').focus({ preventScroll: true });
+  deck = shuffle(r1 ? R1 : R2); idx = 0; hud(); hint(); $('#tbar').style.width = '100%';
+}
+function ask() {
+  phase = 'q'; tLeft = TIME; const c = deck[idx];
+  $('#stage').className = 'stage';
+  $('#stage').innerHTML = `<div class="eyebrow">${round === 1 ? 'Это игра?' : 'Какой это элемент?'}</div><div class="card in">${c.t}</div>${c.s ? `<div class="src">${c.s}</div>` : ''}`;
+  if (round === 1) {
+    $('#controls').innerHTML = `<div class="duo"><button class="bin" type="button" data-i="0">◀ Не игра</button><button class="bin" type="button" data-i="1">Игра ▶</button></div>`;
+  } else {
+    $('#controls').innerHTML = `<div class="bins">${EL.map((e, i) => `<button class="bin${i === focus ? ' focus' : ''}" type="button" data-i="${i}"><span class="k">${i + 1} · ${e[0]}</span>${e[1]}<small>${e[2]}</small></button>`).join('')}</div>`;
+  }
+  document.querySelectorAll('#controls .bin').forEach(b => b.onclick = () => answer(+b.dataset.i));
+  hud(); hint();
+}
+function answer(i) {
+  if (phase !== 'q') return;
+  const c = deck[idx], ok = i === c.a;
+  phase = 'fb';
+  if (ok) {
+    combo++; const pts = Math.round((100 + 5 * Math.ceil(tLeft)) * Math.min(3, 1 + (combo - 1) * 0.25));
+    score += pts; if (round === 1) res.r1++; else res.r2++; sGood();
+  } else {
+    combo = 0; sBad(); rumble(200, 0.7);
+    res.miss.push((round === 1 ? 'Р1 ' : 'Р2 ') + c.t);
+  }
+  document.querySelectorAll('#controls .bin').forEach(b => { const k = +b.dataset.i; if (k === c.a) b.classList.add('right'); else if (k === i) b.classList.add('wrong'); b.disabled = true; });
+  const right = round === 1 ? (c.a ? 'Игра' : 'Не игра') : EL[c.a][0] + ' · ' + EL[c.a][1];
+  $('#stage').className = 'stage ' + (ok ? 'ok' : 'no');
+  $('#stage').innerHTML = `<div class="verdict ${ok ? 'ok' : 'no'}">${i < 0 ? 'Время вышло' : ok ? 'Верно!' : 'Мимо'} · ${right}</div><div class="card">${c.t}</div><div class="why">${c.why}</div>`;
+  const nb = document.createElement('div'); nb.style.cssText = 'display:flex;justify-content:center;margin-top:10px';
+  nb.innerHTML = `<button class="go" id="goBtn" type="button">Дальше</button>`; $('#controls').appendChild(nb);
+  $('#goBtn').onclick = next; hud(); hint();
+}
+function next() {
+  if (phase === 'intro') return ask();
+  if (phase !== 'fb') return;
+  idx++;
+  if (idx < deck.length) return ask();
+  if (round === 1) { round = 2; return intro(); }
+  end();
+}
+function end() {
+  phase = 'end'; $('#tbar').style.width = '0';
+  const all = res.r1 === R1.length && res.r2 === R2.length;
+  const line = `Квиз занятия 2: «Игра или нет» ${res.r1}/${R1.length}, «Детали игры» ${res.r2}/${R2.length}, очки ${score}.` + (res.miss.length ? ` Ошибки: ${res.miss.join('; ')}.` : ' Без ошибок.');
+  $('#stage').className = 'stage';
+  $('#stage').innerHTML = `<div class="result"><div class="eyebrow">Финиш</div><div class="big">${score}</div><div>«Игра или нет» <b>${res.r1}/${R1.length}</b> · «Детали игры» <b>${res.r2}/${R2.length}</b></div><div class="ach ${all ? '' : 'off'}">🏅 Знаток правил ${all ? 'открыт' : '— нужно всё верно'}</div></div>`;
+  $('#controls').innerHTML = `<div class="result"><div class="legend">Скопируй результат и пришли учителю в чат</div><textarea id="out" readonly aria-label="Результат">${line}</textarea><div style="display:flex;gap:10px;justify-content:center;flex-wrap:wrap"><button class="go" id="copyBtn" type="button">Скопировать результат</button><button class="bin" id="againBtn" type="button" style="flex-direction:row">Пройти заново</button></div></div>`;
+  $('#copyBtn').onclick = e => { const b = e.currentTarget; const sel = () => { $('#out').select(); b.textContent = 'Выдели и скопируй'; }; try { navigator.clipboard.writeText(line).then(() => b.textContent = 'Скопировано', sel); } catch (err) { sel(); } };
+  $('#againBtn').onclick = () => { round = 1; score = 0; combo = 0; res.r1 = 0; res.r2 = 0; res.miss = []; intro(); };
+  if (all) [523, 659, 784, 1046, 1318].forEach((f, i) => beep(f, 0.16, 'triangle', 0.1, i * 0.09));
+  hud(); hint();
+}
+function moveFocus(dx, dy) {
+  if (phase !== 'q' || round !== 2) return;
+  const cols = matchMedia('(max-width:560px)').matches ? 2 : 4;
+  let f = focus + dx + dy * cols; if (f < 0 || f > 7) return; focus = f; sMove();
+  document.querySelectorAll('#controls .bin').forEach((b, i) => b.classList.toggle('focus', i === focus));
+}
+function confirm() {
+  if (phase === 'q' && round === 2) answer(focus);
+  else if (phase === 'intro' || phase === 'fb') next();
+}
+
+addEventListener('keydown', e => {
+  if (e.target.tagName === 'TEXTAREA') return;
+  if (padMode) { padMode = false; hint(); }
+  const k = e.code;
+  if (phase === 'q' && round === 1) { if (k === 'ArrowLeft' || k === 'KeyA') { e.preventDefault(); return answer(0); } if (k === 'ArrowRight' || k === 'KeyD') { e.preventDefault(); return answer(1); } }
+  if (phase === 'q' && round === 2) {
+    const n = parseInt(e.key, 10); if (n >= 1 && n <= 8) { focus = n - 1; return answer(n - 1); }
+    const d = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] }[k]; if (d) { e.preventDefault(); return moveFocus(...d); }
+  }
+  if ((k === 'Space' || k === 'Enter') && !e.repeat) { if (document.activeElement && document.activeElement.tagName === 'BUTTON' && phase !== 'q') { e.preventDefault(); } e.preventDefault(); confirm(); }
+});
+let prevB = [], prevAx = [0, 0];
+function loop(now) {
+  const dt = Math.min(0.05, (now - last) / 1000); last = now;
+  if (phase === 'q') { tLeft -= dt; $('#tbar').style.width = Math.max(0, tLeft / TIME * 100) + '%'; if (tLeft <= 0) answer(-1); }
+  let pads = []; try { pads = navigator.getGamepads ? [...navigator.getGamepads()] : []; } catch (e) {}
+  const gp = pads.find(Boolean);
+  if (gp) {
+    const b = gp.buttons.map(x => !!(x && x.pressed)), ax = gp.axes[0] || 0, ay = gp.axes[1] || 0;
+    const down = i => b[i] && !prevB[i];
+    const axL = ax < -0.5 && prevAx[0] >= -0.5, axR = ax > 0.5 && prevAx[0] <= 0.5, axU = ay < -0.5 && prevAx[1] >= -0.5, axD = ay > 0.5 && prevAx[1] <= 0.5;
+    if (b.some(Boolean) || Math.abs(ax) > 0.5 || Math.abs(ay) > 0.5) { if (!padMode) { padMode = true; hint(); } }
+    const L = down(14) || axL || down(4), Rr = down(15) || axR || down(5), U = down(12) || axU, D = down(13) || axD;
+    if (phase === 'q' && round === 1) { if (L) answer(0); else if (Rr) answer(1); }
+    else if (phase === 'q' && round === 2) { if (L) moveFocus(-1, 0); if (Rr) moveFocus(1, 0); if (U) moveFocus(0, -1); if (D) moveFocus(0, 1); if (down(0)) answer(focus); }
+    else if (down(0) || down(9)) confirm();
+    prevB = b; prevAx = [ax, ay];
+  }
+  requestAnimationFrame(loop);
+}
+intro();
+requestAnimationFrame(t => { last = t; loop(t); });
+</script>
