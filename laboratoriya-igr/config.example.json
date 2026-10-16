@@ -1,0 +1,17 @@
+{
+  "port": 8080,
+  "teacherPassword": "поменяйте-меня",
+  "demoMode": false,
+  "qwen": {
+    "apiKey": "",
+    "baseUrl": "https://dashscope-intl.aliyuncs.com/compatible-mode/v1",
+    "codeModel": "qwen3-coder-plus",
+    "chatModel": "qwen-plus",
+    "maxConcurrent": 6,
+    "timeoutSec": 240
+  },
+  "limits": {
+    "generationsPerStudent": 12,
+    "fixesPerGame": 8
+  }
+}

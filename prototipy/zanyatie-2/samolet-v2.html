@@ -1,0 +1,717 @@
+<title>Самолётик в телевизоре 2</title>
+<style>
+:root{--bg:#0b1020;--panel:rgba(10,14,30,.92);--line:#2a3560;--accent:#7cf5a8;--accent-ink:#06140c;--text:#f2efe6;--muted:#9aa3c7;--danger:#ff5d6e;color-scheme:dark}
+[hidden]{display:none!important}
+html,body{height:100%;margin:0;background:#04060d;color:var(--text);font:15px/1.5 system-ui,-apple-system,'Segoe UI',sans-serif;overflow:hidden}
+#stage{position:relative;width:100%;height:100%}
+canvas{position:absolute;inset:0;width:100%;height:100%;display:block;touch-action:none}
+.topbtns{position:absolute;top:8px;right:8px;display:flex;gap:6px;z-index:8}
+.ghost{font:13px system-ui,sans-serif;color:var(--text);background:rgba(4,6,13,.75);border:1px solid var(--line);border-radius:8px;padding:5px 10px;cursor:pointer}
+.ghost:hover{border-color:var(--accent)}
+.ghost[aria-pressed="true"]{background:var(--accent);color:var(--accent-ink);border-color:var(--accent)}
+button:focus-visible{outline:2px solid var(--text);outline-offset:2px}
+.screen{position:absolute;inset:0;display:flex;padding:16px;background:rgba(4,6,13,.55);overflow:auto;z-index:6}
+.card{width:min(580px,100%);margin:auto;background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:20px;display:flex;flex-direction:column;gap:12px}
+.eyebrow{font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--accent);font-weight:600}
+h1,h2{margin:0;line-height:1.05;font-weight:800;text-wrap:balance}
+h1{font-size:clamp(28px,6vw,46px)}h2{font-size:clamp(22px,5vw,32px)}
+.sub{margin:0;color:var(--text);font-size:15px}
+.controls{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:6px 14px;font-size:13.5px;color:var(--muted)}
+kbd{font:12px ui-monospace,Consolas,monospace;color:var(--text);background:#04060d;border:1px solid var(--line);border-bottom-width:2px;border-radius:5px;padding:1px 6px;margin-right:6px}
+.hint{font-size:12.5px;color:var(--muted)}
+.decisions{border-top:1px dashed var(--line);padding-top:10px;font-size:13.5px;color:var(--muted)}
+.decisions ol{margin:4px 0 0;padding-left:20px;display:grid;gap:3px}
+.row{display:flex;flex-wrap:wrap;gap:10px;align-items:center}
+.btn{font:700 15px system-ui,sans-serif;background:var(--accent);color:var(--accent-ink);border:0;border-radius:10px;padding:11px 18px;cursor:pointer}
+.stats{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
+.stat{background:#04060d;border:1px solid var(--line);border-radius:10px;padding:8px 10px}
+.stat b{display:block;font-size:22px;font-variant-numeric:tabular-nums}
+.stat span{font-size:12px;color:var(--muted)}
+#panel{position:absolute;top:44px;right:8px;bottom:8px;width:min(300px,calc(100% - 16px));background:var(--panel);border:1px solid var(--accent);border-radius:12px;padding:14px;overflow:auto;display:flex;flex-direction:column;gap:12px;z-index:7}
+#panel h3{margin:0;font-size:15px;color:var(--accent)}
+#panel p{margin:0;font-size:12px;color:var(--muted)}
+.knob{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:2px 8px;font-size:12.5px}
+.knob output{color:var(--accent);font-variant-numeric:tabular-nums}
+.knob input{grid-column:1/-1;width:100%;accent-color:var(--accent);margin:0}
+.presets{display:flex;flex-wrap:wrap;gap:6px}
+.overnote{font-size:13.5px;color:var(--muted);margin:0}
+.overnote b{color:var(--text)}
+.knob.changed label::after{content:"  •";color:#ffb547}
+textarea.copy{width:100%;box-sizing:border-box;min-height:110px;background:#04060d;color:var(--accent);border:1px solid var(--line);border-radius:8px;font:11px/1.4 ui-monospace,Consolas,monospace}
+#errBox{position:absolute;left:12px;right:12px;bottom:12px;z-index:9;background:#2a0a10;border:1px solid var(--danger);border-radius:10px;padding:12px 14px;font-size:13px;color:#ffd6db}
+#errBox b{color:#fff}
+.touch{position:absolute;left:0;right:0;bottom:0;display:none;justify-content:space-between;align-items:flex-end;padding:0 10px 10px;pointer-events:none;z-index:5}
+.touch .grp{display:flex;gap:8px;align-items:flex-end}
+.tbtn{pointer-events:auto;width:58px;height:58px;border-radius:50%;border:1px solid var(--line);background:rgba(4,6,13,.55);color:var(--text);font:700 13px system-ui;touch-action:none;user-select:none;-webkit-user-select:none}
+.tbtn.on{background:var(--accent);color:var(--accent-ink)}
+@media (pointer:coarse){.touch{display:flex}}
+</style>
+<div id="stage">
+  <canvas id="cv" aria-label="Игровое поле"></canvas>
+  <div class="topbtns">
+    <button type="button" class="ghost" id="knobsBtn" aria-pressed="false">Ручки · Tab</button>
+    <button type="button" class="ghost" id="muteBtn" aria-pressed="false">Звук · M</button>
+  </div>
+  <aside id="panel" hidden aria-label="Ручки геймдизайнера">
+    <h3>Ручки геймдизайнера</h3>
+    <p>Каждое число меняет игру сразу. Изменённые ручки помечены точкой.</p>
+    <div class="presets" id="presets"></div>
+    <div id="knobs" style="display:flex;flex-direction:column;gap:10px"></div>
+    <div class="row"><button type="button" class="ghost" id="resetBtn">Сбросить</button><button type="button" class="ghost" id="copyBtn">Скопировать CONFIG</button></div>
+    <textarea class="copy" id="copyBox" hidden readonly aria-label="CONFIG"></textarea>
+  </aside>
+  <div class="screen" id="startScreen">
+    <div class="card">
+      <div class="eyebrow" id="eyebrow">Лаборатория игр</div>
+      <h1 id="gTitle">Игра</h1>
+      <p class="sub" id="gSub"></p>
+      <div class="controls" id="controls"></div>
+      <div class="hint" id="padHint"></div>
+      <div class="decisions" id="decBox"><div class="eyebrow">Что решил дизайнер</div><ol id="decisions"></ol></div>
+      <div class="row"><button type="button" class="btn" id="startBtn">Играть · пробел</button></div>
+    </div>
+  </div>
+  <div class="screen" id="overScreen" hidden>
+    <div class="card" role="status">
+      <div class="eyebrow" id="overEyebrow">Игра окончена</div>
+      <h2 id="overTitle">Конец партии</h2>
+      <div class="stats">
+        <div class="stat"><b id="stScore">0</b><span>очки</span></div>
+        <div class="stat"><b id="stTime">0</b><span>секунд</span></div>
+        <div class="stat"><b id="stBest">0</b><span>рекорд</span></div>
+      </div>
+      <p class="overnote" id="overNote"></p>
+      <div class="row"><button type="button" class="btn" id="againBtn">Ещё раз · пробел</button><button type="button" class="ghost" id="overKnobs">Открыть ручки</button></div>
+    </div>
+  </div>
+  <div class="screen" id="pauseScreen" hidden>
+    <div class="card"><div class="eyebrow">Пауза</div><h2>Игра на паузе</h2><div class="row"><button type="button" class="btn" id="resumeBtn">Продолжить · P</button></div></div>
+  </div>
+  <div id="errBox" hidden role="alert"></div>
+  <div class="touch" id="touch"></div>
+</div>
+
+<script>
+/* ===== Движок «Лаборатории игр». Код игры живёт в объекте GAME ниже. ===== */
+(function () {
+  const LW = 960, LH = 540;
+  const $ = s => document.querySelector(s);
+  const cv = $('#cv'), ctx = cv.getContext('2d'), stage = $('#stage');
+  let dpr = 1, sc = 1, ox = 0, oy = 0;
+  let G = null, state = 'menu', paused = false, errored = false;
+  const ENGINE_KNOBS = { shake: { value: 1, min: 0, max: 2, step: 0.1, label: 'Тряска экрана' }, juice: { value: 1, min: 0, max: 2, step: 0.1, label: 'Сочность частиц' } };
+  let DEFAULTS = {}, META = {};
+  const post = m => { try { parent.postMessage(Object.assign({ source: 'lab-game' }, m), '*'); } catch (e) {} };
+  const store = { get(k) { try { return localStorage.getItem(k); } catch (e) { return null; } }, set(k, v) { try { localStorage.setItem(k, v); } catch (e) {} } };
+
+  /* ---------- звук ---------- */
+  let AC = null, master = null, noiseBuf = null, muted = false;
+  function audio() {
+    if (AC) { if (AC.state === 'suspended') AC.resume(); return; }
+    try {
+      AC = new (window.AudioContext || window.webkitAudioContext)();
+      master = AC.createGain(); master.gain.value = 0.45; master.connect(AC.destination);
+      noiseBuf = AC.createBuffer(1, AC.sampleRate, AC.sampleRate);
+      const d = noiseBuf.getChannelData(0); for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+    } catch (e) { AC = null; }
+  }
+  function tone(freq, dur = 0.12, type = 'square', vol = 0.1, slideTo = 0, delay = 0) {
+    if (!AC || muted) return;
+    try {
+      const t = AC.currentTime + delay, o = AC.createOscillator(), gn = AC.createGain();
+      o.type = type; o.frequency.setValueAtTime(Math.max(20, freq), t);
+      if (slideTo) o.frequency.exponentialRampToValueAtTime(Math.max(20, slideTo), t + dur);
+      gn.gain.setValueAtTime(vol, t); gn.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+      o.connect(gn); gn.connect(master); o.start(t); o.stop(t + dur + 0.02);
+    } catch (e) {}
+  }
+  function noise(dur = 0.2, vol = 0.15, freq = 1000, delay = 0) {
+    if (!AC || muted) return;
+    try {
+      const t = AC.currentTime + delay, s = AC.createBufferSource(), f = AC.createBiquadFilter(), gn = AC.createGain();
+      s.buffer = noiseBuf; f.type = 'lowpass'; f.frequency.value = freq;
+      gn.gain.setValueAtTime(vol, t); gn.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+      s.connect(f); f.connect(gn); gn.connect(master); s.start(t); s.stop(t + dur + 0.02);
+    } catch (e) {}
+  }
+  const sfx = {
+    jump: () => tone(380, 0.1, 'square', 0.07, 760),
+    coin: () => { tone(880, 0.07, 'triangle', 0.1); tone(1320, 0.12, 'triangle', 0.1, 0, 0.06); },
+    hit: () => { tone(320, 0.3, 'sawtooth', 0.14, 70); noise(0.22, 0.2, 1600); },
+    explode: () => { noise(0.4, 0.25, 700); tone(110, 0.3, 'sine', 0.25, 40); },
+    power: () => [523, 659, 784, 1046].forEach((f, i) => tone(f, 0.1, 'square', 0.06, 0, i * 0.06)),
+    beep: () => tone(660, 0.1, 'square', 0.08),
+    whoosh: () => { noise(0.25, 0.1, 3000); tone(200, 0.25, 'sine', 0.08, 900); },
+    win: () => [523, 659, 784, 1046, 1318].forEach((f, i) => tone(f, 0.16, 'triangle', 0.1, 0, i * 0.09)),
+    lose: () => [784, 622, 523, 392].forEach((f, i) => tone(f, 0.22, 'triangle', 0.12, 0, i * 0.14)),
+  };
+
+  /* ---------- ввод ---------- */
+  const held = { left: false, right: false, up: false, down: false, a: false, b: false };
+  const kbHeld = { ...held }, touchHeld = { ...held }, padHeld = { ...held };
+  let prev = { ...held };
+  const pressed = { ...held }, released = { ...held };
+  let usesMove4 = false;
+  const KEYMAP = { ArrowLeft: 'left', KeyA: 'left', ArrowRight: 'right', KeyD: 'right', ArrowUp: 'up', KeyW: 'up', ArrowDown: 'down', KeyS: 'down', Space: 'a', KeyJ: 'a', KeyZ: 'a', ShiftLeft: 'b', ShiftRight: 'b', KeyX: 'b', KeyK: 'b' };
+  function mapKey(code) {
+    const k = KEYMAP[code];
+    if (!usesMove4 && (code === 'ArrowUp' || code === 'KeyW')) return 'a';
+    return k;
+  }
+  let padIdx = null, padPrev = [], padMode = false;
+  function setPadMode(on) {
+    if (on === padMode) return; padMode = on; renderControls();
+    $('#startBtn').textContent = on ? 'Играть · A' : 'Играть · пробел';
+    $('#againBtn').textContent = on ? 'Ещё раз · A' : 'Ещё раз · пробел';
+    $('#resumeBtn').textContent = on ? 'Продолжить · Start' : 'Продолжить · P';
+    $('#knobsBtn').textContent = on ? 'Ручки · Select' : 'Ручки · Tab';
+    $('#padHint').textContent = on ? 'Геймпад подключён: удары отдаются вибрацией. Клавиатура тоже работает.' : 'Есть геймпад? Нажми на нём любую кнопку, и подсказки переключатся на его кнопки.';
+  }
+  function pollPad() {
+    if (!navigator.getGamepads) return;
+    let pads; try { pads = navigator.getGamepads(); } catch (e) { return; }
+    let gp = padIdx != null ? pads[padIdx] : null;
+    if (!gp) for (const p of pads) if (p) { gp = p; padIdx = p.index; break; }
+    for (const k in padHeld) padHeld[k] = false;
+    if (!gp) return;
+    const b = gp.buttons.map(x => !!(x && x.pressed)), ax = gp.axes[0] || 0, ay = gp.axes[1] || 0;
+    padHeld.left = ax < -0.4 || !!b[14]; padHeld.right = ax > 0.4 || !!b[15];
+    padHeld.up = ay < -0.4 || !!b[12]; padHeld.down = ay > 0.4 || !!b[13];
+    padHeld.a = !!(b[0] || b[7]); padHeld.b = !!(b[1] || b[2] || b[6]);
+    if (!usesMove4 && padHeld.up && !b[0]) padHeld.a = padHeld.a || !!b[12];
+    if (b.some(Boolean) || Math.abs(ax) > 0.4 || Math.abs(ay) > 0.4) setPadMode(true);
+    const down = i => b[i] && !padPrev[i];
+    if (down(0)) confirmAction();
+    if (down(9)) { if (state === 'play') setPause(!paused); else confirmAction(); }
+    if (down(8)) togglePanel();
+    padPrev = b;
+  }
+  function rumble(ms = 150, strength = 0.6) {
+    try { const gp = padIdx != null && navigator.getGamepads()[padIdx]; if (gp && gp.vibrationActuator) gp.vibrationActuator.playEffect('dual-rumble', { duration: ms, strongMagnitude: strength, weakMagnitude: strength * 0.6 }); } catch (e) {}
+  }
+  addEventListener('gamepadconnected', e => { padIdx = e.gamepad.index; setPadMode(true); });
+  addEventListener('gamepaddisconnected', e => { if (padIdx === e.gamepad.index) { padIdx = null; padPrev = []; setPadMode(false); } });
+
+  addEventListener('keydown', e => {
+    audio(); setPadMode(false);
+    const code = e.code;
+    if (code === 'Tab') { e.preventDefault(); togglePanel(); return; }
+    if (e.target && e.target.type === 'range' && (code.startsWith('Arrow') || code === 'Home' || code === 'End')) return;
+    if (e.target && e.target.tagName === 'TEXTAREA') return;
+    const k = mapKey(code);
+    if (k) { e.preventDefault(); kbHeld[k] = true; }
+    if ((code === 'Space' || code === 'Enter') && !e.repeat) confirmAction();
+    if (code === 'KeyP' || code === 'Escape') setPause(!paused);
+    if (code === 'KeyM') toggleMute();
+    if (code === 'KeyR' && state !== 'menu') startGame();
+  });
+  addEventListener('keyup', e => { const k = mapKey(e.code); if (k) kbHeld[k] = false; });
+  addEventListener('blur', () => { for (const k in kbHeld) kbHeld[k] = false; });
+  addEventListener('pointerdown', () => audio(), { capture: true });
+
+  function buildTouch() {
+    const used = new Set(); (G.controls || []).forEach(c => used.add(c.input));
+    const L = [['left', '◀'], ['right', '▶']]; if (used.has('move4')) L.unshift(['up', '▲']), L.push(['down', '▼']);
+    const R = []; if (used.has('b')) R.push(['b', 'B']); if (used.has('a') || !used.size) R.push(['a', 'A']);
+    const mk = arr => '<div class="grp">' + arr.map(([k, t]) => `<button type="button" class="tbtn" data-k="${k}">${t}</button>`).join('') + '</div>';
+    $('#touch').innerHTML = mk(L) + mk(R);
+    document.querySelectorAll('.tbtn').forEach(b => {
+      const k = b.dataset.k;
+      b.addEventListener('pointerdown', e => { e.preventDefault(); audio(); b.classList.add('on'); if (state !== 'play') { confirmAction(); return; } touchHeld[k] = true; });
+      const up = () => { b.classList.remove('on'); touchHeld[k] = false; };
+      b.addEventListener('pointerup', up); b.addEventListener('pointercancel', up); b.addEventListener('pointerleave', up);
+    });
+  }
+  function readInput() {
+    for (const k in held) {
+      held[k] = kbHeld[k] || touchHeld[k] || padHeld[k];
+      pressed[k] = held[k] && !prev[k]; released[k] = !held[k] && prev[k];
+    }
+    prev = { ...held };
+  }
+
+  /* ---------- эффекты ---------- */
+  let particles = [], popups = [], shakeAmp = 0, flashA = 0, flashCol = '255,255,255', hitstop = 0;
+  const toArr = c => Array.isArray(c) ? c : [c || '#ffffff'];
+  function burst(x, y, o = {}) {
+    const n = Math.round((o.count == null ? 16 : o.count) * g.cfg.juice), cols = toArr(o.colors || o.color);
+    for (let i = 0; i < n && particles.length < 1500; i++) {
+      const a = o.angle != null ? o.angle + (Math.random() - 0.5) * (o.spread == null ? 1 : o.spread) : Math.random() * 6.2832;
+      const sp = (o.speed || 220) * (0.3 + Math.random() * 0.9), life = (o.life || 0.6) * (0.5 + Math.random() * 0.7);
+      particles.push({ x, y, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, life, max: life, size: (o.size || 4) * (0.6 + Math.random() * 0.8), color: cols[Math.floor(Math.random() * cols.length)], gy: o.gravity || 0, drag: o.drag == null ? 2 : o.drag });
+    }
+  }
+  function popup(x, y, text, color = '#ffffff', size = 18) { popups.push({ x, y, text: String(text), color, size, t: 0.9, max: 0.9 }); }
+
+  /* ---------- API для игры ---------- */
+  const g = {
+    W: LW, H: LH, t: 0, dt: 0, state: {}, cfg: {}, input: held, pressed, released,
+    score: 0, lives: 3, invuln: 0, best: 0, palette: {},
+    addScore(n, x, y) { g.score += n; if (x != null && y != null) popup(x, y, (n > 0 ? '+' : '') + n, g.palette.accent || '#ffe08a'); },
+    hurt(x, y) {
+      if (g.invuln > 0 || state !== 'play') return false;
+      g.lives--; g.invuln = 1.2; hitstop = 0.08; tele.hurts++;
+      g.shake(14); g.flash('#ff4d5e', 0.35); sfx.hit(); rumble(250, 0.9);
+      if (x != null) burst(x, y, { count: 22, speed: 320, colors: ['#ff4d5e', '#ffb35c', '#ffffff'] });
+      if (g.lives <= 0) g.gameOver();
+      return true;
+    },
+    gameOver(text) { if (state === 'play') endGame(text); },
+    win(text) { if (state === 'play') { sfx.win(); endGame(text || 'Победа!', true); } },
+    burst, popup,
+    shake(a = 8) { shakeAmp = Math.max(shakeAmp, a); },
+    flash(color = '#ffffff', a = 0.3) { const h = String(color).replace('#', ''); if (h.length === 6) { const n = parseInt(h, 16); flashCol = `${n >> 16},${(n >> 8) & 255},${n & 255}`; } flashA = Math.max(flashA, a); },
+    sfx, tone, noise, rumble,
+    blink() { return g.invuln > 0 && Math.floor(g.invuln * 16) % 2 === 0; },
+    rand: (a = 0, b = 1) => a + Math.random() * (b - a),
+    randInt: (a, b) => Math.floor(a + Math.random() * (b - a + 1)),
+    pick: arr => arr[Math.floor(Math.random() * arr.length)],
+    clamp: (v, a, b) => Math.max(a, Math.min(b, v)),
+    lerp: (a, b, k) => a + (b - a) * k,
+    dist: (a, b) => Math.hypot(a.x - b.x, a.y - b.y),
+    circleHit: (a, b) => Math.hypot(a.x - b.x, a.y - b.y) < (a.r || 0) + (b.r || 0),
+    rectHit: (a, b) => a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y,
+    text(str, x, y, o = {}) {
+      ctx.save(); ctx.font = `${o.weight || 700} ${o.size || 18}px ${o.font || 'system-ui, sans-serif'}`;
+      ctx.textAlign = o.align || 'left'; ctx.textBaseline = o.baseline || 'alphabetic';
+      ctx.fillStyle = o.color || '#ffffff'; ctx.fillText(String(str), x, y); ctx.restore();
+    },
+    count(name, n = 1) { tele.custom[name] = (tele.custom[name] || 0) + n; },
+  };
+
+  /* ---------- телеметрия ---------- */
+  let tele = null;
+  function resetTele() { tele = { held: { left: 0, right: 0, up: 0, down: 0, a: 0, b: 0 }, presses: { left: 0, right: 0, up: 0, down: 0, a: 0, b: 0 }, time: 0, hurts: 0, custom: {} }; }
+
+  /* ---------- безопасный вызов кода игры ---------- */
+  function call(name, ...args) {
+    if (errored || !G || typeof G[name] !== 'function') return;
+    try { G[name](...args); }
+    catch (e) { fail(`в функции ${name}()`, e); }
+  }
+  function fail(where, e) {
+    errored = true; state = 'menu';
+    const msg = (e && e.message) || String(e);
+    const box = $('#errBox'); box.hidden = false;
+    box.innerHTML = `<b>Ошибка в коде игры ${where}:</b> ${escapeHtml(msg)}<br>Нажми в уроке «Починить игру», Qwen увидит эту ошибку.`;
+    post({ type: 'error', where, message: msg, stack: String((e && e.stack) || '').split('\n').slice(0, 4).join('\n') });
+  }
+  const escapeHtml = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+  window.addEventListener('error', e => { if (!errored) fail('при загрузке', e.error || e.message); });
+
+  /* ---------- экраны ---------- */
+  const NAMES = {
+    kb: { move: '<kbd>← →</kbd> или <kbd>A D</kbd>', move4: '<kbd>стрелки</kbd> или <kbd>WASD</kbd>', a: '<kbd>Пробел</kbd>', b: '<kbd>Shift</kbd> или <kbd>X</kbd>' },
+    pad: { move: '<kbd>Стик / крестовина</kbd>', move4: '<kbd>Стик / крестовина</kbd>', a: '<kbd>A</kbd>', b: '<kbd>B</kbd>' },
+  };
+  function renderControls() {
+    if (!G) return;
+    const N = padMode ? NAMES.pad : NAMES.kb;
+    const rows = (G.controls || []).map(c => `<div>${N[c.input] || ''} ${escapeHtml(c.text || '')}</div>`);
+    rows.push(padMode ? '<div><kbd>Select</kbd>ручки · <kbd>Start</kbd>пауза</div>' : '<div><kbd>Tab</kbd>ручки · <kbd>P</kbd>пауза</div>');
+    $('#controls').innerHTML = rows.join('');
+  }
+  function confirmAction() {
+    audio();
+    if (errored) return;
+    if (state === 'menu') startGame();
+    else if (state === 'over' && overReady) startGame();
+    else if (paused) setPause(false);
+  }
+  let overReady = false;
+  function startGame() {
+    if (errored || !G) return;
+    state = 'play'; paused = false; overReady = false;
+    g.t = 0; g.score = 0; g.lives = 3; g.invuln = 0; g.state = {};
+    particles = []; popups = []; resetTele();
+    $('#startScreen').hidden = true; $('#overScreen').hidden = true; $('#pauseScreen').hidden = true;
+    call('start', g);
+    post({ type: 'start' });
+  }
+  function endGame(text, won) {
+    state = 'over';
+    if (!won) { sfx.lose(); g.shake(10); }
+    const s = Math.floor(g.score);
+    if (s > g.best) { g.best = s; store.set('lab-best-' + (G.title || ''), String(s)); }
+    $('#stScore').textContent = s; $('#stTime').textContent = Math.floor(tele.time); $('#stBest').textContent = g.best;
+    $('#overTitle').textContent = text || 'Конец партии';
+    $('#overEyebrow').textContent = won ? 'Победа' : 'Игра окончена';
+    let note = '';
+    const tm = Math.max(0.1, tele.time), pct = k => Math.round(tele.held[k] / tm * 100);
+    const lab = { a: 'A', b: 'B' };
+    const parts = (G.controls || []).filter(c => lab[c.input]).map(c => `<b>${escapeHtml(c.text || lab[c.input])}</b> (${lab[c.input]}) — ${pct(c.input)}% времени`);
+    if (parts.length && tele.time > 2) note = 'Телеметрия, сколько кнопка была зажата: ' + parts.join(', ') + '.';
+    if (G && typeof G.overNote === 'function') { try { const x = G.overNote(g, tele); if (x) note += (note ? '<br>' : '') + x; } catch (e) {} }
+    $('#overNote').innerHTML = note; $('#overNote').hidden = !note;
+    setTimeout(() => { $('#overScreen').hidden = false; overReady = true; }, 700);
+    post({ type: 'gameover', score: s, time: Math.round(tele.time * 10) / 10, won: !!won, telemetry: tele });
+  }
+  function setPause(v) {
+    if (state !== 'play') return;
+    paused = v; $('#pauseScreen').hidden = !v;
+    if (v) for (const k in kbHeld) kbHeld[k] = false;
+  }
+  function toggleMute() { muted = !muted; $('#muteBtn').setAttribute('aria-pressed', String(muted)); $('#muteBtn').textContent = muted ? 'Без звука · M' : 'Звук · M'; }
+
+  /* ---------- ручки ---------- */
+  function fmtK(k, v) { const m = META[k]; return m && m.names ? (m.names[Math.round(v)] || String(v)) : fmt(v, m ? m.step : 1); }
+  function fmt(v, st) { return st >= 1 ? String(Math.round(v)) : st >= 0.1 ? Number(v).toFixed(1) : Number(v).toFixed(2); }
+  function buildKnobs() {
+    const box = $('#knobs'); box.innerHTML = '';
+    Object.keys(META).forEach(k => {
+      const m = META[k], id = 'k-' + k.replace(/[^a-zA-Z0-9_-]/g, '');
+      const w = document.createElement('div'); w.className = 'knob';
+      w.innerHTML = `<label for="${id}">${escapeHtml(m.label || k)}</label><output id="${id}-o"></output><input type="range" id="${id}" min="${m.min}" max="${m.max}" step="${m.step}">`;
+      box.appendChild(w);
+      const inp = w.querySelector('input');
+      const sync = () => { inp.value = g.cfg[k]; w.querySelector('output').textContent = fmtK(k, g.cfg[k]); w.classList.toggle('changed', Math.abs(g.cfg[k] - DEFAULTS[k]) > 1e-9); };
+      inp.addEventListener('input', () => { g.cfg[k] = +inp.value; sync(); $('#copyBox').hidden = true; });
+      inp.addEventListener('change', () => inp.blur());
+      w._sync = sync; sync();
+    });
+  }
+  function buildPresets() {
+    const pr = $('#presets'); pr.innerHTML = '';
+    const P = Object.assign({ 'Как задумано': {} }, (G && G.presets) || {});
+    for (const name of Object.keys(P)) {
+      const b = document.createElement('button'); b.type = 'button'; b.className = 'ghost'; b.textContent = name;
+      b.addEventListener('click', () => { Object.assign(g.cfg, DEFAULTS, P[name]); syncKnobs(); call('onPreset', g, name); b.blur(); });
+      pr.appendChild(b);
+    }
+  }
+  function syncKnobs() { document.querySelectorAll('.knob').forEach(w => w._sync && w._sync()); }
+  function togglePanel(force) { const p = $('#panel'), open = force != null ? force : p.hidden; p.hidden = !open; $('#knobsBtn').setAttribute('aria-pressed', String(open)); }
+  $('#knobsBtn').addEventListener('click', e => { togglePanel(); e.currentTarget.blur(); });
+  $('#muteBtn').addEventListener('click', e => { toggleMute(); e.currentTarget.blur(); });
+  $('#resetBtn').addEventListener('click', () => { Object.assign(g.cfg, DEFAULTS); syncKnobs(); });
+  $('#copyBtn').addEventListener('click', e => {
+    const lines = Object.keys(META).map(k => `  ${k}: ${fmt(g.cfg[k], META[k].step)}, // ${META[k].label || ''}`);
+    const txt = 'const CONFIG = {\n' + lines.join('\n') + '\n};', box = $('#copyBox'), b = e.currentTarget;
+    const show = () => { box.value = txt; box.hidden = false; box.select(); b.textContent = 'Выдели и скопируй'; };
+    try { navigator.clipboard.writeText(txt).then(() => { b.textContent = 'Скопировано'; setTimeout(() => { b.textContent = 'Скопировать CONFIG'; }, 1500); }, show); } catch (err) { show(); }
+  });
+  $('#startBtn').addEventListener('click', () => { audio(); startGame(); });
+  $('#againBtn').addEventListener('click', () => startGame());
+  $('#resumeBtn').addEventListener('click', () => setPause(false));
+  $('#overKnobs').addEventListener('click', () => togglePanel(true));
+  document.addEventListener('visibilitychange', () => { if (document.hidden && state === 'play') setPause(true); });
+
+  /* ---------- размер ---------- */
+  function resize() {
+    const r = stage.getBoundingClientRect();
+    dpr = Math.min(2, window.devicePixelRatio || 1);
+    cv.width = Math.max(1, Math.round(r.width * dpr)); cv.height = Math.max(1, Math.round(r.height * dpr));
+    sc = Math.min(r.width / LW, r.height / LH); ox = (r.width - LW * sc) / 2; oy = (r.height - LH * sc) / 2;
+  }
+  addEventListener('resize', resize);
+
+  /* ---------- цикл ---------- */
+  let last = 0;
+  function frame(now) {
+    const dt = Math.min(0.033, Math.max(0, (now - last) / 1000)); last = now;
+    pollPad(); readInput();
+    if (state === 'play' && !paused && !errored) {
+      if (hitstop > 0) hitstop -= dt;
+      else {
+        g.t += dt; g.dt = dt; tele.time += dt;
+        for (const k in held) { if (held[k]) tele.held[k] += dt; if (pressed[k]) tele.presses[k]++; }
+        call('update', g, dt);
+        g.invuln = Math.max(0, g.invuln - dt);
+      }
+    }
+    if (!paused) {
+      for (const p of particles) { const k = Math.max(0, 1 - p.drag * dt); p.vx *= k; p.vy *= k; p.vy += p.gy * dt; p.x += p.vx * dt; p.y += p.vy * dt; p.life -= dt; }
+      particles = particles.filter(p => p.life > 0);
+      for (const p of popups) { p.t -= dt; p.y -= 32 * dt; }
+      popups = popups.filter(p => p.t > 0);
+      shakeAmp = Math.max(0, shakeAmp * (1 - dt * 9)); flashA = Math.max(0, flashA - dt * 1.8);
+    }
+    draw();
+    requestAnimationFrame(frame);
+  }
+  function draw() {
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.fillStyle = '#04060d'; ctx.fillRect(0, 0, cv.width, cv.height);
+    ctx.setTransform(dpr * sc, 0, 0, dpr * sc, dpr * ox, dpr * oy);
+    ctx.save();
+    ctx.beginPath(); ctx.rect(0, 0, LW, LH); ctx.clip();
+    ctx.fillStyle = g.palette.bg || '#0b1020'; ctx.fillRect(0, 0, LW, LH);
+    const s = shakeAmp * g.cfg.shake;
+    ctx.translate((Math.random() * 2 - 1) * s, (Math.random() * 2 - 1) * s);
+    ctx.save(); call('draw', g, ctx); ctx.restore();
+    for (const p of particles) { ctx.globalAlpha = Math.max(0, p.life / p.max); ctx.fillStyle = p.color; ctx.fillRect(p.x - p.size / 2, p.y - p.size / 2, p.size, p.size); }
+    ctx.globalAlpha = 1;
+    ctx.textAlign = 'center'; ctx.textBaseline = 'alphabetic';
+    for (const p of popups) { ctx.globalAlpha = Math.min(1, p.t / p.max * 1.6); ctx.font = `800 ${p.size}px system-ui, sans-serif`; ctx.fillStyle = 'rgba(0,0,0,.6)'; ctx.fillText(p.text, p.x + 1.5, p.y + 1.5); ctx.fillStyle = p.color; ctx.fillText(p.text, p.x, p.y); }
+    ctx.globalAlpha = 1;
+    ctx.restore();
+    if (state === 'play' || state === 'over') hud();
+    if (flashA > 0) { ctx.fillStyle = `rgba(${flashCol},${flashA})`; ctx.fillRect(0, 0, LW, LH); }
+  }
+  function hud() {
+    ctx.save();
+    ctx.fillStyle = 'rgba(4,6,13,.6)'; ctx.fillRect(8, 8, 250, 30);
+    ctx.font = '800 16px system-ui, sans-serif'; ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
+    ctx.fillStyle = '#ffffff'; ctx.fillText('ОЧКИ ' + String(Math.floor(g.score)).padStart(5, '0'), 16, 23);
+    let x = 150;
+    for (let i = 0; i < Math.max(0, Math.min(9, g.lives)); i++) { ctx.fillStyle = g.palette.accent || '#7cf5a8'; ctx.fillRect(x, 17, 11, 12); x += 15; }
+    ctx.restore();
+  }
+
+  /* ---------- запуск ---------- */
+  window.__labBoot = function () {
+    try {
+      G = (typeof GAME !== 'undefined') ? GAME : (window.GAME || null);
+    } catch (e) { G = null; }
+    resize(); resetTele();
+    if (!G || typeof G !== 'object') { if (!errored) fail('при загрузке', new Error('не найден объект GAME')); requestAnimationFrame(t => { last = t; frame(t); }); return; }
+    g.palette = Object.assign({ bg: '#0b1020', accent: '#7cf5a8' }, G.palette || {});
+    if (g.palette.accent) { document.documentElement.style.setProperty('--accent', g.palette.accent); }
+    const conf = Object.assign({}, G.config || {}, ENGINE_KNOBS);
+    Object.keys(conf).forEach(k => {
+      const c = conf[k];
+      if (c && typeof c === 'object' && typeof c.value === 'number') {
+        const span = Math.abs(c.value) || 1;
+        META[k] = { names: Array.isArray(c.names) ? c.names : null, label: c.label || k, min: typeof c.min === 'number' ? c.min : 0, max: typeof c.max === 'number' ? c.max : span * 3, step: typeof c.step === 'number' ? c.step : (span >= 10 ? 1 : 0.05) };
+        DEFAULTS[k] = c.value;
+      } else if (typeof c === 'number') { META[k] = { label: k, min: 0, max: Math.abs(c) * 3 || 1, step: Math.abs(c) >= 10 ? 1 : 0.05 }; DEFAULTS[k] = c; }
+    });
+    g.cfg = Object.assign({}, DEFAULTS);
+    usesMove4 = (G.controls || []).some(c => c.input === 'move4');
+    g.best = +store.get('lab-best-' + (G.title || '')) || 0;
+    document.title = G.title || 'Игра';
+    $('#gTitle').textContent = G.title || 'Игра';
+    $('#gSub').textContent = G.subtitle || '';
+    const dec = Array.isArray(G.decisions) ? G.decisions : [];
+    $('#decisions').innerHTML = dec.map(d => `<li>${escapeHtml(d)}</li>`).join('');
+    $('#decBox').hidden = !dec.length;
+    if (G.author) $('#eyebrow').textContent = 'Лаборатория игр · ' + G.author;
+    setPadMode(true); setPadMode(false);
+    buildKnobs(); buildPresets(); buildTouch();
+    if (!errored) { g.state = {}; call('start', g); }
+    post({ type: 'ready', title: G.title, decisions: dec });
+    requestAnimationFrame(t => { last = t; frame(t); });
+  };
+})();
+</script>
+<script>
+const RULES = ['Без цены (версия 1)', 'Перегрев тормоза', 'Множитель только на газу', 'Растущая минимальная скорость', 'Награда за смелость'];
+const CHANNELS = [
+  { name: 'Синтвейв', sky: ['#1a0533', '#5b1a6e'], grid: '#ff4fd8', sun: '#ffb547', wall: '#00e5ff' },
+  { name: 'Ночные новости', sky: ['#05122b', '#123a6b'], grid: '#4fa3ff', sun: '#e9f0ff', wall: '#ffd23f' },
+  { name: 'Мультики', sky: ['#0b2a1a', '#1f6b45'], grid: '#7cf5a8', sun: '#fff27a', wall: '#ff6b8b' },
+  { name: 'Помехи', sky: ['#141414', '#3a3a46'], grid: '#c8c8d8', sun: '#ff5d6e', wall: '#b6ff3b' },
+];
+const PY = 270, PX = 220, PR = 13;
+
+const GAME = {
+  title: 'Самолётик в телевизоре 2',
+  subtitle: 'Только газ и тормоз. Каждые 10 секунд телевизор переключает канал. Версия 2: у тормоза появилась цена.',
+  author: 'версия 2',
+  controls: [
+    { input: 'a', text: 'газ' },
+    { input: 'b', text: 'тормоз' },
+  ],
+  decisions: [
+    'Чувство: азарт «проскочу в щель или нет» и встряска при смене канала.',
+    'Честность: стена помех бьёт ровно там, где нарисована; смену канала объявляет отсчёт.',
+    'Выбор: газ или тормоз. В версии 2 тормоз стоит денег, поэтому выбор настоящий.',
+  ],
+  palette: { bg: '#1a0533', accent: '#ff4fd8' },
+  config: {
+    rule: { value: 1, min: 0, max: 4, step: 1, names: RULES, label: 'Цена тормоза (правило версии 2)' },
+    cruise: { value: 260, min: 120, max: 450, step: 10, label: 'Скорость без кнопок' },
+    maxSpeed: { value: 540, min: 300, max: 800, step: 10, label: 'Максимальная скорость' },
+    minSpeed: { value: 110, min: 40, max: 300, step: 10, label: 'Минимальная скорость' },
+    accel: { value: 420, min: 100, max: 900, step: 10, label: 'Газ, разгон' },
+    brake: { value: 520, min: 100, max: 1000, step: 10, label: 'Тормоз, замедление' },
+    gateEvery: { value: 430, min: 250, max: 800, step: 10, label: 'Расстояние между стенами' },
+    gapSize: { value: 150, min: 90, max: 260, step: 5, label: 'Щель в стене, высота' },
+    swing: { value: 150, min: 0, max: 220, step: 5, label: 'Щель гуляет вверх-вниз на' },
+    swingSpeed: { value: 1.4, min: 0.2, max: 3.5, step: 0.05, label: 'Скорость щели' },
+    channelTime: { value: 10, min: 4, max: 30, step: 1, label: 'Смена канала раз в, с' },
+    heatRate: { value: 45, min: 10, max: 120, step: 1, label: 'Перегрев: нагрев за секунду, %' },
+    coolRate: { value: 30, min: 5, max: 100, step: 1, label: 'Перегрев: остывание за секунду, %' },
+    lockTime: { value: 1.6, min: 0.3, max: 4, step: 0.1, label: 'Перегрев: тормоз отключён, с' },
+    mulGrow: { value: 0.45, min: 0.1, max: 2, step: 0.05, label: 'Множитель: рост на газу за секунду' },
+    maxMul: { value: 5, min: 2, max: 10, step: 1, label: 'Множитель: потолок' },
+    minGrow: { value: 5, min: 1, max: 20, step: 0.5, label: 'Мин. скорость растёт за секунду на' },
+    braveSpeed: { value: 400, min: 250, max: 700, step: 10, label: 'Смелость: скорость пролёта от' },
+    braveBonus: { value: 60, min: 10, max: 200, step: 5, label: 'Смелость: бонус за пролёт' },
+  },
+  presets: {
+    'Версия 1': { rule: 0 },
+    'Перегрев': { rule: 1 },
+    'Множитель': { rule: 2 },
+    'Мин. скорость': { rule: 3 },
+    'Смелость': { rule: 4 },
+    'Новичок': { gapSize: 190, swingSpeed: 1.0, cruise: 230 },
+  },
+
+  start(g) {
+    const s = g.state;
+    s.v = g.cfg.cruise; s.gates = []; s.ch = 0; s.chT = 0; s.heat = 0; s.lock = 0;
+    s.mul = 1; s.brave = 0; s.passed = 0; s.gridOff = 0; s.bob = 0; s.trail = [];
+    s.nextGateX = 760; g.palette.bg = CHANNELS[0].sky[0]; g.palette.accent = CHANNELS[0].grid;
+  },
+
+  minNow(g) {
+    const c = g.cfg;
+    if (Math.round(c.rule) !== 3) return c.minSpeed;
+    return Math.min(c.maxSpeed - 60, c.minSpeed + c.minGrow * g.t);
+  },
+  gap(g, gt) {
+    const c = g.cfg, s = g.state;
+    const chMul = 1 + 0.12 * s.ch;
+    const size = Math.max(90, c.gapSize - 6 * s.ch);
+    const cy = PY + c.swing * Math.sin(gt.phase + g.t * c.swingSpeed * chMul);
+    return { top: cy - size / 2, bot: cy + size / 2 };
+  },
+
+  update(g, dt) {
+    const c = g.cfg, s = g.state, rule = Math.round(c.rule);
+    const gas = g.input.a, brakeHeld = g.input.b;
+    // цена тормоза
+    let brake = brakeHeld;
+    if (rule === 1) {
+      if (s.lock > 0) { brake = false; s.lock -= dt; if (s.lock <= 0) s.heat = 55; }
+      else if (brakeHeld) {
+        s.heat += c.heatRate * dt;
+        if (s.heat >= 100) { s.heat = 100; s.lock = c.lockTime; g.sfx.explode(); g.shake(8); g.popup(PX, PY - 40, 'ПЕРЕГРЕВ', '#ff5d6e', 22); g.count('перегревов'); }
+      } else s.heat = Math.max(0, s.heat - c.coolRate * dt);
+    } else { s.heat = 0; s.lock = 0; }
+    if (rule === 2) {
+      if (gas && !brakeHeld) s.mul = Math.min(c.maxMul, s.mul + c.mulGrow * dt);
+      if (g.pressed.b && s.mul > 1.05) { g.popup(PX, PY - 40, 'множитель ×1', '#9aa3c7', 16); g.sfx.beep(); }
+      if (brakeHeld) s.mul = 1;
+    } else s.mul = 1;
+    // скорость
+    const minV = this.minNow(g);
+    if (gas) s.v += c.accel * dt;
+    else if (brake) s.v -= c.brake * dt;
+    else s.v += Math.sign(c.cruise - s.v) * Math.min(Math.abs(c.cruise - s.v), 160 * dt);
+    s.v = g.clamp(s.v, minV, c.maxSpeed);
+    // канал
+    s.chT += dt;
+    if (s.chT >= c.channelTime) {
+      s.chT = 0; s.ch++;
+      g.flash('#ffffff', 0.35); g.sfx.whoosh(); g.rumble(120, 0.4);
+      g.palette.bg = CHANNELS[s.ch % 4].sky[0]; g.palette.accent = CHANNELS[s.ch % 4].grid;
+    }
+    // мир
+    const dx = s.v * dt;
+    s.gridOff = (s.gridOff + dx) % 60;
+    s.nextGateX -= dx;
+    if (s.nextGateX <= g.W + 60) {
+      s.gates.push({ x: s.nextGateX, w: 46, phase: g.rand(0, 6.28), passed: false });
+      s.nextGateX += c.gateEvery;
+    }
+    for (const gt of s.gates) {
+      gt.x -= dx;
+      const gp = this.gap(g, gt);
+      // видно = правда: проверяем те же прямоугольники, что рисуем
+      const inX = PX + PR > gt.x && PX - PR < gt.x + gt.w;
+      if (inX && (PY - PR < gp.top || PY + PR > gp.bot)) {
+        if (g.hurt(PX, PY)) { s.v = Math.max(minV, s.v * 0.6); }
+      }
+      if (!gt.passed && gt.x + gt.w < PX - PR) {
+        gt.passed = true; s.passed++;
+        g.addScore(Math.round(10 * s.mul), PX, PY - 26);
+        g.sfx.coin();
+        if (rule === 4 && s.v >= c.braveSpeed) {
+          s.brave++; g.count('смелых пролётов');
+          g.addScore(Math.round(c.braveBonus), PX + 30, PY - 50);
+          g.popup(PX + 30, PY - 74, 'СМЕЛО!', '#ffb547', 22); g.burst(PX, PY, { count: 20, colors: ['#ffb547', '#ffffff'] });
+        }
+      }
+    }
+    s.gates = s.gates.filter(gt => gt.x > -80);
+    g.score += dx / 25 * s.mul;
+    // след
+    s.trail.push({ x: PX - 14, y: PY, a: 1 });
+    for (const p of s.trail) { p.x -= dx; p.a -= dt * 2.5; }
+    s.trail = s.trail.filter(p => p.a > 0 && p.x > -10);
+  },
+
+  draw(g, ctx) {
+    const s = g.state, c = g.cfg, rule = Math.round(c.rule);
+    const ch = CHANNELS[(s.ch || 0) % 4];
+    // небо
+    const gr = ctx.createLinearGradient(0, 0, 0, g.H);
+    gr.addColorStop(0, ch.sky[0]); gr.addColorStop(1, ch.sky[1]);
+    ctx.fillStyle = gr; ctx.fillRect(0, 0, g.W, g.H);
+    // солнце
+    ctx.save(); ctx.beginPath(); ctx.arc(700, 360, 120, Math.PI, 0); ctx.closePath(); ctx.clip();
+    ctx.fillStyle = ch.sun; ctx.globalAlpha = 0.85; ctx.fillRect(560, 230, 280, 140);
+    ctx.globalAlpha = 1; ctx.fillStyle = ch.sky[1];
+    for (let i = 0; i < 6; i++) ctx.fillRect(560, 300 + i * 11, 280, 2 + i * 1.2);
+    ctx.restore();
+    // сетка пола (декор, без урона)
+    ctx.strokeStyle = ch.grid; ctx.globalAlpha = 0.35; ctx.lineWidth = 1.5;
+    const hz = 360;
+    for (let i = -12; i <= 12; i++) { ctx.beginPath(); ctx.moveTo(g.W / 2 + i * 30, hz); ctx.lineTo(g.W / 2 + i * 160, g.H); ctx.stroke(); }
+    for (let k = 0; k < 8; k++) {
+      const z = ((k * 60 + 60 - (s.gridOff || 0)) % 480) / 480, y = hz + (g.H - hz) * z * z;
+      ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(g.W, y); ctx.stroke();
+    }
+    ctx.globalAlpha = 1;
+    if (!s.gates) return;
+    // стены помех: рисуем ровно зону урона
+    for (const gt of s.gates) {
+      const gp = this.gap(g, gt);
+      for (const [y0, y1] of [[-10, gp.top], [gp.bot, g.H + 10]]) {
+        if (y1 <= y0) continue;
+        ctx.fillStyle = 'rgba(10,10,20,.85)'; ctx.fillRect(gt.x, y0, gt.w, y1 - y0);
+        ctx.fillStyle = ch.wall;
+        for (let yy = y0; yy < y1; yy += 6) { ctx.globalAlpha = 0.25 + Math.random() * 0.5; ctx.fillRect(gt.x + Math.random() * 10, yy, gt.w - Math.random() * 20, 2); }
+        ctx.globalAlpha = 1; ctx.strokeStyle = ch.wall; ctx.lineWidth = 2; ctx.strokeRect(gt.x + 1, y0, gt.w - 2, y1 - y0);
+      }
+    }
+    // след и самолётик
+    for (const p of s.trail) { ctx.globalAlpha = p.a * 0.5; ctx.fillStyle = ch.grid; ctx.fillRect(p.x - 3, p.y - 2, 6, 4); }
+    ctx.globalAlpha = 1;
+    if (!g.blink()) {
+      ctx.save(); ctx.translate(PX, PY); ctx.scale(1.25, 1.25);
+      ctx.fillStyle = '#ffffff'; ctx.strokeStyle = ch.grid; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.moveTo(15, 0); ctx.lineTo(-11, -12); ctx.lineTo(-5, 0); ctx.lineTo(-11, 12); ctx.closePath(); ctx.fill(); ctx.stroke();
+      if (g.input.a) { ctx.fillStyle = '#ffb547'; ctx.fillRect(-16 - Math.random() * 8, -3, 10, 6); }
+      if (g.input.b && !(rule === 1 && s.lock > 0)) { ctx.fillStyle = '#4fa3ff'; ctx.fillRect(10, -14, 4, 6); ctx.fillRect(10, 8, 4, 6); }
+      ctx.restore();
+    }
+    // приборы
+    const bx = 16, by = g.H - 40, bw = 260;
+    ctx.fillStyle = 'rgba(4,6,13,.7)'; ctx.fillRect(bx - 8, by - 26, bw + 16, 52);
+    g.text('СКОРОСТЬ', bx, by - 10, { size: 11, color: '#9aa3c7' });
+    ctx.fillStyle = '#2a3560'; ctx.fillRect(bx, by, bw, 10);
+    const k = v => bx + bw * g.clamp(v / c.maxSpeed, 0, 1);
+    ctx.fillStyle = ch.grid; ctx.fillRect(bx, by, k(s.v) - bx, 10);
+    const mn = this.minNow(g);
+    ctx.fillStyle = '#ff5d6e'; ctx.fillRect(k(mn) - 1, by - 4, 3, 18);
+    if (rule === 4) { ctx.fillStyle = '#ffb547'; ctx.fillRect(k(c.braveSpeed) - 1, by - 4, 3, 18); g.text('смело →', k(c.braveSpeed) + 4, by - 10, { size: 11, color: '#ffb547' }); }
+    if (rule === 1) {
+      const hx = bx + bw + 24;
+      ctx.fillStyle = 'rgba(4,6,13,.7)'; ctx.fillRect(hx - 8, by - 26, 150, 52);
+      g.text(s.lock > 0 ? 'ТОРМОЗ ОТКЛЮЧЁН' : 'НАГРЕВ ТОРМОЗА', hx, by - 10, { size: 11, color: s.lock > 0 ? '#ff5d6e' : '#9aa3c7' });
+      ctx.fillStyle = '#2a3560'; ctx.fillRect(hx, by, 134, 10);
+      ctx.fillStyle = s.heat > 75 ? '#ff5d6e' : '#ffb547'; ctx.fillRect(hx, by, 134 * s.heat / 100, 10);
+    }
+    if (rule === 2) g.text('×' + s.mul.toFixed(1), bx + bw + 24, by + 10, { size: 30, color: s.mul > 1.05 ? '#ffb547' : '#9aa3c7', weight: 900 });
+    // канал и отсчёт
+    g.text('КАНАЛ ' + ((s.ch || 0) + 1) + ' · ' + ch.name.toUpperCase(), g.W / 2, 30, { size: 14, color: '#ffffff', align: 'center' });
+    const left = c.channelTime - s.chT;
+    if (left < 1.5) g.text('смена канала через ' + Math.ceil(left * 2) / 2, g.W / 2, 56, { size: 18, color: '#ffb547', align: 'center' });
+    g.text('Цена тормоза: ' + RULES[rule], g.W - 16, g.H - 14, { size: 12, color: '#9aa3c7', align: 'right' });
+  },
+
+  overNote(g, tele) {
+    const s = g.state, rule = Math.round(g.cfg.rule);
+    let t = `Правило: <b>${RULES[rule]}</b>. Стен пройдено: ${s.passed}, каналов: ${(s.ch || 0) + 1}.`;
+    if (rule === 1) t += ` Перегревов: ${tele.custom['перегревов'] || 0}.`;
+    if (rule === 4) t += ` Смелых пролётов: ${s.brave}.`;
+    return t;
+  },
+};
+
+</script>
+<script>window.__labBoot();</script>
+

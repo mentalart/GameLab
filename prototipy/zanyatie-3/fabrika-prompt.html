@@ -1,0 +1,217 @@
+<title>Фабрика MDA</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Unbounded:wght@600;800&family=Golos+Text:wght@400;600;700&display=swap">
+<style>
+/* Фабрика: ученик собирает замысел из своих слов и карт, на выходе промпт ИГРА для 3D-игры */
+:root{
+  --bg:#0d0b1a; --panel:#17142b; --line:#2f2a55; --ink:#f4f0ff; --muted:#a49cc9;
+  --hot:#ffcf3a; --good:#45e39a; --dice:#ff7ad9;
+  --display:'Unbounded',system-ui,sans-serif; --body:'Golos Text',system-ui,sans-serif;
+  color-scheme:dark;
+}
+body{background:var(--bg);color:var(--ink);font:16px/1.45 var(--body);margin:0}
+.wrap{max-width:900px;margin:0 auto;padding-block:20px 120px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));display:flex;flex-direction:column;gap:14px}
+.brand{font:800 13px var(--display);letter-spacing:.12em;text-transform:uppercase;color:var(--hot)}
+h1{font:800 clamp(24px,5vw,38px)/1.1 var(--display);margin:0}
+.lead{margin:0;color:var(--muted)}
+.hint{font-size:13px;color:var(--muted)}
+kbd{font:600 12px ui-monospace,Consolas,monospace;border:1px solid var(--line);border-bottom-width:2px;border-radius:5px;padding:1px 6px;background:var(--bg);color:var(--ink)}
+.sec{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:14px 14px 8px;display:flex;flex-direction:column;gap:4px}
+.sec h2{font:800 15px var(--display);margin:0 0 2px;color:var(--hot)}
+.sec>p{margin:0 0 6px;font-size:13.5px;color:var(--muted)}
+.frow{display:grid;grid-template-columns:minmax(0,170px) minmax(0,1fr) auto;gap:8px;align-items:start;padding:6px;border-radius:12px;border:1px solid transparent}
+.frow.pf{border-color:var(--hot);background:rgba(255,207,58,.05)}
+.lb{font-size:13.5px;font-weight:700;padding-top:8px}
+textarea{width:100%;box-sizing:border-box;resize:vertical;background:var(--bg);color:var(--ink);border:1px solid var(--line);border-radius:10px;font:15px/1.4 var(--body);padding:8px 10px;min-height:40px}
+textarea.dice{border-color:var(--dice);color:#ffd9f3}
+.chips{display:flex;flex-wrap:wrap;gap:6px}
+.chip{font:600 13.5px var(--body);color:var(--ink);background:var(--bg);border:2px solid var(--line);border-radius:999px;padding:6px 12px;cursor:pointer}
+.chip[aria-pressed="true"]{border-color:var(--hot);background:#2a2450}
+.chip.dice[aria-pressed="true"]{border-color:var(--dice);background:#3a1d3a}
+.chip.pf{outline:2px solid var(--ink);outline-offset:2px}
+.die{width:46px;height:40px;border-radius:10px;border:1px solid var(--dice);background:rgba(255,122,217,.1);font-size:20px;cursor:pointer;color:var(--ink)}
+.desc{grid-column:2/-1;margin:0;font-size:13px;color:var(--muted)}
+.tag{grid-column:2/-1;font-size:12px;color:var(--dice)}
+pre{white-space:pre-wrap;background:var(--bg);border:1px solid var(--line);border-radius:12px;padding:12px;margin:0;font:13px/1.5 ui-monospace,Consolas,monospace}
+.bar{position:fixed;left:0;right:0;bottom:0;background:rgba(13,11,26,.94);border-top:1px solid var(--line);padding:10px max(16px,env(safe-area-inset-left,0px)) calc(10px + env(safe-area-inset-bottom,0px));display:flex;gap:10px;flex-wrap:wrap;align-items:center;justify-content:center}
+.btn{font:800 15px var(--display);border:0;border-radius:12px;padding:12px 18px;cursor:pointer;background:var(--hot);color:#1a1300}
+.ghost{font:700 14px var(--body);border:1px solid var(--line);border-radius:12px;padding:11px 14px;cursor:pointer;background:var(--panel);color:var(--ink)}
+.meter{font-size:13.5px;color:var(--muted);font-variant-numeric:tabular-nums}
+.meter b{color:var(--good)}
+button:focus-visible,textarea:focus-visible{outline:2px solid var(--ink);outline-offset:2px}
+@media (max-width:620px){.frow{grid-template-columns:minmax(0,1fr) auto}.lb{grid-column:1/-1;padding:0}.desc,.tag{grid-column:1/-1}}
+</style>
+
+<div class="wrap">
+  <div class="brand">Занятие 3 · чекпоинт 1</div>
+  <h1>Фабрика MDA</h1>
+  <p class="lead">Собери замысел своей игры из своих слов и карт. По нему Qwen сгенерирует яркую лоупольную 3D-игру, и дальше мы разберём механику, динамику и эстетику уже на ней. У каждого в классе получится своя игра.</p>
+  <div class="hint" id="hint"></div>
+  <div id="rows"></div>
+  <section class="sec">
+    <h2>6. Промпт ИГРА для Qwen</h2>
+    <p>Собирается сам из твоих полей. Всё, что выпало на кубике и не тронуто, уходит с пометкой [кубик].</p>
+    <pre id="prompt"></pre>
+  </section>
+</div>
+<div class="bar">
+  <button class="btn" id="copy" type="button">Скопировать промпт</button>
+  <button class="ghost" id="all" type="button">Кубики на пустые</button>
+  <span class="meter" id="meter"></span>
+</div>
+
+<script>
+const $ = s => document.querySelector(s);
+const C = (n, d) => ({ n, d });
+const CARDS = {
+  look: ['🦊 Лис', '🐉 Дракончик', '🤖 Робот', '👻 Призрак', '🐝 Пчела', '🧙 Маг', '🐱 Кот', '🚀 Ракета', '🐎 Нарт-всадник', '🐢 Черепаха', '⛄ Снеговик', '🐻 Медведь', '🦉 Сова', '🐸 Лягушка'].map(n => C(n)),
+  pal: [C('Лаго-Наки', 'зелёные луга, белые скалы, тёплое солнце'), C('Неон', 'тёмная ночь, розовые и голубые светящиеся края'), C('Закат', 'фиолетовое небо, оранжевый свет, длинные тени'), C('Ночь', 'синяя темнота, луна, светлячки'), C('Конфетный', 'розовый, мятный, сливочный, всё мягкое'), C('Пустыня', 'песок, терракота, жаркое марево'), C('Ледник', 'голубой лёд, снег, северное сияние'), C('Подводный', 'бирюзовая вода, кораллы, пузыри'), C('Вулкан', 'чёрный камень, красная лава, искры'), C('Осенний лес', 'рыжие листья, туман, мох')],
+  music: ['Тишина и звуки мира', 'Мягкие ноты', 'Быстрый бит', 'Адыгские барабаны', 'Космический эмбиент', 'Чиптюн 8-бит', 'Эпический оркестр', 'Джаз с лапками'].map(n => C(n)),
+  camera: [C('Сверху под углом', 'видно всё поле, удобно планировать'), C('Из-за спины', 'видно, куда бежишь, но не видно, что сзади'), C('Сбоку', 'как в платформере: лево, право, прыжки'), C('Изометрия', 'аккуратная диорама под углом 45°')],
+  goal: [C('Собирать', 'на поле лежат цели, каждая даёт очки'), C('Охотиться', 'цели убегают, их надо догнать'), C('Найти выход', 'дверь каждый раз в новом месте, каждая следующая дальше'), C('Выжить', 'очки капают каждую секунду, продержись'), C('Доставить', 'взять груз и отнести на базу, с грузом ты медленнее'), C('Защитить', 'в центре что-то ценное, не дай угрозе до него дойти'), C('Гонка', 'пройти чекпоинты по кругу быстрее призрака своего рекорда'), C('Построить', 'собирать детали и ставить из них мост или башню')],
+  verb: [C('Рывок', 'короткий бросок, в рывке тебя нельзя ранить'), C('Прыжок', 'перепрыгнуть угрозу или забраться выше'), C('Щит', 'купол на секунду, долгая перезарядка'), C('Выстрел', 'снаряд туда, куда смотришь'), C('Магнит', 'пока держишь, цели летят к тебе, но ты медленнее'), C('Замедление', 'пока держишь, мир медленный, энергия кончается'), C('Телепорт', 'мгновенно на несколько шагов вперёд'), C('Ловушка', 'ставишь капкан, угроза в нём застревает'), C('Толчок', 'волна отталкивает всё вокруг')],
+  threat: [C('Охотники', 'враги бегут за героем, их всё больше'), C('Метеоры', 'падают с неба, тень показывает место за секунду'), C('Патрули', 'ходят по маршрутам, путь можно прочитать'), C('Сжатие', 'края поля горят и ползут к центру'), C('Поднимается лава', 'низины заливает, надо держаться выше'), C('Буря', 'ветер сносит героя и цели в одну сторону'), C('Босс', 'один большой враг с понятными атаками'), C('Никого', 'мирная игра без нападений')],
+  twist: [C('Без поворота', 'только то, что выше'), C('Жадность', 'цели подряд без удара дают множитель, но угрозы быстрее'), C('Тьма', 'свет вокруг героя гаснет, цели его возвращают'), C('Эхо', 'где ты был 3 с назад, ходит твой призрак'), C('Зеркало', 'каждые 12 с лево и право меняются местами'), C('День и ночь', 'каждые 20 с мир меняется, ночью угрозы другие'), C('Гравитация', 'иногда всё становится лёгким и летучим'), C('Всё растёт', 'с каждой целью герой больше и медленнее'), C('Одна жизнь', 'нет второго шанса, зато очки ×2')],
+  aim: [C('Ощущения', 'приятно двигаться, смотреть и слушать'), C('Фантазия', 'я кто-то другой в другом мире'), C('Повествование', 'со мной происходит история'), C('Вызов', 'трудно, но я справляюсь'), C('Общение', 'играю вместе с другими или против них'), C('Открытие', 'хочу узнать, что будет дальше'), C('Самовыражение', 'играю по-своему, в своём стиле'), C('Отдых', 'спокойно, можно не напрягаться')],
+};
+const DECK = {
+  name: ['Хычин-рывок', 'Ночной аул', 'Лис против метеоров', 'Тихий сбор', 'Огненное кольцо', 'Почта нартов', 'Пчела без паники', 'Последний светлячок', 'Снеговик в пустыне', 'Башня из облаков', 'Лава и пироги', 'Сова-курьер', 'Буря над Лаго-Наки', 'Кот, который спасал рыбу', 'Ледяной марафон', 'Робот ищет выход'],
+  hero: ['лис-почтальон', 'робот-пекарь', 'призрак из старой башни', 'пчела-курьер', 'юный нарт', 'котёнок-астронавт', 'черепаха-гонщица', 'снеговик, который боится солнца', 'медведь-пасечник', 'сова-библиотекарь', 'лягушка-фокусник', 'маленький дракон-повар', 'робот-садовник', 'девочка-изобретатель', 'старый горный пастух', 'светлячок-фонарщик'],
+  world: ['ночной аул', 'плато Лаго-Наки', 'неоновый рынок', 'облачная кухня', 'пещера Азиш-Тау', 'крыша небоскрёба', 'ледяная библиотека', 'подводный сад', 'остров на спине кита', 'пустынный караван-сарай', 'заброшенная фабрика игрушек', 'лес гигантских грибов', 'склон вулкана', 'парящие острова', 'станция на Луне', 'чайные террасы в горах'],
+  item: ['хычины', 'звёзды', 'письма', 'кристаллы', 'яблоки', 'искры', 'потерянные ноты', 'мёд', 'шестерёнки', 'светлячки', 'семена', 'ключи', 'рыбки', 'пироги', 'перья', 'капли росы'],
+  d1: () => [`Игрок чувствует: ${aimHint()}`, 'После каждой партии хочется сказать «ещё одну»', `Игрок переживает за героя: ${val('hero') || 'герой'} кажется живым`, 'Каждая удачная секунда звучит и выглядит как маленький праздник', 'Страшно, но интересно заглянуть дальше', 'Можно выдохнуть и просто смотреть, как красиво'],
+  d2: () => [threatHonest(), 'Всё, что может ранить, видно на экране заранее', 'Перезарядка глагола видна полоской у героя', 'Удар всегда объясняется: видно, что тебя задело', 'Правила одинаковые для героя и угроз', 'Опасность появляется только там, где её видно'].filter(Boolean),
+  d3: () => { const it = val('item') || 'цели', vb = (cardName('verb') || 'глагол').toLowerCase(); return [`Взять ${it} рядом с опасностью или обойти`, `Потратить ${vb} сейчас или приберечь`, `Остаться у края или выйти в центр за ${it}`, `Рискнуть ради множителя или сыграть надёжно`, 'Идти короткой опасной дорогой или длинной безопасной', 'Спасаться самому или спасти цель']; },
+};
+const HONEST = { 'Охотники': 'Враги появляются у края со вспышкой, а не рядом с героем', 'Метеоры': 'Тень показывает место удара заранее', 'Патрули': 'Маршрут патруля нарисован на земле', 'Сжатие': 'Огонь ползёт медленно, и его край хорошо виден', 'Поднимается лава': 'Уровень лавы виден на шкале, и он поднимается ровно', 'Буря': 'Направление ветра показывают летящие листья', 'Босс': 'Перед атакой босс замахивается и подсвечивает зону удара', 'Никого': 'На героя ничто не нападает исподтишка' };
+const ROWS = [
+  { k: 'name', t: 'text', label: 'Название игры', sec: ['1. Кто и где', 'Мир и герой. Это ещё не правила, но они задают, кем себя почувствует игрок.'] },
+  { k: 'hero', t: 'text', label: 'Кто герой' },
+  { k: 'look', t: 'chips', label: 'Облик героя' },
+  { k: 'world', t: 'text', label: 'Где всё происходит' },
+  { k: 'item', t: 'text', label: 'Что герой собирает, ловит или спасает' },
+  { k: 'pal', t: 'chips', label: 'Палитра мира', sec: ['2. Как выглядит и звучит', 'Игра будет лоупольной 3D: простые грани, яркие цвета, мягкий свет.'] },
+  { k: 'music', t: 'chips', label: 'Музыка' },
+  { k: 'camera', t: 'chips', label: 'Камера' },
+  { k: 'goal', t: 'chips', label: 'Цель', sec: ['3. Правила. Это механика (M)', 'Только механику ты задаёшь напрямую. Что будет делать игрок (динамика) и что он почувствует (эстетика), покажет игра.'] },
+  { k: 'verb', t: 'chips', label: 'Глагол на кнопке A' },
+  { k: 'threat', t: 'chips', label: 'Угроза' },
+  { k: 'twist', t: 'chips', label: 'Поворот' },
+  { k: 'aim', t: 'chips', label: 'Какое удовольствие хочешь подарить', sec: ['4. Цель по чувству. Это эстетика (A)', 'Для чувства нет ни карты правил, ни ручки. Его можно только вызвать механикой. Проверим, попадёшь ли.'] },
+  { k: 'd1', t: 'text', label: 'Решение 1 · Чувство', sec: ['5. Три решения', 'Что ты решил как дизайнер, своими словами.'] },
+  { k: 'd2', t: 'text', label: 'Решение 2 · Честность' },
+  { k: 'd3', t: 'text', label: 'Решение 3 · Выбор' },
+];
+const S = {}; ROWS.forEach(r => S[r.k] = r.t === 'text' ? { v: '', d: false } : { i: -1, d: false });
+const val = k => (S[k].v || '').trim();
+const cardName = k => S[k].i >= 0 ? CARDS[k][S[k].i].n : '';
+const aimHint = () => S.aim.i >= 0 ? CARDS.aim[S.aim.i].d : 'трудно, но я справляюсь';
+const threatHonest = () => HONEST[cardName('threat')] || HONEST['Охотники'];
+let fr = 0, fc = 0, pad = false, AC = null;
+function tone(f, d = 0.07, type = 'triangle', v = 0.07) { try { AC = AC || new (window.AudioContext || window.webkitAudioContext)(); const o = AC.createOscillator(), g = AC.createGain(), t = AC.currentTime; o.type = type; o.frequency.value = f; g.gain.setValueAtTime(v, t); g.gain.exponentialRampToValueAtTime(0.0001, t + d); o.connect(g); g.connect(AC.destination); o.start(t); o.stop(t + d + 0.02); } catch (e) {} }
+
+function render() {
+  const box = $('#rows'); box.innerHTML = ''; let sec = null;
+  ROWS.forEach((r, ri) => {
+    if (r.sec) { sec = document.createElement('section'); sec.className = 'sec'; sec.innerHTML = `<h2>${r.sec[0]}</h2><p>${r.sec[1]}</p>`; box.appendChild(sec); }
+    const w = document.createElement('div'); w.className = 'frow'; w.dataset.ri = ri; w.dataset.k = r.k;
+    w.innerHTML = `<div class="lb">${r.label}</div>` + (r.t === 'text' ? `<textarea rows="1" aria-label="${r.label}"></textarea>` : '<div class="chips"></div>') + `<button class="die" type="button" aria-label="Кубик: ${r.label}">🎲</button>` + (r.t === 'chips' ? '<p class="desc"></p>' : '') + '<div class="tag"></div>';
+    sec.appendChild(w);
+    w.querySelector('.die').onclick = () => { roll(r.k); fr = ri; focus(); };
+    if (r.t === 'text') { const ta = w.querySelector('textarea'); ta.oninput = () => { S[r.k] = { v: ta.value, d: false }; upd(r.k); prompt(); }; ta.onfocus = () => { fr = ri; focus(); }; }
+    upd(r.k);
+  });
+  prompt(); focus();
+}
+function upd(k) {
+  const w = document.querySelector(`.frow[data-k="${k}"]`), r = ROWS.find(x => x.k === k), v = S[k];
+  if (r.t === 'text') { const ta = w.querySelector('textarea'); if (ta.value !== v.v) ta.value = v.v; ta.classList.toggle('dice', v.d); }
+  else {
+    const L = CARDS[k], ch = w.querySelector('.chips');
+    ch.innerHTML = L.map((o, i) => `<button class="chip ${v.i === i && v.d ? 'dice' : ''}" type="button" aria-pressed="${v.i === i}" data-i="${i}">${o.n}</button>`).join('');
+    ch.querySelectorAll('.chip').forEach(b => b.onclick = () => { choose(k, +b.dataset.i, false); fr = +w.dataset.ri; fc = +b.dataset.i; focus(); });
+    w.querySelector('.desc').textContent = v.i >= 0 && L[v.i].d ? L[v.i].d : '';
+  }
+  w.querySelector('.tag').textContent = v.d ? '[кубик] выпало на кубике. Поменяй, и станет твоим' : '';
+}
+function choose(k, i, dice) { S[k] = { i, d: dice }; tone(560 + i * 40); upd(k); prompt(); }
+function roll(k) {
+  const r = ROWS.find(x => x.k === k);
+  if (r.t === 'text') { const deck = typeof DECK[k] === 'function' ? DECK[k]() : DECK[k]; let v, n = 0; do { v = deck[Math.floor(Math.random() * deck.length)]; } while (v === S[k].v && ++n < 12); S[k] = { v, d: true }; upd(k); tone(820, 0.06, 'square', 0.05); prompt(); }
+  else { const L = CARDS[k]; let i, n = 0; do { i = Math.floor(Math.random() * L.length); } while (i === S[k].i && ++n < 12); choose(k, i, true); }
+}
+const empty = k => S[k].v != null ? !S[k].v.trim() : S[k].i < 0;
+function fillEmpty() { ROWS.forEach(r => { if (empty(r.k)) roll(r.k); }); }
+const T = k => { const v = S[k]; if (v.v != null) return v.v.trim() ? v.v.trim() + (v.d ? ' [кубик]' : '') : '…'; return v.i >= 0 ? CARDS[k][v.i].n + (v.d ? ' [кубик]' : '') : '…'; };
+const D = k => S[k].i >= 0 && CARDS[k][S[k].i].d ? ` (${CARDS[k][S[k].i].d})` : '';
+function promptText() {
+  return `ИГРА: «${T('name')}»
+Герой: ${T('hero')}, облик: ${T('look')}. Мир: ${T('world')}. Герой собирает, ловит или спасает: ${T('item')}.
+Как выглядит: палитра ${T('pal')}${D('pal')}. Музыка: ${T('music')}. Камера: ${T('camera')}${D('camera')}.
+Механика: цель ${T('goal')}${D('goal')}. Кнопка A: ${T('verb')}${D('verb')}. Угроза: ${T('threat')}${D('threat')}. Поворот: ${T('twist')}${D('twist')}.
+Решения: 1) ${T('d1')}. 2) ${T('d2')}. 3) ${T('d3')}.
+Хочу подарить игроку удовольствие: ${T('aim')}.
+
+Как собрать: яркая детальная лоупольная 3D-игра в браузере. Плоские грани, насыщенные цвета палитры, мягкие тени, туман и свет под настроение мира, частицы, анимации героя и угроз, звук и музыка. Раунд около минуты. Управление: клавиатура и геймпад, подсказки кнопок в меню. Ручки геймдизайнера (Tab) для каждой карты механики и главных чисел. Перед стартом экран с тремя решениями. Игра записывает, что делает игрок (где он был, как близко к опасности, как часто нажимал A, что брал рядом с угрозой), и после партии показывает лестницу MDA: механику, динамику из этих записей и выбор чувства.`;
+}
+function prompt() {
+  $('#prompt').textContent = promptText();
+  const own = ROWS.filter(r => !empty(r.k) && !S[r.k].d).length, dice = ROWS.filter(r => S[r.k].d).length;
+  $('#meter').innerHTML = `своими руками <b>${own}</b> из ${ROWS.length}` + (dice ? ` · с кубика ${dice}` : '');
+}
+function focus() {
+  document.querySelectorAll('.frow').forEach(w => w.classList.toggle('pf', +w.dataset.ri === fr));
+  document.querySelectorAll('.chip.pf').forEach(b => b.classList.remove('pf'));
+  const w = document.querySelector(`.frow[data-ri="${fr}"]`); if (!w) return;
+  const bs = w.querySelectorAll('.chip'); if (bs.length) { fc = Math.max(0, Math.min(bs.length - 1, fc)); if (pad || document.activeElement === document.body) bs[fc].classList.add('pf'); }
+  w.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+}
+function nav(d) {
+  if (d === 'up' || d === 'down') { fr = Math.max(0, Math.min(ROWS.length - 1, fr + (d === 'down' ? 1 : -1))); fc = Math.max(0, S[ROWS[fr].k].i ?? 0); }
+  else fc += d === 'right' ? 1 : -1;
+  tone(480, 0.03, 'triangle', 0.04); focus();
+}
+function act() { const r = ROWS[fr]; if (r.t === 'chips') choose(r.k, fc, false); else { const ta = document.querySelector(`.frow[data-ri="${fr}"] textarea`); if (pad) roll(r.k); else ta.focus(); } focus(); }
+function copy() {
+  fillEmpty(); const txt = promptText(), b = $('#copy');
+  const ok = () => { b.textContent = 'Скопировано'; tone(880); tone(1320, 0.12); setTimeout(labels, 1500); };
+  const show = () => { const ta = document.createElement('textarea'); ta.value = txt; ta.rows = 10; ta.readOnly = true; $('#prompt').replaceWith(Object.assign(ta, { id: 'prompt' })); ta.select(); b.textContent = 'Выдели и скопируй'; };
+  try { navigator.clipboard.writeText(txt).then(ok, show); } catch (e) { show(); }
+}
+function labels() {
+  $('#copy').textContent = pad ? 'Скопировать промпт · Start' : 'Скопировать промпт · Enter';
+  $('#all').textContent = pad ? 'Кубики на пустые · X' : 'Кубики на пустые · Q';
+  $('#hint').innerHTML = pad
+    ? 'Геймпад: <kbd>крестовина</kbd> ряд и карта, <kbd>A</kbd> выбрать, <kbd>Y</kbd> кубик ряда, <kbd>X</kbd> кубики на пустые, <kbd>Start</kbd> скопировать промпт.'
+    : 'Пиши в полях сам или бросай кубик 🎲. Клавиатура: <kbd>↑ ↓</kbd> ряд, <kbd>← →</kbd> карта, <kbd>Пробел</kbd> выбрать, <kbd>R</kbd> кубик ряда, <kbd>Q</kbd> кубики на пустые, <kbd>Enter</kbd> скопировать. Есть геймпад? Нажми на нём любую кнопку.';
+}
+$('#copy').onclick = copy; $('#all').onclick = () => { fillEmpty(); };
+addEventListener('keydown', e => {
+  if (pad) { pad = false; labels(); }
+  if (e.target.tagName === 'TEXTAREA') { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); e.target.blur(); } if (e.key === 'Escape') e.target.blur(); return; }
+  const m = { ArrowUp: 'up', ArrowDown: 'down', ArrowLeft: 'left', ArrowRight: 'right' }[e.key];
+  if (m) { e.preventDefault(); nav(m); }
+  else if (e.code === 'Space') { e.preventDefault(); act(); }
+  else if (e.code === 'KeyR') roll(ROWS[fr].k);
+  else if (e.code === 'KeyQ') fillEmpty();
+  else if (e.key === 'Enter' && e.target.tagName !== 'BUTTON') { e.preventDefault(); copy(); }
+});
+let prev = [];
+(function poll() {
+  try {
+    const gp = [...(navigator.getGamepads ? navigator.getGamepads() : [])].find(Boolean);
+    if (gp) {
+      const b = gp.buttons.map(x => x.pressed), ay = gp.axes[1] || 0, ax = gp.axes[0] || 0;
+      b[12] = b[12] || ay < -0.5; b[13] = b[13] || ay > 0.5; b[14] = b[14] || ax < -0.5; b[15] = b[15] || ax > 0.5;
+      const dn = i => b[i] && !prev[i];
+      if (b.some(Boolean) && !pad) { pad = true; labels(); focus(); }
+      if (dn(12)) nav('up'); if (dn(13)) nav('down'); if (dn(14)) nav('left'); if (dn(15)) nav('right');
+      if (dn(0)) act(); if (dn(3)) roll(ROWS[fr].k); if (dn(2)) fillEmpty(); if (dn(9)) copy();
+      prev = b;
+    }
+  } catch (e) {}
+  requestAnimationFrame(poll);
+})();
+labels(); render();
+</script>

@@ -1,0 +1,6 @@
+# Локальные данные платформы: ключ API, пароль учителя, ответы учеников
+laboratoriya-igr/config.json
+laboratoriya-igr/data/
+node_modules/
+.DS_Store
+Thumbs.db

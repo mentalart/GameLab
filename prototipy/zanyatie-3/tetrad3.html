@@ -1,0 +1,289 @@
+<title>Тетрадь занятия 3</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Unbounded:wght@600;800&family=Golos+Text:wght@400;600;700&display=swap">
+<style>
+/* Тетрадь урока: вкладки-чекпоинты сверху, закрытые учителем показаны замком; в каждой вкладке мини-игра */
+:root{
+  --bg:#0d0b1a; --panel:#17142b; --line:#2f2a55; --ink:#f4f0ff; --muted:#a49cc9;
+  --hot:#ffcf3a; --good:#45e39a; --bad:#ff5a6e; --dice:#ff7ad9; --calm:#f0c9a0;
+  --display:'Unbounded',system-ui,sans-serif; --body:'Golos Text',system-ui,sans-serif;
+  color-scheme:dark;
+}
+body{background:var(--bg);color:var(--ink);font:16px/1.45 var(--body);margin:0}
+.wrap{max-width:860px;margin:0 auto;padding-block:20px 40px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));display:flex;flex-direction:column;gap:16px}
+.brand{font:800 13px var(--display);letter-spacing:.12em;text-transform:uppercase;color:var(--hot)}
+h1{font:800 clamp(24px,5vw,38px)/1.1 var(--display);margin:0}
+.tabs{display:flex;gap:6px;flex-wrap:wrap}
+.tab{font:700 14px var(--body);background:var(--panel);color:var(--muted);border:1px solid var(--line);border-radius:999px;padding:8px 14px;cursor:pointer}
+.tab[aria-selected="true"]{color:#1a1300;background:var(--hot);border-color:var(--hot)}
+.tab:disabled{cursor:not-allowed;opacity:.5}
+.tab:focus-visible,.btn:focus-visible,.opt:focus-visible,.chip:focus-visible,.die:focus-visible{outline:2px solid var(--ink);outline-offset:2px}
+.box{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:18px;display:flex;flex-direction:column;gap:12px}
+.box h2{font:800 17px var(--display);margin:0}
+.box p{margin:0;color:var(--muted)}
+.hud{display:flex;justify-content:space-between;font-size:14px;color:var(--muted);font-variant-numeric:tabular-nums}
+.hud b{color:var(--ink)}
+.card{font:800 clamp(19px,3.6vw,26px)/1.25 var(--display);text-align:center;padding:22px 10px;border:2px solid var(--line);border-radius:14px;background:#1f1b3a}
+.card.ok{border-color:var(--good)} .card.no{border-color:var(--bad);animation:shake .35s}
+@keyframes shake{25%{transform:translateX(-8px)}50%{transform:translateX(7px)}75%{transform:translateX(-4px)}}
+.duo{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.opt{font:800 18px var(--display);color:var(--ink);background:#1f1b3a;border:2px solid var(--line);border-radius:14px;padding:16px 8px;cursor:pointer}
+.opt:hover{border-color:var(--hot)}
+.why{text-align:center;font-size:15px;min-height:1.5em}
+.chips{display:flex;flex-wrap:wrap;gap:8px}
+.chip{background:var(--bg);color:var(--ink);border:2px solid var(--line);border-radius:999px;padding:8px 14px;font:600 14px var(--body);cursor:pointer}
+.chip[aria-pressed="true"]{border-color:var(--hot);background:#2a2450}
+.lab{font-weight:700;font-size:14px}
+.rowf{display:flex;gap:8px}
+.rowf textarea{flex:1;min-width:0}
+textarea{background:var(--bg);color:var(--ink);border:1px solid var(--line);border-radius:10px;font:15px/1.4 var(--body);padding:9px 11px;resize:vertical;min-height:44px;box-sizing:border-box}
+textarea.dice{border-color:var(--dice)}
+.die{flex:none;width:48px;border-radius:10px;border:1px solid var(--dice);background:rgba(255,122,217,.1);font-size:22px;cursor:pointer;color:var(--ink)}
+.tag{font-size:12px;color:var(--dice);min-height:1em}
+.cols{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.col{border:1px dashed var(--line);border-radius:12px;padding:10px;min-height:60px;display:flex;flex-direction:column;gap:4px;font-size:13.5px}
+.col b{font-size:12px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted)}
+pre{white-space:pre-wrap;background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:12px;margin:0;font:13px/1.5 ui-monospace,Consolas,monospace}
+.btn{align-self:flex-start;font:800 15px var(--display);border:0;border-radius:12px;padding:12px 18px;cursor:pointer;background:var(--hot);color:#1a1300}
+.hint{font-size:13px;color:var(--muted);text-align:center}
+kbd{font:600 12px ui-monospace,Consolas,monospace;border:1px solid var(--line);border-bottom-width:2px;border-radius:5px;padding:1px 6px;background:var(--bg)}
+.mda{display:flex;align-items:stretch;gap:8px;flex-wrap:wrap}
+.mda div{flex:1 1 140px;background:#1f1b3a;border:1px solid var(--line);border-radius:12px;padding:10px;display:flex;flex-direction:column;gap:2px}
+.mda div b{font-family:var(--display);color:var(--hot)}
+.mda div span{font-size:13px;color:var(--muted)}
+.mda i{font-style:normal;align-self:center;font:800 22px var(--display);color:var(--dice);animation:nudge 1.2s infinite}
+@keyframes nudge{50%{transform:translateX(4px)}}
+.opt.f{border-color:var(--hot)}
+@media (max-width:560px){.cols{grid-template-columns:1fr}.mda i{transform:rotate(90deg)}}
+@media (prefers-reduced-motion:reduce){.card.no{animation:none}}
+</style>
+
+<div class="wrap">
+  <div class="brand">Лаборатория игр · занятие 3</div>
+  <h1>Тетрадь занятия 3</h1>
+  <div class="tabs" role="tablist" id="tabs"></div>
+  <div id="panel"></div>
+</div>
+
+<script>
+const OPEN = 3; // сколько чекпоинтов открыл учитель
+const TABS = ['1 · Фабрика MDA', '2 · MDA', '3 · Твоя игра', '4 · Аркада'];
+const SAME = [
+  ['Сила и высота прыжка', 1, 'Одинаково: в ручках те же числа гравитации и толчка.'],
+  ['Скорость мира', 0, 'Разное: 420 и растёт против 90.'],
+  ['Кнопка прыжка', 1, 'Одинаково: A или пробел.'],
+  ['Есть ли опасность', 0, 'Разное: в аркаде красные блоки, в медитации опасности нет.'],
+  ['Гравитация', 1, 'Одинаково: 2000 в обоих мирах.'],
+  ['Цель', 0, 'Разное: пройти блоки на рекорд или собирать фонарики, сколько хочется.'],
+  ['Звук и музыка', 0, 'Разное: быстрый бит и писк против мягких нот.'],
+  ['Форма героя', 1, 'Одинаково: квадрат, который сплющивается при приземлении.'],
+  ['Цвета', 0, 'Разное: тёмный неон против заката.'],
+  ['Что будет при ошибке', 0, 'Разное: удар и минус жизнь или вообще ничего.'],
+];
+const FEEL_A = ['Азарт', 'Напряжение', 'Спешка', 'Злость', 'Гордость', 'Скука'];
+const FEEL_M = ['Спокойствие', 'Уют', 'Любопытство', 'Скука', 'Мечтательность', 'Радость'];
+const DICE = ['Действие одно, но мир вокруг задаёт, ради чего ты его делаешь', 'Ощущение рождается не в кнопке, а в том, что происходит после нажатия', 'Скорость и угроза превращают прыжок в спасение, а их отсутствие в прогулку'];
+const $ = s => document.querySelector(s);
+const st = { tab: 0, i: 0, ok: 0, done: false, order: [], ans: [], fa: [], fm: [], why: { v: '', d: false } };
+function beep(f, d = 0.1, type = 'triangle', v = 0.07, delay = 0) { try { const AC = window._ac || (window._ac = new AudioContext()); const t = AC.currentTime + delay, o = AC.createOscillator(), g = AC.createGain(); o.type = type; o.frequency.value = f; g.gain.setValueAtTime(v, t); g.gain.exponentialRampToValueAtTime(0.0001, t + d); o.connect(g); g.connect(AC.destination); o.start(t); o.stop(t + d + 0.02); } catch (e) {} }
+
+function tabs() {
+  $('#tabs').innerHTML = TABS.map((t, i) => `<button class="tab" role="tab" type="button" data-i="${i}" aria-selected="${i === st.tab}" ${i >= OPEN ? 'disabled title="Откроет учитель"' : ''}>${i >= OPEN ? '🔒 ' : ''}${t}</button>`).join('');
+  document.querySelectorAll('.tab').forEach(b => b.onclick = () => { st.tab = +b.dataset.i; tabs(); render(); });
+}
+function render() { [cp1, cp2, cp3, cp4][st.tab](); }
+
+/* ---------- общий сортировщик: карта + кнопки-лотки ---------- */
+const SORT = {};
+function sorter(id, cards, opts, onDone) {
+  const S = SORT[id] || (SORT[id] = { i: 0, ok: 0, ans: [], order: cards.map((_, i) => i).sort(() => Math.random() - 0.5), focus: 0, lock: false });
+  const box = $('#' + id);
+  const draw = (msg, cls) => {
+    const fin = S.i >= cards.length;
+    box.innerHTML = `<div class="hud"><span>Карта <b>${Math.min(S.i + 1, cards.length)}</b>/${cards.length}</span><span>Верно <b>${S.ok}</b></span></div>
+      ${fin ? `<div class="card ok">Готово: ${S.ok}/${cards.length}</div>` : `<div class="card ${cls || ''}">${cards[S.order[S.i]][0]}</div>`}
+      ${fin ? '' : `<div class="opts" style="display:grid;grid-template-columns:repeat(${Math.min(opts.length, 4)},minmax(0,1fr));gap:8px">${opts.map((o, k) => `<button class="opt${k === S.focus ? ' f' : ''}" type="button" data-k="${k}" style="font-size:${opts.length > 4 ? 13 : 16}px;padding:12px 6px">${o}</button>`).join('')}</div>`}
+      <div class="why">${msg || ''}</div>`;
+    box.querySelectorAll('.opt').forEach(b => b.onclick = () => pick(+b.dataset.k));
+  };
+  const pick = k => {
+    if (S.lock || S.i >= cards.length) return;
+    const c = cards[S.order[S.i]], ok = c[1] === k; S.lock = true;
+    if (ok) { S.ok++; beep(880); beep(1320, 0.12, 'triangle', 0.07, 0.07); } else beep(200, 0.25, 'sawtooth', 0.06);
+    S.ans.push([S.order[S.i], k]);
+    draw((ok ? 'Верно. ' : 'Мимо: ' + opts[c[1]] + '. ') + c[2], ok ? 'ok' : 'no');
+    setTimeout(() => { S.i++; S.lock = false; draw(S.i >= cards.length ? 'Готово!' : ''); if (S.i >= cards.length) { [523, 659, 784, 1046].forEach((f, j) => beep(f, 0.15, 'triangle', 0.08, j * 0.08)); onDone && onDone(); } out(); }, 1600);
+  };
+  S.pick = pick; S.opts = opts.length; SORT._active = id;
+  draw();
+}
+const MDA = ['М · механика', 'Д · динамика', 'Э · эстетика'];
+const MDA_CARDS = [
+  ['Голова и хвост змейки меняются местами каждые 10 секунд', 0, 'Правило в коде, его пишет дизайнер.'],
+  ['Игрок держит змейку короткой, чтобы разворот был не страшен', 1, 'Так игрок ведёт себя из-за правил: динамика.'],
+  ['Паника за секунду до разворота', 2, 'Это чувство игрока: эстетика.'],
+  ['Гравитация 2000, толчок прыжка 760', 0, 'Числа и правила: механика.'],
+  ['Игрок зажимает тормоз почти всё время', 1, 'Стратегия, которая родилась из правил: динамика. Её показала телеметрия.'],
+  ['Спокойствие в медитации', 2, 'Чувство: эстетика.'],
+  ['Первым ходом все ставят крестик в центр', 1, 'Поведение игроков, а не правило: динамика.'],
+  ['Тормоз перегревается за 2 секунды', 0, 'Правило с числом: механика.'],
+  ['Азарт «проскочу или нет»', 2, 'Чувство: эстетика.'],
+];
+const PLEAS = ['Ощущения', 'Фантазия', 'Повествование', 'Вызов', 'Общение', 'Открытие', 'Самовыражение', 'Отдых'];
+const PLEAS_CARDS = [
+  ['Celeste: сотый раз прыгаешь в одном месте и наконец проходишь', 3, 'Трудность, которую преодолеваешь: вызов.'],
+  ['Among Us: врёшь друзьям в глаза, кто предатель', 4, 'Удовольствие от других людей: общение.'],
+  ['Stardew Valley: поливаешь грядки на своей ферме', 7, 'Можно расслабиться, никто не гонит: отдых.'],
+  ['Minecraft, творческий режим: строишь свой замок', 6, 'Показываешь себя через то, что создал: самовыражение.'],
+  ['Subnautica: ныряешь глубже, чтобы узнать, что там внизу', 5, 'Тайна мира тянет вперёд: открытие.'],
+  ['Undertale: хочется узнать, чем закончится история каждого героя', 2, 'Сюжет и персонажи: повествование.'],
+  ['Beat Saber: рубишь кубы под музыку, и руки сами двигаются', 0, 'Удовольствие для глаз, ушей и тела: ощущения.'],
+  ['Skyrim: ты драконорождённый в мире магии', 1, 'Побыть кем-то другим в другом мире: фантазия.'],
+];
+function cp2() {
+  $('#panel').innerHTML = `
+  <section class="box">
+    <h2>MDA: от дизайнера к игроку</h2>
+    <div class="mda" aria-label="Схема MDA">
+      <div><b>Механики</b><span>правила и числа</span></div><i>→</i><div><b>Динамика</b><span>как игроки себя ведут</span></div><i>→</i><div><b>Эстетика</b><span>что игрок чувствует</span></div>
+    </div>
+    <p>Модель Ханике, Леблана и Зубека. Дизайнер строит только механики, а игрок сразу встречает эстетику. До чувства дизайнер может добраться только через правила и поведение игрока. В «Одном прыжке» механика была одна, а эстетики получились две.</p>
+  </section>
+  <section class="box"><h2>Лестница MDA</h2><p>На какую ступеньку положить карту? Клавиши <kbd>1</kbd> <kbd>2</kbd> <kbd>3</kbd> или кнопки.</p><div id="s-mda"></div></section>
+  <section class="box"><h2>8 удовольствий Марка Леблана</h2><p>Какое удовольствие в этой игре главное? Клавиши <kbd>1</kbd>–<kbd>8</kbd> или кнопки.</p><div id="s-pl"></div></section>
+  <section class="box"><h2>Ответ учителю</h2><pre id="out"></pre><button class="btn" id="copy" type="button">Скопировать ответ</button></section>`;
+  sorter('s-mda', MDA_CARDS, MDA, () => sorter('s-pl', PLEAS_CARDS, PLEAS));
+  if (SORT['s-mda'] && SORT['s-mda'].i >= MDA_CARDS.length) sorter('s-pl', PLEAS_CARDS, PLEAS); else $('#s-pl').innerHTML = '<div class="why">Откроется после лестницы MDA</div>';
+  $('#copy').onclick = copy; out();
+}
+const PL = ['Ощущения', 'Фантазия', 'Повествование', 'Вызов', 'Общение', 'Открытие', 'Самовыражение', 'Отдых'];
+const PD = {
+  'Вызов': { feel: 'Азарт на пределе: ещё чуть-чуть, и рекорд', r: 'Таймер 60 секунд, опасности ускоряются каждые 15 секунд', a: 'Неон и тревожный быстрый бит' },
+  'Отдых': { feel: 'Спокойствие, никуда не надо спешить', r: 'Проиграть нельзя: ошибка мягко отталкивает, очков нет', a: 'Закат, мягкие ноты на каждое действие' },
+  'Открытие': { feel: 'Любопытство: а что там за краем', r: 'На уровне 5 тайников, они проявляются, только когда подходишь ближе', a: 'Ночь, туман, мерцающие руны' },
+  'Повествование': { feel: 'Сочувствие герою, который ищет дорогу домой', r: 'Каждые 20 секунд новая глава с короткой надписью', a: 'Книжка-раскраска, страницы листаются' },
+  'Фантазия': { feel: 'Я герой нартского эпоса', r: 'У героя миссия, а опасности — его заклятые враги', a: 'Горы Адыгеи и легенды о нартах' },
+  'Ощущения': { feel: 'Кайф от ритма: руки двигаются сами', r: 'Действие в такт музыке даёт вспышку и бонус', a: 'Яркие вспышки, басы, конфетти' },
+  'Общение': { feel: 'Смех вдвоём за одной клавиатурой', r: 'Два игрока: один управляет, второй мешает или помогает', a: 'Экран из двух половин разного цвета' },
+  'Самовыражение': { feel: 'Гордость за то, что сделал сам', r: 'Перед игрой собираешь героя и уровень из деталей', a: 'Пиксель-арт, который рисует сам игрок' },
+};
+const D3 = {
+  verb: ['Газ и тормоз (мой Самолётик): A — газ, B — тормоз', 'Прыгать: влево-вправо, A — прыжок', 'Ходить в 4 стороны и собирать', 'Толкать блоки: 4 направления', 'Стрелять: влево-вправо, A — выстрел', 'Уворачиваться: влево-вправо, B — рывок'],
+  idea: ['Курьер развозит хычины по горному аулу', 'Самолётик застрял внутри старого телевизора', 'Сова чинит погасшие звёзды над Лаго-Наки', 'Робот-садовник в заброшенной теплице'],
+  honest: ['Опасность видна заранее: метка, звук, вспышка', 'Зона урона совпадает с картинкой', 'Правило версии написано на экране до начала'],
+  choice: ['Рискнуть ради очков или сыграть надёжно', 'Потратить редкую способность сейчас или беречь', 'Быстро или точно', 'Исследовать или идти к цели'],
+};
+const F3 = {};
+const F3_FIELDS = [
+  ['idea', 'И — идея: кто герой и что происходит', () => D3.idea],
+  ['verb', 'Г — главное действие и кнопки (одно на обе версии)', () => D3.verb],
+  ['a.feel', 'Версия А · чувство', () => [PD[st.pa || 'Вызов'].feel]],
+  ['a.r', 'Версия А · Р — правила вокруг действия', () => [PD[st.pa || 'Вызов'].r]],
+  ['a.honest', 'Версия А · честность', () => D3.honest],
+  ['a.choice', 'Версия А · выбор', () => D3.choice],
+  ['a.a', 'Версия А · А — атмосфера', () => [PD[st.pa || 'Вызов'].a]],
+  ['b.feel', 'Версия Б · чувство', () => [PD[st.pb || 'Отдых'].feel]],
+  ['b.r', 'Версия Б · Р — правила вокруг действия', () => [PD[st.pb || 'Отдых'].r]],
+  ['b.honest', 'Версия Б · честность', () => D3.honest],
+  ['b.choice', 'Версия Б · выбор', () => D3.choice],
+  ['b.a', 'Версия Б · А — атмосфера', () => [PD[st.pb || 'Отдых'].a]],
+];
+function cp3() {
+  $('#panel').innerHTML = `
+  <section class="box">
+    <h2>Твоя игра: одно действие, два удовольствия</h2>
+    <p>Придумай игру с одним главным действием и сделай её в двух версиях под два разных удовольствия. Механику действия не трогаем, меняем только мир вокруг, как в «Одном прыжке». Потом я соберу обе версии, и MDA мы разберём уже на твоей игре.</p>
+  </section>
+  <section class="box"><h2>Общее для обеих версий</h2><div id="f3c" style="display:flex;flex-direction:column;gap:10px"></div></section>
+  <section class="box"><h2>Версия А</h2><div class="lab">Удовольствие</div><div class="chips" id="pa"></div><div id="f3a" style="display:flex;flex-direction:column;gap:10px"></div></section>
+  <section class="box"><h2>Версия Б</h2><div class="lab">Удовольствие (другое)</div><div class="chips" id="pb"></div><div id="f3b" style="display:flex;flex-direction:column;gap:10px"></div></section>
+  <section class="box"><h2>Замысел для учителя</h2><div class="hud"><span id="m3"></span></div><pre id="out"></pre><button class="btn" id="copy" type="button">Скопировать замысел</button></section>`;
+  const mk = (box, k) => { const f = F3_FIELDS.find(x => x[0] === k); const w = document.createElement('div'); w.innerHTML = `<div class="lab">${f[1]}</div><div class="rowf"><textarea id="t3-${k.replace('.', '_')}" rows="1"></textarea><button class="die" type="button" aria-label="Бросить кубик">🎲</button></div><div class="tag" id="g3-${k.replace('.', '_')}"></div>`; $(box).appendChild(w);
+    const ta = w.querySelector('textarea'), tg = w.querySelector('.tag'), v = F3[k]; if (v) { ta.value = v.v; if (v.d) { ta.classList.add('dice'); tg.textContent = '[кубик] поправь пару слов, и вариант станет твоим'; } }
+    ta.oninput = () => { F3[k] = { v: ta.value, d: false }; ta.classList.remove('dice'); tg.textContent = ''; out(); };
+    w.querySelector('.die').onclick = () => { const deck = f[2](); let nv = deck[Math.floor(Math.random() * deck.length)]; if (deck.length > 1) while (F3[k] && nv === F3[k].v) nv = deck[Math.floor(Math.random() * deck.length)]; F3[k] = { v: nv, d: true }; ta.value = nv; ta.classList.add('dice'); tg.textContent = '[кубик] поправь пару слов, и вариант станет твоим'; beep(700 + Math.random() * 300); out(); };
+  };
+  ['idea', 'verb'].forEach(k => mk('#f3c', k));
+  ['a.feel', 'a.r', 'a.honest', 'a.choice', 'a.a'].forEach(k => mk('#f3a', k));
+  ['b.feel', 'b.r', 'b.honest', 'b.choice', 'b.a'].forEach(k => mk('#f3b', k));
+  const pick = (box, key, other) => { const el = $(box); el.innerHTML = PL.map(p => `<button class="chip" type="button" data-p="${p}" aria-pressed="${st[key] === p}" ${st[other] === p ? 'disabled style="opacity:.35"' : ''}>${p}</button>`).join(''); el.querySelectorAll('.chip').forEach(b => b.onclick = () => { st[key] = b.dataset.p; beep(650); pick('#pa', 'pa', 'pb'); pick('#pb', 'pb', 'pa'); out(); }); };
+  pick('#pa', 'pa', 'pb'); pick('#pb', 'pb', 'pa');
+  $('#copy').onclick = copy; out();
+}
+function out3() {
+  const t = k => F3[k] && F3[k].v ? F3[k].v + (F3[k].d ? ' [кубик]' : '') : '—';
+  const filled = F3_FIELDS.filter(f => F3[f[0]] && F3[f[0]].v.trim()).length, own = F3_FIELDS.filter(f => F3[f[0]] && F3[f[0]].v.trim() && !F3[f[0]].d).length;
+  $('#m3').innerHTML = `Заполнено <b>${filled}/${F3_FIELDS.length}</b> · своими словами <b>${own}</b>` + (filled === F3_FIELDS.length && own < 4 ? ' · поправь хотя бы 4 варианта кубика' : '');
+  $('#out').textContent = ['Занятие 3 · моя игра: одно действие, два удовольствия', `И: ${t('idea')}`, `Г: ${t('verb')}`, '', `Версия А — ${st.pa || '—'}`, `Чувство: ${t('a.feel')}`, `Р: ${t('a.r')}`, `Честность: ${t('a.honest')}`, `Выбор: ${t('a.choice')}`, `А: ${t('a.a')}`, '', `Версия Б — ${st.pb || '—'}`, `Чувство: ${t('b.feel')}`, `Р: ${t('b.r')}`, `Честность: ${t('b.honest')}`, `Выбор: ${t('b.choice')}`, `А: ${t('b.a')}`].join('\n');
+}
+function cp4() {
+  $('#panel').innerHTML = `<section class="box"><h2>Аркада</h2><p>Учитель пришлёт ссылку на Аркаду в конце занятия.</p></section>`;
+}
+
+const R1 = { txt: '' };
+function cp1() {
+  $('#panel').innerHTML = `
+  <section class="box">
+    <h2>Фабрика MDA: собери свою игру</h2>
+    <p>Ты собираешь замысел своей игры из своих слов и карт. По твоему промпту Qwen сгенерирует яркую лоупольную 3D-игру, и механику, динамику и эстетику мы разберём уже на ней. У каждого своя игра.</p>
+    <ol>
+      <li>Открой <a href="https://claude.ai/artifact/RTMgMiRYNJi3ce2gVFnby8" target="_blank" rel="noopener" style="color:var(--hot)">Фабрику MDA</a>. Заполни поля сам, а где не придумывается, бросай кубик.</li>
+      <li>Выбери, какое удовольствие хочешь подарить игроку.</li>
+      <li>Нажми «Скопировать промпт» и вставь его сюда. Дальше игру собирает Qwen.</li>
+    </ol>
+    <textarea id="fabIn" rows="6" placeholder="ИГРА: «…»" aria-label="Промпт из Фабрики" style="font:12px ui-monospace,Consolas,monospace"></textarea>
+  </section>
+  <section class="box"><h2>Ответ учителю</h2><pre id="out"></pre><button class="btn" id="copy" type="button">Скопировать ответ</button></section>`;
+  const t = $('#fabIn'); t.value = R1.txt; t.oninput = () => { R1.txt = t.value; out(); };
+  $('#copy').onclick = copy; out();
+}
+function out1() { $('#out').textContent = R1.txt.trim() || 'Вставь промпт из Фабрики, и он появится здесь.'; }
+let lock = false;
+function answer(v) {
+  if (!$('#card')) return;
+  if (lock || st.i >= SAME.length) return;
+  const k = st.order[st.i], ok = SAME[k][1] === v; lock = true;
+  if (ok) { st.ok++; beep(880); beep(1320, 0.12, 'triangle', 0.07, 0.07); } else { beep(200, 0.25, 'sawtooth', 0.06); try { const gp = [...navigator.getGamepads()].find(Boolean); gp && gp.vibrationActuator && gp.vibrationActuator.playEffect('dual-rumble', { duration: 200, strongMagnitude: 0.7, weakMagnitude: 0.4 }); } catch (e) {} }
+  $('#card').classList.add(ok ? 'ok' : 'no'); $('#why').textContent = (ok ? 'Верно. ' : 'Мимо. ') + SAME[k][2];
+  st.ans.push([k, v]);
+  setTimeout(() => { st.i++; lock = false; const w = $('#why').textContent; cp1(); $('#why').textContent = w; if (st.i >= SAME.length) { [523, 659, 784, 1046].forEach((f, i) => beep(f, 0.15, 'triangle', 0.08, i * 0.08)); $('#why').textContent = 'Одинаковой осталась только механика прыжка. Всё остальное и сделало два разных ощущения.'; } }, 1100);
+}
+function chips(box, list, key) {
+  const el = $(box);
+  el.innerHTML = list.map((x, i) => `<button class="chip" type="button" data-i="${i}" aria-pressed="${st[key].includes(x)}">${x}</button>`).join('');
+  el.querySelectorAll('.chip').forEach(b => b.onclick = () => { const v = list[+b.dataset.i], a = st[key], k = a.indexOf(v); if (k >= 0) a.splice(k, 1); else { if (a.length >= 2) a.shift(); a.push(v); } el.querySelectorAll('.chip').forEach(c => c.setAttribute('aria-pressed', String(a.includes(list[+c.dataset.i])))); beep(600 + Math.random() * 300, 0.08); out(); });
+}
+function out() {
+  if (!$('#out')) return;
+  if (st.tab === 0) { out1(); return; }
+  if (st.tab === 1) {
+    const a = SORT['s-mda'], b = SORT['s-pl'];
+    const err = (S, cards, opts) => S ? S.ans.filter(([k, v]) => cards[k][1] !== v).map(([k, v]) => `${cards[k][0]} → ${opts[v]}`) : [];
+    $('#out').textContent = ['Занятие 3 · чекпоинт 2', `Лестница MDA: ${a ? a.ok : 0}/${MDA_CARDS.length}` + (err(a, MDA_CARDS, MDA).length ? ` (ошибки: ${err(a, MDA_CARDS, MDA).join('; ')})` : ''), `8 удовольствий: ${b ? b.ok : 0}/${PLEAS_CARDS.length}` + (err(b, PLEAS_CARDS, PLEAS).length ? ` (ошибки: ${err(b, PLEAS_CARDS, PLEAS).join('; ')})` : '')].join('\n');
+    return;
+  }
+  if (st.tab === 2) { out3(); return; }
+  const wrong = st.ans.filter(([k, v]) => SAME[k][1] !== v).map(([k]) => SAME[k][0]);
+  $('#out').textContent = ['Занятие 3 · чекпоинт 1', `Детектор различий: ${st.ok}/${SAME.length}` + (wrong.length ? ` (ошибки: ${wrong.join(', ')})` : ''), `Аркада ощущалась: ${st.fa.join(', ') || '—'}`, `Медитация ощущалась: ${st.fm.join(', ') || '—'}`, `Почему по-разному: ${st.why.v ? st.why.v + (st.why.d ? ' [кубик]' : '') : '—'}`].join('\n');
+}
+function copy(e) {
+  const b = e.currentTarget, txt = $('#out').textContent;
+  const sel = () => { const r = document.createRange(); r.selectNodeContents($('#out')); const s = getSelection(); s.removeAllRanges(); s.addRange(r); b.textContent = 'Выдели и скопируй'; };
+  try { navigator.clipboard.writeText(txt).then(() => b.textContent = 'Скопировано, пришли в чат', sel); } catch (err) { sel(); }
+}
+addEventListener('keydown', e => {
+  if (e.target.tagName === 'TEXTAREA') return;
+  if (st.tab === 1) { const n = parseInt(e.key, 10), S = SORT[SORT._active]; if (S && n >= 1 && n <= S.opts) S.pick(n - 1); return; }
+  if (st.tab !== 0) return;
+  if (e.code === 'ArrowLeft') { e.preventDefault(); answer(1); }
+  if (e.code === 'ArrowRight') { e.preventDefault(); answer(0); }
+});
+let prevB = [], prevX = 0;
+(function loop() {
+  try { const gp = navigator.getGamepads && [...navigator.getGamepads()].find(Boolean); if (gp && st.tab === 1) { const S = SORT[SORT._active], b = gp.buttons.map(x => !!(x && x.pressed)), ax = gp.axes[0] || 0; if (S) { if ((b[14] && !prevB[14]) || (ax < -0.5 && prevX >= -0.5)) { S.focus = (S.focus + S.opts - 1) % S.opts; document.querySelectorAll('#' + SORT._active + ' .opt').forEach((o, k) => o.classList.toggle('f', k === S.focus)); } if ((b[15] && !prevB[15]) || (ax > 0.5 && prevX <= 0.5)) { S.focus = (S.focus + 1) % S.opts; document.querySelectorAll('#' + SORT._active + ' .opt').forEach((o, k) => o.classList.toggle('f', k === S.focus)); } if (b[0] && !prevB[0]) S.pick(S.focus); } prevB = b; prevX = ax; }
+    else if (gp && st.tab === 0) { const b = gp.buttons.map(x => !!(x && x.pressed)), ax = gp.axes[0] || 0; if ((b[14] && !prevB[14]) || (ax < -0.5 && prevX >= -0.5)) answer(1); if ((b[15] && !prevB[15]) || (ax > 0.5 && prevX <= 0.5)) answer(0); prevB = b; prevX = ax; } } catch (e) {}
+  requestAnimationFrame(loop);
+})();
+tabs(); render();
+</script>
