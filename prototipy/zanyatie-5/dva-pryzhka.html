@@ -1,0 +1,592 @@
+<title>Два прыжка</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Unbounded:wght@600;800&family=Golos+Text:wght@400;600;700&display=swap">
+<style>
+/* Лаборатория игр · занятие 5 · вход: слепой тест двух прыжков на одной трассе (платформер сбоку, Лаго-Наки) */
+:root{--bg:#0d0b1a;--panel:rgba(18,15,38,.95);--line:#3a3468;--ink:#f4f0ff;--muted:#b3abd8;--hot:#ffcf3a;--good:#45e39a;--bad:#ff5a6e;--dice:#ff7ad9;--blue:#4fb3ff;--orange:#ff9a3d;--display:'Unbounded',system-ui,sans-serif;--body:'Golos Text',system-ui,sans-serif;color-scheme:dark}
+html,body{height:100%;margin:0;background:var(--bg);color:var(--ink);font:15px/1.45 var(--body);overflow:hidden}
+#stage{position:fixed;inset:0}
+#cv{position:absolute;inset:0;width:100%;height:100%;display:block;touch-action:none}
+kbd{font:600 12px ui-monospace,Consolas,monospace;border:1px solid var(--line);border-bottom-width:2px;border-radius:5px;padding:1px 6px;background:#05040c;color:var(--ink)}
+#hud{position:absolute;left:0;right:0;top:0;display:flex;justify-content:space-between;align-items:flex-start;gap:8px;padding:10px max(12px,env(safe-area-inset-right,0px)) 0 max(12px,env(safe-area-inset-left,0px));pointer-events:none;z-index:4}
+.hbox{background:rgba(8,6,20,.66);border:1px solid rgba(255,255,255,.14);border-radius:12px;padding:6px 12px;font:800 14px var(--display);display:flex;gap:12px;align-items:center;font-variant-numeric:tabular-nums}
+.dot{width:12px;height:12px;border-radius:4px;display:inline-block;margin-right:6px;vertical-align:-1px}
+.hbtns{display:flex;gap:6px;pointer-events:auto}
+.ghost{font:700 13px var(--body);color:var(--ink);background:rgba(8,6,20,.72);border:1px solid var(--line);border-radius:10px;padding:6px 10px;cursor:pointer}
+.ghost:focus-visible,.btn:focus-visible,.chip:focus-visible,.dice:focus-visible{outline:3px solid var(--hot);outline-offset:2px}
+#hint{position:absolute;left:50%;bottom:calc(10px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);background:rgba(8,6,20,.66);border-radius:10px;padding:5px 12px;font-size:13px;color:var(--muted);white-space:nowrap;z-index:3;pointer-events:none}
+#warn{position:absolute;left:50%;top:70px;transform:translateX(-50%);font:800 clamp(18px,3.4vw,28px) var(--display);text-shadow:0 2px 0 #000;pointer-events:none;z-index:4;text-align:center}
+.screen{position:absolute;inset:0;display:flex;padding:16px max(16px,env(safe-area-inset-right,0px)) 16px max(16px,env(safe-area-inset-left,0px));background:rgba(5,4,12,.55);overflow:auto;z-index:6}
+.card{width:min(640px,100%);margin:auto;background:var(--panel);border:1px solid var(--line);border-radius:18px;padding:20px;display:flex;flex-direction:column;gap:12px;box-shadow:0 20px 60px rgba(0,0,0,.5)}
+.eyebrow{font:700 12px var(--body);letter-spacing:.08em;text-transform:uppercase;color:var(--hot);margin:0}
+h1,h2{font-family:var(--display);margin:0;text-wrap:balance}
+h1{font-size:clamp(24px,5vw,34px);line-height:1.1}
+h2{font-size:18px}
+p{margin:0}
+.muted{color:var(--muted)}
+.row{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.btn{font:800 15px var(--display);background:var(--hot);color:#1a1300;border:0;border-radius:12px;padding:12px 18px;cursor:pointer}
+.btn.alt{background:#2a2450;color:var(--ink)}
+.chips{display:flex;flex-wrap:wrap;gap:6px}
+.chip{font:600 14px var(--body);color:var(--ink);background:#05040c;border:2px solid var(--line);border-radius:999px;padding:6px 12px;cursor:pointer}
+.chip[aria-pressed="true"]{border-color:var(--hot);background:#2a2450}
+.q{display:flex;flex-direction:column;gap:6px;padding-top:4px;border-top:1px solid var(--line)}
+.q b{font:700 14px var(--body)}
+.field{display:flex;gap:6px;align-items:stretch}
+.field textarea{flex:1;min-width:0;font:15px var(--body);color:var(--ink);background:#05040c;border:2px solid var(--line);border-radius:10px;padding:8px 10px;resize:vertical;min-height:52px}
+.dice{font-size:22px;background:#2a1838;border:2px solid var(--dice);border-radius:10px;padding:0 10px;cursor:pointer}
+.tag{font:700 11px var(--body);color:var(--dice);letter-spacing:.06em}
+.stats{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+.sbox{border:2px solid var(--line);border-radius:14px;padding:12px;display:flex;flex-direction:column;gap:4px;font-variant-numeric:tabular-nums}
+.sbox h2{display:flex;align-items:center}
+.sline{display:flex;justify-content:space-between;gap:8px;font-size:14px}
+.sline b{font-family:var(--display);font-size:15px}
+.big{font:800 26px var(--display)}
+.trick{display:grid;grid-template-columns:auto 1fr;gap:4px 10px;align-items:baseline;padding:8px 10px;border-radius:12px;background:#05040c}
+.trick .n{font:800 22px var(--display);color:var(--good);min-width:34px;text-align:right}
+.trick .n.bad{color:var(--bad)}
+.trick p{font-size:14px}
+#copyOut{width:100%;min-height:120px;font:13px ui-monospace,Consolas,monospace;background:#05040c;color:var(--ink);border:1px solid var(--line);border-radius:10px;padding:8px;box-sizing:border-box}
+/* ручки */
+#panel{position:absolute;top:0;right:0;bottom:0;width:min(360px,100%);background:var(--panel);border-left:1px solid var(--line);z-index:8;overflow:auto;padding:14px max(14px,env(safe-area-inset-right,0px)) 14px 14px;box-sizing:border-box;display:flex;flex-direction:column;gap:10px}
+.knob{display:grid;grid-template-columns:1fr auto;gap:2px 8px;font-size:13px}
+.knob label{font-weight:600}
+.knob output{font:700 13px var(--display);font-variant-numeric:tabular-nums;color:var(--hot)}
+.knob input{grid-column:1/-1;width:100%;accent-color:var(--hot)}
+.knob small{grid-column:1/-1;color:var(--muted);font-size:12px}
+.calc{background:#05040c;border-radius:10px;padding:8px 10px;font-size:13px;font-variant-numeric:tabular-nums}
+#blindGate{display:flex;flex-direction:column;gap:8px}
+/* тач */
+#touch{position:absolute;left:0;right:0;bottom:0;display:none;justify-content:space-between;padding:0 max(14px,env(safe-area-inset-right,0px)) calc(14px + env(safe-area-inset-bottom,0px)) max(14px,env(safe-area-inset-left,0px));z-index:5;pointer-events:none}
+#touch .tb{pointer-events:auto;width:70px;height:70px;border-radius:50%;background:rgba(255,255,255,.14);border:2px solid rgba(255,255,255,.3);color:#fff;font:800 22px var(--display);touch-action:none;user-select:none;-webkit-user-select:none}
+#touch .tb.jump{width:88px;height:88px;background:rgba(255,207,58,.3);border-color:var(--hot)}
+@media (hover:none) and (pointer:coarse){#touch{display:flex}#hint{display:none}}
+@media (max-width:520px){.stats{grid-template-columns:1fr}}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+
+<div id="stage">
+  <canvas id="cv"></canvas>
+  <div id="hud" hidden>
+    <div class="hbox"><span><span class="dot" id="hDot"></span><span id="hName">Синий</span></span><span id="hTime">0,0 с</span><span id="hFalls">падений 0</span></div>
+    <div class="hbtns"><button type="button" class="ghost" id="knobBtn">Ручки · <span class="kTab">Tab</span></button><button type="button" class="ghost" id="soundBtn" aria-pressed="false">Звук вкл</button></div>
+  </div>
+  <div id="warn"></div>
+  <div id="hint" hidden></div>
+  <div id="touch"><div class="row"><button type="button" class="tb" id="tL">◀</button><button type="button" class="tb" id="tR">▶</button></div><button type="button" class="tb jump" id="tJ">⤒</button></div>
+
+  <!-- 1. вход -->
+  <div class="screen" id="introScreen">
+    <div class="card">
+      <p class="eyebrow">Занятие 5 · Чекпоинт 1 · слепой тест</p>
+      <h1>Два прыжка</h1>
+      <p>Одна трасса над ущельем, два героя: <b style="color:var(--blue)">Синий</b> и <b style="color:var(--orange)">Оранжевый</b>. Картинка, трасса и сила прыжка одинаковые. Отличается только то, как прыжок слушается рук.</p>
+      <p class="muted">Пробеги трассу обоими. Не смотри в ручки до конца: это слепой тест. Слушай руки, а не глаза.</p>
+      <div class="calc" id="ctrlText"></div>
+      <div class="row"><button type="button" class="btn" id="startBtn">Начать · <span class="kA">Пробел</span></button></div>
+    </div>
+  </div>
+
+  <!-- 2. между забегами -->
+  <div class="screen" id="runScreen" hidden>
+    <div class="card">
+      <p class="eyebrow" id="runEyebrow">Финиш</p>
+      <h1 id="runTitle">Синий добежал</h1>
+      <div class="stats"><div class="sbox" id="runBox"></div><div class="sbox"><h2>Что сейчас было</h2><p class="muted" id="runFeel">Запомни, как ощущался этот прыжок. Через минуту спрошу.</p></div></div>
+      <div class="row"><button type="button" class="btn" id="nextBtn">Дальше</button><button type="button" class="btn alt" id="againRunBtn">Ещё раз этим прыжком</button></div>
+    </div>
+  </div>
+
+  <!-- 3. тап-карточка -->
+  <div class="screen" id="cardScreen" hidden>
+    <div class="card">
+      <p class="eyebrow">Тап-карточка · пока без чисел</p>
+      <h1>Что сказали руки?</h1>
+      <div class="q"><b>Какой прыжок приятнее?</b><div class="chips" data-q="best" data-max="1"><button type="button" class="chip">Синий</button><button type="button" class="chip">Оранжевый</button><button type="button" class="chip">Одинаково</button></div></div>
+      <div class="q"><b><span class="dot" style="background:var(--blue)"></span>Синий ощущался… <span class="muted">(до 2)</span></b><div class="chips" data-q="feelB" data-max="2"></div></div>
+      <div class="q"><b><span class="dot" style="background:var(--orange)"></span>Оранжевый ощущался… <span class="muted">(до 2)</span></b><div class="chips" data-q="feelO" data-max="2"></div></div>
+      <div class="q"><b>Был момент «я нажал, а он не прыгнул»?</b><div class="chips" data-q="ignored" data-max="1"><button type="button" class="chip">В синем</button><button type="button" class="chip">В оранжевом</button><button type="button" class="chip">В обоих</button><button type="button" class="chip">Не было</button></div></div>
+      <div class="q"><b>Почему один приятнее? Своими словами</b>
+        <div class="field"><textarea id="whyIn" placeholder="Например: он…"></textarea><button type="button" class="dice" id="whyDice" title="Кубик предлагает, автор решает">🎲</button></div>
+        <span class="tag" id="whyTag" hidden>[кубик]</span>
+      </div>
+      <div class="row"><button type="button" class="btn" id="revealBtn" disabled>Открыть числа</button><button type="button" class="btn alt" id="replayB">Ещё раз Синий</button><button type="button" class="btn alt" id="replayO">Ещё раз Оранжевый</button></div>
+      <p class="muted" id="cardNeed">Отметь, какой приятнее, и хотя бы одно ощущение для каждого.</p>
+    </div>
+  </div>
+
+  <!-- 4. раскрытие -->
+  <div class="screen" id="revealScreen" hidden>
+    <div class="card">
+      <p class="eyebrow">Открытие · телеметрия твоих забегов</p>
+      <h1 id="revTitle">Один прыжок прощал тебя</h1>
+      <p id="revLead"></p>
+      <div class="stats" id="revStats"></div>
+      <h2>Что было спрятано в отполированном прыжке</h2>
+      <div id="tricks" style="display:flex;flex-direction:column;gap:6px"></div>
+      <p class="muted">Ни один из этих приёмов игрок не видит. Он видит только одно: «игра меня слушается». В чекпоинте 2 разберём каждый на ползунках.</p>
+      <div class="q"><b>Итог для чата</b><textarea id="copyOut" readonly></textarea></div>
+      <div class="row"><button type="button" class="btn" id="copyBtn">Скопировать результат</button><button type="button" class="btn alt" id="backCard">Назад к карточке</button><button type="button" class="btn alt" id="openKnobs">Открыть ручки</button></div>
+    </div>
+  </div>
+
+  <!-- ручки -->
+  <aside id="panel" hidden aria-label="Ручки геймдизайнера">
+    <div class="row" style="justify-content:space-between"><h2>Ручки геймдизайнера</h2><button type="button" class="ghost" id="panelClose">Закрыть · <span class="kTab">Tab</span></button></div>
+    <div id="blindGate" hidden><p><b>Слепой тест ещё идёт.</b> Откроешь ручки — увидишь, чем прыжки отличаются, и руки начнут «знать заранее».</p><div class="row"><button type="button" class="btn alt" id="gateOpen">Всё равно открыть</button></div></div>
+    <div id="panelBody" style="display:flex;flex-direction:column;gap:10px">
+      <p class="muted" id="panelFor"></p>
+      <div class="row" id="presets"></div>
+      <div class="calc" id="calc"></div>
+      <div id="knobs" style="display:flex;flex-direction:column;gap:10px"></div>
+      <button type="button" class="ghost" id="copyCfg">Скопировать CONFIG</button>
+    </div>
+  </aside>
+</div>
+
+<script>
+/* ===== Два прыжка: слепой тест «сырой» и «отполированный» прыжок ===== */
+const $ = s => document.querySelector(s);
+
+/* ---------- ручки: 10 чисел прыжка ---------- */
+const META = {
+  gravity:  { label: 'Гравитация', min: 400, max: 4000, step: 50, unit: 'пикс/с²', hint: 'Как сильно тянет вниз' },
+  jumpV:    { label: 'Сила прыжка', min: 300, max: 1500, step: 5, unit: 'пикс/с', hint: 'Скорость вверх в момент толчка' },
+  fallMult: { label: 'Гравитация при падении ×', min: 0.5, max: 3, step: 0.05, unit: '', hint: 'Больше 1 — падает быстрее, чем взлетает' },
+  cut:      { label: 'Обрезка прыжка', min: 0.2, max: 1, step: 0.05, unit: '', hint: '1 — высота не зависит от нажатия; меньше — отпустил раньше, прыжок ниже' },
+  maxSpeed: { label: 'Макс. скорость бега', min: 100, max: 600, step: 10, unit: 'пикс/с', hint: '' },
+  accel:    { label: 'Разгон', min: 200, max: 6000, step: 50, unit: 'пикс/с²', hint: 'Как быстро набирает скорость' },
+  friction: { label: 'Трение (торможение)', min: 100, max: 6000, step: 50, unit: 'пикс/с²', hint: 'Мало — скользит после отпускания' },
+  air:      { label: 'Управление в воздухе', min: 0, max: 1, step: 0.05, unit: '', hint: '0 — в полёте не повернуть, 1 — как на земле' },
+  coyote:   { label: 'Время койота', min: 0, max: 250, step: 5, unit: 'мс', hint: 'Сколько ещё можно прыгнуть после края' },
+  buffer:   { label: 'Буфер прыжка', min: 0, max: 250, step: 5, unit: 'мс', hint: 'Нажал чуть до приземления — прыжок всё равно случится' },
+};
+const RAW =    { gravity: 1500, jumpV: 715, fallMult: 1, cut: 1, maxSpeed: 300, accel: 900, friction: 650, air: 0.55, coyote: 0, buffer: 0 };
+const POLISH = { gravity: 2200, jumpV: 865, fallMult: 1.7, cut: 0.45, maxSpeed: 330, accel: 3200, friction: 3600, air: 0.9, coyote: 100, buffer: 120 };
+const EXTRA = {
+  'Новичок': { gravity: 2000, jumpV: 860, fallMult: 1.5, cut: 0.5, maxSpeed: 270, accel: 2600, friction: 3600, air: 1, coyote: 160, buffer: 160 },
+  'Лунный': { gravity: 700, jumpV: 500, fallMult: 0.8, cut: 1, maxSpeed: 260, accel: 1200, friction: 900, air: 0.8, coyote: 60, buffer: 60 },
+  'Тяжёлый': { gravity: 3600, jumpV: 1110, fallMult: 1.4, cut: 0.6, maxSpeed: 240, accel: 700, friction: 1400, air: 0.35, coyote: 40, buffer: 40 },
+};
+
+/* слепое распределение: какой цвет какой прыжок */
+const blueIsRaw = Math.random() < 0.5;
+const JUMPS = {
+  blue:   { name: 'Синий', color: '#4fb3ff', dark: '#1d5c99', base: blueIsRaw ? RAW : POLISH, raw: blueIsRaw },
+  orange: { name: 'Оранжевый', color: '#ff9a3d', dark: '#9a4a10', base: blueIsRaw ? POLISH : RAW, raw: !blueIsRaw },
+};
+const ORDER = Math.random() < 0.5 ? ['blue', 'orange'] : ['orange', 'blue'];
+const cfgs = { blue: { ...JUMPS.blue.base }, orange: { ...JUMPS.orange.base } };
+const touched = { blue: false, orange: false };
+
+/* ---------- трасса ---------- */
+const G = 520;
+const SOLIDS = [
+  [0, G, 420, 300], [540, G, 260, 300],
+  [880, 440, 110, 22, 'wood'], [1060, 360, 100, 22, 'wood'], [1230, 440, 110, 22, 'wood'],
+  [1400, G, 320, 300], [1820, G, 420, 300],
+  [1900, 230, 230, 162, 'stone'],
+  [2240, 380, 170, 440], [2590, 380, 110, 440],
+  [2780, 320, 64, 22, 'wood'], [2920, 380, 64, 22, 'wood'], [3060, 300, 64, 22, 'wood'],
+  [3200, G, 520, 300],
+];
+const SPIKES = [[1520, 60], [1980, 60]]; // x, ширина; стоят на земле G, высота 22
+const SPIKE_H = 22;
+const CHECKS = [[40, G], [1420, G], [1840, G], [2270, 380], [3220, G]];
+const FINISH = 3560;
+
+const TRIS = [];
+for (const [x, w] of SPIKES) for (let i = 0; i < w; i += 20) TRIS.push([[x + i, G], [x + i + 10, G - SPIKE_H], [x + i + 20, G]]);
+
+/* ---------- состояние ---------- */
+const HW = 30, HH = 34;
+let state = 'intro', runIdx = 0, cur = ORDER[0];
+let P = null, T = 0, deadT = 0, finished = false, panelOpen = false, gateOk = false;
+const stats = { blue: [], orange: [] };
+let run = null;
+const tele = () => ({ time: 0, falls: 0, jumps: 0, held: 0, lateMiss: 0, earlyMiss: 0, coyoteSaves: 0, bufferSaves: 0, shortHops: 0, bonks: 0 });
+
+function spawn(cp) { P = { x: cp[0], y: cp[1] - HH, vx: 0, vy: 0, on: true, face: 1, leftAt: -9, jumpedSince: false, lastPress: -9, rising: false, cp }; }
+function startRun(key) {
+  cur = key; run = tele(); T = 0; finished = false; deadT = 0;
+  spawn(CHECKS[0]); camX = 0;
+  state = 'play'; showOnly(null); jumpPrev = true; try { document.activeElement && document.activeElement.blur(); } catch (e) {} $('#hud').hidden = false; $('#hint').hidden = false;
+  $('#hDot').style.background = JUMPS[cur].color; $('#hName').textContent = JUMPS[cur].name;
+  setHint(); audio();
+}
+
+/* ---------- ввод ---------- */
+const keys = {}; let pad = false;
+const inp = { left: false, right: false, jump: false }; let jumpPrev = false; let jumpEdge = false;
+const touchIn = { left: false, right: false, jump: false };
+addEventListener('keydown', e => {
+  if (e.target && (e.target.tagName === 'TEXTAREA' || e.target.tagName === 'INPUT')) return;
+  if (e.code === 'Tab') { e.preventDefault(); togglePanel(); return; }
+  setPad(false);
+  if (['Space', 'ArrowUp', 'KeyW', 'KeyZ'].includes(e.code) && state === 'play') e.preventDefault();
+  keys[e.code] = true;
+  if (e.code === 'KeyR' && state === 'play') startRun(cur);
+  if ((e.code === 'Space' || e.code === 'Enter') && state === 'intro') { e.preventDefault(); begin(); }
+});
+addEventListener('keyup', e => { keys[e.code] = false; });
+for (const [id, k] of [['tL', 'left'], ['tR', 'right'], ['tJ', 'jump']]) {
+  const el = document.getElementById(id);
+  el.addEventListener('pointerdown', e => { e.preventDefault(); touchIn[k] = true; audio(); });
+  for (const ev of ['pointerup', 'pointercancel', 'pointerleave']) el.addEventListener(ev, () => { touchIn[k] = false; });
+}
+
+let padPrev = [];
+function pollPad() {
+  let gp = null; try { gp = [...(navigator.getGamepads ? navigator.getGamepads() : [])].find(Boolean); } catch (e) {}
+  const pd = { left: false, right: false, jump: false };
+  if (gp) {
+    const b = gp.buttons.map(x => !!(x && x.pressed)), ax = gp.axes[0] || 0;
+    pd.left = ax < -0.35 || b[14]; pd.right = ax > 0.35 || b[15]; pd.jump = b[0] || b[3];
+    if (b.some(Boolean) || Math.abs(ax) > 0.4) setPad(true);
+    const dn = i => b[i] && !padPrev[i];
+    if (dn(8)) togglePanel();
+    if (state === 'play') { if (dn(9)) startRun(cur); }
+    else if (!panelOpen) {
+      if (dn(14) || dn(12)) moveFocus(-1);
+      if (dn(15) || dn(13)) moveFocus(1);
+      if (dn(0)) { const f = document.activeElement; if (f && f.click && f.closest('.screen:not([hidden])')) f.click(); else moveFocus(0); }
+      if (dn(9) && state === 'intro') begin();
+    }
+    padPrev = b;
+  }
+  return pd;
+}
+function moveFocus(d) {
+  const scr = document.querySelector('.screen:not([hidden])'); if (!scr) return;
+  const els = [...scr.querySelectorAll('button:not([disabled]),textarea')];
+  if (!els.length) return;
+  let i = els.indexOf(document.activeElement);
+  i = i < 0 ? 0 : (i + d + els.length) % els.length;
+  els[i].focus();
+}
+function setPad(on) {
+  if (pad === on) return; pad = on;
+  document.querySelectorAll('.kTab').forEach(e => e.textContent = on ? 'Select' : 'Tab');
+  document.querySelectorAll('.kA').forEach(e => e.textContent = on ? 'A' : 'Пробел');
+  setHint(); ctrlText();
+}
+function setHint() {
+  $('#hint').innerHTML = pad
+    ? '<kbd>стик</kbd>/<kbd>крестовина</kbd> бег · <kbd>A</kbd> прыжок · <kbd>Start</kbd> заново · <kbd>Select</kbd> ручки'
+    : '<kbd>← →</kbd> бег · <kbd>Пробел</kbd>/<kbd>↑</kbd> прыжок · <kbd>R</kbd> заново · <kbd>Tab</kbd> ручки';
+}
+function ctrlText() {
+  $('#ctrlText').innerHTML = pad
+    ? 'Управление: <kbd>стик</kbd> или <kbd>крестовина</kbd> — бег, <kbd>A</kbd> — прыжок (держи дольше — может быть выше, а может и нет), <kbd>Start</kbd> — заново.'
+    : 'Управление: <kbd>← →</kbd> или <kbd>A D</kbd> — бег, <kbd>Пробел</kbd> / <kbd>↑</kbd> — прыжок (держи дольше — может быть выше, а может и нет), <kbd>R</kbd> — заново. Геймпад тоже работает.';
+}
+
+/* ---------- звук ---------- */
+let AC = null, muted = false;
+function audio() { if (AC) { if (AC.state === 'suspended') AC.resume(); return; } try { AC = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) {} }
+function tone(f, dur = 0.1, type = 'square', vol = 0.06, slide = 0) {
+  if (!AC || muted) return;
+  const t = AC.currentTime, o = AC.createOscillator(), g = AC.createGain();
+  o.type = type; o.frequency.setValueAtTime(f, t); if (slide) o.frequency.exponentialRampToValueAtTime(Math.max(40, f + slide), t + dur);
+  g.gain.setValueAtTime(vol, t); g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+  o.connect(g); g.connect(AC.destination); o.start(t); o.stop(t + dur + 0.02);
+}
+const sfx = { jump: () => tone(330, 0.12, 'square', 0.05, 260), land: () => tone(120, 0.06, 'triangle', 0.06), die: () => tone(220, 0.3, 'sawtooth', 0.06, -170), flag: () => { tone(523, 0.1, 'square', 0.05); setTimeout(() => tone(784, 0.18, 'square', 0.05), 110); } };
+$('#soundBtn').addEventListener('click', () => { muted = !muted; $('#soundBtn').textContent = muted ? 'Звук выкл' : 'Звук вкл'; $('#soundBtn').setAttribute('aria-pressed', muted); audio(); });
+function rumble(ms = 140, s = 0.5) { try { const gp = [...navigator.getGamepads()].find(Boolean); if (gp && gp.vibrationActuator) gp.vibrationActuator.playEffect('dual-rumble', { duration: ms, strongMagnitude: s, weakMagnitude: s * 0.6 }); } catch (e) {} }
+
+/* ---------- физика ---------- */
+function overlaps(x, y, w, h, s) { return x < s[0] + s[2] && x + w > s[0] && y < s[1] + s[3] && y + h > s[1]; }
+function approach(v, t, d) { return v < t ? Math.min(v + d, t) : Math.max(v - d, t); }
+function inTri(px, py, t) {
+  const [a, b, c] = t, s = (p1, p2, p3) => (p1[0] - p3[0]) * (p2[1] - p3[1]) - (p2[0] - p3[0]) * (p1[1] - p3[1]);
+  const p = [px, py], d1 = s(p, a, b), d2 = s(p, b, c), d3 = s(p, c, a);
+  return !((d1 < 0 || d2 < 0 || d3 < 0) && (d1 > 0 || d2 > 0 || d3 > 0));
+}
+function hitSpike() {
+  // «видно = правда»: касание самого треугольника, а не прямоугольника вокруг него
+  const pts = []; for (let i = 0; i <= 4; i++) { pts.push([P.x + HW * i / 4, P.y + HH]); pts.push([P.x + HW * i / 4, P.y + HH - 6]); }
+  for (const t of TRIS) {
+    if (P.x + HW < t[0][0] || P.x > t[2][0] || P.y + HH < G - SPIKE_H) continue;
+    if (pts.some(p => inTri(p[0], p[1], t))) return true;
+    if (t[1][0] > P.x && t[1][0] < P.x + HW && t[1][1] < P.y + HH) return true;
+  }
+  return false;
+}
+function doJump(kind) {
+  const c = cfgs[cur];
+  P.vy = -c.jumpV; P.on = false; P.jumpedSince = true; P.rising = true; P.lastPress = -9;
+  run.jumps++; if (kind === 'coyote') run.coyoteSaves++; if (kind === 'buffer') run.bufferSaves++;
+  sfx.jump();
+}
+function die() {
+  run.falls++; deadT = 0.45; sfx.die(); rumble(200, 0.7);
+}
+function step(dt) {
+  const c = cfgs[cur];
+  T += dt; run.time = T;
+  if (deadT > 0) { deadT -= dt; if (deadT <= 0) spawn(P.cp); return; }
+  const dir = (inp.right ? 1 : 0) - (inp.left ? 1 : 0);
+  if (dir) P.face = dir;
+  if (inp.jump) run.held += dt;
+  // бег
+  const target = dir * c.maxSpeed;
+  let rate;
+  if (P.on) rate = dir ? (Math.sign(P.vx) === -dir ? c.accel + c.friction : c.accel) : c.friction;
+  else rate = dir ? c.accel * c.air : c.friction * c.air * 0.25;
+  P.vx = approach(P.vx, target, rate * dt);
+  // нажатие прыжка
+  if (jumpEdge) {
+    const sinceLeft = T - P.leftAt;
+    if (P.on) doJump('ground');
+    else if (!P.jumpedSince && sinceLeft <= c.coyote / 1000) doJump('coyote');
+    else if (!P.jumpedSince && sinceLeft <= 0.15) { run.lateMiss++; P.lastPress = -9; }
+    else P.lastPress = T;
+  }
+  // обрезка прыжка
+  if (P.rising && !inp.jump && P.vy < 0) { if (c.cut < 0.99) { P.vy *= c.cut; run.shortHops++; } P.rising = false; }
+  if (P.vy >= 0) P.rising = false;
+  // гравитация
+  P.vy += c.gravity * (P.vy > 0 ? c.fallMult : 1) * dt;
+  if (P.vy > 1500) P.vy = 1500;
+  // движение по x
+  P.x += P.vx * dt;
+  for (const s of SOLIDS) if (overlaps(P.x, P.y, HW, HH, s)) { if (P.vx > 0) P.x = s[0] - HW; else if (P.vx < 0) P.x = s[0] + s[2]; P.vx = 0; }
+  if (P.x < 0) { P.x = 0; P.vx = 0; }
+  // движение по y
+  const wasOn = P.on; P.on = false;
+  P.y += P.vy * dt;
+  for (const s of SOLIDS) if (overlaps(P.x, P.y, HW, HH, s)) {
+    if (P.vy > 0) { P.y = s[1] - HH; P.on = true; }
+    else if (P.vy < 0) { P.y = s[1] + s[3]; run.bonks++; P.rising = false; }
+    P.vy = 0;
+  }
+  if (!P.on && P.vy === 0) { for (const s of SOLIDS) if (overlaps(P.x, P.y + 1, HW, HH, s)) P.on = true; }
+  if (wasOn && !P.on) { P.leftAt = T; if (P.vy >= 0) P.jumpedSince = false; }
+  if (!wasOn && P.on) {
+    P.jumpedSince = false; sfx.land();
+    const since = T - P.lastPress;
+    if (since <= c.buffer / 1000) doJump('buffer');
+    else if (since <= 0.15) { run.earlyMiss++; P.lastPress = -9; }
+    else P.lastPress = -9;
+  }
+  // чекпоинты, шипы, пропасть, финиш
+  for (const cp of CHECKS) if (P.x > cp[0] && cp[0] > P.cp[0]) P.cp = cp;
+  if (hitSpike() || P.y > 720) die();
+  if (P.x > FINISH && !finished) finishRun();
+}
+
+/* ---------- забеги ---------- */
+function finishRun() {
+  finished = true; sfx.flag(); rumble(120, 0.3);
+  stats[cur].push({ ...run });
+  state = 'run'; $('#hud').hidden = true; $('#hint').hidden = true;
+  const j = JUMPS[cur];
+  $('#runEyebrow').textContent = `Забег ${stats.blue.length + stats.orange.length} · ${j.name}`;
+  $('#runTitle').textContent = `${j.name} добежал`;
+  $('#runBox').innerHTML = `<h2><span class="dot" style="background:${j.color}"></span>${j.name}</h2>` + line('Время', fmtT(run.time)) + line('Падений', run.falls) + line('Прыжков', run.jumps);
+  const other = cur === 'blue' ? 'orange' : 'blue';
+  const needOther = !stats[other].length;
+  $('#nextBtn').textContent = needOther ? `Дальше: ${JUMPS[other].name}` : 'К тап-карточке';
+  $('#nextBtn').onclick = () => needOther ? startRun(other) : openCard();
+  $('#runFeel').textContent = needOther ? 'Запомни, как ощущался этот прыжок. Сейчас тот же путь другим героем.' : 'Оба прыжка пройдены. Теперь — что сказали руки.';
+  showOnly('runScreen'); setTimeout(() => $('#nextBtn').focus(), 50);
+}
+$('#againRunBtn').addEventListener('click', () => startRun(cur));
+const line = (a, b) => `<div class="sline"><span>${a}</span><b>${b}</b></div>`;
+const fmtT = t => t.toFixed(1).replace('.', ',') + ' с';
+function begin() { audio(); startRun(ORDER[0]); }
+$('#startBtn').addEventListener('click', begin);
+function showOnly(id) { for (const s of document.querySelectorAll('.screen')) s.hidden = s.id !== id; }
+
+/* ---------- тап-карточка ---------- */
+const FEELS = ['Послушный', 'Точный', 'Резкий', 'Плавный', 'Тяжёлый', 'Ватный', 'Скользкий', 'Лунный', 'Медленный', 'Дёрганый'];
+for (const q of ['feelB', 'feelO']) document.querySelector(`[data-q="${q}"]`).innerHTML = FEELS.map(f => `<button type="button" class="chip">${f}</button>`).join('');
+const answers = { best: [], feelB: [], feelO: [], ignored: [] };
+for (const box of document.querySelectorAll('[data-q]')) {
+  const q = box.dataset.q, max = +box.dataset.max;
+  box.addEventListener('click', e => {
+    const b = e.target.closest('.chip'); if (!b) return;
+    const v = b.textContent, a = answers[q], i = a.indexOf(v);
+    if (i >= 0) a.splice(i, 1); else { a.push(v); if (a.length > max) a.shift(); }
+    for (const c of box.querySelectorAll('.chip')) c.setAttribute('aria-pressed', a.includes(c.textContent));
+    tone(600 + a.length * 120, 0.05, 'triangle', 0.04); checkCard();
+  });
+}
+const WHY = ['Он сразу слушается кнопки, а другой будто думает', 'Падает быстрее, чем взлетает, и не висит в воздухе', 'Можно прыгнуть чуть позже края и всё равно успеть', 'Не скользит, когда отпускаешь стрелку', 'Короткое нажатие — маленький прыжок, длинное — большой', 'Нажал чуть раньше земли, а он всё равно прыгнул', 'В воздухе можно поправить, куда летишь'];
+let whyDice = null;
+$('#whyDice').addEventListener('click', () => { let v; do { v = WHY[Math.random() * WHY.length | 0]; } while (v === whyDice && WHY.length > 1); whyDice = v; $('#whyIn').value = v; $('#whyTag').hidden = false; tone(880, 0.06, 'square', 0.04); checkCard(); });
+$('#whyIn').addEventListener('input', () => { $('#whyTag').hidden = $('#whyIn').value !== whyDice; checkCard(); });
+function checkCard() {
+  const ok = answers.best.length && answers.feelB.length && answers.feelO.length;
+  $('#revealBtn').disabled = !ok; $('#cardNeed').hidden = !!ok;
+}
+function openCard() { state = 'card'; $('#hud').hidden = true; $('#hint').hidden = true; showOnly('cardScreen'); checkCard(); }
+$('#replayB').addEventListener('click', () => startRun('blue'));
+$('#replayO').addEventListener('click', () => startRun('orange'));
+$('#revealBtn').addEventListener('click', reveal);
+$('#backCard').addEventListener('click', openCard);
+$('#openKnobs').addEventListener('click', () => { if (!panelOpen) togglePanel(); });
+
+/* ---------- раскрытие ---------- */
+function sum(key) { const a = stats[key]; const o = tele(); for (const r of a) for (const k in o) o[k] += r[k]; o.best = a.length ? Math.min(...a.map(r => r.time)) : 0; o.runs = a.length; return o; }
+let revealed = false;
+function reveal() {
+  revealed = true; gateOk = true; state = 'reveal';
+  const rawK = JUMPS.blue.raw ? 'blue' : 'orange', polK = rawK === 'blue' ? 'orange' : 'blue';
+  const R = sum(rawK), Q = sum(polK), rj = JUMPS[rawK], pj = JUMPS[polK];
+  const missed = R.lateMiss + R.earlyMiss, saved = Q.coyoteSaves + Q.bufferSaves;
+  $('#revTitle').textContent = `${pj.name} прощал тебя, ${rj.name} — нет`;
+  const liked = answers.best[0];
+  $('#revLead').innerHTML = `${rj.name} — «сырой» прыжок: никаких скрытых приёмов. ${pj.name} — «отполированный»: в нём спрятаны четыре приёма, которые игрок не видит. ` +
+    (liked === pj.name ? 'Ты выбрал его, ещё не зная чисел: руки поняли раньше головы.' : liked === rj.name ? 'Ты выбрал сырой. Интересно! Значит, тебе важнее что-то другое — обсудим, что именно.' : 'Ты сказал «одинаково». Посмотри на числа: игра вела себя по-разному, даже если глаза этого не заметили.');
+  const box = (j, s, extra) => `<div class="sbox" style="border-color:${j.color}"><h2><span class="dot" style="background:${j.color}"></span>${j.name} · ${j.raw ? 'сырой' : 'отполированный'}</h2>` +
+    line('Лучшее время', s.runs ? fmtT(s.best) : '—') + line('Падений', s.falls) + line('Удары головой о потолок', s.bonks) + extra + '</div>';
+  $('#revStats').innerHTML =
+    box(rj, R, line('<span style="color:var(--bad)">Нажал, а он не прыгнул</span>', missed)) +
+    box(pj, Q, line('<span style="color:var(--good)">Игра спасла прыжок</span>', saved));
+  const tr = (n, bad, t, d) => `<div class="trick"><span class="n${bad ? ' bad' : ''}">${n}</span><p><b>${t}.</b> ${d}</p></div>`;
+  const cp = cfgs[polK];
+  $('#tricks').innerHTML =
+    tr(Q.coyoteSaves, false, `Время койота, ${cp.coyote} мс`, `Ты уже сошёл с края, а прыжок ещё засчитывается. В отполированном прыжке это спасло тебя ${Q.coyoteSaves} раз. В сыром ты нажал «чуть поздно» ${R.lateMiss} раз — и упал.`) +
+    tr(Q.bufferSaves, false, `Буфер прыжка, ${cp.buffer} мс`, `Нажал чуть раньше, чем коснулся земли, — игра запомнила и прыгнула в момент касания. Спасло ${Q.bufferSaves} раз. В сыром ранних нажатий впустую: ${R.earlyMiss}.`) +
+    tr(Q.shortHops, false, 'Высота от длительности нажатия', `Отпустил кнопку на взлёте — прыжок обрезается. Коротких прыжков у тебя: ${Q.shortHops}. Под каменным потолком это решает: ударов головой у сырого ${R.bonks}, у отполированного ${Q.bonks}.`) +
+    tr('×' + String(cp.fallMult).replace('.', ','), false, 'Падает быстрее, чем взлетает', `Гравитация при падении в ${String(cp.fallMult).replace('.', ',')} раза сильнее. Прыжок не «висит» ватой, приземление чёткое. У сырого множитель 1.`);
+  $('#copyOut').value = resultText(R, Q, rj, pj);
+  showOnly('revealScreen'); syncPanel();
+}
+function resultText(R, Q, rj, pj) {
+  const why = $('#whyIn').value.trim();
+  const mark = why && why === whyDice ? ' [кубик]' : '';
+  return [
+    'Занятие 5 · Чекпоинт 1 «Два прыжка» (слепой тест)',
+    `${rj.name} = сырой, ${pj.name} = отполированный (раскрыто после карточки)`,
+    `Приятнее: ${answers.best.join(', ') || '—'}`,
+    `Синий ощущался: ${answers.feelB.join(', ') || '—'}`,
+    `Оранжевый ощущался: ${answers.feelO.join(', ') || '—'}`,
+    `«Нажал, а не прыгнул»: ${answers.ignored.join(', ') || 'не отмечено'}`,
+    `Почему: ${why || '—'}${mark}`,
+    `Сырой (${rj.name}): забегов ${R.runs}, лучшее время ${R.runs ? fmtT(R.best) : '—'}, падений ${R.falls}, нажал поздно у края ${R.lateMiss}, рано до земли ${R.earlyMiss}, удары о потолок ${R.bonks}`,
+    `Отполированный (${pj.name}): забегов ${Q.runs}, лучшее время ${Q.runs ? fmtT(Q.best) : '—'}, падений ${Q.falls}, спас койот ${Q.coyoteSaves}, спас буфер ${Q.bufferSaves}, коротких прыжков ${Q.shortHops}, удары о потолок ${Q.bonks}`,
+    `Ручки трогал: ${touched.blue || touched.orange ? 'да' : 'нет'}`,
+  ].join('\n');
+}
+$('#copyBtn').addEventListener('click', () => {
+  const t = $('#copyOut').value, done = () => { $('#copyBtn').textContent = 'Скопировано ✓'; tone(988, 0.12, 'triangle', 0.05); setTimeout(() => $('#copyBtn').textContent = 'Скопировать результат', 1600); };
+  try { navigator.clipboard.writeText(t).then(done, () => { $('#copyOut').select(); done(); }); } catch (e) { $('#copyOut').select(); done(); }
+});
+
+/* ---------- панель ручек ---------- */
+function togglePanel() {
+  panelOpen = !panelOpen; $('#panel').hidden = !panelOpen;
+  if (panelOpen) syncPanel();
+}
+$('#knobBtn').addEventListener('click', togglePanel);
+$('#panelClose').addEventListener('click', togglePanel);
+$('#gateOpen').addEventListener('click', () => { gateOk = true; syncPanel(); });
+function buildKnobs() {
+  $('#knobs').innerHTML = Object.entries(META).map(([k, m]) => `<div class="knob"><label for="k_${k}">${m.label}</label><output id="o_${k}"></output><input type="range" id="k_${k}" min="${m.min}" max="${m.max}" step="${m.step}">${m.hint ? `<small>${m.hint}</small>` : ''}</div>`).join('');
+  for (const k of Object.keys(META)) $('#k_' + k).addEventListener('input', e => { cfgs[cur][k] = +e.target.value; touched[cur] = true; syncPanel(); });
+}
+function presetList() {
+  const P = { 'Как задумано': JUMPS[cur].base };
+  if (revealed) { P['Сырой'] = RAW; P['Отполированный'] = POLISH; }
+  return Object.assign(P, EXTRA);
+}
+function syncPanel() {
+  const blind = !revealed && !gateOk;
+  $('#blindGate').hidden = !blind; $('#panelBody').hidden = blind;
+  if (blind) return;
+  const j = JUMPS[cur];
+  $('#panelFor').innerHTML = `Сейчас настраиваешь прыжок <b style="color:${j.color}">${j.name}</b>.` + (state === 'play' ? ' Игра на паузе, пока панель открыта.' : '');
+  $('#presets').innerHTML = Object.keys(presetList()).map(n => `<button type="button" class="ghost" data-p="${n}">${n}</button>`).join('');
+  for (const b of $('#presets').querySelectorAll('button')) b.onclick = () => { Object.assign(cfgs[cur], presetList()[b.dataset.p]); touched[cur] = b.dataset.p !== 'Как задумано'; syncPanel(); tone(700, 0.05, 'triangle', 0.04); };
+  const c = cfgs[cur];
+  for (const [k, m] of Object.entries(META)) { $('#k_' + k).value = c[k]; $('#o_' + k).textContent = String(c[k]).replace('.', ',') + (m.unit ? ' ' + m.unit : ''); }
+  const h = c.jumpV * c.jumpV / (2 * c.gravity), up = c.jumpV / c.gravity, down = Math.sqrt(2 * h / (c.gravity * c.fallMult));
+  $('#calc').innerHTML = `Высота прыжка ≈ <b>${Math.round(h)}</b> пикс (уступ на трассе — 140)<br>Взлёт ${Math.round(up * 1000)} мс · падение ${Math.round(down * 1000)} мс · в воздухе ${Math.round((up + down) * 1000)} мс<br>Дальность на полной скорости ≈ <b>${Math.round((up + down) * c.maxSpeed)}</b> пикс`;
+}
+$('#copyCfg').addEventListener('click', () => {
+  const t = `// ${JUMPS[cur].name}\nconst CONFIG = ${JSON.stringify(cfgs[cur], null, 2)};`;
+  try { navigator.clipboard.writeText(t); } catch (e) {}
+  $('#copyCfg').textContent = 'Скопировано ✓'; setTimeout(() => $('#copyCfg').textContent = 'Скопировать CONFIG', 1400);
+});
+
+/* ---------- отрисовка ---------- */
+const cv = $('#cv'), ctx = cv.getContext('2d');
+let W = 0, H = 0, S = 1, camX = 0, DPR = 1;
+function resize() { DPR = Math.min(2, devicePixelRatio || 1); W = cv.clientWidth; H = cv.clientHeight; cv.width = W * DPR; cv.height = H * DPR; S = H / 600; }
+addEventListener('resize', resize); resize();
+
+const RIDGE = []; { let y = 0; for (let i = 0; i <= 80; i++) { y = 230 + Math.sin(i * 0.9) * 40 + Math.sin(i * 2.3) * 22 + (i % 7 === 3 ? -60 : 0); RIDGE.push(y); } }
+function draw() {
+  ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+  const sky = ctx.createLinearGradient(0, 0, 0, H); sky.addColorStop(0, '#1b4f72'); sky.addColorStop(0.55, '#7fb8b0'); sky.addColorStop(1, '#f2d49b');
+  ctx.fillStyle = sky; ctx.fillRect(0, 0, W, H);
+  const vw = W / S;
+  ctx.save(); ctx.scale(S, S);
+  // дальние горы Лаго-Наки
+  ctx.fillStyle = '#5d8aa0'; ctx.beginPath(); ctx.moveTo(0, 600);
+  for (let i = 0; i <= 80; i++) { const x = i * 120 - (camX * 0.15) % 120 - 120; ctx.lineTo(x, RIDGE[(i + Math.floor(camX * 0.15 / 120)) % 81]); }
+  ctx.lineTo(vw + 200, 600); ctx.fill();
+  ctx.fillStyle = 'rgba(255,255,255,.75)';
+  for (let i = 0; i <= 80; i++) { const idx = (i + Math.floor(camX * 0.15 / 120)) % 81; if (RIDGE[idx] < 200) { const x = i * 120 - (camX * 0.15) % 120 - 120; ctx.beginPath(); ctx.moveTo(x - 26, RIDGE[idx] + 22); ctx.lineTo(x, RIDGE[idx]); ctx.lineTo(x + 26, RIDGE[idx] + 22); ctx.fill(); } }
+  ctx.fillStyle = '#3f7a55'; ctx.beginPath(); ctx.moveTo(0, 600);
+  for (let x = -40; x <= vw + 40; x += 40) { const wx = x + camX * 0.45; ctx.lineTo(x, 430 + Math.sin(wx * 0.006) * 30 + Math.sin(wx * 0.017) * 12); }
+  ctx.lineTo(vw + 40, 600); ctx.fill();
+  ctx.translate(-camX, 0);
+  // твёрдое
+  for (const s of SOLIDS) {
+    const [x, y, w, h, kind] = s;
+    if (x > camX + vw + 20 || x + w < camX - 20) continue;
+    if (kind === 'wood') { ctx.fillStyle = '#8a5a2b'; ctx.fillRect(x, y, w, h); ctx.fillStyle = '#b07a3e'; ctx.fillRect(x, y, w, 6); ctx.fillStyle = '#5c3a18'; for (let i = x + 14; i < x + w; i += 26) ctx.fillRect(i, y + 6, 3, h - 6); }
+    else if (kind === 'stone') { ctx.fillStyle = '#6d6476'; ctx.fillRect(x, y, w, h); ctx.fillStyle = '#857c90'; for (let i = 0; i < w; i += 46) ctx.fillRect(x + i + 4, y + 8 + (i / 46 % 2) * 50, 38, 40); ctx.fillStyle = '#4a4352'; ctx.fillRect(x, y + h - 8, w, 8); }
+    else { ctx.fillStyle = '#7a5a43'; ctx.fillRect(x, y, w, h); ctx.fillStyle = '#956f52'; for (let i = 0; i < w; i += 40) ctx.fillRect(x + i + 6, y + 30 + (i / 40 % 2) * 26, 24, 14); ctx.fillStyle = '#5fbf4a'; ctx.fillRect(x, y, w, 10); ctx.fillStyle = '#3e9a37'; ctx.fillRect(x, y + 10, w, 4); }
+  }
+  // шипы: рисуем ровно ту форму, что ранит
+  for (const t of TRIS) { ctx.fillStyle = '#ff4757'; ctx.strokeStyle = '#6b0f19'; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(...t[0]); ctx.lineTo(...t[1]); ctx.lineTo(...t[2]); ctx.closePath(); ctx.fill(); ctx.stroke(); }
+  // чекпоинты и финиш
+  for (const cp of CHECKS.slice(1)) { const on = P && P.cp[0] >= cp[0]; ctx.fillStyle = '#e9e3d0'; ctx.fillRect(cp[0], cp[1] - 50, 4, 50); ctx.fillStyle = on ? '#45e39a' : '#c8c2b0'; ctx.beginPath(); ctx.moveTo(cp[0] + 4, cp[1] - 50); ctx.lineTo(cp[0] + 26, cp[1] - 42); ctx.lineTo(cp[0] + 4, cp[1] - 34); ctx.fill(); }
+  ctx.fillStyle = '#f4f0ff'; ctx.fillRect(FINISH, G - 120, 6, 120);
+  for (let i = 0; i < 4; i++) for (let j = 0; j < 3; j++) { ctx.fillStyle = (i + j) % 2 ? '#111' : '#fff'; ctx.fillRect(FINISH + 6 + i * 12, G - 120 + j * 12, 12, 12); }
+  // герой
+  if (P && state === 'play') {
+    const j = JUMPS[cur];
+    ctx.globalAlpha = deadT > 0 ? 0.35 : 1;
+    ctx.fillStyle = j.dark; ctx.fillRect(P.x, P.y + 4, HW, HH - 4);
+    ctx.fillStyle = j.color; ctx.fillRect(P.x, P.y, HW, HH - 6);
+    const ex = P.x + HW / 2 + P.face * 6;
+    ctx.fillStyle = '#fff'; ctx.fillRect(ex - 8, P.y + 9, 7, 9); ctx.fillRect(ex + 2, P.y + 9, 7, 9);
+    ctx.fillStyle = '#10101a'; ctx.fillRect(ex - 6 + P.face * 2, P.y + 12, 3, 5); ctx.fillRect(ex + 4 + P.face * 2, P.y + 12, 3, 5);
+    ctx.globalAlpha = 1;
+  }
+  ctx.restore();
+  if (deadT > 0) { ctx.fillStyle = `rgba(255,60,80,${deadT * 0.5})`; ctx.fillRect(0, 0, W, H); }
+}
+
+/* ---------- цикл ---------- */
+let last = performance.now(), acc = 0;
+function frame(now) {
+  const dt = Math.min(0.05, (now - last) / 1000); last = now;
+  const pd = pollPad();
+  inp.left = keys.ArrowLeft || keys.KeyA || pd.left || touchIn.left;
+  inp.right = keys.ArrowRight || keys.KeyD || pd.right || touchIn.right;
+  inp.jump = !!(keys.Space || keys.ArrowUp || keys.KeyW || keys.KeyZ || pd.jump || touchIn.jump);
+  if (inp.jump && !jumpPrev) jumpEdge = true;
+  jumpPrev = inp.jump;
+  if (state === 'play' && !panelOpen) {
+    acc += dt;
+    while (acc >= 1 / 120) { step(1 / 120); jumpEdge = false; acc -= 1 / 120; if (state !== 'play') break; }
+    if (P) camX += ((P.x - (W / S) * 0.35) - camX) * Math.min(1, dt * 8);
+    camX = Math.max(0, camX);
+    $('#hTime').textContent = fmtT(T); $('#hFalls').textContent = 'падений ' + run.falls;
+  } else { jumpEdge = false; acc = 0; if (state === 'intro') camX = (camX + dt * 40) % 3000; }
+  draw();
+  requestAnimationFrame(frame);
+}
+ctrlText(); setHint(); buildKnobs();
+spawn(CHECKS[0]);
+requestAnimationFrame(frame);
+setTimeout(() => $('#startBtn').focus(), 100);
+</script>
