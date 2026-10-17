@@ -3,7 +3,7 @@
 'use strict';
 const { el, api, toast, copy, beep, fmtTime, fieldEditor, valText } = Lab;
 const $ = s => document.querySelector(s);
-const T = { classes: [], lessons: [], code: null, overview: null, timer: null, skew: 0, demo: false, filter: 'all' };
+const T = { classes: [], lessons: [], modules: [], module: null, code: null, overview: null, timer: null, skew: 0, demo: false, filter: 'all' };
 
 async function boot() {
   try { await loadClasses(); } catch (e) { if (e.status === 401) { location.href = '/'; return; } toast(e.message, 'err'); return; }
@@ -16,14 +16,33 @@ async function boot() {
 }
 async function loadClasses() {
   const r = await api('/api/teacher/classes');
-  T.classes = r.classes; T.lessons = r.lessons;
+  T.classes = r.classes; T.lessons = r.lessons; T.modules = r.modules || [];
 }
+const lessonOf = id => T.lessons.find(l => l.id === id);
+const moduleLessons = m => T.lessons.filter(l => l.module === m);
 function drawClassSel() {
   const sel = $('#classSel'); sel.innerHTML = '';
   if (!T.classes.length) sel.append(el('option', { value: '' }, 'Классов пока нет — создайте ниже'));
   T.classes.forEach(c => sel.append(el('option', { value: c.code, selected: c.code === T.code ? true : null }, `${c.name} · ${c.code}`)));
+  const cls = T.classes.find(c => c.code === T.code), cur = cls && lessonOf(cls.lesson);
+  if (T.module == null) T.module = cur ? cur.module : 1;
+  drawModuleSel();
+}
+// меню модулей над классом: в списке «Урок» — только уроки выбранного модуля
+function drawModuleSel() {
+  const ms = $('#moduleSel'); ms.innerHTML = '';
+  T.modules.forEach(m => {
+    const n = moduleLessons(m.number).length;
+    ms.append(el('option', { value: m.number, selected: m.number === T.module ? true : null }, (m.number ? `${m.number}. ` : '') + m.title + (n ? '' : ' · уроков пока нет')));
+  });
+  drawLessonSel();
+}
+function drawLessonSel() {
   const ls = $('#lessonSel'); ls.innerHTML = '';
-  T.lessons.forEach(l => ls.append(el('option', { value: l.id }, `Урок ${l.number}. ${l.title}`)));
+  const list = moduleLessons(T.module), cur = T.overview && T.overview.class.lesson;
+  if (!list.length) ls.append(el('option', { value: '' }, 'В этом модуле уроков пока нет'));
+  else if (!list.some(l => l.id === cur)) ls.append(el('option', { value: '', selected: true }, 'Выберите урок модуля'));
+  list.forEach(l => ls.append(el('option', { value: l.id, selected: l.id === cur ? true : null }, `Урок ${l.number}. ${l.title}`)));
 }
 async function selectClass(code) {
   T.code = code;
@@ -39,7 +58,11 @@ async function refresh(full) {
   T.overview = o; T.skew = Date.parse(o.now) - Date.now();
   $('#classCode').textContent = o.class.code;
   $('#classLink').textContent = `Адрес: ${location.origin}/?code=${o.class.code}`;
-  $('#lessonSel').value = o.class.lesson;
+  if (T.lastLesson !== o.class.lesson) { // урок класса сменился — меню модулей переходит в его модуль
+    T.lastLesson = o.class.lesson;
+    const l = lessonOf(o.class.lesson); if (l) T.module = l.module;
+    drawModuleSel();
+  }
   const sw = $('#authorSw'); sw.classList.toggle('on', !!o.class.authorMode); sw.setAttribute('aria-checked', String(!!o.class.authorMode));
   drawLesson();
 }
@@ -494,8 +517,27 @@ document.querySelectorAll('.tabs button').forEach(b => b.addEventListener('click
   if (b.dataset.tab === 'notes') drawNotes();
 }));
 $('#classSel').addEventListener('change', e => { selectClass(e.target.value); if (!$('#tab-wow').hidden) drawWow(true); });
+// удаление класса: мышь над списком классов (или фокус на нём) и клавиша Del — без отдельной кнопки
+let classHover = false;
+$('#classSel').addEventListener('mouseenter', () => { classHover = true; });
+$('#classSel').addEventListener('mouseleave', () => { classHover = false; });
+document.addEventListener('keydown', async e => {
+  if (e.key !== 'Delete' || !T.code) return;
+  if (!classHover && document.activeElement !== $('#classSel')) return;
+  const c = T.classes.find(x => x.code === T.code);
+  if (!c || !confirm(`Удалить класс «${c.name}» (${c.code})? Ученики больше не войдут по этому коду. Папка класса переедет в data/deleted.`)) return;
+  try {
+    await api('/api/teacher/class/delete', { code: c.code });
+    await loadClasses();
+    T.code = T.classes[0] ? T.classes[0].code : null; T.lastLesson = null;
+    drawClassSel(); await selectClass(T.code);
+    toast(`Класс «${c.name}» удалён`, 'ok');
+  } catch (err) { toast(err.message, 'err'); }
+});
+$('#moduleSel').addEventListener('change', e => { T.module = Number(e.target.value); drawLessonSel(); });
 $('#lessonSel').addEventListener('change', async e => {
-  if (!confirm('Сменить урок класса? Открытые чекпоинты закроются, ответы учеников сохранятся.')) { e.target.value = T.overview.class.lesson; return; }
+  if (!e.target.value) return;
+  if (!confirm('Сменить урок класса? Открытые чекпоинты закроются, ответы учеников сохранятся.')) { drawLessonSel(); return; }
   try { await api('/api/teacher/class/update', { code: T.code, lesson: e.target.value }); await refresh(true); } catch (err) { toast(err.message, 'err'); }
 });
 function toggleAuthor() {
@@ -507,7 +549,8 @@ $('#authorSw').addEventListener('keydown', e => { if (e.key === ' ' || e.key ===
 $('#newClass').addEventListener('submit', async e => {
   e.preventDefault();
   try {
-    const c = await api('/api/teacher/class', { name: $('#newName').value, lesson: T.lessons[0] && T.lessons[0].id });
+    const first = moduleLessons(T.module)[0] || T.lessons[0]; // новый класс начинает с первого урока выбранного модуля
+    const c = await api('/api/teacher/class', { name: $('#newName').value, lesson: first && first.id });
     $('#newName').value = '';
     await loadClasses(); T.code = c.code; drawClassSel(); await selectClass(c.code);
     toast(`Класс создан. Код: ${c.code}`, 'ok');

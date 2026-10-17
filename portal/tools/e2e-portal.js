@@ -79,6 +79,15 @@ async function run(browser, base, mode) {
   await teacher.fill('#pass', PASSWORD);
   await teacher.click('#teacherForm button[type=submit]');
   await teacher.waitForURL('**/teacher');
+  // лишний класс удаляется клавишей Del, пока мышь над списком классов
+  await teacher.fill('#newName', 'Лишний ' + mode);
+  await teacher.click('#newClass button');
+  await teacher.waitForFunction(name => { const o = document.querySelector('#classSel').selectedOptions[0]; return o && o.textContent.startsWith(name); }, 'Лишний ' + mode);
+  check('Меню модулей: модуль 1 и урок 1', await teacher.$eval('#moduleSel', s => s.value) === '1' && await teacher.$eval('#lessonSel', s => s.value) === 'urok-01');
+  await teacher.hover('#classSel');
+  await teacher.keyboard.press('Delete');
+  await teacher.waitForFunction(name => ![...document.querySelectorAll('#classSel option')].some(o => o.textContent.startsWith(name)), 'Лишний ' + mode);
+  check('Класс удалён клавишей Del', true);
   await teacher.fill('#newName', 'Проверка ' + mode);
   await teacher.click('#newClass button');
   // ждём именно новый класс: до создания панель показывает класс прошлого прогона
@@ -472,6 +481,7 @@ async function compareModels(teacher, shot) {
 /* ---------- урок-проверка: вау-старт учителя (teacher-demo) ---------- */
 async function fixtureLesson(mode, teacher, student, pj, shot) {
   await teacher.click('.tabs >> text=Урок');
+  await teacher.selectOption('#moduleSel', '0');
   await teacher.selectOption('#lessonSel', 'urok-90');
   await teacher.waitForSelector('text=Открыть: Вау-старт →', { timeout: 10000 });
   await teacher.click('text=Открыть: Вау-старт →');
@@ -482,6 +492,7 @@ async function fixtureLesson(mode, teacher, student, pj, shot) {
 const step2 = id => lesson2.checkpoints.flatMap(c => c.steps).find(s => s.id === id);
 async function lessonTwo(mode, teacher, student, shot) {
   await teacher.click('.tabs >> text=Урок');
+  await teacher.selectOption('#moduleSel', '1');
   await teacher.selectOption('#lessonSel', 'urok-02');
   await teacher.waitForSelector('text=Открыть все', { timeout: 10000 });
   await teacher.click('text=Открыть все');

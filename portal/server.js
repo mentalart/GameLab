@@ -18,6 +18,7 @@ const TYPES = {
 
 /* ---------------- уроки ---------------- */
 // LAB_LESSONS — дополнительная папка сценариев (e2e-portal.js кладёт туда урок-проверку новых типов шагов)
+const MODULES = require('./lessons/moduli');
 const LESSON_DIRS = [path.join(PORTAL, 'lessons')].concat(process.env.LAB_LESSONS ? [path.resolve(process.env.LAB_LESSONS)] : []);
 function lessons() {
   return LESSON_DIRS.flatMap(dir => { try { return fs.readdirSync(dir).filter(f => /^urok-\d+\.js$/.test(f)).map(f => path.join(dir, f)); } catch (e) { return []; } })
@@ -689,7 +690,19 @@ route('GET', '/api/job', (ctx) => {
 });
 
 /* ---------- учитель ---------- */
-route('GET', '/api/teacher/classes', (ctx) => { needTeacher(ctx); return { classes: store.classes(), lessons: lessons().map(l => ({ id: l.id, number: l.number, title: l.title })) }; });
+route('GET', '/api/teacher/classes', (ctx) => {
+  needTeacher(ctx);
+  const les = lessons().map(l => ({ id: l.id, number: l.number, title: l.title, module: l.module || 0 }));
+  // модули курса и, если есть, «Проверочные уроки» (module: 0) — для уроков-проверок из LAB_LESSONS
+  const modules = MODULES.concat(les.some(l => !l.module) ? [{ number: 0, title: 'Проверочные уроки' }] : []);
+  return { classes: store.classes(), lessons: les, modules };
+});
+// удаление класса: папка класса уезжает в data/deleted/, вернуть её можно руками
+route('POST', '/api/teacher/class/delete', (ctx) => {
+  needTeacher(ctx);
+  if (!store.deleteClass(ctx.body.code)) throw Object.assign(new Error('Нет класса'), { status: 404 });
+  return { ok: true };
+});
 route('POST', '/api/teacher/class', (ctx) => {
   needTeacher(ctx);
   const les = lesson(ctx.body.lesson) || lessons()[0];

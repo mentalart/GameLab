@@ -63,6 +63,13 @@ const store = {
     return list.map(c => this.getClass(c)).filter(Boolean).sort((a, b) => b.created.localeCompare(a.created));
   },
   getClass(code) { return code && /^[A-Z0-9]{3,8}$/.test(code) ? readJSON(path.join(classDir(code), 'class.json'), null) : null; },
+  deleteClass(code) {
+    if (!this.getClass(code)) return false;
+    const to = path.join(DATA, 'deleted', code + '-' + now().replace(/[:.]/g, '-'));
+    mkdir(path.dirname(to));
+    fs.renameSync(classDir(code), to);
+    return true;
+  },
   createClass({ name, lesson }) {
     let code;
     do { code = newCode(); } while (this.getClass(code));
