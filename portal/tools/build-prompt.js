@@ -2,7 +2,7 @@
 // Собирает системный промпт для Qwen из portal/ai/game-prompt.md:
 // подставляет версию Babylon и код образцов. Так же делает портал.
 // Второй образец зависит от урока: поле sample сценария ({ file, about }), без него — «Камни мудреца».
-// Для моделей Claude перед «# Образцы» встаёт стандарт геймдизайна из portal/ai/game-design-claude.md.
+// Для моделей Claude — свой короткий промпт portal/ai/claude-prompt.md и один образец: каркаса связки (игра класса) или донора урока.
 // Запуск: node portal/tools/build-prompt.js [файл] [--lesson urok-04]  — без файла печатает промпт в консоль.
 //         node portal/tools/build-prompt.js [файл] --model anthropic/claude-sonnet-5  — промпт для этой модели.
 //         node portal/tools/build-prompt.js --sizes  — оценка размера промпта для каждого урока (потолок 30 тысяч токенов — для Qwen).
@@ -44,23 +44,37 @@ function lessonSample(lessonId) {
   } catch (e) { return null; }
 }
 
-// модели Claude получают стандарт геймдизайна: у них нет потолка Qwen, а текст постоянный и кэшируется вместе с промптом
-const isClaude = model => /claude|anthropic/i.test(model || '');
-const claudeRules = () => between(read('ai/game-design-claude.md'), '<!-- claude:start -->', '<!-- claude:end -->', 'game-design-claude.md');
+// Игра класса для Claude: один образец того же каркаса, что выбрала связка (поле frame), вместо двух образцов урока.
+// Разбор «Козла Фишта» (17.10.2026): два образца на неподвижном поле занимали 73 % промпта, и модель копировала их устройство.
+const FRAMES = [
+  { re: /арен/i, name: 'арена', file: 'games/nochnoy-labirint.js', about: '«Ночной лабиринт» — арена: герой бегает по полю, угрозы гонятся за ним, бонус меняет роли' },
+  { re: /лов/i, name: 'ловля', file: 'games/ledolom.js', about: '«Ледолом» — герой ходит вдоль края поля и отбивает летящее, цели и бонусы по всему полю' },
+  { re: /бег/i, name: 'бег навстречу', file: 'games/shag-v-takt.js', about: '«Шаг в такт» — герой бежит, камера едет за ним, препятствия выезжают навстречу и создаются впереди' },
+  { re: /сбоку|платформ|прыж/i, name: 'вид сбоку', file: 'games/tur-nad-hadzhohom.js', about: '«Тур над Хаджохом» — вид сбоку: прыжки по скалам, камера едет за героем, уровень строится впереди' },
+  { re: /тир|оборон|мишен/i, name: 'тир', file: 'games/nlo-v-stanice.js', about: '«НЛО в станице» — тир и оборона: герой почти на месте, цели наступают, сочный выстрел по восьми шагам' },
+];
+const frameOf = text => FRAMES.find(f => f.re.test(text || '')) || FRAMES[FRAMES.length - 1];
 
-// opts: { lesson } — id урока, { sample } — { file, about }, { model } — модель программиста; строка — старый вызов: файл образца 1
+// Claude: короткий промпт без повторов (claude-prompt.md) и один образец в конце
+const isClaude = model => /claude|anthropic/i.test(model || '');
+function claudePrompt(opts) {
+  const text = between(read('ai/claude-prompt.md'), '<!-- prompt:start -->', '<!-- prompt:end -->', 'claude-prompt.md').split('{{BABYLON}}').join(babylonVersion());
+  let file, about;
+  if (opts.frame != null) { const f = frameOf(opts.frame); file = f.file; about = `каркас этой игры — ${f.name}, поэтому образец того же каркаса: ${f.about}. Бери из него устройство (камера, создание мира, рост сложности, сочность), а не героя, мир и механику`; }
+  else { const s = opts.sample || lessonSample(opts.lesson); file = s ? s.file : SAMPLES['{{ПРИМЕР}}']; about = (s ? s.about : 'ремейк-донор урока 1 по мотивам Space Invaders') + '. Бери из него устройство кода, сочность и уровень детали; механику — только ту, что есть в замысле'; }
+  return `${text}\n\n# Образец\nТак выглядит готовая игра по контракту: ${about}. Длина образца — не норма.\n\`\`\`js\n${read(file).trim()}\n\`\`\``;
+}
+
+// opts: { lesson } — id урока, { sample } — { file, about }, { model } — модель программиста (Claude — свой промпт),
+// { frame } — каркас из связки игры класса (строка, можно пустую): для Claude образец этого каркаса; строка — старый вызов: файл образца 1
 function systemPrompt(opts = {}) {
   if (typeof opts === 'string') opts = { example: opts };
+  if (isClaude(opts.model)) return claudePrompt(opts);
   const second = opts.sample || lessonSample(opts.lesson) || SAMPLE2;
   let text = between(read('ai/game-prompt.md'), '<!-- prompt:start -->', '<!-- prompt:end -->').split('{{BABYLON}}').join(babylonVersion());
   text = text.split('{{ПРИМЕР2_ЧТО}}').join(second.about || 'ремейк-донор урока');
   const files = { '{{ПРИМЕР}}': opts.example || SAMPLES['{{ПРИМЕР}}'], '{{ПРИМЕР2}}': second.file };
   for (const [mark, file] of Object.entries(files)) text = text.split(mark).join(read(file).trim());
-  if (isClaude(opts.model)) {
-    const at = text.indexOf('\n# Образцы');
-    if (at < 0) throw new Error('В game-prompt.md нет раздела «# Образцы»');
-    text = text.slice(0, at) + '\n' + claudeRules() + '\n' + text.slice(at);
-  }
   return text;
 }
 
@@ -76,7 +90,7 @@ function sizes() {
   });
 }
 
-module.exports = { systemPrompt, userTemplate, babylonVersion, lessonSample, sizes, tokens, isClaude, SAMPLES, LIMIT };
+module.exports = { FRAMES, frameOf, systemPrompt, userTemplate, babylonVersion, lessonSample, sizes, tokens, isClaude, SAMPLES, LIMIT };
 
 if (require.main === module) {
   const args = process.argv.slice(2);
@@ -88,6 +102,7 @@ if (require.main === module) {
       const over = r.tokens > LIMIT; ok = ok && !over;
       console.log(`${over ? '✗' : '✓'} ${r.lesson}: образец 2 — ${r.sample}, ${r.chars} знаков, примерно ${r.tokens} токенов (для Claude — ${r.claudeTokens})`);
     }
+    for (const f of FRAMES) console.log(`  игра класса для Claude, каркас «${f.name}» (${f.file}): примерно ${tokens(systemPrompt({ model: 'claude', frame: f.name }))} токенов`);
     console.log(ok ? `Все промпты не больше ${LIMIT} токенов` : `Есть промпты больше ${LIMIT} токенов`);
     process.exit(ok ? 0 : 1);
   }

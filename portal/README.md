@@ -20,7 +20,7 @@ portal/
                 common.js — запросы, кубик, поле с кубиком
   engine/       движок игр: Babylon.js 9.31.0 + Havok в vendor/, оболочка «Лаб3D» (lab.js), страница игры
   games/        ремейки-доноры учителя: образцы механик для уроков и для ИИ
-  ai/           промпты: программист игр (game-prompt.md, для Claude ещё game-design-claude.md), продюсер и его правка ИГРА (producer-prompt.md), связка карт вау-старта (link-prompt.md)
+  ai/           промпты: программист игр (claude-prompt.md — системный промпт Sonnet, game-prompt.md — промпт Qwen и сообщения программисту), продюсер и его правка ИГРА (producer-prompt.md), связка карт вау-старта (link-prompt.md)
   tools/        serve.js, check-game.js, e2e-portal.js, mock-ai.js, build-prompt.js; fixtures/lessons — урок-проверка для e2e
   config.json   ключ ИИ, модели, цены, лимиты, пароль учителя — создаётся при первом запуске, в git не попадает
   data/         классы, ученики, вызовы, игры и версии, партии чужих игроков, рекорды, заметки, журнал генераций — в git не попадает

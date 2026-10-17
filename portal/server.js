@@ -86,6 +86,8 @@ function buildPlan(les, st) {
     decisions: { feeling: fieldText(dec.feeling), honesty: fieldText(dec.honesty), choice: fieldText(dec.choice) },
     igra: { i: fieldText(igra.i), g: fieldText(igra.g), r: fieldText(igra.r), a: fieldText(igra.a) },
     forks,
+    // находки продюсера идут программисту, пока ученик не принял правку продюсера: тогда они уже в полях ИГРА
+    findings: prod.fixed ? [] : ((prod.result && prod.result.findings) || []).map(f => `${f.kind}: ${f.text}`).slice(0, 5),
     diceCount: all.filter(f => f && f.dice).length,
     fieldCount: all.filter(f => fieldText(f)).length,
   };
@@ -641,7 +643,8 @@ route('GET', '/api/teacher/wow', (ctx) => {
   return {
     wow: w, demo: ai.demo(), formula: les.wow.formula, cards: les.wow.cards.map(c => ({ id: c.id, label: c.label })),
     secrets: aiSecrets(les).map(x => ({ id: x.id, title: x.title, effect: x.effect })), secret: secretOf(les, w.secret), built: w.gameId ? builtSecret(les, w) : null,
-    game: g && v ? { id: g.id, version: g.current, title: g.title, model: v.model, warnings: v.warnings || [], fallback: !!v.fallback, attempts: v.attempts } : null,
+    game: g && v ? { id: g.id, version: g.current, title: g.title, model: v.model, warnings: v.warnings || [], fallback: !!v.fallback, attempts: v.attempts, kind: v.kind,
+      playtest: v.playtest || null, from: v.from || null, before: v.from && g.versions[v.from - 1] ? g.versions[v.from - 1].playtest || null : null } : null,
     summary: wowSummary(cls, les),
   };
 });
@@ -707,15 +710,67 @@ function wowGame(cls, les, w) {
   if (!g) { g = store.createGame({ class: cls.code, nick: 'учитель', lesson: les.id, shared: true }); w.gameId = g.id; }
   return g;
 }
-function wowVersion(code, r, secretId) {
+function wowVersion(code, r, secretId, extra) {
   const cls = store.getClass(code), les = lesson(cls.lesson), w = wowState(cls, les);
   const g = wowGame(cls, les, w);
-  store.addVersion(g, r.code, { kind: r.fallback ? 'запасная игра' : 'общая игра', model: r.model, attempts: r.attempts, warnings: r.warnings, demo: !!r.demo, fallback: !!r.fallback });
+  store.addVersion(g, r.code, Object.assign({ kind: r.fallback ? 'запасная игра' : 'общая игра', model: r.model, attempts: r.attempts, warnings: r.warnings, demo: !!r.demo, fallback: !!r.fallback }, extra));
   const g2 = store.getGame(g.id); g2.title = (/\btitle\s*:\s*(['"`])([^'"`]{1,80})\1/.exec(r.code) || [])[2] || g2.title || 'Игра класса'; store.saveGame(g2);
   w.builtSecret = secretId; w.knob = r.knob; w.status = 'preview'; w.given = false;
   store.saveClass(cls); wowChanged(cls, les);
   return { gameId: g.id, version: g2.current, title: g2.title, warnings: r.warnings || [], fallback: !!r.fallback };
 }
+// бот-плейтестер: панель учителя прогоняет каждую новую версию игры класса тремя стратегиями и присылает отчёт сюда;
+// по отчёту программист один раз правит игру (новая версия), и бот прогоняет её снова — учитель видит «было → стало»
+const STRATS = ['idle', 'mash', 'random'];
+const cleanStr = (v, n) => String(v == null ? '' : v).replace(/\s+/g, ' ').trim().slice(0, n);
+function cleanReport(r) {
+  r = r && typeof r === 'object' ? r : {};
+  const num = (v, n = 1e6) => Math.max(0, Math.min(n, Number(v) || 0));
+  const results = (Array.isArray(r.results) ? r.results : []).filter(x => x && STRATS.includes(x.strategy)).slice(0, 3).map(x => ({
+    strategy: x.strategy, seconds: Math.round(num(x.seconds, 600) * 10) / 10, over: !!x.over, endText: cleanStr(x.endText, 120), score: Math.round(num(x.score, 1e9)), hurts: Math.round(num(x.hurts, 999)),
+    hurtsAt: (Array.isArray(x.hurtsAt) ? x.hurtsAt : []).slice(0, 10).map(t => Math.round(num(t, 600) * 10) / 10), offscreen: x.offscreen == null ? null : Math.round(num(x.offscreen, 100)),
+    flat: Math.round(num(x.flat, 600)), presses: { a: Math.round(num(x.presses && x.presses.a)), b: Math.round(num(x.presses && x.presses.b)) }, error: x.error ? cleanStr(x.error, 300) : null,
+  }));
+  return { at: store.now(), seconds: Math.round(num(r.seconds, 600)), seed: Math.round(num(r.seed, 4294967295)), hero: !!r.hero, results,
+    findings: (Array.isArray(r.findings) ? r.findings : []).slice(0, 12).map(f => cleanStr(f, 400)).filter(Boolean) };
+}
+route('POST', '/api/teacher/wow/playtest', (ctx) => {
+  const { w } = needWow(ctx);
+  const g = w.gameId && store.getGame(w.gameId), n = Number(ctx.body.version), v = g && g.versions[n - 1];
+  if (!v) throw Object.assign(new Error('Нет такой версии игры класса'), { status: 400 });
+  v.playtest = cleanReport(ctx.body.report); store.saveGame(g);
+  return { playtest: v.playtest };
+});
+route('POST', '/api/teacher/wow/playtest-fix', (ctx) => {
+  const { cls, les, w } = needWow(ctx);
+  if (ai.demo()) throw Object.assign(new Error('Без ключа ИИ программист не правит игру — попробуйте с ключом'), { status: 400 });
+  if (w.status === 'building') throw Object.assign(new Error('Игра уже собирается'), { status: 409 });
+  if (w.given) throw Object.assign(new Error('Игра уже у класса — сначала заберите её'), { status: 409 });
+  const g = w.gameId && store.getGame(w.gameId), n = g && g.current, v = g && g.versions[n - 1];
+  if (!v || !v.playtest) throw Object.assign(new Error('Сначала дождитесь плейтеста бота'), { status: 400 });
+  if (!v.playtest.findings.length) throw Object.assign(new Error('Бот не нашёл, что править'), { status: 400 });
+  const code = store.versionCode(g.id, n), report = v.playtest, secretId = w.builtSecret;
+  w.status = 'building'; store.saveClass(cls); wowChanged(cls, les);
+  const whoAI = { class: cls.code, nick: 'учитель', lesson: les.id };
+  const job = startJob(ctx.who.token, 'wow', async (progress) => {
+    try {
+      const r = await ai.playtestFix(code, report, { cards: w.cards, link: acceptedLink(w) }, whoAI, progress);
+      return wowVersion(cls.code, Object.assign(r, { knob: w.knob }), secretId, { kind: 'правка по плейтесту', from: n });
+    } catch (e) {
+      const c2 = store.getClass(cls.code), w2 = wowState(c2, les); w2.status = 'preview'; store.saveClass(c2); wowChanged(c2, les);
+      throw e;
+    }
+  });
+  return { job: job.id };
+});
+route('POST', '/api/teacher/wow/version', (ctx) => { // вернуть прошлую версию игры класса (правка по плейтесту вышла хуже)
+  const { cls, les, w } = needWow(ctx);
+  const g = w.gameId && store.getGame(w.gameId), n = Number(ctx.body.version);
+  if (!g || !g.versions[n - 1]) throw Object.assign(new Error('Нет такой версии'), { status: 400 });
+  if (w.status === 'building') throw Object.assign(new Error('Игра собирается'), { status: 409 });
+  g.current = n; store.saveGame(g); wowChanged(cls, les);
+  return { version: n };
+});
 const wowTitle = (les, w) => `${cap(w.cards.hero || 'Герой')} ${w.cards.place || ''}`.trim();
 route('POST', '/api/teacher/wow/build', (ctx) => {
   const { cls, les, w } = needWow(ctx);

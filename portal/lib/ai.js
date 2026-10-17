@@ -346,7 +346,8 @@ function demoProducer(plan, who, lesson) {
 function newGameMessage(plan) {
   return fill(userTemplate('new'), {
     'донор': plan.donor, 'твист': plan.twist, 'мир': plan.world, 'уровень': plan.level,
-    'детали': [`Название: ${plan.title}`].concat(plan.details).join('\n'),
+    'название': plan.title, 'детали': plan.details.length ? 'Детали замысла:\n' + plan.details.join('\n') : '',
+    'находки': plan.findings && plan.findings.length ? plan.findings.map(f => '- ' + f).join('\n') : 'замечаний нет',
     'чувство': plan.decisions.feeling, 'честность': plan.decisions.honesty, 'выбор': plan.decisions.choice,
     'идея': plan.igra.i, 'глагол': plan.igra.g, 'правила': plan.igra.r, 'атмосфера': plan.igra.a,
     'развилки': plan.forks.length ? plan.forks.map(f => `- ${f.question} → ${f.answer}`).join('\n') : 'развилок не было',
@@ -355,9 +356,10 @@ function newGameMessage(plan) {
 
 // Программист: один вызов модели + проверка синтаксиса. При синтаксической ошибке — до 2 починок сразу на сервере.
 // model — другая модель для сравнения на том же замысле (иначе — модель из панели учителя). В ответе — время и рубли всех попыток.
-async function program(kind, firstUser, who, onProgress, model) {
+async function program(kind, firstUser, who, onProgress, model, popts) {
   model = model || models().code;
-  const system = systemPrompt({ lesson: who && who.lesson, model }); // второй образец — ремейк урока (sample в сценарии); Claude — со стандартом геймдизайна
+  // popts.frame — каркас связки игры класса: для Claude один образец этого каркаса
+  const system = systemPrompt(Object.assign({ lesson: who && who.lesson, model }, popts)); // второй образец — ремейк урока (sample в сценарии); Claude — со стандартом геймдизайна
   let messages = [{ role: 'system', content: system }, { role: 'user', content: firstUser }];
   const attempts = [];
   const total = () => ({ ms: attempts.reduce((n, e) => n + (e.ms || 0), 0), rub: attempts.some(e => e.rub != null) ? Math.round(attempts.reduce((n, e) => n + (e.rub || 0), 0) * 100) / 100 : null });
@@ -400,14 +402,29 @@ async function fix(code, error, who, onProgress, model) {
 
 // Общая игра урока (вау-старт): своя игра только из четырёх карт колоды безумных идей (без донора урока) + секретная механика из колоды секретов урока.
 // Секрет живёт в ручке secret и в скрытом счётчике телеметрии _secret. Без ключа — запасная игра урока.
+const wowFrame = wow => (wow.link && wow.link.frame) || ''; // каркас связки: по нему Claude получает один образец
 async function buildShared(wow, who, onProgress) {
   if (demo()) return demoShared(wow, who);
   const r = await program('общая игра', fill(userTemplate('wow'), {
     'герой': wow.cards.hero, 'действие': wow.cards.action, 'место': wow.cards.place, 'поворот': wow.cards.twist, 'секрет': wow.secret, 'связка': linkText(wow.link),
-  }), who, onProgress);
+  }), who, onProgress, null, { frame: wowFrame(wow) });
   if (!/\bsecret\s*:\s*\{/.test(r.code)) r.warnings = r.warnings.concat('нет ручки secret');
   if (!/_secret/.test(r.code)) r.warnings = r.warnings.concat('секрет не считается в телеметрии');
   return Object.assign(r, { knob: 'secret' });
+}
+// правка игры класса по отчёту бота-плейтестера: та же модель и тот же образец каркаса, что у сборки
+const BOT_LABELS = { idle: 'Пассивный (ничего не жмёт)', mash: 'Торопыга (мнёт A без остановки)', random: 'Новичок (бегает и жмёт что попало)' };
+function playtestRounds(report) {
+  return report.results.map(x => `- ${BOT_LABELS[x.strategy] || x.strategy}: ${x.seconds} с, очки ${x.score}, урон ${x.hurts}` + (x.hurtsAt && x.hurtsAt.length ? ` (на ${x.hurtsAt.slice(0, 4).join(', ')} с)` : '')
+    + (x.offscreen != null ? `, герой за кадром ${x.offscreen}% времени` : '') + (x.flat ? `, дольше всего без очков — ${x.flat} с` : '') + (x.over ? `, конец партии: «${x.endText}»` : ', дожил до конца') + (x.error ? `, ошибка: ${x.error}` : '')).join('\n');
+}
+async function playtestFix(code, report, wow, who, onProgress) {
+  const r = await program('правка по плейтесту', fill(userTemplate('playtest'), {
+    'код': code.trim(), 'связка': linkText(wow.link), 'секунд': String(report.seconds), 'партии': playtestRounds(report), 'выводы': report.findings.map(f => '- ' + f).join('\n'),
+  }), who, onProgress, null, { frame: wowFrame(wow) });
+  if (!/\bsecret\s*:\s*\{/.test(r.code)) r.warnings = r.warnings.concat('нет ручки secret');
+  if (!/_secret/.test(r.code)) r.warnings = r.warnings.concat('секрет не считается в телеметрии');
+  return r;
 }
 // запасная общая игра: ремейк урока с названием по картам; его секрет — свой (ручка из fallback.knob)
 function demoShared(wow, who) {
@@ -430,4 +447,4 @@ function demoGame(plan, who, kind) {
   return { code, model: 'демо', attempts: 1, warnings: [], demo: true, ms: 0, rub: null };
 }
 
-module.exports = { LINK_FIELDS, loadConfig, reloadConfig, demo, models, limits, listModels, producer, producerFix, wowLink, build, buildShared, demoShared, change, fix, planText, extractCode, syntaxError };
+module.exports = { LINK_FIELDS, playtestFix, loadConfig, reloadConfig, demo, models, limits, listModels, producer, producerFix, wowLink, build, buildShared, demoShared, change, fix, planText, extractCode, syntaxError };

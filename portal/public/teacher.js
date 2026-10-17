@@ -339,6 +339,7 @@ function drawWowSecret() {
 function drawWowBuild() {
   const r = W.data, host = $('#wowBuild');
   if (W.preview) { W.preview.destroy(); W.preview = null; }
+  W.botFor = null; // рамка пересоздана — прерванный плейтест запустится заново
   host.innerHTML = '';
   const ready = r.cards.every(c => r.wow.cards[c.id]);
   const box = el('div', { class: 'card stack' });
@@ -362,9 +363,42 @@ function drawWowBuild() {
     const g = r.game;
     box.append(el('div', { class: 'row small' }, el('b', {}, `«${g.title}» v${g.version}`), el('span', { class: 'muted' }, g.fallback ? 'запасная игра' : `модель ${g.model}${g.attempts > 1 ? ', попыток ' + g.attempts : ''}`),
       ...(g.warnings || []).map(w => el('span', { class: 'tag err', title: 'Замечание проверки' }, w))));
+    // бот-плейтестер: новая версия без отчёта прогоняется сразу, в рамке предпросмотра — учитель видит партии бота в ускоренном времени
+    const bot = el('div', { class: 'stack', id: 'wowBot' }), botLine = el('div', { class: 'small muted', 'aria-live': 'polite' });
+    const runBot = () => { W.botFor = g.id + '/' + g.version; botLine.textContent = '🤖 Бот-плейтестер запускает игру…'; if (W.preview.ready) sendBot(); else W.preview.start(); };
+    const sendBot = () => { W.preview.post({ type: 'playtest', options: { seconds: window.LAB_PLAYTEST_SECONDS || 90 } }); };
     W.preview = Games.frame({ src: () => `/play/${g.id}/${g.version}`, key: () => 'wow:' + g.id, label: 'Проверить игру',
-      onError: err => W.preview.message(el('div', { class: 'stack', style: 'align-items:center' }, el('b', {}, 'Игра упала: ' + (err.message || 'ошибка')), el('p', { class: 'muted small' }, 'Соберите заново или возьмите запасную игру.'))) });
-    box.append(W.preview.box, Games.bar(W.preview),
+      onReady: () => { if (W.botFor === g.id + '/' + g.version) sendBot(); },
+      onPlaytestStep: m => { botLine.textContent = `🤖 Бот играет: ${({ idle: 'пассивный', mash: 'торопыга', random: 'новичок' })[m.strategy] || m.strategy}, ${m.t} из ${m.seconds} с`; },
+      onPlaytest: async m => {
+        if (W.botFor !== g.id + '/' + g.version) return;
+        W.botFor = null;
+        if (m.error) { botLine.textContent = '🤖 Бот не смог сыграть: ' + m.error; return; }
+        try { await api('/api/teacher/wow/playtest', { code: T.code, version: g.version, report: m.report }); } catch (e) { toast(e.message, 'err'); }
+        drawWow(true);
+      },
+      onError: err => { W.botFor = null; W.preview.message(el('div', { class: 'stack', style: 'align-items:center' }, el('b', {}, 'Игра упала: ' + (err.message || 'ошибка')), el('p', { class: 'muted small' }, 'Соберите заново или возьмите запасную игру.'))); } });
+    if (g.playtest) {
+      bot.append(Games.playtestBox(g.playtest, { before: g.before }));
+      const row = el('div', { class: 'row' });
+      if (g.playtest.findings.length && !r.wow.given && !r.demo) {
+        const fixBtn = el('button', { class: 'btn', type: 'button' }, '🛠 Пусть программист поправит по отчёту');
+        fixBtn.addEventListener('click', async () => {
+          W.busy = true; fixBtn.disabled = true;
+          try {
+            await Lab.job('/api/teacher/wow/playtest-fix', { code: T.code }, j => { fixBtn.textContent = `🛠 Программист правит по отчёту бота… ${j.seconds} с` + (j.chars ? ` · ${j.chars.toLocaleString('ru-RU')} символов` : ''); });
+            toast('Программист поправил игру — бот проверит её снова', 'ok');
+          } catch (e) { toast(e.message, 'err', 8000); }
+          W.busy = false; drawWow(true);
+        });
+        row.append(fixBtn);
+      }
+      row.append(el('button', { class: 'btn ghost small', type: 'button', onclick: runBot }, '↻ Бот ещё раз'));
+      if (g.from && !r.wow.given) row.append(el('button', { class: 'btn ghost small', type: 'button', onclick: () => wowAct('/api/teacher/wow/version', { version: g.from }, true) }, `↩ Вернуть v${g.from}`));
+      bot.append(row);
+    } else if (!r.wow.given && W.botFor !== g.id + '/' + g.version) setTimeout(runBot, 0);
+    bot.append(botLine);
+    box.append(W.preview.box, Games.bar(W.preview), bot,
       el('div', { class: 'row' },
         r.wow.given ? el('button', { class: 'btn ghost', type: 'button', onclick: () => wowAct('/api/teacher/wow/give', { given: false }, true) }, 'Забрать у класса')
           : el('button', { class: 'btn warm', type: 'button', onclick: () => wowAct('/api/teacher/wow/give', { given: true }, true) }, '📣 Раздать классу'),

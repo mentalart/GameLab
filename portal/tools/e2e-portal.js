@@ -90,6 +90,7 @@ async function run(browser, base, mode) {
   const tctx = await browser.newContext({ viewport: { width: 1280, height: 860 } });
   const sctx = await browser.newContext({ viewport: { width: 1280, height: 900 } });
   const teacher = await tctx.newPage(), student = await sctx.newPage();
+  await teacher.addInitScript(() => { window.LAB_PLAYTEST_SECONDS = 12; }); // бот-плейтестер в проверке играет короткие партии
   failShots = async () => { await student.screenshot({ path: path.join(OUT, `portal-${mode}-x-student.png`), fullPage: true }).catch(() => {}); await teacher.screenshot({ path: path.join(OUT, `portal-${mode}-x-teacher.png`) }).catch(() => {}); };
   for (const p of [teacher, student]) watch(p, errors);
   const shot = async (p, name, fullPage = false) => p.screenshot({ path: path.join(OUT, `portal-${mode}-${name}.png`), fullPage });
@@ -360,7 +361,20 @@ async function wowStart(teacher, student, mode, shot) {
   if (mode === 'mock') check('Принятая связка ушла программисту вместе с картами', /Связка геймдизайнера — класс принял её/.test(mock.last.wowUser || '') && (mock.last.wowUser || '').includes(phrase));
   if (mode === 'mock') check('Связка задаёт программисту каркас, кнопки и риск', /- Каркас и камера: Арена/.test(mock.last.wowUser || '') && /- Риск и очки: /.test(mock.last.wowUser || ''));
   else check('Без ключа собралась запасная игра урока', /запасная игра/.test(info), info.slice(0, 120));
-  await teacher.click('#wowBuild .veil button');
+  // бот-плейтестер сам прогоняет новую версию в рамке предпросмотра: три партии, отчёт сохраняется у версии
+  await teacher.waitForSelector('#wowBot .botbox', { timeout: 180000 });
+  const botRows = await teacher.locator('#wowBot .botrow').count(), botText = (await teacher.textContent('#wowBot')).replace(/\s+/g, ' ');
+  check('Бот-плейтестер сыграл три партии новой версии', botRows === 3 && /Пассивный.*Торопыга.*Новичок/.test(botText), botText.slice(0, 160));
+  if (mode === 'mock') {
+    const found = await teacher.locator('#wowBot .botfind li').count();
+    check('Бот нашёл, что править, и предлагает правку программисту', found > 0 && await teacher.locator('#wowBot >> text=Пусть программист поправит по отчёту').count() === 1, `находок ${found}`);
+    await teacher.click('#wowBot >> text=Пусть программист поправит по отчёту');
+    await teacher.waitForSelector('#wowBot >> text=до правки:', { timeout: 180000 });
+    check('Программист получил отчёт бота и правил по нему', /Бот-плейтестер сыграл/.test(mock.last.playtestUser || '') && /Что он нашёл:\n- /.test(mock.last.playtestUser || '') && /Торопыга/.test(mock.last.playtestUser || ''));
+    const info2 = (await teacher.textContent('#wowBuild')).replace(/\s+/g, ' ');
+    check('Правка по плейтесту — новая версия игры класса, бот проверил её снова', /v2/.test(info2) && /↩ Вернуть v1/.test(info2), info2.slice(0, 120));
+  } else check('Без ключа ИИ правки по отчёту бота нет', await teacher.locator('#wowBot >> text=Пусть программист поправит по отчёту').count() === 0);
+  if (await teacher.locator('#wowBuild .veil:not([hidden]) button').count()) await teacher.click('#wowBuild .veil button');
   await gameFrame(teacher, '/play/', 0);
   await shot(teacher, '1b-wow-preview');
   check('Пока учитель проверяет игру, ученик её не видит', await student.locator('#step-vau-play iframe').count() === 0 && /собирается/.test(await student.textContent('#step-vau-play')));
@@ -1014,6 +1028,11 @@ async function lessonFour(mode, teacher, student, shot) {
   check('Игра урока 4 собрана, в аркаде донор «Тетрис»', card && card.title === 'Сырная башня' && card.donor === '«Тетрис»', card ? `${card.title} · ${card.donor}` : 'нет карточки');
   const p4 = require('./build-prompt'), sys4 = p4.systemPrompt({ lesson: 'urok-04' });
   check('Промпт программиста урока 4 не больше 25 тысяч токенов', p4.tokens(sys4) <= 25000 && !/\{\{/.test(sys4), `примерно ${p4.tokens(sys4)} токенов`);
+  // Sonnet: свой короткий промпт и один образец — донор урока у игры ученика, каркас связки у игры класса
+  const c4 = p4.systemPrompt({ lesson: 'urok-04', model: 'anthropic/claude-sonnet-5' }), cw = p4.systemPrompt({ model: 'anthropic/claude-sonnet-5', frame: 'Вид сбоку, камера сбоку' });
+  const samples = t => ['НЛО в станице', 'Камни мудреца', 'Ночной лабиринт', 'Каменный стакан', 'Ледолом', 'Тур над Хаджохом', 'Шаг в такт', 'Башня до неба'].filter(n => t.includes(`title: '${n}'`)).length;
+  check('Промпт Sonnet для игры ученика: один образец — донор урока', samples(c4) === 1 && c4.includes("title: 'Каменный стакан'") && /# Механика: игра, а не иллюстрация/.test(c4) && !/\{\{/.test(c4), `образцов ${samples(c4)}, примерно ${p4.tokens(c4)} токенов`);
+  check('Промпт Sonnet для игры класса: образец каркаса связки', samples(cw) === 1 && cw.includes("title: 'Тур над Хаджохом'") && !cw.includes("title: 'Камни мудреца'"), `примерно ${p4.tokens(cw)} токенов`);
 
   // релиз модуля: выбор игры модуля, чек-лист с подсказками из аркады, метка 1.0 — одна на модуль
   await student.click('.cp >> text=Мастерская');

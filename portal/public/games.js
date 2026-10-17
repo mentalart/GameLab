@@ -11,7 +11,7 @@ const Games = (() => {
   // score: false — партии не записываются (рамки учителя на проекторе и в карточке ученика).
   // data — данные для игры (lab.data), например мелодия из секвенсора; уходят до cfg
   // challenge — под игрой есть кнопка вызова (оболочка пишет о ней на экране конца партии), ghost — призрак соперника { nick, score, line }.
-  function frame({ src, key, info, cfg, data, label, onReady, onOver, onScore, onAgain, onError, autostart, score = true, challenge, ghost }) {
+  function frame({ src, key, info, cfg, data, label, onReady, onOver, onScore, onAgain, onError, onPlaytest, onPlaytestStep, autostart, score = true, challenge, ghost }) {
     const box = el('div', { class: 'gamebox' });
     const veil = el('div', { class: 'veil' });
     let iframe = null, timer = null, ready = false;
@@ -37,6 +37,8 @@ const Games = (() => {
       }
       if (m.type === 'again' && onAgain) onAgain(m);
       if (m.type === 'error') { clearTimeout(timer); if (onError) onError(m); }
+      if (m.type === 'playtestStep' && onPlaytestStep) onPlaytestStep(m);
+      if (m.type === 'playtest' && onPlaytest) onPlaytest(m);
     }
     addEventListener('message', onMsg);
     function showVeil(content) { veil.innerHTML = ''; veil.append(content); veil.hidden = false; }
@@ -61,6 +63,7 @@ const Games = (() => {
       destroy() { removeEventListener('message', onMsg); h.stop(true); const i = frames.indexOf(h); if (i >= 0) frames.splice(i, 1); },
       fullscreen() { if (box.requestFullscreen) box.requestFullscreen().catch(() => {}); },
       post,
+      get ready() { return ready; },
     };
     box.append(veil);
     frames.push(h);
@@ -303,6 +306,24 @@ const Games = (() => {
     return box;
   }
 
+  /* ---------- бот-плейтестер: отчёт о трёх партиях бота ---------- */
+  const BOT = { idle: ['🧍', 'Пассивный', 'ничего не жмёт'], mash: ['🔨', 'Торопыга', 'мнёт A'], random: ['🎲', 'Новичок', 'жмёт что попало'] };
+  function playtestBox(report, { before } = {}) {
+    const box = el('div', { class: 'botbox' + (report.findings.length ? '' : ' ok') });
+    const head = report.findings.length ? `🤖 Бот-плейтестер нашёл ${report.findings.length}` : '🤖 Бот-плейтестер не нашёл проблем';
+    box.append(el('div', { class: 'row' }, el('b', { class: 'grow' }, head),
+      before ? el('span', { class: 'tag' + (report.findings.length < before.findings.length ? ' ok' : '') }, `до правки: ${before.findings.length} → после: ${report.findings.length}`) : null,
+      el('span', { class: 'muted small' }, `три партии по ${report.seconds} с в одном мире`)));
+    box.append(el('div', { class: 'botrows' }, report.results.map(x => {
+      const b = BOT[x.strategy] || ['', x.strategy, ''];
+      return el('div', { class: 'botrow', 'data-bot': x.strategy }, el('span', { class: 'bi' }, b[0]), el('b', {}, b[1]), el('span', { class: 'muted small' }, b[2]),
+        el('span', { class: 'grow' }), el('span', {}, `${Math.round(x.seconds)} с`), el('span', {}, `очки ${x.score}`), el('span', {}, `урон ${x.hurts}`),
+        x.offscreen != null ? el('span', { class: x.offscreen >= 15 ? 'tag err' : 'muted small' }, `за кадром ${x.offscreen}%`) : null);
+    })));
+    if (report.findings.length) box.append(el('ul', { class: 'botfind' }, report.findings.map(f => el('li', {}, f))));
+    return box;
+  }
+
   /* ---------- открытие плейтеста и отзыв учителя ---------- */
   const pct = x => Math.round((x || 0) * 100) + '%';
   function discovery(d, { who = 'Игроки' } = {}) {
@@ -338,5 +359,5 @@ const Games = (() => {
       el('div', {}, el('b', {}, 'Вопрос: '), valText(fb.question)));
   }
 
-  return { frames, frame, teacherFrame, bar, stopAll, card, scores, challenge, challengeStage, openChallenge, board, challengeEvent, linkBox, discovery, feedback };
+  return { frames, frame, teacherFrame, bar, stopAll, card, scores, challenge, challengeStage, openChallenge, board, challengeEvent, linkBox, playtestBox, discovery, feedback };
 })();

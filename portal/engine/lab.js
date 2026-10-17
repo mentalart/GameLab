@@ -19,7 +19,7 @@
     get(k) { try { return localStorage.getItem(k); } catch (e) { return null; } },
     set(k, v) { try { localStorage.setItem(k, v); } catch (e) { /* хранилище недоступно */ } },
   };
-  const post = m => { try { if (window.parent !== window) window.parent.postMessage(Object.assign({ source: 'lab-game' }, m), '*'); } catch (e) { /* нет портала */ } };
+  const post = m => { if (bot && m.type !== 'playtest' && m.type !== 'playtestStep') return; try { if (window.parent !== window) window.parent.postMessage(Object.assign({ source: 'lab-game' }, m), '*'); } catch (e) { /* нет портала */ } };
   const params = new URLSearchParams(location.search);
 
   /* ---------------- звук: Web Audio без файлов ---------------- */
@@ -79,6 +79,7 @@
   let fixedSeed = params.has('seed') ? (Number(params.get('seed')) >>> 0) : null;
   let overAt = 0; // когда показан экран конца партии
   let ghost = null, challengeOn = false; // вызов «побей мой мир»: призрак соперника и есть ли кнопка вызова под игрой
+  let bot = null, heroMesh = null; // бот-плейтестер играет сам (тогда партия не уходит порталу); герой — для проверки «не ушёл ли за кадр»
 
   /* ---------------- ввод ---------------- */
   const BTN = ['left', 'right', 'up', 'down', 'a', 'b'];
@@ -156,7 +157,7 @@
   }
   function disarm() { armed = false; for (const h of kbTap) for (const k in h) h[k] = false; }
   function rumble(ms = 150, strength = 0.6) {
-    if (!on('vibrate')) return;
+    if (!on('vibrate') || bot) return;
     try {
       for (const gp of navigator.getGamepads()) if (gp && gp.vibrationActuator) gp.vibrationActuator.playEffect('dual-rumble', { duration: ms, strongMagnitude: strength, weakMagnitude: strength * 0.6 });
     } catch (e) { /* без вибрации */ }
@@ -209,6 +210,7 @@
       lab.invuln = 1.2; if (on('hitstop')) hitstopT = Math.max(hitstopT, 0.08);
       lab.shake(0.9); lab.flash('#ff4d5e', 0.35); sfx.hit(); rumble(250, 0.9);
       if (at) lab.burst(at, { count: 22, colors: ['#ff4d5e', '#ffb35c', '#ffffff'], speed: 7 });
+      if (bot) bot.hurtsAt.push(Math.round(lab.t * 10) / 10);
       if (lab.lives > 0) { lab.lives--; if (lab.lives <= 0) lab.gameOver(text); }
       return true;
     },
@@ -256,7 +258,8 @@
     },
     shadow(mesh) { if (sg && mesh) sg.addShadowCaster(mesh, true); return mesh; },
     noShadow(mesh) { if (mesh) { mesh.metadata = Object.assign({}, mesh.metadata, { noShadow: true }); if (sg) sg.removeShadowCaster(mesh, true); } return mesh; },
-    follow(mesh, o = {}) { follow = mesh ? { mesh, distance: o.distance || 9, height: o.height || 4, lag: o.lag == null ? 0.15 : o.lag, look: o.look || 1 } : null; },
+    hero(mesh) { heroMesh = mesh || null; }, // главный герой: бот-плейтестер проверяет, что он не уходит за кадр
+    follow(mesh, o = {}) { if (mesh && !heroMesh) heroMesh = mesh; follow = mesh ? { mesh, distance: o.distance || 9, height: o.height || 4, lag: o.lag == null ? 0.15 : o.lag, look: o.look || 1 } : null; },
     setCamera(kind, o) { setupCamera(kind, o); },
 
     // интерфейс и телеметрия
@@ -703,7 +706,7 @@
     lab.seed = fixedSeed != null ? fixedSeed : (Math.random() * 1e9) >>> 0;
     rng = mulberry32(lab.seed);
     lab.state = {}; lab.t = 0; lab.dt = 0; lab.score = 0; lab.invuln = 0; lab.lives = initialLives();
-    hudLines = {}; shakeAmp = 0; flashA = 0; hitstopT = 0; slowT = 0; camShakeOff = null;
+    hudLines = {}; shakeAmp = 0; flashA = 0; hitstopT = 0; slowT = 0; camShakeOff = null; heroMesh = null;
     resetTele();
     lab.round = ++session.rounds;
     const two = duo() ? 2 : 1; // ручка duo могла переключить игру на двоих
@@ -742,6 +745,7 @@
   function end(kind, text) {
     if (state !== 'play') return;
     state = 'over'; overAt = performance.now();
+    if (bot) { bot.end = { kind, text: String(text || '') }; return; } // партия бота: без экрана, рекорда и сообщения порталу
     const score = Math.round(lab.score);
     const isBest = score > lab.best;
     if (isBest) { lab.best = score; store.set(bestKey(), String(score)); }
@@ -766,8 +770,117 @@
     post({ type: 'over', kind, text, score, best: lab.best, isBest, seed: lab.seed, round: lab.round, restarts: session.restarts, tele: teleData(), cfg: changedCfg() });
   }
 
+  /* ---------------- бот-плейтестер ---------------- */
+  // Бот играет партию одной стратегией в ускоренном времени (шаг 1/30 с, без звука, рекорда и сообщений порталу):
+  // idle — ничего не жмёт, mash — мнёт A без остановки, random — бегает куда попало и жмёт A и B.
+  // Сравнение стратегий находит то, что не видит техническая проверка: доминирующую стратегию, героя за кадром, пустое время.
+  const BOT_DT = 1 / 30;
+  function botWant(b) {
+    const w = { left: false, right: false, up: false, down: false, a: false, b: false, x: 0, y: 0 }, t = lab.t;
+    if (b.strategy === 'mash') w.a = (t % 0.2) < 0.1;
+    if (b.strategy === 'random') {
+      if (t >= b.until) { const k = Math.floor(b.rng() * 9); b.dir = k === 8 ? [0, 0] : [Math.round(Math.cos(k * Math.PI / 4)), Math.round(Math.sin(k * Math.PI / 4))]; b.until = t + 0.3 + b.rng() * 0.9; }
+      w.x = b.dir[0]; w.y = b.dir[1]; w.left = w.x < 0; w.right = w.x > 0; w.up = w.y > 0; w.down = w.y < 0;
+      if (b.aT > 0) { b.aT -= BOT_DT; w.a = true; } else if (b.rng() < BOT_DT * 2.5) b.aT = 0.1;
+      if (b.bT > 0) { b.bT -= BOT_DT; w.b = true; } else if (b.rng() < BOT_DT * 0.7) b.bT = 0.1;
+    }
+    return w;
+  }
+  function botInput(b) {
+    const w = botWant(b);
+    for (let i = 0; i < 2; i++) {
+      const p = P[i];
+      for (const k of BTN) { const v = i === 0 && w[k]; p.pressed[k] = v && !prevHeld[i][k]; p.released[k] = !v && !!prevHeld[i][k]; p[k] = v; prevHeld[i][k] = v; }
+      p.x = i === 0 ? w.x : 0; p.y = i === 0 ? w.y : 0;
+    }
+  }
+  function heroOnScreen() { // true / false; null — героя нет или он удалён
+    if (!heroMesh || (heroMesh.isDisposed && heroMesh.isDisposed()) || !cam) return null;
+    try {
+      scene.updateTransformMatrix(true);
+      const v = projectToScreen(heroMesh.getAbsolutePosition()), W = canvas.clientWidth, H = canvas.clientHeight;
+      return v.z > 0 && v.z < 1 && v.x >= -W * 0.02 && v.x <= W * 1.02 && v.y >= -H * 0.02 && v.y <= H * 1.02;
+    } catch (e) { return null; }
+  }
+  function botStep(b) {
+    botInput(b);
+    let dt = BOT_DT;
+    if (slowT > 0) { slowT -= dt; dt *= slowK; }
+    if (hitstopT > 0) hitstopT -= dt;
+    else {
+      lab.dt = dt; lab.t += dt;
+      if (lab.invuln > 0) lab.invuln = Math.max(0, lab.invuln - dt);
+      tickTele(dt);
+      safe(() => G.update(lab, dt), 'update');
+      while (tele.line.length < Math.min(600, Math.floor(lab.t) + 1)) tele.line.push(Math.round(lab.score));
+    }
+    tickParticles(dt); tickPopups(dt); tickWarns(dt); tickPulses(dt); tickWhites(dt); tickCamera(dt); tickFlash(dt);
+    if (lab.t >= b.nextLook) { b.nextLook = lab.t + 0.25; const on = heroOnScreen(); if (on !== null) { b.looks++; if (!on) b.off++; } }
+  }
+  const botWait = () => new Promise(r => setTimeout(r, 0));
+  async function botRound(strategy, seconds, seed, onStep) {
+    const b = bot = { strategy, rng: mulberry32((seed ^ (strategy.length * 7919)) >>> 0), until: 0, dir: [0, 0], aT: 0, bT: 0, nextLook: 0, looks: 0, off: 0, hurtsAt: [], end: null };
+    fixedSeed = seed; buildRound(false); freshPreview = false;
+    state = 'play'; paused = false; showScreen(null);
+    let steps = 0;
+    while (state === 'play' && !errored && lab.t < seconds && steps < seconds * 90) {
+      const t0 = performance.now();
+      while (state === 'play' && !errored && lab.t < seconds && performance.now() - t0 < 30) { botStep(b); steps++; }
+      if (onStep) onStep(strategy, lab.t);
+      await botWait();
+    }
+    let flat = 0, run = 0; for (let i = 1; i < tele.line.length; i++) { run = tele.line[i] === tele.line[i - 1] ? run + 1 : 0; flat = Math.max(flat, run); }
+    const cu = {}; for (const k in tele.custom) cu[k] = Math.round(tele.custom[k] * 10) / 10;
+    return {
+      strategy, seconds: Math.round(lab.t * 10) / 10, over: !!b.end, endText: b.end ? b.end.text : '', score: Math.round(lab.score), hurts: tele.hurts, hurtsAt: b.hurtsAt.slice(0, 20),
+      presses: { a: tele.presses.a, b: tele.presses.b }, offscreen: b.looks ? Math.round(100 * b.off / b.looks) : null, flat, line: tele.line.slice(0, 200), custom: cu,
+      error: errored ? (($('#errBox') || {}).textContent || 'ошибка').trim().slice(0, 300) : null,
+    };
+  }
+  const BOT_NAMES = { idle: 'Пассивный (ничего не жмёт)', mash: 'Торопыга (мнёт A)', random: 'Новичок (жмёт что попало)' };
+  // выводы плейтеста — то, что портал покажет учителю и отдаст программисту на правку
+  function botFindings(rs, seconds) {
+    const by = Object.fromEntries(rs.map(r => [r.strategy, r])), I = by.idle, M = by.mash, R = by.random, out = [];
+    for (const r of rs) if (r.error) out.push(`Игра упала у бота «${BOT_NAMES[r.strategy]}»: ${r.error}`);
+    const off = rs.filter(r => r.offscreen != null);
+    if (!off.length) out.push('Игра не отметила героя (`lab.hero(герой)` в start) — уход героя за кадр не проверен.');
+    else { const w = off.reduce((a, r) => (r.offscreen > a.offscreen ? r : a)); if (w.offscreen >= 15) out.push(`Герой уходит за кадр: ${w.offscreen}% времени у бота «${BOT_NAMES[w.strategy]}». Держи героя в поле или вызови lab.follow(герой).`); }
+    const turns = G && G.pace === 'turns'; // пошаговая игра ждёт хода: бездействие и тишина без хода — не ошибка
+    if (I && R && !I.error && !R.error && !turns) {
+      if (!I.over && I.seconds >= seconds * 0.95 && I.hurts === 0) out.push(`Бездействие не наказано: бот, который ничего не жмёт, дожил до ${Math.round(seconds)}-й секунды без урона.`);
+      else if (I.seconds > R.seconds * 1.3 && I.seconds > 20) out.push(`Стоять выгоднее, чем играть: бездействие живёт ${Math.round(I.seconds)} с, случайная игра — ${Math.round(R.seconds)} с.`);
+      if (I.score > 0 && I.score >= R.score * 0.7) out.push(`Очки идут без игры: бездействие набрало ${I.score}, случайная игра — ${R.score}.`);
+    }
+    if (M && R && !M.error && !R.error && M.score > Math.max(20, R.score * 1.5) && M.seconds >= R.seconds * 0.9)
+      out.push(`Похоже на доминирующую стратегию «мять A»: ${M.score} очков и ${Math.round(M.seconds)} с против ${R.score} очков и ${Math.round(R.seconds)} с у случайной игры. Проверь, есть ли причина не жать A без остановки.`);
+    if (R && !R.error) {
+      if (R.over && R.seconds < 15) out.push(`Слишком сложно для новичка: случайная игра проиграла за ${Math.round(R.seconds)} с.`);
+      if (R.hurtsAt.length && R.hurtsAt[0] < 6) out.push(`Первый урон слишком рано: на ${R.hurtsAt[0]}-й секунде (честно — не раньше 8–10-й).`);
+      if (R.flat >= 15 && !turns) out.push(`Пустое время: ${R.flat} с подряд у случайной игры счёт не менялся.`);
+      if (!R.over && R.hurts === 0 && !turns) out.push(`Нет угрозы: за ${Math.round(R.seconds)} с случайной игры ни одного урона.`);
+    }
+    return out;
+  }
+  async function playtest(o = {}) {
+    if (!G || bot) throw new Error(bot ? 'Плейтест уже идёт' : 'Игра ещё не загружена');
+    const strategies = (o.strategies || ['idle', 'mash', 'random']).filter(s => BOT_NAMES[s]), seconds = Math.max(10, Math.min(300, Number(o.seconds) || 90));
+    const seed = o.seed == null ? 12345 : Number(o.seed) >>> 0, keep = { muted, fixedSeed };
+    muted = true; const results = [];
+    try {
+      for (const st of strategies) results.push(await botRound(st, seconds, seed, (s, t) => post({ type: 'playtestStep', strategy: s, t: Math.round(t), seconds })));
+    } finally {
+      bot = null; muted = keep.muted; fixedSeed = keep.fixedSeed;
+      for (const h of kb.concat(kbTap)) for (const k in h) h[k] = false;
+      errored = false; buildRound(true); state = 'menu'; paused = false; showScreen('startScreen');
+    }
+    const report = { title: G.title, seconds, seed, hero: results.some(r => r.offscreen != null), results, findings: botFindings(results, seconds), names: BOT_NAMES };
+    post({ type: 'playtest', report });
+    return report;
+  }
+
   /* ---------------- главный цикл ---------------- */
   engine.runRenderLoop(() => {
+    if (bot) { if (scene && cam) { try { scene.render(); } catch (e) { fail(e, 'отрисовка'); } } hudTick(); return; } // бот шагает сам, кадр только рисует
     readInput();
     let dt = Math.min(engine.getDeltaTime() / 1000, 0.05);
     const live = state === 'play' && !paused && !errored && scene;
@@ -846,6 +959,7 @@
     if (m.type === 'data') { lab.data = m.data && typeof m.data === 'object' ? m.data : {}; if (state === 'menu') buildRound(true); }
     if (m.type === 'setCfg' && m.cfg) { for (const k in m.cfg) if (k in cfg) cfg[k] = Number(m.cfg[k]); document.querySelectorAll('.knob').forEach(w => w._sync && w._sync()); knobChanged(true); }
     if (m.type === 'pause') setPause(true);
+    if (m.type === 'playtest') playtest(m.options || {}).catch(e => post({ type: 'playtest', error: e.message }));
     if (m.type === 'challengeOn') challengeOn = true;
     if (m.type === 'ghost') ghost = m.ghost && Array.isArray(m.ghost.line) ? { nick: String(m.ghost.nick || 'соперник').slice(0, 24), score: Number(m.ghost.score) || 0, line: m.ghost.line.slice(0, 600) } : null;
   });
@@ -893,7 +1007,7 @@
   window.__lab = {
     ready: false, lab, tele, session, get state() { return state; }, get paused() { return paused; }, get errored() { return errored; },
     get scene() { return scene; }, cfg, DEFAULTS,
-    confirm, restart: () => restart(true), end: (k, t) => end(k || 'lose', t || 'Проверка'), togglePanel,
+    confirm, restart: () => restart(true), end: (k, t) => end(k || 'lose', t || 'Проверка'), togglePanel, playtest,
   };
   // объект GAME может стоять в странице после lab.js — ждём, пока разберётся весь документ
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot); else boot();

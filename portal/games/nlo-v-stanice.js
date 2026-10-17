@@ -79,7 +79,7 @@ const GAME = {
       w.rotation.z = Math.PI / 2; w.position.set(x, 0.25, z);
     }
     cannon.position.set(0, 0, st.playerZ);
-    st.cannon = cannon; st.barrel = barrel;
+    st.cannon = cannon; st.barrel = barrel; lab.hero(cannon);
 
     // исходники для копий: снаряд пушки (горячее ядро + огненный хвост) и выжженное пятно
     const core = B.MeshBuilder.CreateSphere('ядро', { diameter: 0.36, segments: 6 }, scene);

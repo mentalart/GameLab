@@ -452,3 +452,11 @@ dialog.chdlg{width:min(1100px,calc(100% - 32px));max-height:calc(100vh - 32px);o
 .vote-row select{min-width:260px}
 .vote-noms{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:10px}
 .vote-nom ol{margin:6px 0 0 18px}
+
+/* бот-плейтестер в панели учителя */
+.botbox{display:flex;flex-direction:column;gap:8px;padding:12px 14px;border-radius:var(--r);border:1px dashed var(--warm, #ffb35c);background:#1f1810}
+.botbox.ok{border-style:solid;border-color:var(--accent);background:#0f1f18}
+.botrows{display:flex;flex-direction:column;gap:4px}
+.botrow{display:flex;gap:10px;align-items:baseline;flex-wrap:wrap;font-size:14px}
+.botrow .bi{width:1.4em}
+.botfind{margin:0;padding-left:20px;display:flex;flex-direction:column;gap:4px;font-size:14px}
