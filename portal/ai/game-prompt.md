@@ -78,7 +78,7 @@ Y — вверх, земля — плоскость XZ на высоте 0, ме
 - Звук: `lab.sfx.jump() shoot() coin() hit() explode() power() beep() warn() whoosh() win() lose()`, `lab.tone(частота, сек, 'square'|'sine'|'triangle'|'sawtooth', громкость, скольжениеДо)`, `lab.noise(сек, громкость, частотаФильтра)`.
 - Случайность (только так): `lab.rand(a, b)`, `lab.randInt(a, b)`, `lab.pick(массив)`, `lab.chance(p)`.
 - Математика: `lab.clamp(v, a, b)`, `lab.lerp(a, b, k)`, `lab.v3(x, y, z)`, `lab.dist(a, b)`, `lab.flat(a, b)` — расстояние по земле, `lab.near(a, b, r)`. «Где» — меш, Vector3 или [x, y, z].
-- Мир: `lab.mat('#цвет', { glow: 0..1, alpha, unlit, shiny })` — материал (не создавай StandardMaterial сам), `lab.ground({ w, h, color })`, `lab.noShadow(меш)` — для дальнего фона и прозрачного, `lab.follow(меш, опции)`.
+- Мир: `lab.mat('#цвет', { glow: 0..1, alpha, unlit, shiny })` — материал (не создавай StandardMaterial сам), `lab.ground({ w, h, color })`, `lab.noShadow(меш)` — для дальнего фона и прозрачного, `lab.follow(герой)` — камера едет за героем: без неё видно только поле.
 - Интерфейс и телеметрия: `lab.hud('ключ', 'текст')` — строка под очками, `lab.count('событие')`, `lab.stat('показатель', значение)`.
 
 # Шпаргалка Babylon.js {{BABYLON}} (пиши только этими вызовами)

@@ -330,11 +330,21 @@ async function wowStart(teacher, student, mode, shot) {
   // связка от ИИ: геймдизайнер сводит четыре карты в одну игру, учитель принимает — связку видят ученики, она уходит в сборку
   await teacher.click('#wowLink >> text=🧠 Связка от ИИ');
   await teacher.waitForSelector('#wowLink .link-phrase', { timeout: 30000 });
-  const phrase = (await teacher.textContent('#wowLink .link-phrase')).trim();
+  let phrase = (await teacher.textContent('#wowLink .link-phrase')).trim();
   check('Связка от ИИ свела четыре карты: фраза игры', phrase.length > 20, phrase.slice(0, 90));
   await teacher.click('#wowLink >> text=✓ Принять связку');
   await teacher.waitForSelector('#wowLink >> text=принята — уйдёт в сборку', { timeout: 10000 });
+  // учитель правит связку руками: сохранённая правка сразу принята
+  await teacher.click('#wowLink >> text=✎ Править');
+  await teacher.waitForSelector('#wowLink textarea[data-link="phrase"]');
+  const phrase0 = phrase;
+  phrase = phrase0 + ' Учитель добавил: козёл не тормозит.';
+  await teacher.fill('#wowLink textarea[data-link="phrase"]', phrase);
+  await teacher.click('#wowLink >> text=✓ Сохранить и принять');
+  await teacher.waitForSelector('#wowLink >> text=принята — уйдёт в сборку', { timeout: 10000 });
+  check('Учитель поправил связку руками', (await teacher.textContent('#wowLink .link-phrase')).trim() === phrase && (await teacher.textContent('#wowLink')).includes('✎ учитель'));
   await student.waitForSelector('#step-vau-karty .linkbox .link-phrase', { timeout: 10000 });
+  await student.waitForFunction(p => (document.querySelector('#step-vau-karty .linkbox .link-phrase') || {}).textContent === p, phrase, { timeout: 10000 }).catch(() => {});
   check('Принятую связку видит ученик под картами', (await student.textContent('#step-vau-karty .linkbox .link-phrase')).trim() === phrase);
   await shot(teacher, '1a-wow-cards');
   // сборка: ученики видят, что ИИ собирает игру; учитель проверяет и раздаёт

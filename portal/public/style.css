@@ -421,6 +421,7 @@ dialog.chdlg{width:min(1100px,calc(100% - 32px));max-height:calc(100vh - 32px);o
 .linkbox.ok{border-style:solid;border-color:var(--accent);background:#0f1f18}
 .linkbox .link-phrase{font-size:18px;font-weight:700;line-height:1.35}
 .linkbox .link-rows{display:flex;flex-direction:column;gap:4px;font-size:14px}
+.linkbox textarea{width:100%;resize:vertical;font:inherit;font-size:15px}
 .pj-demo .linkbox .link-phrase{font-size:26px}
 .pj-demo .linkbox .link-rows{font-size:18px}
 .fixbox .fixrow{display:flex;flex-direction:column;gap:2px;padding:8px 10px;border-radius:10px;background:var(--bg2)}

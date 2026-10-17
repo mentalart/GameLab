@@ -263,19 +263,41 @@ const Games = (() => {
     };
     const act = async accepted => { try { await api('/api/teacher/wow/link/accept', { code, accepted }); if (accepted) beep('done'); } catch (e) { toast(e.message, 'err'); } onChange(); };
     const askBtn = label => { const b = el('button', { class: 'btn' + (link ? ' ghost' : ''), type: 'button' }, label); b.addEventListener('click', () => ask(b)); return b; };
+    // ручная правка учителем: четыре поля связки; сохранённая связка сразу принята
+    const editForm = () => {
+      box.innerHTML = ''; box.classList.add('editing');
+      const fields = [['phrase', 'Фраза игры', 'Ты — …, ты … в …, но … Цель — …', 3], ['loop', 'Главный цикл', 'Каждые несколько секунд игрок …', 2],
+        ['twist', 'Поворот × действие', 'Поворот мешает …, но и помогает …', 2], ['funny', 'Смешной момент', 'Класс смеётся, когда …', 2]];
+      const inputs = {};
+      box.append(el('div', { class: 'eyebrow' }, 'Связка геймдизайнера · правка учителя'),
+        ...fields.map(([k, label, ph, rows]) => el('label', { class: 'stack', style: 'gap:2px' }, el('b', { class: 'small' }, label),
+          inputs[k] = el('textarea', { rows, placeholder: ph, maxlength: k === 'funny' ? 300 : 400, 'data-link': k }, (link && link[k]) || ''))));
+      const save = el('button', { class: 'btn warm', type: 'button' }, '✓ Сохранить и принять');
+      save.addEventListener('click', async () => {
+        const data = {}; for (const k in inputs) data[k] = inputs[k].value.trim();
+        if (!data.phrase) { toast('Нужна хотя бы фраза игры', 'err'); inputs.phrase.focus(); return; }
+        save.disabled = true;
+        try { await api('/api/teacher/wow/link/edit', { code, link: data }); beep('done'); } catch (e) { toast(e.message, 'err'); save.disabled = false; return; }
+        onChange();
+      });
+      box.append(el('div', { class: 'row' }, save, el('button', { class: 'btn ghost', type: 'button', onclick: () => onChange() }, 'Отмена')));
+      inputs.phrase.focus();
+    };
+    const editBtn = label => el('button', { class: 'btn ghost', type: 'button', onclick: editForm }, label);
     if (!link) {
       box.append(el('div', { class: 'row' }, el('div', { class: 'grow stack', style: 'gap:2px' }, el('b', {}, '🧠 Связка: как четыре карты становятся одной игрой'),
         el('span', { class: 'muted small' }, 'Геймдизайнер за несколько секунд сведёт карты: фраза игры, главный цикл, поворот × действие, смешной момент. Принятая связка уйдёт программисту.')),
-      askBtn('🧠 Связка от ИИ')));
+      el('div', { class: 'row' }, askBtn('🧠 Связка от ИИ'), editBtn('✎ Написать самому'))));
       return box;
     }
     box.append(el('div', { class: 'row' }, el('div', { class: 'eyebrow grow' }, 'Связка геймдизайнера'),
+      link.edited ? el('span', { class: 'tag' }, '✎ учитель') : null,
       link.accepted ? el('span', { class: 'tag ok' }, '✓ принята — уйдёт в сборку') : editable ? el('span', { class: 'tag' }, 'ждёт решения учителя') : null),
     el('p', { class: 'link-phrase' }, link.phrase),
     el('div', { class: 'link-rows' }, [['Главный цикл', link.loop], ['Поворот × действие', link.twist], ['Смешной момент', link.funny]].filter(x => x[1])
       .map(([k, v]) => el('div', {}, el('b', {}, k + ': '), v))));
     if (editable) box.append(el('div', { class: 'row' }, link.accepted ? el('button', { class: 'btn ghost small', type: 'button', onclick: () => act(false) }, 'Снять принятие')
-      : el('button', { class: 'btn warm', type: 'button', onclick: () => act(true) }, '✓ Принять связку'), askBtn('↻ Другая связка')));
+      : el('button', { class: 'btn warm', type: 'button', onclick: () => act(true) }, '✓ Принять связку'), editBtn('✎ Править'), askBtn('↻ Другая связка')));
     return box;
   }
 
