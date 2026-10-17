@@ -97,7 +97,7 @@ function fieldStats(st) {
   const walk = (v, depth) => {
     if (!v || typeof v !== 'object' || depth > 5) return;
     if (typeof v.text === 'string' && !Array.isArray(v)) { if (v.text.trim()) { fields++; if (v.dice) dice++; } return; }
-    Object.values(v).forEach(x => walk(x, depth + 1));
+    Object.entries(v).forEach(([k, x]) => { if (k !== 'picks') walk(x, depth + 1); }); // ответы квизов — не поля
   };
   Object.values(st.answers || {}).forEach(a => walk(a && a.value, 0));
   return { fields, dice };
@@ -358,6 +358,25 @@ route('POST', '/api/release', (ctx) => {
   store.saveGame(g);
   broadcast(w.class, 'arcade', { game: g.id, author: g.nick });
   return { release: g.release };
+});
+// выставка джема (шаг vote): голоса класса по номинациям. Итог виден тому, кто уже проголосовал, и учителю
+function voteTally(code, les, step) {
+  const games = new Map(classGames(code).map(g => [g.id, g]));
+  const voters = store.students(code).map(s => (((s.lessons || {})[les.id] || {}).answers || {})[step.id]).filter(a => a && a.value && a.value.votes);
+  const noms = step.nominations.map(n => {
+    const count = {};
+    voters.forEach(a => { const id = a.value.votes[n.id]; if (games.has(id)) count[id] = (count[id] || 0) + 1; });
+    const top = Object.entries(count).sort((x, y) => y[1] - x[1]).map(([id, votes]) => ({ game: id, title: games.get(id).title || 'Моя игра', nick: games.get(id).nick, version: games.get(id).current, votes }));
+    return { id: n.id, label: n.label, top: top.slice(0, 5) };
+  });
+  return { voters: voters.length, noms };
+}
+route('GET', '/api/votes', (ctx) => {
+  const { w, les, st } = needStudent(ctx);
+  const step = les.checkpoints.flatMap(c => c.steps).find(x => x.id === ctx.url.searchParams.get('step') && x.type === 'vote');
+  if (!step) throw Object.assign(new Error('Нет такого голосования'), { status: 404 });
+  if (!((st.answers[step.id] || {}).value || {}).votes) return { hidden: true };
+  return voteTally(w.class, les, step);
 });
 route('POST', '/api/play/again', (ctx) => {
   const { w } = needStudent(ctx);
@@ -930,7 +949,8 @@ route('GET', '/api/teacher/overview', (ctx) => {
       feedback: !!st.feedback,
     };
   });
-  return { class: cls, lesson: les, students, stepsDone, spend: spend(cls.code, les.id), limits: ai.limits(), stuckSec: STUCK_SEC, now: new Date().toISOString() };
+  const votes = Object.fromEntries(les.checkpoints.flatMap(c => c.steps).filter(x => x.type === 'vote').map(x => [x.id, voteTally(cls.code, les, x)])); // выставка джема
+  return { class: cls, lesson: les, students, stepsDone, votes, spend: spend(cls.code, les.id), limits: ai.limits(), stuckSec: STUCK_SEC, now: new Date().toISOString() };
 });
 // ответы класса по уроку: таблица «ученик × шаг», разбор квизов по карточкам; выгрузка CSV — на странице учителя
 route('GET', '/api/teacher/answers', (ctx) => {
@@ -1259,7 +1279,7 @@ route('GET', '/api/teacher/answers.csv', (ctx) => {
     const rows = r.students.flatMap(s => r.steps.filter(x => s.answers[x.id]).map(x => ({ nick: s.nick, cp: x.cpTitle, step: x.title, type: x.type, text: s.answers[x.id].text, done: s.answers[x.id].done, at: s.answers[x.id].at })));
     body = csv([['Ученик', 'nick'], ['Чекпоинт', 'cp'], ['Шаг', 'step'], ['Тип шага', 'type'], ['Ответ', 'text'], ['Готово', 'done'], ['Когда', r => r.at ? new Date(r.at).toLocaleString('ru-RU') : '']], rows);
   } else {
-    const quiz = les.checkpoints.flatMap(cp => cp.steps).filter(x => x.type === 'sort' || x.type === 'rounds');
+    const quiz = les.checkpoints.flatMap(cp => cp.steps).filter(x => ['sort', 'rounds', 'blind', 'listen'].includes(x.type));
     const rows = students.flatMap(s => quiz.flatMap(q => ((((s.lessons || {})[les.id] || {}).answers || {})[q.id] || { value: {} }).value.picks
       ? s.lessons[les.id].answers[q.id].value.picks.map(p => Object.assign({ nick: s.nick, quiz: q.title }, p)) : []));
     body = csv([['Ученик', 'nick'], ['Квиз', 'quiz'], ['Карточка', 'text'], ['Верно', 'ok'], ['Ответил', 'chose'], ['Правильно', 'right'], ['Секунд', r => num(r.sec)]], rows);

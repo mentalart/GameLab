@@ -196,7 +196,7 @@
   /* ---------------- API для игры: объект lab ---------------- */
   const lab = {
     BABYLON: B, engine, scene: null, camera: null, light: null, shadows: null,
-    t: 0, dt: 0, state: {}, cfg, seed: 0, round: 0,
+    t: 0, dt: 0, state: {}, cfg, seed: 0, round: 0, data: {}, // data — данные от портала (урок 7: мелодия ученика из секвенсора)
     p1: P[0], p2: P[1], players: 1,
     score: 0, lives: 3, invuln: 0, best: 0,
     get playing() { return state === 'play' && !paused; },
@@ -843,6 +843,7 @@
     if (!m || m.target !== 'lab-game') return;
     if (m.type === 'records') { classRecord = m.record || null; if (m.best > lab.best) lab.best = Math.round(m.best); showRecord(); }
     if (m.type === 'seed') { fixedSeed = m.seed == null ? null : (Number(m.seed) >>> 0); if (state === 'menu') buildRound(true); }
+    if (m.type === 'data') { lab.data = m.data && typeof m.data === 'object' ? m.data : {}; if (state === 'menu') buildRound(true); }
     if (m.type === 'setCfg' && m.cfg) { for (const k in m.cfg) if (k in cfg) cfg[k] = Number(m.cfg[k]); document.querySelectorAll('.knob').forEach(w => w._sync && w._sync()); knobChanged(true); }
     if (m.type === 'pause') setPause(true);
     if (m.type === 'challengeOn') challengeOn = true;

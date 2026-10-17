@@ -9,8 +9,9 @@ const Games = (() => {
   // Игра идёт в изолированной рамке (sandbox без allow-same-origin). Одновременно работает только одна рамка: запуск новой ставит остальные на паузу.
   // key — ключ таблицы рекордов в классе (game:<id> — игра ученика, её партии идут в плейтест автора); info() — версия и код вызова для сервера.
   // score: false — партии не записываются (рамки учителя на проекторе и в карточке ученика).
+  // data — данные для игры (lab.data), например мелодия из секвенсора; уходят до cfg
   // challenge — под игрой есть кнопка вызова (оболочка пишет о ней на экране конца партии), ghost — призрак соперника { nick, score, line }.
-  function frame({ src, key, info, cfg, label, onReady, onOver, onScore, onAgain, onError, autostart, score = true, challenge, ghost }) {
+  function frame({ src, key, info, cfg, data, label, onReady, onOver, onScore, onAgain, onError, autostart, score = true, challenge, ghost }) {
     const box = el('div', { class: 'gamebox' });
     const veil = el('div', { class: 'veil' });
     let iframe = null, timer = null, ready = false;
@@ -25,7 +26,7 @@ const Games = (() => {
       if (!iframe || e.source !== iframe.contentWindow) return;
       const m = e.data || {};
       if (m.source !== 'lab-game') return;
-      if (m.type === 'ready') { ready = true; clearTimeout(timer); if (score) sendRecords(); if (cfg) post({ type: 'setCfg', cfg }); if (challenge) post({ type: 'challengeOn' }); if (ghost) post({ type: 'ghost', ghost }); if (onReady) onReady(m.meta || {}); }
+      if (m.type === 'ready') { ready = true; clearTimeout(timer); if (score) sendRecords(); if (data) post({ type: 'data', data }); if (cfg) post({ type: 'setCfg', cfg }); if (challenge) post({ type: 'challengeOn' }); if (ghost) post({ type: 'ghost', ghost }); if (onReady) onReady(m.meta || {}); }
       if (m.type === 'over' && score) {
         api('/api/score', Object.assign({ game: key(), score: m.score, seed: m.seed, tele: m.tele }, extra()))
           .then(r => { postRecords(r); if (onScore) onScore(m, r); }).catch(() => {});

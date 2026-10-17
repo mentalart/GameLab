@@ -17,6 +17,9 @@ function answerText(step, a, game) {
     case 'secret': return v.guess ? `догадка: ${v.guess} — ${v.correct ? 'угадал' : v.trap ? 'ловушка: это было на картах' : 'не угадал'}` : '';
     case 'rounds': case 'sort': return v.total ? quizLine(v) : '';
     case 'blindpair': return v.vote ? `«${v.title}» (автор ${v.author}): хочется вернуться — ${v.vote === 'same' ? 'разницы нет' : v.juicy ? 'в сочную' : 'в сухую'}` : '';
+    case 'listen': return v.total ? quizLine(v) : '';
+    case 'vote': return v.votes ? 'голоса отданы, сыграно игр: ' + Object.keys(v.played || {}).length : '';
+    case 'sequencer': return v.line ? `мелодия: ${v.line}` : '';
     case 'blind': return v.total ? `угадано ${v.correct} из ${v.total}` + ((v.mistakes || []).length ? '; не почувствовал: ' + v.mistakes.join('; ') : '') : '';
     case 'choice': return [(v.selected || []).join('; '), val(v.own) ? 'свои слова: ' + dice(v.own) : ''].filter(Boolean).join(' · ');
     case 'text': return a.done ? 'прочитано' : '';
@@ -47,7 +50,7 @@ function classAnswers(les, students, gameOf) {
     }
     return { nick: s.nick, answers };
   }).sort((a, b) => a.nick.localeCompare(b.nick, 'ru'));
-  const quizzes = steps.filter(x => x.type === 'sort' || x.type === 'rounds').map(x => {
+  const quizzes = steps.filter(x => ['sort', 'rounds', 'blind', 'listen'].includes(x.type)).map(x => {
     const cards = {};
     for (const s of students) {
       const v = ((((s.lessons || {})[les.id] || {}).answers || {})[x.id] || {}).value || {};

@@ -2,10 +2,11 @@
 // Вкладка «Вау-старт»: учитель тянет карты колоды безумных идей и при всех собирает игру с ИИ. Для урока с колодой wow (урок 1) —
 // карты, голоса «перетянуть», сборка и раздача общей игры класса; секрет на проектор не выводится. Для шага teacher-demo — его карты и таймер.
 // Вкладка «Мир дня»: учитель даёт всему классу один мир одной из игр урока, таблица мира растёт на проекторе.
+// Вкладка «Выставка и турнир» (урок с шагом vote): лидеры номинаций и кнопочный турнир в игре-победителе номинации step.tournament.
 'use strict';
 const { el, api, toast, beep } = Lab;
 const $ = s => document.querySelector(s);
-const P = { code: null, o: null, skew: 0, tab: 'lesson', isDemo: false, d: null, info: null, job: null, frameFor: null, tf: null, keys: {}, w: null, wKey: null, wFrame: null };
+const P = { cup: [], cupFrame: null, cupKey: null, code: null, o: null, skew: 0, tab: 'lesson', isDemo: false, d: null, info: null, job: null, frameFor: null, tf: null, keys: {}, w: null, wKey: null, wFrame: null };
 const mmss = sec => { const s = Math.max(0, Math.round(sec)); return String(Math.floor(s / 60)).padStart(2, '0') + ':' + String(s % 60).padStart(2, '0'); };
 const serverNow = () => Date.now() + P.skew;
 const CARDS = [['hero', 'Герой'], ['place', 'Место'], ['twist', 'Поворот']];
@@ -32,9 +33,13 @@ async function refresh() {
     $('#pj-demo').innerHTML = ''; P.lastMode = P.mode;
   }
   if (!P.mode && P.tab === 'demo') P.tab = 'lesson';
+  const vs = voteStep();
+  $('#cupTab').hidden = !vs;
+  if (!vs && P.tab === 'cup') P.tab = 'lesson';
   showTab();
   if (P.tab === 'lesson') drawLesson();
   else if (P.tab === 'day') await refreshDay();
+  else if (P.tab === 'cup') drawCup(vs);
   else if (P.mode === 'wow') await refreshWow();
   else await refreshDemo();
 }
@@ -42,6 +47,8 @@ function showTab() {
   document.querySelectorAll('.pj-tabs button').forEach(b => b.classList.toggle('on', b.dataset.tab === P.tab));
   $('#pj-lesson').hidden = P.tab !== 'lesson'; $('#pj-demo').hidden = P.tab !== 'demo'; $('#pj-day').hidden = P.tab !== 'day';
   if (P.tab !== 'day') P.dayKey = null;
+  $('#pj-cup').hidden = P.tab !== 'cup';
+  if (P.tab !== 'cup' && P.cupFrame) { P.cupFrame.destroy(); P.cupFrame = null; P.cupKey = null; $('#pj-cup').innerHTML = ''; }
   if (P.tab !== 'demo' && (P.tf || P.wFrame)) {
     Games.stopAll(); P.tf = null; P.frameFor = null; P.wFrame = null; P.wKey = null;
     const gh = $('#pjWowGame'); if (gh) gh.innerHTML = ''; // остановленная рамка не остаётся на странице второй игрой
@@ -351,6 +358,42 @@ async function wowBuild() {
 }
 
 /* ---------- события ---------- */
+/* ---------- выставка и турнир (урок 8): лидеры номинаций и кнопочный турнир в игре-победителе ---------- */
+function voteStep() { return P.o.lesson.checkpoints.flatMap(c => c.steps).find(s => s.type === 'vote') || null; }
+function drawCup(step) {
+  const host = $('#pj-cup'), t = (P.o.votes || {})[step.id] || { voters: 0, noms: [] };
+  const cupNom = t.noms.find(n => n.id === step.tournament) || t.noms[0];
+  const win = cupNom && cupNom.top[0];
+  if (!host.firstChild) host.append(el('div', { class: 'pj-cp' }, el('div', { class: 'eyebrow' }, 'Выставка джема'), el('h2', {}, step.title), el('div', { id: 'pjNoms' })),
+    el('div', { class: 'pj-cp', id: 'pjCupBox' }));
+  const noms = $('#pjNoms'); noms.innerHTML = '';
+  noms.append(el('p', { class: 'pj-sub' }, t.voters ? `проголосовали: ${t.voters} из ${P.o.students.length}` : 'Голосов пока нет: ученики играют в игры класса и голосуют в шаге «' + step.title + '»'),
+    el('div', { class: 'pj-noms' }, t.noms.map(n => el('div', { class: 'pj-nom' }, el('div', { class: 'eyebrow' }, n.label),
+      n.top[0] ? el('h3', {}, n.top[0].title) : el('h3', { class: 'muted' }, '—'),
+      n.top[0] ? el('div', { class: 'pj-sub' }, `${n.top[0].nick} · голосов ${n.top[0].votes}`) : null))));
+  const box = $('#pjCupBox');
+  if (!win) { box.innerHTML = ''; P.cupKey = null; box.append(el('p', { class: 'pj-sub' }, `Игра турнира — победитель номинации «${cupNom ? cupNom.label : ''}». Она появится здесь после первых голосов.`)); return; }
+  const key = win.game + '/' + win.version;
+  if (P.cupKey !== key) { // рамка строится один раз на игру: обновление проектора её не трогает
+    if (P.cupFrame) P.cupFrame.destroy();
+    box.innerHTML = ''; P.cupKey = key; P.cup = [];
+    const name = el('input', { type: 'text', id: 'pjCupName', maxlength: '24', placeholder: 'Кто играет', class: 'pj-cupname' });
+    const h = Games.frame({ src: () => `/play/${win.game}/${win.version}`, key: () => 'cup:' + win.game, label: 'Начать турнир', score: false,
+      onOver: m => { P.cup.push({ name: name.value.trim() || `Игрок ${P.cup.length + 1}`, score: m.score || 0 }); name.value = ''; beep('done'); drawTable(); },
+      onError: err => h.message(el('b', {}, 'Игра упала: ' + (err.message || 'ошибка'))) });
+    P.cupFrame = h;
+    box.append(el('div', { class: 'eyebrow' }, `Кнопочный турнир · «${cupNom.label}»`), el('h2', {}, `${win.title} — автор ${win.nick}`),
+      el('div', { class: 'row' }, name, el('span', { class: 'pj-sub' }, 'Каждый играет одну партию. Лучший счёт — наверху.')), h.box, Games.bar(h, el('span', {})), el('div', { id: 'pjCupTable' }));
+    drawTable();
+  }
+}
+function drawTable() {
+  const tb = $('#pjCupTable'); if (!tb) return;
+  tb.innerHTML = '';
+  const rows = P.cup.slice().sort((a, b) => b.score - a.score);
+  if (rows.length) tb.append(el('ol', { class: 'pj-cuptable' }, rows.map((r, i) => el('li', { class: i === 0 ? 'top' : '' }, el('b', {}, r.name), ' — ', String(r.score)))));
+}
+
 document.querySelectorAll('.pj-tabs button').forEach(b => b.addEventListener('click', () => { P.tab = b.dataset.tab; refresh(); }));
 $('#pjFull').addEventListener('click', () => { if (document.fullscreenElement) document.exitFullscreen(); else document.documentElement.requestFullscreen().catch(() => {}); });
 addEventListener('keydown', e => {

@@ -1,4 +1,4 @@
-// Страница ученика: урок по чекпоинтам и типовые шаги (play, teacher-demo, choice, text, sort, rounds, cycle, trace, predict, blind, blindpair, cards, secret, factory, decisions, igra, producer, build, aicheck, workshop, release, arcade, playtest).
+// Страница ученика: урок по чекпоинтам и типовые шаги (play, teacher-demo, choice, text, sort, rounds, cycle, trace, predict, blind, blindpair, listen, sequencer, vote, cards, secret, factory, decisions, igra, producer, build, aicheck, workshop, release, arcade, playtest).
 // Рамка игры, карточки аркады и открытие плейтеста — в games.js, поле с кубиком — в common.js.
 'use strict';
 const { el, api, toast, roll, beep, copy, valText, fieldEditor } = Lab;
@@ -899,8 +899,8 @@ STEPS.trace = ctx => {
   return box;
 };
 
-// predict: предсказание динамики. Ученик выбирает, что будут делать игроки и охотники, потом играет в шаге play,
-// и шаг сравнивает предсказание со счётчиками телеметрии этого шага (в среднем за партию).
+// predict: предсказание динамики. Ученик выбирает, что будет происходить в игре, потом играет в шаге play,
+// и шаг сравнивает предсказание со счётчиками телеметрии этого шага (в среднем за партию). miss — начало фразы, если не сбылось.
 STEPS.predict = ctx => {
   const st = ctx.step, max = st.max || 2;
   let v = Object.assign({ picked: [], locked: false }, ctx.value);
@@ -932,7 +932,7 @@ STEPS.predict = ctx => {
       el('b', {}, String(vals[k])))));
     const topOpt = st.options[vals.indexOf(top)];
     host.append(el('div', { class: 'eyebrow' }, `Телеметрия: в среднем за партию (партий: ${play.rounds})`), rows,
-      el('p', { class: 'verdict ' + (hit ? 'good' : 'bad') }, top === 0 ? 'Телеметрия пока ничего не заметила — сыграй ещё партию подольше.' : hit ? '🎯 Предсказание сбылось: ты угадал главную динамику.' : `Игроки и волки сделали другое: чаще всего — «${topOpt.text}».`),
+      el('p', { class: 'verdict ' + (hit ? 'good' : 'bad') }, top === 0 ? 'Телеметрия пока ничего не заметила — сыграй ещё партию подольше.' : hit ? '🎯 Предсказание сбылось: ты угадал главную динамику.' : `${st.miss || 'В игре вышло по-другому'}: чаще всего — «${topOpt.text}».`),
       top > 0 && topOpt.why ? el('p', { class: 'concept' }, topOpt.why) : null,
       el('div', {}, el('button', { class: 'btn', type: 'button', onclick: () => { v.result = { hit, top: topOpt.counter, values: Object.fromEntries(st.options.map((o, k) => [o.counter, vals[k]])) }; ctx.save(v, true, true); } }, ctx.done ? 'Сравнил ✓' : 'Понятно, дальше')));
   }
@@ -1023,6 +1023,7 @@ function planVars() {
   const fac = lessonSteps().find(x => x.id === P.factory), dv = (ans(P.factory).value || {}).donor;
   const d = fac && fac.donors && (fac.donors.find(x => x.id === dv) || fac.donors[0]);
   if (d) Object.assign(out, { donor: d.title, donorRules: d.rules || '', donorKeys: d.keys || '' });
+  if (P.melody) out.melody = (ans(P.melody).value || {}).line || ''; // мелодия из секвенсора (урок 7)
   return out;
 }
 const fillTpl = (tpl, vars) => tpl.replace(/\{(\w+)\}/g, (_, k) => vars[k] || '…');
@@ -1624,6 +1625,226 @@ STEPS.blindpair = ctx => {
   return host;
 };
 
+// vote: выставка джема (урок 8). Игры класса этого урока карточками: сыграй, потом голосуй в номинациях
+// (только за игры, в которые сыграл, не за свою). После голоса — итоги класса и игра кнопочного турнира: победитель номинации tournament.
+STEPS.vote = ctx => {
+  const st = ctx.step, need = st.minGames || 2;
+  const host = el('div', { class: 'stack vote' });
+  let data = null, cur = null, tally = null;
+  let v = Object.assign({ played: {}, votes: null }, ctx.value);
+  const games = () => data.games.filter(g => !g.mine && g.lesson && g.lesson.id === S.lesson.id);
+  async function load() {
+    try { data = await api('/api/arcade'); } catch (e) { host.innerHTML = ''; host.append(el('p', { class: 'err' }, e.message)); return; }
+    if (v.votes) await loadTally();
+    draw();
+  }
+  async function loadTally() { try { tally = await api('/api/votes?step=' + encodeURIComponent(st.id)); } catch (e) { tally = null; } }
+  function play(g, box) {
+    if (cur) cur.destroy();
+    cur = Games.frame({ src: () => `/play/${g.id}/${g.version}`, key: () => 'game:' + g.id, info: () => ({ version: g.version }), label: 'Играть: ' + (g.title || 'игра'), autostart: true,
+      onOver: () => { v.played[g.id] = (v.played[g.id] || 0) + 1; ctx.save(v); drawVote(); },
+      onError: err => cur.message(el('b', {}, 'Игра упала: ' + (err.message || 'ошибка') + '. Возьми другую.')) });
+    box.innerHTML = ''; box.append(el('h3', {}, `${g.title || 'Игра'} · ${g.nick}`), cur.box, Games.bar(cur));
+    box.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  }
+  const voteBox = el('div', { class: 'stack' });
+  function drawVote() {
+    voteBox.innerHTML = '';
+    const list = games(), played = list.filter(g => v.played[g.id]);
+    if (v.votes) {
+      voteBox.append(el('div', { class: 'eyebrow' }, 'Твои голоса'),
+        el('ul', {}, st.nominations.map(n => { const g = list.find(x => x.id === v.votes[n.id]); return el('li', {}, el('b', {}, n.label + ': '), g ? `${g.title} (${g.nick})` : '—'); })));
+      if (tally && !tally.hidden) {
+        const cup = tally.noms.find(n => n.id === st.tournament), win = cup && cup.top[0];
+        voteBox.append(el('div', { class: 'eyebrow' }, `Итоги класса · проголосовали ${tally.voters}`),
+          el('div', { class: 'vote-noms' }, tally.noms.map(n => el('div', { class: 'card vote-nom' }, el('b', {}, n.label),
+            n.top.length ? el('ol', {}, n.top.slice(0, 3).map(t => el('li', {}, `${t.title} — ${t.nick} · ${t.votes}`))) : el('p', { class: 'muted small' }, 'голосов нет')))),
+          win ? el('p', { class: 'concept' }, `Игра кнопочного турнира — «${win.title}» (${win.nick}): победитель номинации «${cup.label}». Турнир идёт на проекторе: каждый играет одну партию.`) : null);
+      }
+      voteBox.append(el('div', { class: 'row' }, el('button', { class: 'btn ghost small', type: 'button', onclick: async () => { await loadTally(); drawVote(); } }, '↻ Обновить итоги'),
+        el('button', { class: 'btn ghost small', type: 'button', onclick: () => { v.votes = null; tally = null; ctx.save(v); drawVote(); } }, 'Изменить голоса')));
+      return;
+    }
+    const n = Math.min(need, list.length);
+    if (played.length < n) { voteBox.append(el('p', { class: 'muted' }, `Сыграй хотя бы в ${n === 1 ? 'одну игру' : n + ' игры'} класса — потом откроется голосование. Сыграно: ${played.length}.`)); return; }
+    const pick = {};
+    voteBox.append(el('div', { class: 'eyebrow' }, 'Голосуй: за свою игру нельзя, только за те, в которые сыграл'));
+    st.nominations.forEach(n => {
+      const sel = el('select', { id: 'vote-' + n.id, 'aria-label': n.label, onchange: () => { pick[n.id] = sel.value; } },
+        el('option', { value: '' }, '— выбери игру —'), played.map(g => el('option', { value: g.id }, `${g.title || 'Игра'} · ${g.nick}`)));
+      voteBox.append(el('label', { class: 'vote-row' }, el('span', {}, el('b', {}, n.label), n.hint ? el('span', { class: 'small muted' }, ' · ' + n.hint) : null), sel));
+    });
+    voteBox.append(el('div', {}, el('button', { class: 'btn', type: 'button', onclick: async () => {
+      if (st.nominations.some(n => !pick[n.id])) { toast('Выбери игру в каждой номинации'); return; }
+      v.votes = Object.assign({}, pick); ctx.save(v, true, true); beep('done');
+      await loadTally(); drawVote();
+    } }, '🏆 Отдать голоса')));
+  }
+  function draw() {
+    if (cur) { cur.destroy(); cur = null; }
+    host.innerHTML = '';
+    const list = games();
+    if (!list.length) {
+      host.append(el('div', { class: 'locked-msg card' }, el('h3', {}, 'Ждём игры класса'), el('p', { style: 'margin-top:6px' }, 'Как только одноклассники соберут игры джема, они появятся здесь.'),
+        el('div', { style: 'margin-top:12px' }, el('button', { class: 'btn ghost small', type: 'button', onclick: load }, '↻ Проверить'))));
+      return;
+    }
+    const stage = el('div', { class: 'stack' });
+    host.append(el('div', { class: 'agrid' }, list.map(g => Games.card(g, { compact: true, actions: [el('button', { class: 'btn small', type: 'button', onclick: () => play(g, stage) }, (v.played[g.id] ? '✓ ' : '▶ ') + 'Играть')] }))), stage, voteBox);
+    drawVote();
+  }
+  S.hooks.push(kind => { if (kind === 'arcade' && data && !v.votes) load(); });
+  host.append(el('p', { class: 'muted' }, 'Собираем выставку…'));
+  load();
+  return host;
+};
+
+// звук шагов listen и sequencer: тон и шум по рецепту, как lab.tone и lab.noise в оболочке
+const Snd = (() => {
+  let AC = null, nb = null;
+  const ac = () => {
+    if (!AC) { AC = new (window.AudioContext || window.webkitAudioContext)(); nb = AC.createBuffer(1, AC.sampleRate, AC.sampleRate); const d = nb.getChannelData(0); for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1; }
+    if (AC.state === 'suspended') AC.resume();
+    return AC;
+  };
+  function play(list, at = 0) {
+    let c; try { c = ac(); } catch (e) { return; }
+    for (const x of list) {
+      try {
+        const t = c.currentTime + at + (x.at || 0), g = c.createGain();
+        g.gain.setValueAtTime(x.v || 0.1, t); g.gain.exponentialRampToValueAtTime(0.0001, t + x.d); g.connect(c.destination);
+        if (x.noise) { const s = c.createBufferSource(), f = c.createBiquadFilter(); s.buffer = nb; f.type = 'lowpass'; f.frequency.value = x.freq || 1000; s.connect(f); f.connect(g); s.start(t); s.stop(t + x.d + 0.02); continue; }
+        const o = c.createOscillator(); o.type = x.w || 'square'; o.frequency.setValueAtTime(Math.max(20, x.f), t);
+        if (x.s) o.frequency.exponentialRampToValueAtTime(Math.max(20, x.s), t + x.d);
+        o.connect(g); o.start(t); o.stop(t + x.d + 0.02);
+      } catch (e) { /* звук не критичен */ }
+    }
+  }
+  return { play, now: () => { try { return ac().currentTime; } catch (e) { return 0; } } };
+})();
+
+// listen: квиз «Угадай по звуку» (урок 7). Звук раунда — рецепт из тонов и шума (`sound`), ученик слушает (▶ или пробел)
+// и выбирает, что случилось в игре: верный ответ и ещё choices − 1 из options. Клавиши 1–4, серия, итог.
+STEPS.listen = ctx => {
+  const st = ctx.step, choices = st.choices || 4;
+  const box = el('div', { class: 'rounds listen', tabindex: '0', 'aria-label': 'Квиз «' + st.title + '»' });
+  let order = [], i = 0, opts = [], phase = 'intro', score = 0, streak = 0, bestStreak = 0, correct = 0, picks = [], mistakes = [];
+  const shuffle = a => a.map(x => [Math.random(), x]).sort((p, q) => p[0] - q[0]).map(p => p[1]);
+  const round = () => st.rounds[order[i]];
+  function intro() {
+    phase = 'intro'; box.innerHTML = '';
+    const prev = ctx.value;
+    box.append(el('div', { class: 'stack', style: 'align-items:center;text-align:center;margin:auto' },
+      el('div', { class: 'big' }, '🔊'), el('h3', {}, `${st.rounds.length} звуков`),
+      el('p', { class: 'muted' }, 'Включи звук. Пробел — послушать ещё раз, клавиши 1–4 — ответ.'),
+      prev && prev.total ? el('p', {}, `Твой результат: ${prev.correct} из ${prev.total}, очки ${prev.score}`) : null,
+      el('button', { class: 'btn', type: 'button', onclick: begin }, prev && prev.total ? 'Сыграть ещё раз' : '▶ Начать')));
+  }
+  function begin() { order = shuffle(st.rounds.map((x, k) => k)); i = 0; score = 0; streak = 0; bestStreak = 0; correct = 0; picks = []; mistakes = []; show(); }
+  function show() {
+    if (i >= order.length) return finish();
+    phase = 'ask';
+    const r = round();
+    opts = shuffle(shuffle(st.options.filter(o => o !== r.answer)).slice(0, choices - 1).concat(r.answer));
+    box.innerHTML = '';
+    box.append(el('div', { class: 'hud' }, el('span', {}, `${i + 1} / ${order.length}`), el('span', { class: 'streak' }, streak > 1 ? `серия ×${streak}` : ''), el('span', {}, `очки ${score}`)),
+      el('div', { style: 'text-align:center' }, el('button', { class: 'btn big-play', type: 'button', onclick: () => Snd.play(r.sound) }, '▶ Послушать')),
+      el('div', { class: 'opts' }, opts.map((o, k) => el('button', { type: 'button', class: 'opt', onclick: () => answer(k) }, el('kbd', {}, String(k + 1)), ' ', o))),
+      el('div', { class: 'why', 'aria-live': 'polite' }));
+    box.focus({ preventScroll: true });
+    Snd.play(r.sound, 0.15);
+  }
+  function answer(k) {
+    if (phase !== 'ask' || !opts[k]) return;
+    phase = 'why';
+    const r = round(), ok = opts[k] === r.answer;
+    picks.push({ text: r.answer, chose: opts[k], ok, right: r.answer });
+    if (ok) { correct++; streak++; bestStreak = Math.max(bestStreak, streak); score += 100 * Math.min(streak, 3); } else { streak = 0; mistakes.push(`${r.answer} (выбрал: ${opts[k]})`); }
+    beep(ok ? 'good' : 'bad');
+    box.querySelectorAll('.opts .opt').forEach((b, j) => { b.disabled = true; if (opts[j] === r.answer) b.classList.add('on'); else if (j === k) b.classList.add('miss'); });
+    const why = box.querySelector('.why'); why.innerHTML = '';
+    why.append(el('b', {}, ok ? 'Верно! ' : `Это был звук «${r.answer}». `), r.why || '', ' ',
+      el('button', { class: 'btn', type: 'button', onclick: () => { i++; show(); } }, i + 1 >= order.length ? 'Итог ▶' : 'Дальше ▶'));
+  }
+  function finish() {
+    phase = 'end';
+    const v = { score, correct, total: order.length, bestStreak, mistakes, picks };
+    ctx.save(v, true);
+    box.innerHTML = '';
+    box.append(el('div', { class: 'stack', style: 'align-items:center;text-align:center;margin:auto' },
+      el('div', { class: 'eyebrow' }, 'Итог'), el('h2', {}, `${correct} из ${order.length} · ${score} очков`),
+      mistakes.length ? el('div', { class: 'small', style: 'text-align:left' }, el('b', {}, 'Перепутал:'), el('ul', {}, mistakes.map(m => el('li', {}, m)))) : el('p', {}, 'Все звуки узнаны!'),
+      el('button', { class: 'btn', type: 'button', onclick: begin }, 'Ещё раз')));
+  }
+  box.addEventListener('keydown', e => {
+    const m = /^(?:Digit|Numpad)([1-9])$/.exec(e.code);
+    if (phase === 'ask' && m) { e.preventDefault(); answer(Number(m[1]) - 1); }
+    else if (phase === 'ask' && e.code === 'Space') { e.preventDefault(); Snd.play(round().sound); }
+    else if (phase === 'why' && (e.code === 'Space' || e.code === 'Enter')) { e.preventDefault(); i++; show(); }
+  });
+  intro();
+  return box;
+};
+
+// sequencer: секвенсор мелодии (урок 7). Сетка: колонки — доли (8 тактов по 4), строки — ноты (снизу вверх, notes);
+// в колонке одна нота. «Послушать» играет мелодию в темпе bpm, «Пробежать» отдаёт её ремейку в lab.data.melody —
+// на каждой ноте встаёт препятствие. Мелодия уходит в черновик ИГРА шаблоном {melody} (plan.melody — id этого шага).
+const SEQ_FREQ = [220, 261.6, 293.7, 329.6, 392];
+const melodyText = (mel, names) => (mel || []).map(n => (n < 0 ? '—' : names[n])).reduce((a, x, k) => a + (k && k % 4 === 0 ? ' | ' : k ? ' ' : '') + x, '');
+STEPS.sequencer = ctx => {
+  const st = ctx.step, cols = (st.bars || 8) * 4, names = st.notes || ['ля', 'до', 'ре', 'ми', 'соль'], need = st.minNotes || 8;
+  let v = Object.assign({ melody: new Array(cols).fill(-1) }, ctx.value);
+  const host = el('div', { class: 'stack seq' });
+  let playing = null, h = null;
+  const count = () => v.melody.filter(n => n >= 0).length;
+  const grid = el('div', { class: 'seq-grid', style: `grid-template-columns:auto repeat(${cols},1fr)` });
+  const info = el('div', { class: 'small muted', 'aria-live': 'polite' });
+  const cells = [];
+  for (let r = names.length - 1; r >= 0; r--) {
+    grid.append(el('div', { class: 'seq-name' }, names[r]));
+    for (let c = 0; c < cols; c++) {
+      const b = el('button', { type: 'button', class: 'seq-cell' + (c % 4 === 0 ? ' bar' : ''), 'aria-label': `доля ${c + 1}, ${names[r]}`, onclick: () => {
+        v.melody[c] = v.melody[c] === r ? -1 : r;
+        if (v.melody[c] >= 0) Snd.play([{ f: SEQ_FREQ[r] * 2, d: 0.2, w: 'triangle', v: 0.12 }]);
+        save(); paint();
+      } });
+      cells.push({ b, r, c }); grid.append(b);
+    }
+  }
+  function paint(cur = -1) {
+    cells.forEach(x => { x.b.classList.toggle('on', v.melody[x.c] === x.r); x.b.classList.toggle('cur', x.c === cur); });
+    info.textContent = `Нот: ${count()}` + (count() < need ? ` · нужно хотя бы ${need}` : ' ✓') + ` · ${melodyText(v.melody, names)}`;
+  }
+  function save() { v.line = melodyText(v.melody, names); ctx.save(v, !ctx.done && count() >= need ? true : null); }
+  function listen() {
+    stop();
+    const beat = 60 / (st.bpm || 112), t0 = 0.1;
+    v.melody.forEach((n, c) => {
+      Snd.play([{ f: c % 4 ? 120 : 90, d: 0.14, w: 'sine', v: 0.3, s: 40, at: c * beat }, { noise: true, d: 0.03, v: 0.04, freq: 9000, at: c * beat + beat / 2 }], t0);
+      if (n >= 0) Snd.play([{ f: SEQ_FREQ[n] * 2, d: 0.22, w: 'triangle', v: 0.11, at: c * beat }], t0);
+    });
+    const start = performance.now() + t0 * 1000;
+    playing = setInterval(() => { const c = Math.floor((performance.now() - start) / 1000 / beat); if (c >= cols) { stop(); return; } paint(c); }, 40);
+  }
+  function stop() { clearInterval(playing); playing = null; paint(); }
+  const run = el('div', { class: 'stack' });
+  function runLevel() {
+    if (count() < need) { toast(`Поставь хотя бы ${need} нот`); return; }
+    stop(); if (h) h.destroy();
+    h = Games.frame({ src: () => '/engine/game.html?game=../' + st.game, key: () => 'remake:' + st.id, score: false, autostart: true, data: { melody: v.melody.slice() }, label: 'Пробежать свою мелодию',
+      onOver: () => { v.ran = (v.ran || 0) + 1; save(); } });
+    run.innerHTML = ''; run.append(h.box, Games.bar(h));
+  }
+  const presets = (st.presets || []).map(p => el('button', { class: 'btn ghost small', type: 'button', onclick: () => { v.melody = p.melody.slice(0, cols); while (v.melody.length < cols) v.melody.push(-1); beep('dice'); save(); paint(); } }, '🎲 ' + p.label));
+  host.append(el('div', { class: 'seq-wrap' }, grid), info,
+    el('div', { class: 'row' }, el('button', { class: 'btn', type: 'button', onclick: listen }, '▶ Послушать'), el('button', { class: 'btn ghost', type: 'button', onclick: stop }, '■ Стоп'),
+      el('button', { class: 'btn', type: 'button', onclick: runLevel }, '🏃 Пробежать в «Шаге в такт»'), el('span', { class: 'grow' }), ...presets,
+      el('button', { class: 'btn ghost small', type: 'button', onclick: () => { v.melody = new Array(cols).fill(-1); save(); paint(); } }, 'Очистить')),
+    run);
+  paint();
+  return host;
+};
+
 // release: релиз модуля. Ученик выбирает лучшую игру модуля (не обязательно сегодняшнюю), проверяет её в рамке и идёт по чек-листу.
 // У пунктов с auto портал показывает, что видно из аркады (подпись донора, три решения, чужие партии, время партии, версии);
 // отмечает пункты сам ученик. «Выпустить 1.0» — метка релиза в аркаде класса, одна игра на модуль.
@@ -1714,6 +1935,9 @@ function stepSummary(step) {
     case 'cycle': return v.total ? `без ошибок ${v.perfect} из ${v.total}, очки ${v.score}, серия ${v.bestStreak}` + ((v.mistakes || []).length ? '; трудно: ' + v.mistakes.join('; ') : '') : 'не пройден';
     case 'release': return v.released ? `выпущена версия 1.0: «${v.released.title}» (урок ${v.released.lesson}, v${v.released.version}); что изменено: ${f(v.note)}` : `не выпущена; отмечено пунктов: ${Object.values(v.checks || {}).filter(Boolean).length}`;
     case 'blindpair': return v.game ? `игра «${v.title}» (автор ${v.author}); сухой была ${v.dry === 'A' ? 'А' : 'Б'}; хочется вернуться: ${v.vote ? (v.vote === 'same' ? 'разницы нет' : v.vote === 'A' ? 'в А' : 'в Б') : '—'}${v.vote && v.juicy ? ' — в сочную' : ''}` : 'не играл';
+    case 'vote': return v.votes ? 'голоса: ' + Object.values(v.votes).length + ', сыграно игр: ' + Object.keys(v.played || {}).length : `сыграно игр: ${Object.keys(v.played || {}).length}`;
+    case 'listen': return v.total ? `верно ${v.correct} из ${v.total}, очки ${v.score}` + ((v.mistakes || []).length ? '; перепутал: ' + v.mistakes.join('; ') : '') : 'не пройден';
+    case 'sequencer': return v.line ? `мелодия: ${v.line}; пробежек ${v.ran || 0}` : 'мелодии нет';
     case 'blind': return v.total ? `угадано ${v.correct} из ${v.total}` + ((v.mistakes || []).length ? '; не почувствовал: ' + v.mistakes.join('; ') : '') : `загадок пройдено ${(v.picks || []).length}`;
     case 'trace': return v.total ? `верно ${v.correct} из ${v.total}, очки ${v.score}, серия ${v.bestStreak}` + ((v.mistakes || []).length ? '; ошибки: ' + v.mistakes.join('; ') : '') : 'не пройден';
     case 'predict': return (v.picked || []).length ? `предсказание: ${step.options.filter(o => v.picked.includes(o.counter)).map(o => o.text).join('; ')}` + (v.result ? ` — ${v.result.hit ? 'сбылось' : 'не сбылось'}; телеметрия за партию: ` + step.options.map(o => `${o.text} ${v.result.values[o.counter]}`).join(', ') : '') : 'не предсказывал';
