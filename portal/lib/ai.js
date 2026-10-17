@@ -22,7 +22,7 @@ function loadConfig() {
     console.log(`Создан ${path.relative(process.cwd(), CONFIG_FILE)}. Пароль учителя: ${example.teacherPassword}`);
   }
   configCache = JSON.parse(fs.readFileSync(CONFIG_FILE, 'utf8'));
-  configCache.ai = Object.assign({ baseUrl: 'https://api.provod.ai/v1', apiKey: '', codeModel: '', textModel: '', stream: true, timeoutSec: 240, maxSec: 1200, temperature: 0.4 }, configCache.ai || {});
+  configCache.ai = Object.assign({ baseUrl: 'https://api.provod.ai/v1', apiKey: '', codeModel: '', textModel: '', stream: true, timeoutSec: 240, maxSec: 1200, temperature: 0.4, cache: 'auto', cacheTtl: '' }, configCache.ai || {});
   configCache.limits = Object.assign({ aiCallsPerStudentPerLesson: 40, rublesPerLesson: 0 }, configCache.limits || {});
   configCache.models = configCache.models || [];
   return configCache;
@@ -36,10 +36,46 @@ function models() {
 // лимиты: config.json, поверх — то, что учитель поменял в панели (data/settings.json)
 function limits() { return Object.assign({}, loadConfig().limits, store.settings().limits || {}); }
 function price(model) { return loadConfig().models.find(m => m.id === model) || {}; }
-function rubles(model, inT, outT) {
+// inT — все входящие токены вместе с кэшем; cached — прочитанные из кэша, written — записанные в кэш.
+// Цены кэша — rubPer1MCacheRead и rubPer1MCacheWrite; если их нет, кэш считается по цене обычного входа.
+function rubles(model, inT, outT, cached = 0, written = 0) {
   const p = price(model);
   if (p.rubPer1MIn == null || p.rubPer1MOut == null) return null;
-  return Math.round(((inT || 0) * p.rubPer1MIn + (outT || 0) * p.rubPer1MOut) / 1e4) / 100;
+  const fresh = Math.max(0, (inT || 0) - cached - written);
+  const read = p.rubPer1MCacheRead == null ? p.rubPer1MIn : p.rubPer1MCacheRead;
+  const write = p.rubPer1MCacheWrite == null ? p.rubPer1MIn : p.rubPer1MCacheWrite;
+  return Math.round((fresh * p.rubPer1MIn + cached * read + written * write + (outT || 0) * p.rubPer1MOut) / 1e4) / 100;
+}
+
+/* ---------------- кэш промпта ---------------- */
+// Системный промпт программиста (около 25–28 тысяч токенов) одинаков для всего класса на уроке, поэтому провайдер может
+// держать его в кэше: повторное чтение у Claude стоит в 10 раз дешевле обычного входа. OpenAI, Gemini, DeepSeek и Qwen
+// кэшируют одинаковое начало запроса сами. Claude кэширует только по явной метке cache_control в системном сообщении.
+// ai.cache: "auto" — метка для моделей claude-*, "on" — для всех, "off" — без метки; поле cache у модели в models важнее.
+function explicitCache(model) {
+  const p = price(model);
+  if (typeof p.cache === 'boolean') return p.cache;
+  const mode = loadConfig().ai.cache;
+  if (mode === 'off' || mode === false) return false;
+  if (mode === 'on' || mode === true) return true;
+  return /claude|anthropic/i.test(model);
+}
+function withCache(model, messages) {
+  if (!explicitCache(model)) return messages;
+  const ttl = loadConfig().ai.cacheTtl;
+  const mark = Object.assign({ type: 'ephemeral' }, ttl ? { ttl } : {});
+  return messages.map(m => m.role === 'system' && typeof m.content === 'string'
+    ? { role: 'system', content: [{ type: 'text', text: m.content, cache_control: mark }] } : m);
+}
+const textLength = c => typeof c === 'string' ? c.length : (c || []).reduce((n, p) => n + String(p.text || '').length, 0);
+// Кэш в ответе: OpenAI-формат (prompt_tokens_details) или формат Anthropic (cache_read/cache_creation_input_tokens).
+function cacheUsage(u) {
+  const d = u.prompt_tokens_details || {};
+  const cached = d.cached_tokens || u.cache_read_input_tokens || 0;
+  const written = d.cache_write_tokens || d.cache_creation_tokens || u.cache_creation_input_tokens || 0;
+  // У Anthropic prompt_tokens может не включать кэш — тогда вход целиком = обычный + кэш
+  const inT = (u.prompt_tokens || 0) < cached + written ? (u.prompt_tokens || 0) + cached + written : (u.prompt_tokens || 0);
+  return { inT, cached, written };
 }
 
 /* ---------------- вызов модели ---------------- */
@@ -68,7 +104,7 @@ async function chatOnce({ model, messages, onProgress, temperature }) {
   if (c.stream) idle();
   const t0 = Date.now();
   try {
-    const body = { model, messages };
+    const body = { model, messages: withCache(model, messages) };
     if (!skipsTemperature(model)) body.temperature = temperature == null ? c.temperature : temperature;
     if (c.stream) { body.stream = true; body.stream_options = { include_usage: true }; }
     const res = await fetch(c.baseUrl.replace(/\/$/, '') + '/chat/completions', {
@@ -108,9 +144,9 @@ async function chatOnce({ model, messages, onProgress, temperature }) {
       usage = j.usage || null;
       if (onProgress) onProgress(text.length);
     }
-    const inT = usage ? usage.prompt_tokens : Math.round(messages.reduce((n, m) => n + m.content.length, 0) / 3);
+    const cu = usage ? cacheUsage(usage) : { inT: Math.round(messages.reduce((n, m) => n + textLength(m.content), 0) / 3), cached: 0, written: 0 };
     const outT = usage ? usage.completion_tokens : Math.round(text.length / 3);
-    return { text, ms: Date.now() - t0, tokensIn: inT, tokensOut: outT, estimated: !usage };
+    return { text, ms: Date.now() - t0, tokensIn: cu.inT, tokensOut: outT, tokensCached: cu.cached, tokensCacheWrite: cu.written, estimated: !usage };
   } catch (e) {
     if (e.name === 'AbortError') throw new Error(why === 'max' ? `Модель писала ответ дольше ${c.maxSec || 1200} с` : `Модель молчала дольше ${c.timeoutSec || 240} с`);
     throw e;
@@ -152,7 +188,8 @@ const meta = who => ({ class: who.class, nick: who.nick, lesson: who.lesson, gam
 
 async function call(kind, who, model, messages, onProgress) {
   const r = await chat({ model, messages, onProgress });
-  const entry = Object.assign({ kind, model, ms: r.ms, tokensIn: r.tokensIn, tokensOut: r.tokensOut, estimated: r.estimated, rub: rubles(model, r.tokensIn, r.tokensOut) }, meta(who));
+  const entry = Object.assign({ kind, model, ms: r.ms, tokensIn: r.tokensIn, tokensOut: r.tokensOut, tokensCached: r.tokensCached, tokensCacheWrite: r.tokensCacheWrite, estimated: r.estimated,
+    rub: rubles(model, r.tokensIn, r.tokensOut, r.tokensCached, r.tokensCacheWrite) }, meta(who));
   return { text: r.text, entry };
 }
 

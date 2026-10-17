@@ -491,9 +491,9 @@ async function drawAI() {
   }
   host.append(el('h3', {}, 'Все вызовы модели'));
   if (g.byModel.length) host.append(el('div', { class: 'tablewrap' }, el('table', {},
-    el('thead', {}, el('tr', {}, ['Модель', 'Вызовов', 'Без ошибки', 'Среднее время', 'Токены вход/выход', '₽'].map(h => el('th', {}, h)))),
+    el('thead', {}, el('tr', {}, ['Модель', 'Вызовов', 'Без ошибки', 'Среднее время', 'Токены вход/выход', 'Вход из кэша', '₽'].map(h => el('th', {}, h)))),
     el('tbody', {}, g.byModel.map(m => el('tr', {}, el('td', {}, m.model), el('td', {}, String(m.calls)), el('td', {}, Math.round(100 * m.ok / m.calls) + '%'),
-      el('td', {}, Math.round(m.ms / m.calls / 1000) + ' с'), el('td', {}, `${m.tokensIn} / ${m.tokensOut}`), el('td', {}, rub(m.rub))))))));
+      el('td', {}, Math.round(m.ms / m.calls / 1000) + ' с'), el('td', {}, `${m.tokensIn} / ${m.tokensOut}`), el('td', {}, m.tokensIn ? Math.round(100 * (m.tokensCached || 0) / m.tokensIn) + '%' : '—'), el('td', {}, rub(m.rub))))))));
   if (g.last.length) host.append(el('details', {}, el('summary', {}, `Последние вызовы (${g.last.length})`), el('div', { class: 'tablewrap' }, el('table', {},
     el('thead', {}, el('tr', {}, ['Когда', 'Ученик', 'Что', 'Модель', 'Время', '₽', 'Итог'].map(h => el('th', {}, h)))),
     el('tbody', {}, g.last.map(e => el('tr', {}, el('td', { class: 'muted' }, fmtTime(e.at)), el('td', {}, e.nick || ''), el('td', {}, e.kind), el('td', {}, e.model || ''),

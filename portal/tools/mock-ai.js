@@ -12,10 +12,13 @@ const path = require('path');
 const SAMPLE = fs.readFileSync(path.join(__dirname, '..', 'games', 'nlo-v-stanice.js'), 'utf8');
 const BROKEN = SAMPLE.replace('  update(lab, dt) {', '  update(lab, dt) {\n    if (lab.t > 1.2) lab.state.nothing.position.x = 1; // подставная ошибка для проверки автопочинки');
 
-const last = {}; // последний системный промпт программиста — e2e проверяет, какой образец урока ушёл модели
+// last.system — последний системный промпт программиста (e2e проверяет, какой образец урока ушёл модели);
+// last.marked — модели, чей системный промпт пришёл с меткой кэша cache_control
+const last = { marked: new Set() };
+const flat = c => typeof c === 'string' ? c : (c || []).map(p => p.text || '').join('');
 function answer(messages, model) {
-  const sys = (messages.find(m => m.role === 'system') || {}).content || '';
-  const user = (messages.filter(m => m.role === 'user').pop() || {}).content || '';
+  const sys = flat((messages.find(m => m.role === 'system') || {}).content);
+  const user = flat((messages.filter(m => m.role === 'user').pop() || {}).content);
   if (!/продюсер/i.test(sys)) last.system = sys;
   if (/продюсер/i.test(sys)) {
     return JSON.stringify({ praise: 'Понятная идея и честное предупреждение перед выстрелом.', findings: [{ kind: 'нет крючка', text: 'Непонятно, как соревноваться с друзьями.' }], forks: [{ question: 'Как соревноваться?', options: ['Рекорд класса', 'Вдвоём на одном экране'] }] });
@@ -37,6 +40,7 @@ function answer(messages, model) {
   return '```js\n' + named(BROKEN).replace("  donor: 'Space Invaders',", "  donor: 'Space Invaders',\n  notes: ['Решил сам: добавил золотую тарелку-бонус', 'Решил сам: стога-укрытия из сена'],") + '```';
 }
 
+const cacheSeen = new Set();
 function start(port = 0) {
   const srv = http.createServer((req, res) => {
     let body = '';
@@ -47,6 +51,14 @@ function start(port = 0) {
       const j = JSON.parse(body || '{}');
       const text = answer(j.messages || [], j.model);
       const usage = { prompt_tokens: Math.round(JSON.stringify(j.messages).length / 3), completion_tokens: Math.round(text.length / 3) };
+      // кэш как у провайдера: системный промпт с меткой cache_control в первый раз записывается в кэш, потом читается из него
+      const sm = (j.messages || []).find(m => m.role === 'system');
+      if (sm && Array.isArray(sm.content) && sm.content.some(p => p.cache_control)) {
+        last.marked.add(j.model);
+        const key = j.model + '\n' + flat(sm.content), n = Math.round(flat(sm.content).length / 3);
+        usage.prompt_tokens_details = cacheSeen.has(key) ? { cached_tokens: n } : { cache_write_tokens: n };
+        cacheSeen.add(key);
+      }
       if (j.stream) {
         res.writeHead(200, { 'Content-Type': 'text/event-stream' });
         const parts = text.match(/[\s\S]{1,400}/g) || [''];

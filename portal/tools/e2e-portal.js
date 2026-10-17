@@ -43,7 +43,7 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
 let failShots = async () => {};
 
 function writeConfig(aiPart) {
-  fs.writeFileSync(process.env.LAB_CONFIG, JSON.stringify({ port: 0, teacherPassword: PASSWORD, ai: aiPart, models: [{ id: 'mock-code', label: 'Подставной программист', rubPer1MIn: 100, rubPer1MOut: 400 }, { id: 'mock-text', label: 'Подставной продюсер', rubPer1MIn: 10, rubPer1MOut: 40 }, { id: 'mock-alt', label: 'Подставная вторая модель', rubPer1MIn: 50, rubPer1MOut: 200 }], limits: { aiCallsPerStudentPerLesson: 40, rublesPerLesson: 0 } }, null, 2));
+  fs.writeFileSync(process.env.LAB_CONFIG, JSON.stringify({ port: 0, teacherPassword: PASSWORD, ai: aiPart, models: [{ id: 'mock-code', label: 'Подставной программист', rubPer1MIn: 100, rubPer1MOut: 400, rubPer1MCacheRead: 10, rubPer1MCacheWrite: 125, cache: true }, { id: 'mock-text', label: 'Подставной продюсер', rubPer1MIn: 10, rubPer1MOut: 40 }, { id: 'mock-alt', label: 'Подставная вторая модель', rubPer1MIn: 50, rubPer1MOut: 200 }], limits: { aiCallsPerStudentPerLesson: 40, rublesPerLesson: 0 } }, null, 2));
   ai.reloadConfig();
 }
 
@@ -1191,6 +1191,17 @@ async function together(browser, base, code, teacher, student, errors, shot) {
   await nctx.close();
 }
 
+/* ---------- кэш промпта: метка у модели с cache, чтение кэша дешевле в журнале генераций ---------- */
+function cacheCheck() {
+  const log = require('../lib/store').genlog().filter(e => !e.demo);
+  const code = log.filter(e => e.model === 'mock-code' && e.tokensIn), hit = code.filter(e => e.tokensCached > 0);
+  check('Кэш промпта: системный промпт программиста ушёл с меткой cache_control, продюсера — без неё', mock.last.marked.has('mock-code') && !mock.last.marked.has('mock-text'));
+  check('Кэш промпта: повторные вызовы программиста читают кэш', hit.length > 0 && code.some(e => e.tokensCacheWrite > 0), `из кэша ${hit.length} из ${code.length}`);
+  const e = hit[0] || {}, full = Math.round(((e.tokensIn || 0) * 100 + (e.tokensOut || 0) * 400) / 1e4) / 100;
+  const want = Math.round((((e.tokensIn || 0) - (e.tokensCached || 0)) * 100 + (e.tokensCached || 0) * 10 + (e.tokensOut || 0) * 400) / 1e4) / 100;
+  check('Кэш промпта: рубли считаются по цене чтения кэша', e.rub === want && e.rub < full, `${e.rub} ₽ вместо ${full} ₽`);
+}
+
 (async () => {
   const mockSrv = await mock.start(0);
   writeConfig({ baseUrl: `http://127.0.0.1:${mockSrv.address().port}/v1`, apiKey: 'mock', codeModel: 'mock-code', textModel: 'mock-text', stream: true, timeoutSec: 30 });
@@ -1199,6 +1210,7 @@ async function together(browser, base, code, teacher, student, errors, shot) {
   const browser = await chromium.launch({ headless: !process.argv.includes('--headed'), args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'] });
   try {
     await run(browser, base, 'mock');
+    cacheCheck();
     writeConfig({ apiKey: '' });
     await run(browser, base, 'demo');
   } catch (e) {

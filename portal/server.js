@@ -1183,8 +1183,8 @@ route('GET', '/api/teacher/genlog', (ctx) => {
   const sum = (arr, k) => arr.reduce((n, e) => n + (e[k] || 0), 0);
   const byModel = {};
   for (const e of real) {
-    const m = byModel[e.model] = byModel[e.model] || { model: e.model, calls: 0, ok: 0, ms: 0, rub: 0, tokensIn: 0, tokensOut: 0 };
-    m.calls++; if (e.ok) m.ok++; m.ms += e.ms || 0; m.rub += e.rub || 0; m.tokensIn += e.tokensIn || 0; m.tokensOut += e.tokensOut || 0;
+    const m = byModel[e.model] = byModel[e.model] || { model: e.model, calls: 0, ok: 0, ms: 0, rub: 0, tokensIn: 0, tokensOut: 0, tokensCached: 0 };
+    m.calls++; if (e.ok) m.ok++; m.ms += e.ms || 0; m.rub += e.rub || 0; m.tokensIn += e.tokensIn || 0; m.tokensOut += e.tokensOut || 0; m.tokensCached += e.tokensCached || 0;
   }
   const rep = report();
   return { total: { calls: real.length, rub: Math.round(sum(real, 'rub') * 100) / 100, demo: all.length - real.length, games: rep.rows.length }, byModel: Object.values(byModel), report: rep.models, comparisons: comparisons(rep.rows), last: all.slice(-40).reverse() };
@@ -1203,7 +1203,7 @@ route('GET', '/api/teacher/report.csv', (ctx) => {
     ['Запускалась', 'launched'], ['Работает', 'works'], ['Игры нет', 'noGame'], ['Секунд', r => Math.round(r.ms / 1000)], ['Рублей', r => num(r.rub)], ['Сравнение с игрой', 'compareOf'],
   ], report().rows) : csv([
     ['Дата', r => new Date(r.at).toLocaleString('ru-RU')], ['Класс', 'class'], ['Ученик', 'nick'], ['Урок', 'lesson'], ['Что', 'kind'], ['Модель', 'model'],
-    ['Секунд', r => num(Math.round((r.ms || 0) / 100) / 10)], ['Токены вход', 'tokensIn'], ['Токены выход', 'tokensOut'], ['Токены оценены', 'estimated'], ['Рублей', r => num(r.rub)],
+    ['Секунд', r => num(Math.round((r.ms || 0) / 100) / 10)], ['Токены вход', 'tokensIn'], ['Токены выход', 'tokensOut'], ['Из кэша', 'tokensCached'], ['В кэш', 'tokensCacheWrite'], ['Токены оценены', 'estimated'], ['Рублей', r => num(r.rub)],
     ['Без ошибки', 'ok'], ['Ошибка', 'error'], ['Демо', 'demo'], ['Игра', 'game'], ['Сборка', 'build'],
   ], store.genlog());
   return { raw: body, type: 'text/csv; charset=utf-8', headers: { 'Content-Disposition': `attachment; filename="genlog-${kind}-${date}.csv"` } };

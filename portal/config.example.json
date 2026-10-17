@@ -9,12 +9,14 @@
     "stream": true,
     "timeoutSec": 240,
     "maxSec": 1200,
-    "temperature": 0.4
+    "temperature": 0.4,
+    "cache": "auto",
+    "cacheTtl": ""
   },
   "models": [
-    { "id": "anthropic/claude-sonnet-5", "label": "Claude Sonnet 5", "rubPer1MIn": null, "rubPer1MOut": null },
-    { "id": "qwen3.7-max", "label": "Qwen 3.7 Max", "rubPer1MIn": null, "rubPer1MOut": null },
-    { "id": "qwen3.8-flash", "label": "Qwen 3.8 Flash", "rubPer1MIn": null, "rubPer1MOut": null }
+    { "id": "anthropic/claude-sonnet-5", "label": "Claude Sonnet 5", "rubPer1MIn": 167.52, "rubPer1MOut": 837.6, "rubPer1MCacheRead": 16.75, "rubPer1MCacheWrite": 209.4 },
+    { "id": "qwen3.7-max", "label": "Qwen 3.7 Max", "rubPer1MIn": 166.11, "rubPer1MOut": 506.78, "rubPer1MCacheRead": 33.22 },
+    { "id": "qwen3.8-flash", "label": "Qwen 3.8 Flash", "rubPer1MIn": 25.13, "rubPer1MOut": 78.73, "rubPer1MCacheRead": 2.68 }
   ],
   "limits": {
     "aiCallsPerStudentPerLesson": 40,
