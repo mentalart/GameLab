@@ -33,7 +33,8 @@ function models() {
   const c = loadConfig(), s = store.settings();
   const code = s.codeModel || c.ai.codeModel;
   // связка карт — замысел для программиста: без отдельной linkModel её пишет модель программиста, а не быстрая текстовая
-  return { code, text: s.textModel || c.ai.textModel, link: s.linkModel || c.ai.linkModel || code };
+  // продюсер без своей textModel — тоже модель программиста (по умолчанию Claude Sonnet, решение автора 17.10.2026)
+  return { code, text: s.textModel || c.ai.textModel || code, link: s.linkModel || c.ai.linkModel || code };
 }
 // лимиты: config.json, поверх — то, что учитель поменял в панели (data/settings.json)
 function limits() { return Object.assign({}, loadConfig().limits, store.settings().limits || {}); }

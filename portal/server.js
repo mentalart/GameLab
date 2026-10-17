@@ -826,12 +826,17 @@ route('POST', '/api/ai/build', (ctx) => {
   return { job: job.id };
 });
 
+// лимит правок ученика на уроке — поле limit шага workshop в сценарии (урок 1 — одна правка); считаются удачные правки
+function changeLimit(les) { const st = les.checkpoints.flatMap(cp => cp.steps).find(s => s.type === 'workshop'); return (st && st.limit) || 0; }
 route('POST', '/api/ai/change', (ctx) => {
-  const c = aiGuard(ctx);
-  const request = String(ctx.body.request || '').trim().slice(0, 1000);
+  const pre = needStudent(ctx);
+  const request = String(ctx.body.request || '').trim().slice(0, 1200);
   if (!request) throw Object.assign(new Error('Напиши одну просьбу'), { status: 400 });
-  const g = c.st.gameId && store.getGame(c.st.gameId);
+  const g = pre.st.gameId && store.getGame(pre.st.gameId);
   if (!g || !g.current) throw Object.assign(new Error('Сначала собери игру'), { status: 400 });
+  const limit = changeLimit(pre.les);
+  if (limit && g.versions.filter(x => x.kind === 'правка').length >= limit) throw Object.assign(new Error(limit === 1 ? 'На этом уроке одна правка, она уже сделана' : `На этом уроке правок не больше ${limit}`), { status: 429 });
+  const c = aiGuard(ctx);
   const base = g.current, code = store.versionCode(g.id, base);
   const job = startJob(c.w.token, 'change', async (progress) => addVersion(g.id, await ai.change(code, request, c.whoAI, progress), { kind: 'правка', request, from: base }));
   return { job: job.id };

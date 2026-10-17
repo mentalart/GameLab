@@ -215,10 +215,15 @@ async function run(browser, base, mode) {
   const notes = await student.locator('#step-svoevolie li').count();
   check('Решения программиста показаны', mode === 'demo' ? notes >= 1 : notes >= 1, `строк: ${notes}`);
   const before = await student.locator('#step-masterskaya .ver').count();
+  await student.click('#step-masterskaya .opt >> text=Вяло, мало сочности');
   await student.fill('#f-masterskayareq', 'Пусть последний враг мигает красным');
   await student.click('#step-masterskaya >> text=Отправить программисту');
   await student.waitForFunction(n => document.querySelectorAll('#step-masterskaya .ver').length > n, before, { timeout: 30000 });
-  check('Правка дала новую версию', true, await student.textContent('#step-masterskaya .versions'));
+  check('Правка кнопкой и своими словами дала новую версию', true, await student.textContent('#step-masterskaya .versions'));
+  // урок 1: одна правка на ученика — кнопка отправки исчезает, сервер вторую не берёт
+  await student.waitForSelector('#step-masterskaya >> text=Правка урока использована');
+  const again = await student.evaluate(() => Lab.api('/api/ai/change', { request: 'Ещё одна правка' }).then(() => 'принял', e => e.status + ' ' + e.message));
+  check('Вторую правку на уроке 1 сервер не берёт', /^429 /.test(again), again);
   // откат одним кликом: в демо — к v1, с ИИ — к починенной v2 (v1 нарочно падает, а в эту версию будут играть соседи)
   const back = mode === 'mock' ? 2 : 1;
   await student.click(`#step-masterskaya .ver >> nth=${back - 1}`);

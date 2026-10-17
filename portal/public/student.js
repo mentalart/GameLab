@@ -1235,32 +1235,61 @@ STEPS.aicheck = ctx => {
   return host;
 };
 
+// кнопки правки: ученик называет беду игры, программист получает точную инструкцию; сценарий может дать свои (presets)
+const WORKSHOP_PRESETS = [
+  { label: 'Слишком легко', request: 'Игра слишком лёгкая. Сделай угрозы чуть быстрее и чаще к середине партии, чтобы сложность росла заметнее. Управление и условия победы не меняй.' },
+  { label: 'Слишком сложно', request: 'Игра слишком сложная. Первые 20 секунд сделай спокойнее: угроз меньше, игрок успевает понять управление. Дальше сложность пусть растёт как раньше.' },
+  { label: 'Непонятно, что делать', request: 'Новичок не понимает цель. В начале партии на 3–4 секунды покажи крупную подсказку: цель и клавиши. Подсвети первую цель. Механику не меняй.' },
+  { label: 'Скучно в середине', request: 'В середине партии становится скучно. Добавь на 30–40 секунде новое событие или угрозу с другим поведением, которое меняет ситуацию. Начало партии не трогай.' },
+  { label: 'Героя плохо видно', request: 'Героя плохо видно или он уходит за кадр. Пусть камера всегда держит героя в кадре, а сам герой будет ярче и контрастнее фона. Механику не трогай.' },
+  { label: 'Вяло, мало сочности', request: 'Главное действие ощущается вяло. Добавь к нему вспышку, частицы и звук, к попаданию — короткую паузу удара и лёгкую тряску камеры. Механику и числа не трогай.' },
+];
+
 STEPS.workshop = ctx => {
   const st = ctx.step;
   let v = Object.assign({ requests: [] }, ctx.value);
+  const presets = st.presets || WORKSHOP_PRESETS;
   const host = el('div', { class: 'stack' });
   function draw() {
     host.innerHTML = '';
     if (!S.game || !S.game.current) { host.append(el('p', { class: 'muted' }, 'Сначала собери игру в чекпоинте «Сборка».')); return; }
     const og = ownGame({});
-    let req = { text: '' };
-    const send = el('button', { class: 'btn', type: 'button' }, 'Отправить программисту');
-    const prog = el('div');
-    send.addEventListener('click', async () => {
-      const text = valText(req).trim();
-      if (!text) { toast('Напиши одну просьбу'); return; }
-      send.disabled = true; stopFrames();
-      prog.innerHTML = ''; const p = el('p', {}, 'Программист вносит правку…');
-      prog.append(el('div', { class: 'progress' }, el('div', { class: 'spinner' }), p));
-      try {
-        const r = await Lab.job('/api/ai/change', { request: text }, j => { p.textContent = `Программист вносит правку… ${j.seconds} с` + (j.chars ? ` · ${j.chars.toLocaleString('ru-RU')} символов` : ''); });
-        S.game = r.game; v.requests = v.requests.concat({ text, dice: !!req.dice, version: r.version }); ctx.save(v, true, true);
-        toast(S.demo ? 'Демо-режим: правка записана, но игра не изменилась' : `Готово: версия ${r.version}`, 'ok'); draw(); Games.frames[Games.frames.length - 1].start();
-      } catch (e) { toast(e.message, 'err', 8000); send.disabled = false; prog.innerHTML = ''; }
-    });
-    host.append(og.el,
-      fieldEditor({ id: 'req', label: 'Одна просьба программисту', hint: 'Баг — по формуле «Делал… Ожидал… Получилось… Не трогай…». Числа меняй ручками (Tab).', deck: st.deck }, req, nv => { req = nv; }, { rows: 2, idPrefix: st.id }),
-      el('div', { class: 'row' }, send), prog);
+    const left = st.limit ? st.limit - v.requests.length : Infinity;
+    if (left <= 0) {
+      host.append(og.el, el('p', { class: 'concept' }, st.limit === 1 ? '✓ Правка урока использована. Числа можно и дальше крутить ручками (Tab).' : `✓ Все ${st.limit} правки урока использованы. Числа можно и дальше крутить ручками (Tab).`));
+    } else {
+      let req = { text: '' }, preset = null;
+      const grid = el('div', { class: 'opts', role: 'radiogroup', 'aria-label': 'Что не так с игрой' });
+      presets.forEach(pr => {
+        const b = el('button', { type: 'button', class: 'opt', 'aria-pressed': 'false', title: pr.request }, pr.label);
+        b.addEventListener('click', () => {
+          preset = preset === pr ? null : pr;
+          grid.querySelectorAll('.opt').forEach((x, k) => { const on = presets[k] === preset; x.classList.toggle('on', on); x.setAttribute('aria-pressed', String(on)); });
+          beep('tick');
+        });
+        grid.append(b);
+      });
+      const send = el('button', { class: 'btn', type: 'button' }, 'Отправить программисту');
+      const prog = el('div');
+      send.addEventListener('click', async () => {
+        const own = valText(req).trim();
+        if (!preset && !own) { toast('Выбери, что не так, или напиши свою просьбу'); return; }
+        if (st.limit && !confirm(left === 1 ? 'Это единственная правка на уроке. Отправить?' : `Осталось правок: ${left}. Отправить?`)) return;
+        const text = preset ? preset.request + (own ? '\nЕщё от автора: ' + own : '') : own;
+        send.disabled = true; stopFrames();
+        prog.innerHTML = ''; const p = el('p', {}, 'Программист вносит правку…');
+        prog.append(el('div', { class: 'progress' }, el('div', { class: 'spinner' }), p));
+        try {
+          const r = await Lab.job('/api/ai/change', { request: text }, j => { p.textContent = `Программист вносит правку… ${j.seconds} с` + (j.chars ? ` · ${j.chars.toLocaleString('ru-RU')} символов` : ''); });
+          S.game = r.game; v.requests = v.requests.concat({ text: preset ? preset.label + (own ? ': ' + own : '') : own, dice: !preset && !!req.dice, version: r.version }); ctx.save(v, true, true);
+          toast(S.demo ? 'Демо-режим: правка записана, но игра не изменилась' : `Готово: версия ${r.version}`, 'ok'); draw(); Games.frames[Games.frames.length - 1].start();
+        } catch (e) { toast(e.message, 'err', 8000); send.disabled = false; prog.innerHTML = ''; }
+      });
+      host.append(og.el,
+        el('label', { class: 'lbl' }, 'Что не так с игрой?'), grid,
+        fieldEditor({ id: 'req', label: 'Или своими словами (можно вместе с кнопкой)', hint: 'Баг — по формуле «Делал… Ожидал… Получилось… Не трогай…». Числа меняй ручками (Tab).', deck: st.deck }, req, nv => { req = nv; }, { rows: 2, idPrefix: st.id }),
+        el('div', { class: 'row' }, send, st.limit ? el('span', { class: 'muted small' }, left === 1 ? 'На этом уроке одна правка: выбирай главное.' : `Осталось правок: ${left}`) : null), prog);
+    }
     if (v.requests.length) host.append(el('details', {}, el('summary', {}, `Мои правки (${v.requests.length})`), el('ol', {}, v.requests.map(r => el('li', {}, `${r.text}${r.dice ? ' [кубик]' : ''} → v${r.version}`)))));
   }
   draw();
