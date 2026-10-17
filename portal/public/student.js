@@ -1,9 +1,9 @@
-// Страница ученика: урок по чекпоинтам и типовые шаги (play, teacher-demo, choice, text, sort, rounds, factory, decisions, igra, producer, build, aicheck, workshop, arcade, playtest).
+// Страница ученика: урок по чекпоинтам и типовые шаги (play, teacher-demo, choice, text, sort, rounds, cards, secret, factory, decisions, igra, producer, build, aicheck, workshop, arcade, playtest).
 // Рамка игры, карточки аркады и открытие плейтеста — в games.js, поле с кубиком — в common.js.
 'use strict';
 const { el, api, toast, roll, beep, copy, valText, fieldEditor } = Lab;
 const $ = s => document.querySelector(s);
-const S = { me: null, lesson: null, answers: {}, game: null, opened: [], cpId: null, hooks: [], demo: false };
+const S = { me: null, lesson: null, answers: {}, game: null, wow: null, opened: [], cpId: null, hooks: [], demo: false };
 
 /* =================== загрузка и синхронизация =================== */
 async function boot() {
@@ -12,7 +12,7 @@ async function boot() {
     if (e.status === 401) { location.href = '/'; return; }
     $('#main').innerHTML = ''; $('#main').append(el('div', { class: 'locked-msg' }, e.message)); return;
   }
-  S.me = me; S.lesson = me.lesson; S.answers = me.answers || {}; S.game = me.game; S.opened = me.class.opened; S.demo = me.demo;
+  S.me = me; S.lesson = me.lesson; S.answers = me.answers || {}; S.game = me.game; S.wow = me.wow; S.opened = me.class.opened; S.demo = me.demo;
   $('#lessonTitle').textContent = `Урок ${me.lesson.number} · ${me.lesson.title} · донор: ${me.lesson.donor}`;
   $('#nick').textContent = me.nick + ' · класс ' + me.class.code;
   $('#demoBanner').hidden = !me.demo;
@@ -41,6 +41,13 @@ function listen() {
   });
   // аркада класса: соседи собрали игру, сыграли в мою, оставили плейтест — шаги arcade и playtest обновляются сами
   es.addEventListener('arcade', e => { const d = JSON.parse(e.data); S.hooks.forEach(h => h('arcade', d)); });
+  // вау-старт: учитель тянет карты, собирает и раздаёт игру класса — шаги cards, play (shared) и secret обновляются сами
+  es.addEventListener('wow', e => {
+    const before = S.wow;
+    S.wow = JSON.parse(e.data);
+    if (S.wow.status === 'given' && (!before || before.status !== 'given')) { beep('done'); toast('Игра класса готова — играем!', 'ok'); }
+    S.hooks.forEach(h => h('wow', S.wow));
+  });
   es.addEventListener('feedback', e => {
     const d = JSON.parse(e.data);
     if (d.nick !== S.me.nick) return;
@@ -140,6 +147,7 @@ STEPS.text = ctx => el('div', { class: 'stack' },
 
 STEPS.play = ctx => {
   const st = ctx.step;
+  if (st.shared) return sharedPlay(ctx);
   let v = Object.assign({ rounds: 0, best: 0 }, ctx.value);
   const status = el('b', {});
   const show = () => { status.textContent = `Партий: ${v.rounds} · лучший счёт: ${v.best}` + (st.minRounds && v.rounds < st.minRounds ? ` · нужно партий: ${st.minRounds}` : ''); };
@@ -219,6 +227,134 @@ STEPS['teacher-demo'] = ctx => {
   return host;
 };
 
+// общая игра класса из вау-старта: появляется, когда учитель её раздаст. secretOff — партия с выключенным секретом.
+// Скрытый счётчик _secret из телеметрии показывает, сколько раз сработал секрет.
+function sharedPlay(ctx) {
+  const st = ctx.step;
+  const host = el('div', { class: 'stack' });
+  let cur = null, shown;
+  function draw() {
+    const g = S.wow && S.wow.game, key = g ? g.id + '/' + g.version : null;
+    if (key && key === shown) return;
+    shown = key;
+    if (cur) { cur.destroy(); cur = null; }
+    host.innerHTML = '';
+    if (!g) {
+      host.append(el('div', { class: 'locked-msg card' }, el('h3', {}, 'Игра класса ещё собирается'),
+        el('p', { style: 'margin-top:6px' }, wowStatusText(S.wow) + ' Как только учитель раздаст игру, она появится здесь сама.')));
+      return;
+    }
+    let v = Object.assign({ rounds: 0, best: 0, secret: 0 }, ctx.value);
+    if (v.game && v.game !== key) v = { rounds: 0, best: 0, secret: 0 }; // учитель пересобрал игру — счёт заново
+    v.game = key;
+    const status = el('b', {});
+    const show = () => { status.textContent = `Партий: ${v.rounds} · лучший счёт: ${v.best}` + (st.minRounds && v.rounds < st.minRounds ? ` · нужно партий: ${st.minRounds}` : ''); };
+    cur = Games.frame({
+      src: () => `/play/${g.id}/${g.version}`, key: () => 'wow:' + g.id, cfg: st.secretOff && g.knob ? { [g.knob]: 0 } : null, label: st.secretOff ? 'Играть без секрета' : 'Играть в игру класса',
+      onOver: m => {
+        const hits = Number(((m.tele || {}).custom || {})._secret) || 0;
+        v = Object.assign(v, { rounds: v.rounds + 1, best: Math.max(v.best, m.score || 0), secret: v.secret + hits });
+        show(); ctx.save(v, ctx.done || v.rounds >= (st.minRounds || 1));
+      },
+      onError: err => cur.message(el('div', { class: 'stack', style: 'align-items:center' }, el('b', {}, 'Игра класса упала: ' + (err.message || 'ошибка')), el('p', { class: 'muted small' }, 'Скажи учителю — он пересоберёт игру или возьмёт запасную.'))),
+    });
+    show();
+    host.append(el('div', { class: 'donor-card' }, el('div', { class: 'ico' }, '🃏'), el('div', {},
+      el('div', { class: 'eyebrow' }, st.secretOff ? 'Игра класса · секрет выключен' : 'Игра класса'), el('h3', {}, g.title || 'Игра класса'),
+      el('p', { class: 'muted small' }, S.wow.cards.map(c => c.text).filter(Boolean).join(' · ')))),
+    cur.box, Games.bar(cur, status),
+    el('div', {}, el('button', { class: 'btn ghost small', type: 'button', onclick: () => { if (!v.rounds) { toast('Сначала сыграй хотя бы одну партию'); return; } ctx.save(v, true); } }, 'Готово, дальше')));
+  }
+  S.hooks.push(kind => { if (kind === 'wow') draw(); });
+  draw();
+  return host;
+}
+function wowStatusText(W) {
+  if (!W) return '';
+  const drawn = W.cards.filter(c => c.text).length;
+  return { cards: drawn ? (drawn < W.cards.length ? 'Учитель тянет карты.' : 'Карты на столе. Не нравится карта — голосуй «перетянуть».') : 'Ждём, пока учитель вытянет карты.',
+    building: '⚙ ИИ собирает игру класса прямо сейчас.', preview: 'Игра собрана, учитель её проверяет.', given: '✓ Игра готова — играй в следующем шаге!' }[W.status] || '';
+}
+
+// колода безумных идей: карты, которые учитель тянет при классе, появляются у всех сразу; голос «перетянуть»
+STEPS.cards = ctx => {
+  const host = el('div', { class: 'stack' });
+  let prev = {};
+  function draw() {
+    host.innerHTML = '';
+    const W = S.wow;
+    let flipped = false;
+    if (!W) { host.append(el('p', { class: 'muted' }, 'В этом уроке нет колоды безумных идей.')); return; }
+    host.append(el('div', { class: 'formula' }, ...W.formula.split(' × ').flatMap((x, i) => i ? ['×', el('span', {}, x)] : [el('span', {}, x)])));
+    const row = el('div', { class: 'wowcards' });
+    W.cards.forEach(c => {
+      const mine = c.voters.includes(S.me.nick), fresh = c.text && prev[c.id] !== c.text;
+      row.append(el('div', { class: 'wowcard' + (c.text ? ' up' : '') + (fresh ? ' flip' : ''), 'data-card': c.id },
+        el('div', { class: 'wc-label' }, c.label),
+        el('div', { class: 'wc-text' }, c.text || '?'),
+        c.text && W.status === 'cards' ? el('button', { class: 'btn ghost small' + (mine ? ' on' : ''), type: 'button', 'aria-pressed': String(mine), onclick: () => vote(c.id) },
+          `🔁 Перетянуть${c.voters.length ? ' · ' + c.voters.length : ''}`) : null));
+      if (fresh && prev[c.id] !== undefined) flipped = true;
+      prev[c.id] = c.text;
+    });
+    if (flipped) beep('dice');
+    host.append(row, el('p', { class: 'wow-status', 'aria-live': 'polite' }, wowStatusText(W)));
+    if (W.status === 'given' && !ctx.done) ctx.save({ cards: W.cards.map(c => `${c.label}: ${c.text}`) }, true);
+  }
+  async function vote(card) {
+    try { await api('/api/wow/vote', { card }); beep('tick'); } catch (e) { toast(e.message, 'err'); }
+  }
+  S.hooks.push(kind => { if (kind === 'wow') draw(); });
+  draw();
+  return host;
+};
+
+// найди секрет: варианты с сервера (настоящий, два чужих из колоды и ловушка с карты), раскрытие только после догадки
+const lessonSteps = () => S.lesson.checkpoints.flatMap(c => c.steps);
+STEPS.secret = ctx => {
+  const host = el('div', { class: 'stack' });
+  let data = null, pick = null;
+  async function load() {
+    try { data = await api('/api/wow/hunt'); } catch (e) { host.innerHTML = ''; host.append(el('p', { class: 'err' }, e.message)); return; }
+    if (data.answer && !(ctx.value && ctx.value.secret)) S.answers[ctx.step.id] = { value: data.answer, done: true };
+    draw();
+  }
+  function draw() {
+    host.innerHTML = '';
+    const a = ctx.value && ctx.value.secret ? ctx.value : null;
+    if (!data || !data.options.length) { host.append(el('p', { class: 'muted' }, 'Сначала учитель соберёт игру класса в чекпоинте «Вау-старт».')); return; }
+    if (!a) {
+      const grid = el('div', { class: 'opts', role: 'radiogroup' });
+      data.options.forEach(o => grid.append(el('button', { type: 'button', class: 'opt' + (pick === o ? ' on' : ''), 'aria-pressed': String(pick === o), onclick: () => { pick = o; beep('tick'); draw(); } }, o)));
+      host.append(el('div', { class: 'eyebrow' }, 'Что было спрятано в коде игры класса?'), grid,
+        el('div', {}, el('button', { class: 'btn', type: 'button', onclick: guess }, 'Это секрет!')));
+      return;
+    }
+    const verdict = a.correct ? ['good', '🎯 Угадал! Ты почувствовал секрет, не видя его.']
+      : a.trap ? ['bad', 'Ловушка! Это было на картах, а значит, не секрет. Проверяй, а не верь: то, что заказал сам, игра не прятала.']
+        : ['bad', 'Не угадал: секрет был другим. Зато теперь ты знаешь, что искать.'];
+    const on = lessonSteps().find(x => x.type === 'play' && x.shared && !x.secretOff), off = lessonSteps().find(x => x.type === 'play' && x.shared && x.secretOff);
+    const V = step => (step && ans(step.id).value) || {};
+    host.append(el('p', { class: 'verdict ' + verdict[0] }, verdict[1]),
+      el('div', { class: 'secret-reveal' },
+        el('div', { class: 'eyebrow' }, 'Секрет игры класса'), el('h3', {}, a.secret.title),
+        el('p', {}, a.secret.reveal),
+        el('span', { class: 'tag' }, a.secret.effect === 'помощник' ? 'помощник: незаметно помогает игроку' : 'нагнетатель: делает игру напряжённее')),
+      el('div', { class: 'compare' },
+        el('div', {}, el('div', { class: 'eyebrow' }, 'С секретом'), el('b', {}, `лучший счёт ${V(on).best || 0}`), el('div', { class: 'small muted' }, `партий ${V(on).rounds || 0} · секрет сработал ${V(on).secret || 0} раз`)),
+        el('div', {}, el('div', { class: 'eyebrow' }, 'Без секрета'), el('b', {}, `лучший счёт ${V(off).best || 0}`), el('div', { class: 'small muted' }, `партий ${V(off).rounds || 0}`))),
+      el('p', { class: 'concept' }, 'Открой ручки (Tab) в игре выше и покрути ручку «Секрет» от 0 до 1. Как меняется чувство игры?'));
+  }
+  async function guess() {
+    if (!pick) { toast('Выбери вариант'); return; }
+    try { const r = await api('/api/wow/guess', { guess: pick }); ctx.save(r, true, true); beep(r.correct ? 'good' : 'bad'); draw(); } catch (e) { toast(e.message, 'err'); }
+  }
+  S.hooks.push(kind => { if (kind === 'wow' && (!data || !data.options.length)) load(); });
+  host.append(el('p', { class: 'muted' }, 'Загружаем…'));
+  load();
+  return host;
+};
+
 STEPS.choice = ctx => {
   const st = ctx.step;
   let v = Object.assign({ selected: [], own: { text: '' } }, ctx.value);
@@ -247,8 +383,19 @@ STEPS.choice = ctx => {
   return wrap;
 };
 
+// карточки квиза из игры класса: {hero} {action} {place} {twist} — карты, {secret} — секрет после шага «Найди секрет»
+function wowItems(st) {
+  if (!st.wowItems || !S.wow) return [];
+  const vars = {};
+  S.wow.cards.forEach(c => { if (c.text) vars[c.id] = c.text; });
+  const hunt = lessonSteps().find(x => x.type === 'secret'), sec = hunt && (ans(hunt.id).value || {}).secret;
+  if (sec) vars.secret = sec.title;
+  return st.wowItems.filter(it => [...it.text.matchAll(/\{(\w+)\}/g)].every(m => vars[m[1]]))
+    .map(it => Object.assign({}, it, { text: it.text.replace(/\{(\w+)\}/g, (_, k) => vars[k]) }));
+}
 STEPS.sort = ctx => {
   const st = ctx.step;
+  let ITEMS = st.items.concat(wowItems(st));
   const box = el('div', { class: 'sorter', tabindex: '0', 'aria-label': 'Квиз-сортировщик' });
   let order = [], i = 0, score = 0, streak = 0, bestStreak = 0, correct = 0, mistakes = [], left = 0, raf = 0, locked = false, active = false, padPrev = [];
   const hud = el('div', { class: 'hud' }), timer = el('div', { class: 'timer' }, el('i')), item = el('div', { class: 'item' }), why = el('div', { class: 'why', 'aria-live': 'polite' });
@@ -257,16 +404,18 @@ STEPS.sort = ctx => {
   const binBtns = st.bins.map((b, k) => { const btn = el('button', { type: 'button', class: 'bin', onclick: () => answer(k) }, b.label, el('kbd', {}, keysHint[k])); bins.append(btn); return btn; });
   function intro() {
     active = false; cancelAnimationFrame(raf);
+    ITEMS = st.items.concat(wowItems(st));
     box.innerHTML = '';
     const prev = ctx.value;
     box.append(el('div', { class: 'stack', style: 'align-items:center;text-align:center;margin:auto' },
-      el('h3', {}, `${st.items.length} решений · ${st.seconds} секунд на каждое`),
+      el('h3', {}, `${ITEMS.length} решений · ${st.seconds} секунд на каждое`),
       el('p', { class: 'muted' }, 'Серия правильных ответов умножает очки. Геймпад: крестовина ◀ ▼ ▶.'),
       prev ? el('p', {}, `Твой результат: ${prev.correct} из ${prev.total}, очки ${prev.score}`) : null,
       el('button', { class: 'btn', type: 'button', onclick: begin }, prev ? 'Сыграть ещё раз' : '▶ Начать')));
   }
   function begin() {
-    order = st.items.map((x, k) => k).sort(() => Math.random() - 0.5);
+    ITEMS = st.items.concat(wowItems(st));
+    order = ITEMS.map((x, k) => k).sort(() => Math.random() - 0.5);
     i = 0; score = 0; streak = 0; bestStreak = 0; correct = 0; mistakes = [];
     box.innerHTML = ''; box.append(hud, timer, item, why, bins); box.focus();
     active = true; next();
@@ -290,7 +439,7 @@ STEPS.sort = ctx => {
   }
   function next() {
     if (i >= order.length) return finish();
-    const it = st.items[order[i]];
+    const it = ITEMS[order[i]];
     item.className = 'item'; item.textContent = it.text; why.textContent = '';
     left = st.seconds; locked = false;
     hud.innerHTML = ''; hud.append(el('span', {}, `${i + 1} / ${order.length}`), el('span', {}, streak > 1 ? `серия ×${streak}` : ''), el('span', {}, `очки ${score}`));
@@ -298,7 +447,7 @@ STEPS.sort = ctx => {
   function answer(k) {
     if (!active || locked) return;
     locked = true;
-    const it = st.items[order[i]], right = st.bins.findIndex(b => b.id === it.bin);
+    const it = ITEMS[order[i]], right = st.bins.findIndex(b => b.id === it.bin);
     const ok = k === right;
     if (ok) { streak++; bestStreak = Math.max(bestStreak, streak); correct++; score += 100 * Math.min(streak, 5) + Math.round(left * 10); beep('good'); }
     else { streak = 0; mistakes.push(`${it.text} → ${st.bins[right].label}`); beep('bad'); }
@@ -827,7 +976,10 @@ function stepSummary(step) {
   const a = ans(step.id), v = a.value || {};
   const f = x => valText(x) + (x && x.dice ? ' [кубик]' : '');
   switch (step.type) {
-    case 'play': case 'teacher-demo': return `партий ${v.rounds || 0}, лучший счёт ${v.best || 0}`;
+    case 'play': return `партий ${v.rounds || 0}, лучший счёт ${v.best || 0}` + (step.shared && S.wow && S.wow.game ? ` (игра класса «${S.wow.game.title}»${step.secretOff ? ', секрет выключен' : ''})` : '');
+    case 'cards': return S.wow ? S.wow.cards.map(c => `${c.label}: ${c.text || '—'}`).join('; ') : '—';
+    case 'secret': return v.secret ? `догадка: ${v.guess} — ${v.correct ? 'угадал' : v.trap ? 'ловушка: это было на картах' : 'не угадал'}; секрет: ${v.secret.title}` : 'не отвечал';
+    case 'teacher-demo': return `партий ${v.rounds || 0}, лучший счёт ${v.best || 0}`;
     case 'rounds': return v.total ? `верно ${v.correct} из ${v.total}, очки ${v.score}, серия ${v.bestStreak}` + ((v.mistakes || []).length ? '; ошибки: ' + v.mistakes.join('; ') : '') : 'не пройден';
     case 'choice': return [(v.selected || []).join('; '), valText(v.own) ? 'свои слова: ' + f(v.own) : ''].filter(Boolean).join(' · ') || '—';
     case 'sort': return v.total ? `верно ${v.correct} из ${v.total}, очки ${v.score}, серия ${v.bestStreak}` + ((v.mistakes || []).length ? '; ошибки: ' + v.mistakes.join('; ') : '') : 'не пройден';

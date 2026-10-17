@@ -244,7 +244,7 @@
 
     // интерфейс и телеметрия
     hud(key, text) { if (text == null) delete hudLines[key]; else hudLines[key] = String(text); },
-    count(name, n = 1) { tele.custom[name] = (tele.custom[name] || 0) + n; },
+    count(name, n = 1) { tele.custom[name] = (tele.custom[name] || 0) + n; }, // имя с «_» — скрытый счётчик: уходит порталу, на экран конца партии не попадает
     stat(name, value) { tele.stats[name] = value; },
   };
   let hudLines = {};
@@ -503,7 +503,7 @@
     if (holds.length) out.push('Дольше всего держал: ' + holds.slice(0, 2).map(([k, v]) => `${BTN_NAMES[k]} ${Math.round(v * 100)}% времени`).join(', '));
     const pr = BTN.filter(k => (k === 'a' || k === 'b') && tele.presses[k] > 0).map(k => `${BTN_NAMES[k]} — ${tele.presses[k]}`);
     if (pr.length) out.push('Нажатий: ' + pr.join(', '));
-    const cu = Object.entries(tele.custom).sort((a, b) => b[1] - a[1]).slice(0, 4).map(([k, v]) => `${k}: ${Math.round(v * 10) / 10}`);
+    const cu = Object.entries(tele.custom).filter(([k]) => k[0] !== '_').sort((a, b) => b[1] - a[1]).slice(0, 4).map(([k, v]) => `${k}: ${Math.round(v * 10) / 10}`);
     if (cu.length) out.push(cu.join(' · '));
     return out;
   }

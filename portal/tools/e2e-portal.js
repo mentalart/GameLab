@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 // Сквозная проверка портала в браузере: учитель и ученик проходят урок 1 целиком.
+// Вау-старт: учитель тянет карты, ученик голосует, учитель тайно меняет секрет, собирает и раздаёт игру класса; «Найди секрет» и сводка.
 // Два прогона: с подставным ИИ (mock-ai.js: продюсер, сборка с ошибкой → автопочинка, правка) и в демо-режиме без ключа.
 // В прогоне с ИИ — «Играем вместе»: второй ученик собирает игру, оба играют в игры друг друга, бьют рекорд автора,
 // бросают вызов на зерне, оставляют плейтест; учитель пишет отзыв; аркада класса и личная аркада, скрытие игры.
@@ -83,7 +84,7 @@ async function run(browser, base, mode) {
   await teacher.waitForFunction(name => { const o = document.querySelector('#classSel').selectedOptions[0]; return o && o.textContent.startsWith(name) && /^[A-Z0-9]{5}$/.test(document.querySelector('#classCode').textContent) && o.textContent.endsWith(document.querySelector('#classCode').textContent); }, 'Проверка ' + mode);
   const code = await teacher.textContent('#classCode');
   check('Учитель создал класс', /^[A-Z0-9]{5}$/.test(code), code);
-  await teacher.click('text=Открыть: Донор →');
+  await teacher.click('text=Открыть: Вау-старт →');
 
   // ученик: вход по коду
   await student.goto(base + '/?code=' + code);
@@ -91,7 +92,7 @@ async function run(browser, base, mode) {
   await student.click('#studentForm button[type=submit]');
   await student.waitForURL('**/student');
   await student.waitForSelector('#step-donor-play');
-  check('Ученик вошёл и видит открытый чекпоинт «Донор»', true);
+  check('Ученик вошёл и видит открытый чекпоинт «Вау-старт»', true);
   await shot(student, '1-donor');
 
   // донор: партия в ремейке
@@ -104,40 +105,18 @@ async function run(browser, base, mode) {
   await student.click('#step-donor-hook >> text=Ответить');
   await student.waitForSelector('#step-donor-hook.done');
 
-  // вау-старт на проекторе
-  const pj = await wowStart(base, code, mode, teacher, student, errors, shot);
+  // проектор: код класса и таймер открытого чекпоинта; вау-старт — карты при классе, общая игра с секретом
+  const pj = await openProjector(base, code, teacher, errors, shot);
+  await wowStart(teacher, student, mode, shot);
+  await projectorWow(pj, teacher, shot);
 
   // учитель открывает все чекпоинты — ученик получает их без перезагрузки
+  await teacher.click('.tabs >> text=Урок');
   await teacher.click('text=Открыть все');
-  await student.waitForSelector('.cp.open >> nth=8', { timeout: 10000 });
+  await student.waitForSelector('.cp.open >> nth=7', { timeout: 10000 });
   check('Чекпоинты открылись у ученика без перезагрузки (SSE)', true);
 
-  // секрет
-  await student.click('.cp >> text=Секрет');
-  await student.click('#step-secret-play .veil button');
-  const remake2 = await gameFrame(student, 'game.html');
-  await remake2.waitForFunction(() => window.__lab.cfg.speedup === 0, null, { timeout: 5000 }).catch(() => {});
-  const speedup = await remake2.evaluate(() => window.__lab.cfg.speedup);
-  check('Шаг передал ручку в игру (setCfg: секрет выключен)', speedup === 0, 'speedup = ' + speedup);
-  await playRound(remake2);
-  await student.waitForSelector('#step-secret-play.done');
-  await student.click('#step-secret-feel .opt >> nth=0');
-  await student.click('#step-secret-feel >> text=Ответить');
-  await student.click('#step-secret-story >> text=Понятно');
-  // квиз: отвечаем правильно по сценарию урока
-  const quiz = lesson1.checkpoints.find(c => c.id === 'secret').steps.find(s => s.id === 'secret-quiz');
-  await student.click('#step-secret-quiz >> text=▶ Начать');
-  for (let i = 0; i < quiz.items.length; i++) {
-    const text = await student.textContent('#step-secret-quiz .item');
-    const it = quiz.items.find(x => x.text === text.trim());
-    const k = quiz.bins.findIndex(b => b.id === it.bin);
-    await student.keyboard.press('Digit' + (k + 1));
-    await sleep(1050);
-  }
-  await student.waitForSelector('#step-secret-quiz.done');
-  const quizText = await student.textContent('#step-secret-quiz h2 >> nth=1');
-  check('Квиз «Чьё это решение?» пройден', /12 из 12/.test(quizText), quizText);
-  await shot(student, '2-quiz');
+  await secretHunt(teacher, student, mode, shot);
 
   // Фабрика и решения
   await student.click('.cp >> text=Фабрика');
@@ -251,26 +230,135 @@ async function run(browser, base, mode) {
     const rows = await teacher.$$eval('#report tbody tr', trs => trs.map(tr => [...tr.cells].map(td => td.textContent.trim())));
     const byM = Object.fromEntries(rows.map(r => [r[0], r]));
     // mock-code: три сборки (две ученические и вау-старт), каждая упала в рамке и починена; mock-alt — сравнение, заработало сразу
-    check('Отчёт: mock-code — 3 игры, 0% с первой попытки, все работают после починки', byM['mock-code'] && byM['mock-code'][1] === '3' && byM['mock-code'][2] === '0%' && byM['mock-code'][3] === '100%', JSON.stringify(byM['mock-code']));
+    check('Отчёт: mock-code — 2 игры, 0% с первой попытки, все работают после починки', byM['mock-code'] && byM['mock-code'][1] === '2' && byM['mock-code'][2] === '0%' && byM['mock-code'][3] === '100%', JSON.stringify(byM['mock-code']));
     check('Отчёт: mock-alt — 100% с первой попытки, рубли на игру', byM['mock-alt'] && byM['mock-alt'][2] === '100%' && byM['mock-alt'][6] !== '—', JSON.stringify(byM['mock-alt']));
     check('Отчёт: сравнение моделей на одном замысле', /«Пасека под огнём» · Тестер/.test(aiTab) && /mock-alt: ✓ с первой попытки/.test(aiTab));
     const [bom, csvText] = await teacher.evaluate(async () => { const b = new Uint8Array(await (await fetch(document.querySelector('#csvGames').href)).arrayBuffer()); return [[...b.slice(0, 3)].join(','), new TextDecoder().decode(b)]; });
     const lines = csvText.trim().split(/\r?\n/);
-    check('CSV по играм: заголовок, строка на игру, «;» и BOM', bom === '239,187,191' && /^Дата;Класс;Ученик/.test(lines[0]) && lines.length === 5 && lines.some(l => l.includes('mock-alt') && l.includes(';да;')), lines.length + ' строк');
+    check('CSV по играм: заголовок, строка на игру, «;» и BOM', bom === '239,187,191' && /^Дата;Класс;Ученик/.test(lines[0]) && lines.length === 4 && lines.some(l => l.includes('mock-alt') && l.includes(';да;')), lines.length + ' строк');
     const calls = await teacher.evaluate(async () => (await fetch(document.querySelector('#csvCalls').href)).text());
     check('CSV всех вызовов модели', /Токены вход/.test(calls) && calls.trim().split(/\r?\n/).length > 6);
   } else check('Демо-режим виден учителю', /демо-режим/i.test(aiTab));
   await shot(teacher, '8-ai', true);
-  if (mode === 'demo') await roundsQuiz(teacher, student, shot);
+  await fixtureLesson(mode, teacher, student, pj, shot);
   await pj.close();
 
   check('Без ошибок JavaScript на страницах портала', !errors.length, errors.slice(0, 3).join(' | '));
   await tctx.close(); await sctx.close();
 }
 
-/* ---------- вау-старт: проектор, карты колоды безумных идей, сборка при всех, игра у всех ---------- */
-async function wowStart(base, code, mode, teacher, student, errors, shot) {
-  await teacher.click('text=Открыть: Вау-старт →');
+/* ---------- вау-старт: карты при классе, сборка общей игры с секретом, раздача ---------- */
+async function wowStart(teacher, student, mode, shot) {
+  await teacher.click('.tabs >> text=Вау-старт');
+  await teacher.waitForSelector('#wowCards .wowcard');
+  await teacher.click('#tab-wow >> text=🎲 Тянуть все карты');
+  await student.waitForSelector('#step-vau-karty .wowcard.up >> nth=3', { timeout: 10000 });
+  check('Карты, которые тянет учитель, появились у ученика сразу (SSE)', await student.locator('#step-vau-karty .wowcard.up').count() === 4);
+  await student.click('#step-vau-karty [data-card=hero] >> text=Перетянуть');
+  await teacher.waitForSelector('#wowCards >> text=перетянуть: 1', { timeout: 10000 });
+  check('Учитель видит голос «перетянуть»', true);
+  await teacher.click('#wowCards [data-card=hero] >> text=🎲 Перетянуть');
+  await student.waitForFunction(() => !document.querySelector('#step-vau-karty [data-card=hero] .btn.on'), null, { timeout: 10000 });
+  check('Перетянутая карта сбросила голоса', true);
+  // секрет скрыт, пока учитель его не откроет; кубик и тайная замена
+  check('Секрет скрыт на проекторе', !(await teacher.textContent('#wowSecret')).includes('[кубик]'));
+  await teacher.click('#wowSecret >> text=Показать');
+  await teacher.waitForSelector('#wowSecretSel');
+  check('Учитель видит секрет кубика', (await teacher.textContent('#wowSecret')).includes('[кубик]'));
+  await teacher.selectOption('#wowSecretSel', 'yarost');
+  await teacher.waitForSelector('#wowSecret >> text=выбор учителя', { timeout: 10000 });
+  check('Учитель тайно заменил секрет', (await teacher.textContent('#wowSecret')).includes('Последний враг впадает в ярость'));
+  await teacher.click('#wowSecret >> text=Скрыть');
+  await shot(teacher, '1a-wow-cards');
+  // сборка: ученики видят, что ИИ собирает игру; учитель проверяет и раздаёт
+  await teacher.click('#wowBuild >> text=⚙ Собрать с ИИ');
+  await teacher.waitForSelector('#wowBuild >> text=📣 Раздать классу', { timeout: 60000 });
+  const info = (await teacher.textContent('#wowBuild')).replace(/\s+/g, ' ');
+  if (mode === 'mock') check('ИИ собрал игру класса с ручкой secret и скрытым счётчиком', !/нет ручки secret|не считается/.test(info) && !/запасная игра «/.test(info), info.slice(0, 120));
+  else check('Без ключа собралась запасная игра урока', /запасная игра/.test(info), info.slice(0, 120));
+  await teacher.click('#wowBuild .veil button');
+  await gameFrame(teacher, '/play/', 0);
+  await shot(teacher, '1b-wow-preview');
+  check('Пока учитель проверяет игру, ученик её не видит', await student.locator('#step-vau-play iframe').count() === 0 && /собирается/.test(await student.textContent('#step-vau-play')));
+  await teacher.click('#wowBuild >> text=📣 Раздать классу');
+  await student.waitForSelector('#step-vau-karty.done', { timeout: 10000 });
+  await student.click('#step-vau-play .veil button');
+  const sg = await gameFrame(student, '/play/', 0);
+  const knob = mode === 'mock' ? 'secret' : 'speedup';
+  check('Ученик получил игру класса', await sg.evaluate(k => window.__lab.cfg[k] === 1, knob), mode === 'mock' ? 'ручка secret = 1' : 'ручка speedup = 1');
+  for (let i = 0; i < 2; i++) {
+    await sg.evaluate(r => (r ? window.__lab.restart() : window.__lab.confirm()), i > 0);
+    await sleep(300);
+    await sg.evaluate(() => { window.__lab.lab.count('_secret', 3); window.__lab.lab.score = 50; window.__lab.end('lose', 'Проверка'); });
+  }
+  await student.waitForSelector('#step-vau-play.done', { timeout: 10000 });
+  const overText = await sg.evaluate(() => document.body.innerText);
+  check('Скрытый счётчик секрета не виден игроку на экране конца партии', !/_secret/.test(overText));
+  await student.click('#step-vau-feel .opt >> nth=1');
+  await student.click('#step-vau-feel >> text=Ответить');
+  await student.waitForSelector('#step-vau-feel.done');
+  await shot(student, '1c-wow-play', true);
+}
+
+/* ---------- чекпоинт «Секрет»: та же игра без секрета, «Найди секрет», квиз с карточками игры класса ---------- */
+async function secretHunt(teacher, student, mode, shot) {
+  await student.click('.cp >> text=Секрет');
+  await student.click('#step-secret-play .veil button');
+  const sf = await gameFrame(student, '/play/', 0);
+  const knob = mode === 'mock' ? 'secret' : 'speedup';
+  await sf.waitForFunction(k => window.__lab.cfg[k] === 0, knob, { timeout: 5000 }).catch(() => {});
+  const off = await sf.evaluate(k => window.__lab.cfg[k], knob);
+  check('Шаг выключил секрет в игре класса (setCfg)', off === 0, `${knob} = ${off}`);
+  await playRound(sf, { score: 20 });
+  await student.waitForSelector('#step-secret-play.done');
+  await student.waitForSelector('#step-secret-hunt .opt');
+  const options = await student.locator('#step-secret-hunt .opt').allTextContents();
+  const twist = (await teacher.textContent('#wowCards [data-card=twist] .wc-text')).trim(); // вкладка учителя скрыта, но карты в ней остались
+  // в прогоне с ИИ ученик попадается в ловушку карт, в демо — угадывает секрет запасной игры
+  const pick = mode === 'mock' ? options.find(o => o.toLowerCase() === twist.toLowerCase()) : 'Волна ускоряется, когда врагов становится меньше';
+  check('«Найди секрет»: 4 варианта, среди них ловушка с карты', options.length === 4 && options.some(o => o.toLowerCase() === twist.toLowerCase()) && (mode === 'demo' || options.includes('Последний враг впадает в ярость')), options.join(' | '));
+  await student.click(`#step-secret-hunt .opt >> text=${pick}`);
+  await student.click('#step-secret-hunt >> text=Это секрет!');
+  await student.waitForSelector('#step-secret-hunt.done');
+  const reveal = (await student.textContent('#step-secret-hunt')).replace(/\s+/g, ' ');
+  if (mode === 'mock') check('Ловушка распознана, секрет раскрыт: «ярость», счётчик из партий', /Ловушка/.test(reveal) && /впадает в ярость/.test(reveal) && /сработал 6 раз/.test(reveal), reveal.slice(0, 160));
+  else check('Секрет угадан и раскрыт', /Угадал/.test(reveal) && /Нисикадо/.test(reveal), reveal.slice(0, 120));
+  await shot(student, '2a-secret', true);
+  await student.click('#step-secret-feel .opt >> nth=0');
+  await student.click('#step-secret-feel >> text=Ответить');
+  await student.click('#step-secret-story >> text=Понятно');
+  // квиз: постоянные карточки + карточки из игры класса (карты и раскрытый секрет)
+  const quiz = lesson1.checkpoints.find(c => c.id === 'secret').steps.find(s => s.id === 'secret-quiz');
+  const binOf = text => {
+    const it = quiz.items.find(x => x.text === text);
+    if (it) return it.bin;
+    const w = quiz.wowItems.find(x => new RegExp('^' + x.text.replace(/[.*+?^$()|[\]\\]/g, '\\$&').replace(/\{\w+\}/g, '.+') + '$').test(text));
+    return w ? w.bin : null;
+  };
+  await student.click('#step-secret-quiz >> text=▶ Начать');
+  const total = Number((/\/\s*(\d+)/.exec(await student.textContent('#step-secret-quiz .hud')) || [])[1]);
+  for (let i = 0; i < total; i++) {
+    const text = (await student.textContent('#step-secret-quiz .item')).trim();
+    const k = quiz.bins.findIndex(b => b.id === binOf(text));
+    await student.keyboard.press('Digit' + (k + 1));
+    await sleep(1050);
+  }
+  await student.waitForSelector('#step-secret-quiz.done');
+  const quizText = await student.textContent('#step-secret-quiz h2 >> nth=1');
+  const all = quiz.items.length + quiz.wowItems.length;
+  check('Квиз «Чьё это решение?» с карточками игры класса пройден', new RegExp(`${all} из ${all}`).test(quizText), quizText);
+  await shot(student, '2-quiz');
+  // сводка учителя
+  await teacher.click('.tabs >> text=Вау-старт');
+  await teacher.waitForSelector('#wowSummary td .tag', { timeout: 10000 }); // ждём свежую сводку с догадкой: старая осталась во вкладке с прошлого раза
+  const sum = (await teacher.textContent('#wowSummary')).replace(/\s+/g, ' ');
+  check('Учитель видит сводку секрета: партии, срабатывания, догадки', /сработал 6 раз/.test(sum) && (mode === 'mock' ? /ловушка/.test(sum) : /угадал/.test(sum)), sum.slice(0, 160));
+  await shot(teacher, '2b-wow-summary');
+  await teacher.click('.tabs >> text=Урок');
+}
+
+/* ---------- проектор: код класса и таймер открытого чекпоинта ---------- */
+async function openProjector(base, code, teacher, errors, shot) {
   const pj = await teacher.context().newPage();
   watch(pj, errors);
   await pj.setViewportSize({ width: 1600, height: 900 });
@@ -278,12 +366,34 @@ async function wowStart(base, code, mode, teacher, student, errors, shot) {
   await pj.waitForSelector('#pjCode');
   check('Проектор: крупно код класса', (await pj.textContent('#pjCode')).trim() === code);
   await pj.waitForFunction(() => /^\d\d:\d\d$/.test(document.querySelector('#pjTimer').textContent), null, { timeout: 5000 });
-  const t = await pj.textContent('#pjTimer');
-  check('Проектор: открытый чекпоинт и таймер по minutes урока', /Вау-старт/.test(await pj.textContent('.pj-cp h1')) && /^(10:00|09:5\d)$/.test(t), t);
+  const t = await pj.textContent('#pjTimer'), min = String(lesson1.checkpoints[0].minutes).padStart(2, '0');
+  check('Проектор: открытый чекпоинт и таймер по minutes урока', /Вау-старт/.test(await pj.textContent('.pj-cp h1')) && new RegExp(`^(${min}:00|${String(min - 1).padStart(2, '0')}:5\\d)$`).test(t), t);
   await shot(pj, 'p1-projector');
+  return pj;
+}
+
+/* ---------- вау-старт урока 1 на проекторе: те же карты, игра у всех, секрета не видно ---------- */
+async function projectorWow(pj, teacher, shot) {
+  await pj.click('#demoTab');
+  await pj.waitForFunction(() => document.querySelectorAll('.pj-card.on').length === 4, null, { timeout: 8000 });
+  await sleep(1000); // барабан карт докрутился
+  const cards = await pj.$$eval('.pj-card .cv', bs => bs.map(b => b.textContent.trim()));
+  const inPanel = await teacher.$$eval('#wowCards .wc-text', bs => bs.map(b => b.textContent.trim()));
+  check('Проектор: те же четыре карты, что у учителя', cards.join('|') === inPanel.join('|'), cards.join(' | '));
+  await pj.waitForSelector('#pjWowGame iframe, #pjWowGame .veil', { timeout: 8000 });
+  const text = await pj.textContent('#pj-demo');
+  check('Проектор: игра класса роздана, секрета на экране нет', /Игра у всех/.test(text) && !lesson1.wow.secrets.some(x => text.includes(x.title)));
+  await shot(pj, 'p2-wow');
+  await pj.click('.pj-tabs >> text=Урок');
+}
+
+/* ---------- вау-старт учителя (шаг teacher-demo, урок-проверка): карты на проекторе, сборка при всех, игра у всех ---------- */
+async function demoStart(mode, teacher, student, pj, shot) {
+  await pj.waitForFunction(() => /Вау-старт/.test((document.querySelector('.pj-cp h1') || {}).textContent) && /^\d\d:\d\d$/.test(document.querySelector('#pjTimer').textContent), null, { timeout: 8000 });
+  const t = await pj.textContent('#pjTimer');
+  check('Проектор: урок сменился, таймер нового чекпоинта', /^(10:00|09:5\d)$/.test(t), t);
   // ученик: «смотри на проектор»
-  await student.click('.cp >> text=Вау-старт');
-  await student.waitForSelector('#step-vau-demo .projector-wait');
+  await student.waitForSelector('#step-vau-demo .projector-wait', { timeout: 15000 });
   // учитель тянет три карты пробелом на проекторе
   await pj.click('#demoTab');
   await pj.waitForSelector('.pj-card');
@@ -291,32 +401,31 @@ async function wowStart(base, code, mode, teacher, student, errors, shot) {
   await pj.waitForFunction(() => document.querySelectorAll('.pj-card.on').length === 3, null, { timeout: 8000 });
   await sleep(1000); // барабан карт докрутился
   const cards = await pj.$$eval('.pj-card .cv', bs => bs.map(b => b.textContent.trim()));
-  check('Проектор: три карты вытянуты (герой, место, поворот)', cards.every(c => c && c !== '?'), cards.join(' | '));
+  check('teacher-demo: три карты вытянуты (герой, место, поворот)', cards.every(c => c && c !== '?'), cards.join(' | '));
   await student.waitForFunction(c => [...document.querySelectorAll('#step-vau-demo .dcard b')].map(b => b.textContent.trim()).join('|') === c.join('|'), cards, { timeout: 10000 });
-  check('Ученик видит карты вживую, без перезагрузки', true);
-  await shot(pj, 'p2-cards');
+  check('teacher-demo: ученик видит карты вживую, без перезагрузки', true);
+  await shot(pj, 'p5-demo-cards');
   await pj.click('#pjBuild');
   let pf = await gameFrame(pj, '/play/', 0);
   if (mode === 'mock') { // первая сборка подставного ИИ падает: проектор чинит сам
     await pf.evaluate(() => window.__lab.confirm());
     await pj.waitForFunction(() => /Починил: версия 2/.test(document.querySelector('#pjGame').textContent), null, { timeout: 30000 });
     pf = await gameFrame(pj, '/play/', 0);
-    check('Вау-старт: игра собрана при всех, упавшую ИИ починил сам', true);
-  } else check('Вау-старт: игра собрана при всех (демо)', true);
+    check('teacher-demo: игра собрана при всех, упавшую ИИ починил сам', true);
+  } else check('teacher-demo: игра собрана при всех (демо)', true);
   check('Пока учитель не открыл — у ученика «смотри на проектор»', await student.locator('#step-vau-demo .projector-wait').count() === 1);
   await pj.click('#pjOpenAll');
   await student.waitForSelector('#step-vau-demo .gamebox .veil button', { timeout: 10000 });
   await pj.waitForFunction(() => /открыта у всех/.test(document.querySelector('#pjGame').textContent), null, { timeout: 5000 }).catch(() => {});
   check('«Открыть всем»: игра учителя у ученика в рамке', /открыта у всех/.test(await pj.textContent('#pjGame')));
-  await shot(pj, 'p3-wow-game');
+  await shot(pj, 'p6-demo-game');
   await pj.click('.pj-tabs >> text=Урок'); // рамка на проекторе останавливается
   await student.click('#step-vau-demo .veil button');
   const df = await gameFrame(student, '/play/', 0);
   await playRound(df, { score: 50 });
   await student.waitForSelector('#step-vau-demo.done', { timeout: 10000 });
   check('Ученик сыграл в игру класса, шаг teacher-demo готов', true);
-  await shot(student, '1b-wow');
-  return pj;
+  await shot(student, '18-demo-student');
 }
 
 /* ---------- живой урок у учителя: проектор, «застряли», лимиты ---------- */
@@ -347,25 +456,27 @@ async function liveLesson(code, mode, teacher, pj, shot) {
 async function compareModels(teacher, shot) {
   await teacher.fill('#cmpCustom', 'mock-alt');
   await teacher.click('#studentDlg >> text=⚖ Пересобрать другой моделью');
-  await teacher.waitForSelector('#studentDlg .compare .seg .opt >> nth=1', { timeout: 30000 });
-  await teacher.click('#studentDlg .compare .seg .opt >> nth=1');
+  await teacher.waitForSelector('#studentDlg .cmpbox .seg .opt >> nth=1', { timeout: 30000 });
+  await teacher.click('#studentDlg .cmpbox .seg .opt >> nth=1');
   const cf = await gameFrame(teacher, '/play/', 0);
   check('Сравнение: другая модель пересобрала замысел, версия B запускается', await cf.evaluate(() => window.__lab.ready));
   await sleep(600);
   await shot(teacher, '7a-compare');
-  await teacher.click('#studentDlg .compare .seg .opt >> nth=0');
+  await teacher.click('#studentDlg .cmpbox .seg .opt >> nth=0');
   const of = await gameFrame(teacher, '/play/', 0);
-  check('Сравнение: версия A — игра ученика в той же рамке', await of.evaluate(() => window.__lab.ready) && /Ученик/.test(await teacher.textContent('#studentDlg .compare .seg .opt.on')));
+  check('Сравнение: версия A — игра ученика в той же рамке', await of.evaluate(() => window.__lab.ready) && /Ученик/.test(await teacher.textContent('#studentDlg .cmpbox .seg .opt.on')));
 }
 
-/* ---------- квиз-раунды «Игра или не игра?» (урок-проверка) ---------- */
-async function roundsQuiz(teacher, student, shot) {
+/* ---------- урок-проверка: вау-старт учителя (teacher-demo) и квиз-раунды «Игра или не игра?» (rounds) ---------- */
+async function fixtureLesson(mode, teacher, student, pj, shot) {
   await teacher.click('.tabs >> text=Урок');
   await teacher.selectOption('#lessonSel', 'urok-90');
-  await teacher.waitForSelector('text=Открыть: Игра или не игра? →', { timeout: 10000 });
+  await teacher.waitForSelector('text=Открыть: Вау-старт →', { timeout: 10000 });
+  await teacher.click('text=Открыть: Вау-старт →');
+  await demoStart(mode, teacher, student, pj, shot);
   await teacher.click('text=Открыть: Игра или не игра? →');
   await student.waitForSelector('#step-igra-ili-net >> text=▶ Начать', { timeout: 15000 });
-  const quiz = lesson90.checkpoints[0].steps[0];
+  const quiz = lesson90.checkpoints.find(c => c.id === 'kviz').steps[0];
   await student.click('#step-igra-ili-net >> text=▶ Начать');
   let wrong = null;
   for (let i = 0; i < quiz.items.length; i++) {

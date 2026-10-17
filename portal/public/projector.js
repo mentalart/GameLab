@@ -1,9 +1,10 @@
 // Проектор учителя (/projector?code=КОД): крупно код класса, открытый чекпоинт с таймером и сколько учеников закончили каждый шаг.
-// Вкладка «Вау-старт»: учитель тянет карты колоды безумных идей (герой, место, поворот) и при всех собирает игру с ИИ (шаг teacher-demo).
+// Вкладка «Вау-старт»: учитель тянет карты колоды безумных идей и при всех собирает игру с ИИ. Для урока с колодой wow (урок 1) —
+// карты, голоса «перетянуть», сборка и раздача общей игры класса; секрет на проектор не выводится. Для шага teacher-demo — его карты и таймер.
 'use strict';
 const { el, api, toast, beep } = Lab;
 const $ = s => document.querySelector(s);
-const P = { code: null, o: null, skew: 0, tab: 'lesson', isDemo: false, d: null, info: null, job: null, frameFor: null, tf: null, keys: {} };
+const P = { code: null, o: null, skew: 0, tab: 'lesson', isDemo: false, d: null, info: null, job: null, frameFor: null, tf: null, keys: {}, w: null, wKey: null, wFrame: null };
 const mmss = sec => { const s = Math.max(0, Math.round(sec)); return String(Math.floor(s / 60)).padStart(2, '0') + ':' + String(s % 60).padStart(2, '0'); };
 const serverNow = () => Date.now() + P.skew;
 const CARDS = [['hero', 'Герой'], ['place', 'Место'], ['twist', 'Поворот']];
@@ -23,17 +24,22 @@ async function refresh() {
   try { o = await api('/api/teacher/overview?code=' + encodeURIComponent(P.code)); } catch (e) { if (e.status === 401) { location.href = '/'; return; } toast(e.message, 'err'); return; }
   P.o = o; P.skew = Date.parse(o.now) - Date.now();
   $('#pjClass').textContent = `${o.class.name} · урок ${o.lesson.number}. ${o.lesson.title}`;
-  const hasDemo = o.lesson.checkpoints.some(c => c.steps.some(s => s.type === 'teacher-demo'));
-  $('#demoTab').hidden = !hasDemo;
-  if (!hasDemo && P.tab === 'demo') P.tab = 'lesson';
+  P.mode = o.lesson.checkpoints.some(c => c.steps.some(s => s.type === 'teacher-demo')) ? 'demo' : o.lesson.wow ? 'wow' : null;
+  $('#demoTab').hidden = !P.mode;
+  if (P.lastMode !== P.mode) { // учитель сменил урок: вкладка вау-старта строится заново
+    Games.stopAll(); P.tf = null; P.frameFor = null; P.wFrame = null; P.wKey = null; P.dKey = null; P.d = null; P.w = null;
+    $('#pj-demo').innerHTML = ''; P.lastMode = P.mode;
+  }
+  if (!P.mode && P.tab === 'demo') P.tab = 'lesson';
   showTab();
   if (P.tab === 'lesson') drawLesson();
+  else if (P.mode === 'wow') await refreshWow();
   else await refreshDemo();
 }
 function showTab() {
   document.querySelectorAll('.pj-tabs button').forEach(b => b.classList.toggle('on', b.dataset.tab === P.tab));
   $('#pj-lesson').hidden = P.tab !== 'lesson'; $('#pj-demo').hidden = P.tab !== 'demo';
-  if (P.tab !== 'demo' && P.tf) { Games.stopAll(); P.tf = null; P.frameFor = null; }
+  if (P.tab !== 'demo' && (P.tf || P.wFrame)) { Games.stopAll(); P.tf = null; P.frameFor = null; P.wFrame = null; P.wKey = null; }
 }
 
 /* ---------- урок: код, чекпоинт, таймер, кто закончил шаги ---------- */
@@ -151,12 +157,12 @@ function drawDemo(prev) {
   const ctrl = $('#pjDCtrl'); ctrl.innerHTML = '';
   const all = CARDS.every(([k]) => d.cards[k]);
   const building = d.state === 'building' || !!P.job;
-  ctrl.append(
+  ctrl.append(...[
     el('button', { class: 'btn' + (all ? ' ghost' : ''), type: 'button', onclick: () => drawNext(), disabled: building || null }, '🎲 Тянуть карту', el('kbd', {}, 'пробел')),
     el('button', { class: 'btn' + (all && !d.ready ? '' : ' ghost'), type: 'button', id: 'pjBuild', onclick: build, disabled: !all || building || null }, d.ready ? '↻ Собрать заново' : '⚙ Собрать игру с ИИ', el('kbd', {}, 'Enter')),
     el('span', { class: 'grow' }),
     el('span', { class: 'muted small' }, `на связи: ${r.watching} из ${r.students} · сыграли: ${r.played}`),
-    el('button', { class: 'btn ghost small', type: 'button', disabled: building || null, onclick: async () => { if (!confirm('Начать заново: новые карты, новая игра?')) return; try { await api('/api/teacher/demo/reset', { code: P.code }); Games.stopAll(); P.tf = null; P.frameFor = null; $('#pjGame').innerHTML = ''; await refreshDemo(); } catch (e) { toast(e.message, 'err'); } } }, '↺ Новые карты'));
+    el('button', { class: 'btn ghost small', type: 'button', disabled: building || null, onclick: async () => { if (!confirm('Начать заново: новые карты, новая игра?')) return; try { await api('/api/teacher/demo/reset', { code: P.code }); Games.stopAll(); P.tf = null; P.frameFor = null; $('#pjGame').innerHTML = ''; await refreshDemo(); } catch (e) { toast(e.message, 'err'); } } }, '↺ Новые карты')].filter(Boolean));
   drawGame();
   tick();
 }
@@ -184,10 +190,10 @@ function drawGame() {
     host.append(P.tf.h.box, Games.bar(P.tf.h, P.tf.status), el('div', { class: 'row', id: 'pjOpenCtrl' }));
   }
   const oc = $('#pjOpenCtrl'); oc.innerHTML = '';
-  oc.append(el('b', { id: 'pjOpenLine', class: 'grow' }, openLine()),
+  oc.append(...[el('b', { id: 'pjOpenLine', class: 'grow' }, openLine()),
     d.visible ? el('button', { class: 'btn ghost', type: 'button', onclick: () => setDemo({ open: false }) }, '⏸ Скрыть от учеников')
       : el('button', { class: 'btn warm', type: 'button', id: 'pjOpenAll', onclick: () => { beep('done'); setDemo({ open: true }); } }, '▶ Открыть всем сейчас'),
-    d.open !== null ? el('button', { class: 'btn ghost small', type: 'button', onclick: () => setDemo({ open: null }) }, 'Открыть по таймеру') : null);
+    d.open !== null ? el('button', { class: 'btn ghost small', type: 'button', onclick: () => setDemo({ open: null }) }, 'Открыть по таймеру') : null].filter(Boolean));
 }
 function killFrame() { if (P.tf) { P.tf.h.destroy(); P.tf = null; } P.frameFor = null; }
 // карта «крутится» как барабан: варианты колоды мелькают и останавливаются на вытянутом
@@ -226,11 +232,100 @@ async function build() {
   await refreshDemo();
 }
 
+/* ---------- вау-старт урока с колодой wow: карты, сборка, раздача общей игры ---------- */
+async function refreshWow() {
+  const seq = P.wSeq = (P.wSeq || 0) + 1;
+  let r;
+  try { r = await api('/api/teacher/wow?code=' + encodeURIComponent(P.code)); } catch (e) { toast(e.message, 'err'); return; }
+  if (seq !== P.wSeq) return;
+  const prev = P.w;
+  P.w = r;
+  drawWow(prev);
+}
+function drawWow(prev) {
+  const r = P.w, host = $('#pj-demo'), w = r.wow, decks = Object.fromEntries((P.o.lesson.wow.cards || []).map(c => [c.id, c.deck || []]));
+  const ready = r.cards.every(c => w.cards[c.id]), busy = w.status === 'building' || !!P.job;
+  const key = JSON.stringify([w.cards, w.votes, w.status, w.given, r.game && r.game.id + '/' + r.game.version, !!P.job, P.o.students.length, P.o.students.filter(s => s.online).length]);
+  if (key === P.wKey) return;
+  P.wKey = key;
+  if (!host.querySelector('#pjWowCards')) {
+    host.innerHTML = '';
+    host.append(el('div', { class: 'pj-dhead' }, el('div', { class: 'grow' }, el('div', { class: 'eyebrow' }, 'Вау-старт · колода безумных идей'),
+      el('div', { class: 'formula pj-formula' }, ...r.formula.split(' × ').flatMap((x, i) => i ? ['×', el('span', {}, x)] : [el('span', {}, x)])))),
+    el('div', { id: 'pjWowCards' }), el('div', { id: 'pjWowCtrl', class: 'row' }), el('div', { id: 'pjWowGame', class: 'stack' }));
+  }
+  const ch = $('#pjWowCards'); ch.innerHTML = '';
+  ch.append(el('div', { class: 'pj-cards four' }, r.cards.map(c => {
+    const text = w.cards[c.id], votes = (w.votes[c.id] || []).length;
+    const val = el('b', { class: 'cv' }, text || '?');
+    if (prev && text && prev.wow.cards[c.id] !== text) spin(val, decks[c.id] || [], text);
+    return el('div', { class: 'pj-card' + (text ? ' on' : ''), 'data-card': c.id }, el('div', { class: 'eyebrow' }, c.label), val,
+      votes ? el('div', { class: 'tag dice pj-votes' }, `перетянуть: ${votes}`) : null,
+      !w.given && !busy ? el('button', { class: 'dicebtn', type: 'button', title: text ? 'Перетянуть карту' : 'Тянуть карту', 'aria-label': (text ? 'Перетянуть' : 'Тянуть') + ' карту «' + c.label + '»', onclick: () => wowDraw(c.id) }, '🎲') : null);
+  })));
+  const total = P.o.students.length, onl = P.o.students.filter(s => s.online).length;
+  const ctrl = $('#pjWowCtrl'); ctrl.innerHTML = '';
+  ctrl.append(...[
+    !w.given ? el('button', { class: 'btn' + (ready ? ' ghost' : ''), type: 'button', disabled: busy || null, onclick: wowNext }, '🎲 Тянуть карту', el('kbd', {}, 'пробел')) : null,
+    !w.given ? el('button', { class: 'btn' + (ready && !r.game ? '' : ' ghost'), type: 'button', id: 'pjWowBuild', disabled: !ready || busy || null, onclick: wowBuild }, r.game ? '↻ Собрать заново' : '⚙ Собрать игру с ИИ', el('kbd', {}, 'Enter')) : null,
+    r.game && w.status === 'preview' ? (w.given ? el('button', { class: 'btn ghost', type: 'button', onclick: () => wowGive(false) }, 'Забрать у класса')
+      : el('button', { class: 'btn warm', type: 'button', id: 'pjWowGive', onclick: () => wowGive(true) }, '📣 Раздать классу')) : null,
+    el('span', { class: 'grow' }),
+    el('span', { class: 'muted small' }, `на связи: ${onl} из ${total}`)].filter(Boolean));
+  const gh = $('#pjWowGame');
+  if (P.job) return; // прогресс сборки рисует wowBuild()
+  const status = { cards: ready ? 'Карты на столе. Не нравится карта — голосуйте «перетянуть» у себя.' : 'Тяните карты: герой, действие, место и поворот.', building: '⚙ ИИ собирает игру класса прямо сейчас…', preview: w.given ? '✓ Игра у всех — играйте!' : 'Игра собрана. Проверим её здесь и раздадим классу.' }[w.status] || '';
+  const gkey = r.game ? r.game.id + '/' + r.game.version : null;
+  if (!gkey || P.wFrame && P.wFrame.gkey !== gkey) { if (P.wFrame) { P.wFrame.h.destroy(); P.wFrame = null; } gh.innerHTML = ''; }
+  if (!gkey) { gh.append(el('p', { class: 'pj-sub', id: 'pjWowStatus' }, status)); return; }
+  if (!P.wFrame) {
+    const g = r.game;
+    const h = Games.frame({ src: () => `/play/${g.id}/${g.version}`, key: () => 'wow:' + g.id, label: 'Играть в игру класса', score: false,
+      onError: err => h.message(el('b', {}, 'Игра упала: ' + (err.message || 'ошибка') + '. Соберите заново или возьмите запасную игру в панели учителя.')) });
+    P.wFrame = { h, gkey };
+    gh.append(el('p', { class: 'pj-sub', id: 'pjWowStatus' }), el('h2', {}, g.title || 'Игра класса'), h.box, Games.bar(h, el('span', {})));
+  }
+  $('#pjWowStatus').textContent = status;
+}
+async function wowDraw(card) {
+  try { await api('/api/teacher/wow/draw', { code: P.code, card }); await refreshWow(); } catch (e) { toast(e.message, 'err'); }
+}
+function wowNext() {
+  const empty = P.w.cards.find(c => !P.w.wow.cards[c.id]);
+  if (!empty) { toast('Все карты на столе. Кубик у карты — перетянуть её.'); return; }
+  wowDraw(empty.id);
+}
+async function wowGive(given) {
+  try { await api('/api/teacher/wow/give', { code: P.code, given }); if (given) beep('done'); await refreshWow(); } catch (e) { toast(e.message, 'err'); }
+}
+async function wowBuild() {
+  if (P.job) return;
+  if (P.wFrame) { P.wFrame.h.destroy(); P.wFrame = null; }
+  const gh = $('#pjWowGame'); gh.innerHTML = '';
+  const p = el('p', {}, 'ИИ собирает игру класса при всех…');
+  gh.append(el('div', { class: 'progress pj-progress' }, el('div', { class: 'spinner' }), p, el('p', { class: 'muted small' }, 'Пока ИИ пишет — спросите класс: что почувствует игрок?')));
+  P.job = true; P.wKey = null;
+  try {
+    await Lab.job('/api/teacher/wow/build', { code: P.code }, j => { p.textContent = `ИИ собирает игру класса… ${mmss(j.seconds)}` + (j.chars ? ` · ${j.chars.toLocaleString('ru-RU')} символов кода` : '') + (j.phase === 'синтаксис' ? ' · чинит опечатку' : ''); });
+    beep('done'); toast('Игра класса собрана!', 'ok');
+  } catch (e) { toast(e.message, 'err', 8000); }
+  P.job = null; P.wKey = null; gh.innerHTML = '';
+  await refreshWow();
+}
+
 /* ---------- события ---------- */
 document.querySelectorAll('.pj-tabs button').forEach(b => b.addEventListener('click', () => { P.tab = b.dataset.tab; refresh(); }));
 $('#pjFull').addEventListener('click', () => { if (document.fullscreenElement) document.exitFullscreen(); else document.documentElement.requestFullscreen().catch(() => {}); });
 addEventListener('keydown', e => {
-  if (P.tab !== 'demo' || !P.d || /INPUT|TEXTAREA|SELECT/.test((e.target || {}).tagName || '')) return;
+  if (P.tab !== 'demo' || /INPUT|TEXTAREA|SELECT/.test((e.target || {}).tagName || '')) return;
+  if (P.mode === 'wow') {
+    const w = P.w && P.w.wow;
+    if (!w || w.given || w.status === 'building' || P.job) return;
+    if (e.code === 'Space') { e.preventDefault(); wowNext(); }
+    if (e.code === 'Enter' && !P.w.game && P.w.cards.every(c => w.cards[c.id])) { e.preventDefault(); wowBuild(); }
+    return;
+  }
+  if (!P.d) return;
   if (e.code === 'Space') { e.preventDefault(); drawNext(); }
   if (e.code === 'Enter' && !P.d.ready && !P.job) { e.preventDefault(); if (CARDS.every(([k]) => P.d.cards[k])) build(); }
 });

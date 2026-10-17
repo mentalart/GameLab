@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 // Подставной OpenAI-совместимый ИИ для проверки портала без ключа и без денег.
 // Продюсер отвечает JSON с развилкой. Первая сборка — игра, которая падает через секунду (проверка автопочинки),
-// починка и правка возвращают рабочий образец урока. Модель mock-alt собирает рабочую игру сразу — для сравнения моделей
-// и отчёта журнала генераций. Поддерживает потоковый ответ (stream).
+// починка и правка возвращают рабочий образец урока, общая игра урока — образец с ручкой secret. Модель mock-alt собирает
+// рабочую игру сразу — для сравнения моделей и отчёта журнала генераций. Поддерживает потоковый ответ (stream).
 // Запуск: node portal/tools/mock-ai.js [порт]  →  в config.json: "baseUrl": "http://localhost:порт/v1", "apiKey": "mock"
 'use strict';
 const http = require('http');
@@ -20,6 +20,12 @@ function answer(messages, model) {
   }
   const title = (/Название: (.+)/.exec(user) || [])[1];
   const named = code => title ? code.replace(/title: '[^']*'/, 'title: ' + JSON.stringify(title.trim())) : code;
+  if (/Общая игра урока/.test(user)) { // общая игра урока: секрет образца переименован в ручку secret
+    const hero = (/Герой: (.+)/.exec(user) || [])[1] || 'Герой';
+    const shared = SAMPLE.replace(/speedup/g, 'secret').replace(/label: 'Секрет: ускорение от числа сбитых', hint: '[^']*'/, "label: 'Секрет', hint: '0 — выключен, 1 — как задумано'")
+      .replace(/\n.*Секрет выключен: волна не ускорялась.*\n/, '\n');
+    return '```js\n' + shared.replace(/title: '[^']*'/, 'title: ' + JSON.stringify(hero.trim() + ' против волны')) + '```';
+  }
   if (/Игра упала/.test(user)) { // чиним присланный код: убираем подставную ошибку
     const code = (/```js\n([\s\S]*?)```/.exec(user) || [])[1] || SAMPLE;
     return 'Нашёл: обращение к несуществующему объекту. Исправил.\n```js\n' + code.split('\n').filter(l => !l.includes('подставная ошибка')).join('\n') + '```';

@@ -1,4 +1,4 @@
-// ИИ портала: продюсер, программист (сборка, правка, починка), демо-режим без ключа.
+// ИИ портала: продюсер, программист (сборка, общая игра урока, правка, починка), демо-режим без ключа.
 // Модели — через OpenAI-совместимый API (provod.ai). Ключ живёт только в config.json на сервере.
 'use strict';
 const fs = require('fs');
@@ -240,6 +240,26 @@ async function fix(code, error, who, onProgress, model) {
   }), who, onProgress, model);
 }
 
+// Общая игра урока (вау-старт): карты колоды безумных идей + секретная механика из колоды секретов урока.
+// Секрет живёт в ручке secret и в скрытом счётчике телеметрии _secret. Без ключа — запасная игра урока.
+async function buildShared(wow, who, onProgress) {
+  if (demo()) return demoShared(wow, who);
+  const r = await program('общая игра', fill(userTemplate('wow'), {
+    'донор': wow.donor, 'герой': wow.cards.hero, 'действие': wow.cards.action, 'место': wow.cards.place, 'поворот': wow.cards.twist, 'секрет': wow.secret,
+  }), who, onProgress);
+  if (!/\bsecret\s*:\s*\{/.test(r.code)) r.warnings = r.warnings.concat('нет ручки secret');
+  if (!/_secret/.test(r.code)) r.warnings = r.warnings.concat('секрет не считается в телеметрии');
+  return Object.assign(r, { knob: 'secret' });
+}
+// запасная общая игра: ремейк урока с названием по картам; его секрет — свой (ручка из fallback.knob)
+function demoShared(wow, who) {
+  const fb = wow.fallback;
+  let code = fs.readFileSync(path.join(PORTAL, fb.game), 'utf8');
+  if (wow.title) code = code.replace(/title: '[^']*'/, 'title: ' + JSON.stringify(wow.title));
+  log({ kind: 'общая игра', model: 'демо', ms: 0, ok: true, demo: true, class: who.class, nick: who.nick, lesson: who.lesson });
+  return { code, model: 'демо', attempts: 1, warnings: [], demo: true, knob: fb.knob, fallback: true };
+}
+
 // Демо: вместо модели — образец урока с названием и решениями ученика.
 function demoGame(plan, who, kind) {
   let code = fs.readFileSync(path.join(PORTAL, 'games', 'tarelki-nad-aulom.js'), 'utf8');
@@ -251,4 +271,4 @@ function demoGame(plan, who, kind) {
   return { code, model: 'демо', attempts: 1, warnings: [], demo: true, ms: 0, rub: null };
 }
 
-module.exports = { loadConfig, reloadConfig, demo, models, limits, listModels, producer, build, change, fix, planText, extractCode, syntaxError };
+module.exports = { loadConfig, reloadConfig, demo, models, limits, listModels, producer, build, buildShared, demoShared, change, fix, planText, extractCode, syntaxError };

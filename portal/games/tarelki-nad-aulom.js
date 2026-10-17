@@ -316,6 +316,7 @@ const GAME = {
   killSaucer(lab, s) {
     const st = lab.state;
     s.alive = false; st.alive--; st.hits++; lab.count('сбито');
+    if (lab.cfg.speedup > 0 && st.alive > 0) lab.count('_secret'); // секрет сработал: волна стала быстрее (скрытый счётчик для урока)
     const pos = s.mesh.position.clone();
     lab.burst(pos, { count: 18, colors: [st.rowColors[s.row % st.rowColors.length], '#ffffff', '#c9cfdc'], speed: 7 });
     lab.addScore(s.points, pos);
