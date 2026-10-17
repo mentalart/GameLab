@@ -391,3 +391,14 @@ td.warn{color:var(--warm);font-weight:700}
 .ab-tabs .opt b{font-size:18px}
 .marks{position:relative;height:18px;border-radius:9px;background:var(--bg2);border:1px solid var(--line)}
 .marks i{position:absolute;top:2px;bottom:2px;width:3px;margin-left:-1px;border-radius:2px;background:var(--violet);box-shadow:0 0 6px var(--violet)}
+/* trace: угадай охотника по следу; predict: предсказание динамики против телеметрии */
+.trace canvas{align-self:center;width:100%;max-width:520px;height:auto;border-radius:12px;border:1px solid var(--line2);image-rendering:pixelated}
+.trace .why{min-height:3em;max-width:620px;align-self:center}
+.trace .why b{color:var(--text)}
+.prows{display:flex;flex-direction:column;gap:6px}
+.prow{display:grid;grid-template-columns:minmax(0,2fr) minmax(0,1.4fr) 3em;gap:10px;align-items:center;padding:6px 10px;border-radius:10px;background:var(--bg2);border:1px solid var(--line)}
+.prow.top{border-color:var(--accent)}
+.prow b{text-align:right;font-variant-numeric:tabular-nums}
+.pbar{height:10px;border-radius:6px;background:var(--panel2);overflow:hidden}
+.pbar i{display:block;height:100%;background:var(--info)}
+.prow.top .pbar i{background:var(--accent)}

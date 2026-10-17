@@ -8,6 +8,8 @@
 // фильтр «застряли», лимиты и «+10 запросов», сравнение моделей, отчёт журнала генераций и CSV, статусы заметок и Markdown;
 // Урок 2 в обоих прогонах: донор с ручками из шага, варианты игры, «Найди секрет» донора, квиз-раунды «Игра или не игра?»,
 // сортировщик на 8 лотков, Фабрика с донором на выбор и его колодами, черновик ИГРА по правилам донора, сборка, дуэль вдвоём.
+// Урок 3 в обоих прогонах: «Ночной лабиринт», предсказание динамики против телеметрии, «Найди секрет», квиз «Угадай охотника по следу»,
+// квиз MDA, Фабрика MDA с колодами урока, образец урока в промпте программиста, демо-сборка урока, дуэль с Вожаком (ручка vs), предсказание в плейтесте.
 // Урок 4 в обоих прогонах: «Каменный стакан» и его секрет (мешок и предпросмотр), квиз «Собери цикл», Фабрика под донора,
 // образец урока в промпте программиста и демо-игра урока, релиз модуля с чек-листом, дуэль двух стаканов по ручке duo.
 // Данные и настройки — во временной папке, настоящий portal/config.json и portal/data/ не трогаются.
@@ -30,6 +32,7 @@ const ai = require('../lib/ai');
 const portal = require('../server');
 const lesson1 = require('../lessons/urok-01');
 const lesson2 = require('../lessons/urok-02');
+const lesson3 = require('../lessons/urok-03');
 const lesson4 = require('../lessons/urok-04');
 const store = require('../lib/store');
 
@@ -229,7 +232,7 @@ async function run(browser, base, mode) {
   check('Заметка автора дошла до учителя', (await teacher.textContent('#tab-notes')).includes('Проверка: заметка автора'));
   const inWork = mode === 'mock' ? 1 : 2; // данные общие на оба прогона: заметка первого прогона уже «в работе»
   await teacher.click('#tab-notes .note .chipbtn.st-work');
-  await teacher.waitForFunction(n => document.querySelector('#tab-notes .filters').textContent.includes('В работе · ' + n), inWork, { timeout: 5000 }).catch(() => {});
+  await teacher.waitForFunction(n => (document.querySelector('#tab-notes .filters') || {}).textContent?.includes('В работе · ' + n), inWork, { timeout: 5000 }).catch(() => {});
   check('Статус заметки «в работе», фильтр считает', new RegExp('В работе · ' + inWork).test(await teacher.textContent('#tab-notes .filters')));
   const md = await teacher.evaluate(async () => (await fetch(document.querySelector('#notesMd').href)).text());
   check('Заметки выгружаются в Markdown по статусам', /^# Заметки автора курса/.test(md) && new RegExp('## В работе \\(' + inWork + '\\)').test(md) && md.includes('Проверка: заметка автора'), md.split('\n').slice(0, 5).join(' | '));
@@ -255,6 +258,7 @@ async function run(browser, base, mode) {
   await shot(teacher, '8-ai', true);
   await fixtureLesson(mode, teacher, student, pj, shot);
   await lessonTwo(mode, teacher, student, shot);
+  await lessonThree(mode, teacher, student, shot);
   await lessonFour(mode, teacher, student, shot);
   await pj.close();
 
@@ -491,7 +495,7 @@ async function liveLesson(code, mode, teacher, pj, shot) {
   const spendText = await teacher.textContent('.spend');
   check('Расход ИИ урока виден в панели', /ИИ на этом уроке: [\d,]+ ₽/.test(spendText), spendText.replace(/\s+/g, ' ').slice(0, 80));
   await teacher.click('#students tr[data-nick="Тестер"] >> text=+10');
-  await teacher.waitForFunction(() => /из 50/.test(document.querySelector('#students tr[data-nick="Тестер"]').textContent), null, { timeout: 8000 });
+  await teacher.waitForFunction(() => /из 50/.test((document.querySelector('#students tr[data-nick="Тестер"]') || {}).textContent), null, { timeout: 8000 });
   check('Учитель добавил ученику 10 запросов: лимит 50', true);
 }
 
@@ -673,6 +677,160 @@ async function lessonTwo(mode, teacher, student, shot) {
   await shot(student, '24-u2-duel');
 }
 
+/* ---------- урок 3: донор Pac-Man, предсказание динамики, секрет донора, квиз по следу, MDA, Фабрика MDA, сборка, дуэль ---------- */
+const step3 = id => lesson3.checkpoints.flatMap(c => c.steps).find(s => s.id === id);
+async function lessonThree(mode, teacher, student, shot) {
+  await teacher.click('.tabs >> text=Урок');
+  await teacher.selectOption('#moduleSel', '1');
+  await teacher.selectOption('#lessonSel', 'urok-03');
+  await teacher.waitForSelector('text=Открыть все', { timeout: 10000 });
+  await teacher.click('text=Открыть все');
+  await student.waitForSelector('#step-donor-play', { timeout: 15000 });
+  await student.waitForFunction(() => /Урок 3/.test(document.querySelector('#lessonTitle').textContent), null, { timeout: 15000 });
+  check('Урок 3 открылся у ученика', /Урок 3/.test(await student.textContent('#lessonTitle')));
+
+  // донор: «Ночной лабиринт» с секретом, счётчики динамики копятся в шаге
+  await student.click('#step-donor-play .veil button');
+  let gf = await gameFrame(student, 'nochnoy-labirint', 0);
+  check('Донор урока 3: «Ночной лабиринт» с секретом', await gf.evaluate(() => window.__lab.cfg.secret === 1 && GAME.donor === 'Pac-Man'));
+  await gf.evaluate(() => window.__lab.confirm());
+  await sleep(600);
+  check('Волки выходят из дольмена и ходят по лабиринту', await gf.evaluate(() => window.__lab.lab.state.wolves.length === 4 && window.__lab.lab.state.wolves[0].state === 'active'));
+  await gf.evaluate(() => { const l = window.__lab.lab; l.count('окружения', 5); l.count('хвост', 1); l.count('прогнал волков', 2); l.count('_secret', 40); l.score = 900; window.__lab.end('lose', 'Проверка'); });
+  await student.waitForSelector('#step-donor-play.done', { timeout: 10000 });
+  await student.click('#step-donor-hook .opt >> nth=0');
+  await student.click('#step-donor-hook >> text=Ответить');
+  await student.waitForSelector('#step-donor-hook.done');
+  await shot(student, '30-u3-donor');
+
+  // предсказание динамики → партия с одним правилом → сравнение с телеметрией шага
+  await student.click('.cp >> text=Секрет');
+  const pred = step3('secret-predict'), tail = pred.options.find(o => o.counter === 'хвост');
+  await student.click(`#step-secret-predict .opt >> text=${tail.text}`);
+  await student.click('#step-secret-predict >> text=🔮 Записать предсказание');
+  await student.waitForSelector('#step-secret-predict >> text=Теперь сыграй');
+  await student.click('#step-secret-play .veil button');
+  gf = await gameFrame(student, 'nochnoy-labirint', 0);
+  await gf.waitForFunction(() => window.__lab.cfg.secret === 0, null, { timeout: 5000 }).catch(() => {});
+  check('Партия «одно правило»: секрет выключен из шага', await gf.evaluate(() => window.__lab.cfg.secret === 0));
+  await gf.evaluate(() => window.__lab.confirm());
+  await sleep(300);
+  await gf.evaluate(() => { const l = window.__lab.lab; l.count('хвост', 6); l.count('окружения', 1); l.score = 400; window.__lab.end('lose', 'Проверка'); });
+  await student.waitForSelector('#step-secret-play.done', { timeout: 10000 });
+  await student.waitForSelector('#step-secret-predict .prow', { timeout: 10000 });
+  const ptext = (await student.textContent('#step-secret-predict')).replace(/\s+/g, ' ');
+  check('Предсказание сравнилось с телеметрией без перезагрузки: хвост — главная динамика', /Предсказание сбылось/.test(ptext) && await student.locator('#step-secret-predict .prow.top').count() === 1 && (await student.textContent('#step-secret-predict .prow.top')).includes(tail.text), ptext.slice(0, 140));
+  await student.click('#step-secret-predict >> text=Понятно, дальше');
+  await student.waitForSelector('#step-secret-predict.done');
+  await shot(student, '31-u3-predict');
+
+  // «Найди секрет» донора: ответ только после догадки, сравнение четырёх характеров и одного правила
+  const hunt = step3('secret-hunt').hunt;
+  const me = await student.evaluate(async () => JSON.stringify(await (await fetch('/api/me', { headers: { 'x-lab-token': Lab.token.get() } })).json()));
+  check('Ответ «Найди секрет» урока 3 не уходит ученику заранее', me.includes(hunt.question) && !me.includes(hunt.reveal.slice(0, 30)));
+  await student.waitForSelector('#step-secret-hunt .opt');
+  await student.click(`#step-secret-hunt .opt >> text=${mode === 'mock' ? hunt.trap : hunt.right}`);
+  await student.click('#step-secret-hunt >> text=Ответить');
+  await student.waitForSelector('#step-secret-hunt.done');
+  const reveal = (await student.textContent('#step-secret-hunt')).replace(/\s+/g, ' ');
+  check(mode === 'mock' ? 'Секрет урока 3: ловушка «волки быстрее» распознана' : 'Секрет урока 3 угадан: четыре характера',
+    (mode === 'mock' ? /Ловушка! Скорость волков/.test(reveal) : /Точно!/.test(reveal)) && /Четыре характера и передышка/.test(reveal), reveal.slice(0, 120));
+  // к счётчикам из проверки добавляется то, что волки успели сами за партию, поэтому — «не меньше»
+  const num = re => Number((re.exec(reveal) || [])[1] || -1), offPart = reveal.slice(reveal.indexOf('Одно правило'));
+  check('Сравнение: окружения и хвост с секретом и без, секрет сработал', num(/Четыре характера.*?окружения (\d+)/) >= 5 && Number((/хвост (\d+)/.exec(offPart) || [])[1] || -1) >= 6 && num(/секрет сработал (\d+) раз/) >= 40, reveal.slice(reveal.indexOf('Четыре характера'), reveal.indexOf('Четыре характера') + 160));
+  await student.click('#step-secret-story >> text=Понятно');
+
+  // квиз «Угадай охотника по следу»: лабиринт на холсте, ответы цифрами и стрелками с пробелом, после ответа — цель охотника
+  const sled = step3('sled');
+  await student.click('#step-sled >> text=▶ Начать');
+  await student.waitForSelector('#step-sled canvas');
+  check('Квиз по следу: лабиринт и кнопки правил', await student.locator('#step-sled .bin').count() === sled.rules.length);
+  let shotDone = false;
+  for (let i = 0; i < sled.rounds; i++) {
+    await sleep(400);
+    if (i === 1) { await student.keyboard.press('ArrowRight'); await student.keyboard.press('Space'); } // второй правило стрелкой и пробелом
+    else await student.keyboard.press('Digit' + ((i % sled.rules.length) + 1));
+    // разбор читаем сразу: через пару секунд квиз сам переходит к следующему охотнику
+    const w = await (await student.waitForFunction(() => { const e = document.querySelector('#step-sled .why'); return !!e && /^(Верно!|Это «|Время вышло)/.test(e.textContent) && e.textContent; }, null, { timeout: 5000 })).jsonValue();
+    if (!shotDone) { await shot(student, '32-u3-sled'); shotDone = true; }
+    if (i === 0) check('Квиз по следу: разбор правила после ответа', /^(Верно!|Это «)/.test(w) && sled.rules.some(r => w.includes(r.why)), w.slice(0, 80));
+    await student.waitForFunction(n => { const h = document.querySelector('#step-sled .hud'); return !h || !h.isConnected || !h.textContent.startsWith(n + ' /') || document.querySelector('#step-sled.done'); }, i + 1, { timeout: 6000 });
+  }
+  await student.waitForSelector('#step-sled.done', { timeout: 10000 });
+  const sres = await student.textContent('#step-sled h2 >> nth=1');
+  check('Квиз «Угадай охотника по следу» пройден, итог с ошибками', new RegExp(`из ${sled.rounds}`).test(sres) && await student.locator('#step-sled >> text=⧉ Скопировать результат').count() === 1, sres);
+
+  // квиз «Механика, динамика или эстетика?»
+  const mda = step3('mda');
+  await student.click('#step-mda >> text=▶ Начать');
+  for (let i = 0; i < mda.items.length; i++) {
+    const text = (await student.textContent('#step-mda .item')).trim();
+    await student.keyboard.press('Digit' + (mda.bins.findIndex(b => b.id === mda.items.find(x => x.text === text).bin) + 1));
+    await sleep(1050);
+  }
+  await student.waitForSelector('#step-mda.done', { timeout: 10000 });
+  check('Квиз «Механика, динамика или эстетика?» пройден', new RegExp(`${mda.items.length} из ${mda.items.length}`).test(await student.textContent('#step-mda h2 >> nth=1')));
+
+  // Фабрика MDA: кубики из колод урока, удовольствие и предсказание динамики
+  await student.click('.cp >> text=Фабрика');
+  await student.click('#step-fabrika >> text=🎲 Кубик для пустых полей');
+  const fab = step3('fabrika'), F = id => fab.fields.find(f => f.id === id);
+  const hunters = await student.inputValue('#f-fabrikahunters'), dyn = await student.inputValue('#f-fabrikadynamic');
+  check('Кубики Фабрики — из колод урока 3: охотники, удовольствие, динамика', F('hunters').deck.includes(hunters) && F('pleasure').deck.includes(await student.inputValue('#f-fabrikapleasure')) && F('dynamic').deck.includes(dyn), hunters.slice(0, 60));
+  await student.fill('#f-fabrikatitle', 'Пасека в полночь');
+  await student.click('#step-fabrika >> text=Замысел готов');
+  await student.waitForSelector('#step-fabrika.done');
+  for (let i = 0; i < 3; i++) await student.click(`#step-resheniya .dicebtn >> nth=${i}`);
+  await student.click('#step-resheniya >> text=Решения приняты');
+  await student.waitForSelector('#step-resheniya.done');
+  await student.click('.cp >> text=Промпт ИГРА');
+  const r = await student.inputValue('#f-igrar');
+  check('Черновик ИГРА урока 3: характеры охотников и сила', r.includes(hunters) && /одно правило выбора пути/.test(r) && r.includes('Сила:'), r.slice(0, 90));
+  await student.click('#step-igra >> text=Промпт готов');
+  await student.click('#step-prodyuser >> text=Отдать замысел продюсеру');
+  await student.waitForSelector('#step-prodyuser .fork .opt', { timeout: 30000 });
+  if (mode !== 'mock') check('Демо-продюсер урока 3 спрашивает про характеры охотников', (await student.textContent('#step-prodyuser')).includes(lesson3.demoForks[0].question));
+  await student.click('#step-prodyuser .fork .opt >> nth=0');
+  await student.waitForSelector('#step-prodyuser.done');
+
+  // сборка: программист получает образец урока 3, демо-режим собирает «Ночной лабиринт» с названием ученика
+  await student.click('.cp >> text=Сборка');
+  await student.click('#step-sborka >> text=⚙ Собрать игру');
+  let own = await gameFrame(student, '/play/', 0);
+  if (mode === 'mock') {
+    check('Программисту ушёл образец урока 3', mock.last.system.includes("title: 'Ночной лабиринт'") && !mock.last.system.includes("title: 'Камни мудреца'") && mock.last.system.includes('лабиринт по клеткам с охотниками'));
+    await own.evaluate(() => window.__lab.confirm());
+    await student.waitForFunction(() => document.querySelectorAll('#step-sborka .ver').length >= 2, null, { timeout: 30000 });
+    own = await gameFrame(student, '/play/', 0);
+  } else check('Демо-сборка урока 3 — «Ночной лабиринт» с названием ученика', await own.evaluate(() => GAME.title === 'Пасека в полночь' && GAME.donor === 'Pac-Man'));
+  await playRound(own);
+  await student.waitForSelector('#step-sborka.done', { timeout: 10000 });
+
+  // дуэль: второй игрок ведёт Вожака — ручка vs включает двух игроков (поле duo)
+  await student.click('.cp >> text=Играем вместе');
+  await student.click('#step-duel .veil button');
+  gf = await gameFrame(student, 'nochnoy-labirint', 0);
+  await gf.waitForFunction(() => window.__lab.cfg.vs === 1 && window.__lab.lab.players === 2, null, { timeout: 5000 }).catch(() => {});
+  check('Дуэль: ручка «Второй игрок» включила двух игроков', await gf.evaluate(() => window.__lab.cfg.vs === 1 && window.__lab.lab.players === 2 && window.__lab.lab.state.wolves[0].human === true));
+  await gf.evaluate(() => window.__lab.confirm());
+  await gf.waitForFunction(() => window.__lab.state === 'play' && !window.__lab.paused, null, { timeout: 5000 }).catch(() => {});
+  await gf.locator('#cv').focus();
+  await sleep(400);
+  await gf.evaluate(() => { if (window.__lab.paused) window.__lab.confirm(); });
+  await student.keyboard.down('ArrowUp');
+  await gf.waitForFunction(() => window.__lab.lab.p2.y > 0.5, null, { timeout: 3000 }).catch(() => {});
+  const split = await gf.evaluate(() => [window.__lab.lab.p1.y, window.__lab.lab.p2.y, window.__lab.state, window.__lab.paused, document.hasFocus(), (document.activeElement || {}).id]);
+  await student.keyboard.up('ArrowUp');
+  check('Дуэль: стрелки — у второго игрока (Вожак), не у пастушка', split[0] === 0 && split[1] > 0.5, JSON.stringify(split));
+  await gf.evaluate(() => window.__lab.end('lose', 'Проверка'));
+  await student.waitForSelector('#step-duel.done', { timeout: 10000 });
+  await shot(student, '33-u3-duel');
+
+  // плейтест: рядом с открытием плейтеста — предсказание автора из Фабрики
+  await student.waitForSelector('#step-pleytest >> text=Твоё предсказание из Фабрики', { timeout: 10000 });
+  check('Плейтест урока 3 показывает предсказание динамики автора', (await student.textContent('#step-pleytest')).includes(dyn));
+}
+
 /* ---------- урок 4: «Каменный стакан», секрет «мешок и предпросмотр», квиз «Собери цикл», Фабрика, образец урока для ИИ, релиз модуля, дуэль ---------- */
 const step4 = id => lesson4.checkpoints.flatMap(c => c.steps).find(s => s.id === id);
 async function lessonFour(mode, teacher, student, shot) {
@@ -795,7 +953,7 @@ async function lessonFour(mode, teacher, student, shot) {
   await student.click('.cp >> text=Мастерская');
   await student.waitForSelector('#step-reliz .seg .opt');
   const games = await student.$$eval('#step-reliz .seg .opt', bs => bs.map(b => b.dataset.game));
-  check('Релиз: на выбор все игры модуля 1 (уроки 1, 2, 4)', games.length === 3 && /из 4/.test(await student.textContent('#step-reliz')), `игр: ${games.length}`);
+  check('Релиз: на выбор все игры модуля 1 (уроки 1–4)', games.length === 4 && /из 4/.test(await student.textContent('#step-reliz')), `игр: ${games.length}`);
   const first = await student.evaluate(async () => (await (await fetch('/api/arcade', { headers: { 'x-lab-token': Lab.token.get() } })).json()).mine.find(c => c.lesson && c.lesson.id === 'urok-01'));
   await student.click(`#step-reliz .seg .opt[data-game="${first.id}"]`);
   await student.waitForSelector(`#step-reliz .seg .opt.on[data-game="${first.id}"]`);

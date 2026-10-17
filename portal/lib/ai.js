@@ -171,7 +171,7 @@ async function producer(plan, lesson, who) {
   const t0 = Date.now();
   try {
     const { text, entry } = await call('продюсер', who, model, [
-      { role: 'system', content: producerSystem(`${lesson.title} (донор: ${lesson.donor})`) },
+      { role: 'system', content: producerSystem(`${lesson.title} (донор: ${lesson.donor})${lesson.producer && lesson.producer.focus ? '. Особо проверь: ' + lesson.producer.focus : ''}`) },
       { role: 'user', content: 'Замысел ученика:\n' + planText(plan) },
     ]);
     let result;

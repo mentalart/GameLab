@@ -1,4 +1,4 @@
-// Страница ученика: урок по чекпоинтам и типовые шаги (play, teacher-demo, choice, text, sort, rounds, cycle, cards, secret, factory, decisions, igra, producer, build, aicheck, workshop, release, arcade, playtest).
+// Страница ученика: урок по чекпоинтам и типовые шаги (play, teacher-demo, choice, text, sort, rounds, cycle, trace, predict, cards, secret, factory, decisions, igra, producer, build, aicheck, workshop, release, arcade, playtest).
 // Рамка игры, карточки аркады и открытие плейтеста — в games.js, поле с кубиком — в common.js.
 'use strict';
 const { el, api, toast, roll, beep, copy, valText, fieldEditor } = Lab;
@@ -167,6 +167,7 @@ STEPS.play = ctx => {
         v = Object.assign({}, v, { rounds: v.rounds + 1, best: Math.max(v.best, m.score || 0), secret: v.secret + (Number(((m.tele || {}).custom || {})._secret) || 0), custom });
         if (variants) v.variant = variants[vi].label;
         show(); ctx.save(v, ctx.done || v.rounds >= (st.minRounds || 1));
+        S.hooks.forEach(fn => fn('played', { step: st.id })); // шаг predict сравнивает предсказание с телеметрией
       },
     });
     host.innerHTML = '';
@@ -709,6 +710,222 @@ STEPS.rounds = ctx => {
   return box;
 };
 
+// trace: квиз «Угадай охотника по следу». В маленьком лабиринте бегает герой, охотник идёт по одному правилу и оставляет след.
+// Ученик называет правило: цифры, стрелки и пробел, крестовина и A, тап. Таймер, серия, звук; после ответа видна цель охотника.
+// Правила встроены в шаг (rules[].id): chase — гонится, ambush — наперерез, flank — по напарнику, shy — пугается вблизи,
+// scatter — уходит в свой угол, random — бродит наугад. Подписи и разбор — из сценария.
+const TRACE_MAZE = [
+  '#################',
+  '#.......#.......#',
+  '#.##.##.#.##.##.#',
+  '#...............#',
+  '#.##.#.###.#.##.#',
+  '#....#..#..#....#',
+  '####.##.#.##.####',
+  '#...............#',
+  '#.##.###.###.##.#',
+  '#...............#',
+  '###.#.#####.#.###',
+  '#.....#...#.....#',
+  '#.###.#.#.#.###.#',
+  '#...............#',
+  '#################',
+];
+STEPS.trace = ctx => {
+  const st = ctx.step, R = st.rules, M = st.maze || TRACE_MAZE, W = M[0].length, H = M.length;
+  const DIRS = [[0, -1], [-1, 0], [0, 1], [1, 0]];
+  const open = (x, y) => y >= 0 && y < H && x >= 0 && x < W && M[y][x] !== '#';
+  const box = el('div', { class: 'sorter trace', tabindex: '0', 'aria-label': 'Квиз: угадай охотника по следу' });
+  const cv = el('canvas', { width: W * 26, height: H * 26, 'aria-label': 'Лабиринт со следом охотника' });
+  const hud = el('div', { class: 'hud' }), timer = el('div', { class: 'timer' }, el('i')), why = el('div', { class: 'why', 'aria-live': 'polite' });
+  const bins = el('div', { class: 'bins' + (R.length > 3 ? ' many' : '') });
+  let sel = 0, order = [], i = 0, score = 0, streak = 0, bestStreak = 0, correct = 0, mistakes = [], left = 0, raf = 0, phase = 'intro', padPrev = [], sim = null;
+  const btns = R.map((r, k) => { const b = el('button', { type: 'button', class: 'bin', onclick: () => answer(k) }, r.label, el('kbd', {}, String(k + 1))); bins.append(b); return b; });
+  const select = k => { sel = (k + R.length) % R.length; btns.forEach((b, n) => b.classList.toggle('sel', n === sel)); };
+  // мир раунда: герой бродит, охотник выбирает на каждом перекрёстке клетку ближе к своей цели
+  function newSim(rule) {
+    const free = []; M.forEach((row, y) => row.split('').forEach((c, x) => { if (c !== '#') free.push([x, y]); }));
+    const far = (from, list) => list.filter(p => Math.abs(p[0] - from[0]) + Math.abs(p[1] - from[1]) > 9);
+    const hero = { p: free[Math.floor(Math.random() * free.length)], d: [1, 0] };
+    const pick = list => list[Math.floor(Math.random() * list.length)];
+    const s = { rule, hero, hunter: { p: pick(far(hero.p, free)), d: [0, 1] }, mate: rule === 'flank' ? { p: pick(far(hero.p, free)), d: [0, -1] } : null, trail: [], t: 0, caught: 0, corner: [W - 2, 1] };
+    return s;
+  }
+  function target(s) {
+    const h = s.hero.p, hd = s.hero.d, hu = s.hunter.p;
+    switch (s.rule) {
+      case 'ambush': return [h[0] + hd[0] * 4, h[1] + hd[1] * 4];
+      case 'flank': { const m = s.mate.p, px = h[0] + hd[0] * 2, py = h[1] + hd[1] * 2; return [px * 2 - m[0], py * 2 - m[1]]; }
+      case 'shy': return Math.abs(hu[0] - h[0]) + Math.abs(hu[1] - h[1]) < 6 ? [1, H - 2] : h;
+      case 'scatter': return s.corner;
+      case 'random': return null;
+      default: return h;
+    }
+  }
+  function stepActor(a, tgt) {
+    let opts = DIRS.filter(d => open(a.p[0] + d[0], a.p[1] + d[1]) && !(d[0] === -a.d[0] && d[1] === -a.d[1]));
+    if (!opts.length) opts = [[-a.d[0], -a.d[1]]];
+    let d = opts[Math.floor(Math.random() * opts.length)];
+    if (tgt) { let bd = 1e9; for (const o of opts) { const n = (a.p[0] + o[0] - tgt[0]) ** 2 + (a.p[1] + o[1] - tgt[1]) ** 2; if (n < bd) { bd = n; d = o; } } }
+    else if (a.wander && opts.some(o => o[0] === a.d[0] && o[1] === a.d[1]) && Math.random() < 0.6) d = a.d; // герой чаще бежит прямо
+    a.d = d; a.p = [a.p[0] + d[0], a.p[1] + d[1]];
+  }
+  function tick(s, dt) {
+    s.t += dt; s.ht = (s.ht || 0) + dt; s.ut = (s.ut || 0) + dt;
+    s.hero.wander = true;
+    if (s.ht > 0.17) { s.ht = 0; stepActor(s.hero, null); if (s.mate) stepActor(s.mate, s.hero.p); }
+    if (s.ut > 0.2) {
+      s.ut = 0; stepActor(s.hunter, target(s));
+      s.trail.push(s.hunter.p.slice()); if (s.trail.length > 18) s.trail.shift();
+    }
+    if (s.hunter.p[0] === s.hero.p[0] && s.hunter.p[1] === s.hero.p[1]) { // поймал — герой убегает в дальний угол
+      s.caught++; s.hero.p = [s.hero.p[0] < W / 2 ? W - 2 : 1, s.hero.p[1] < H / 2 ? H - 2 : 1]; beep('tick');
+    }
+  }
+  function draw(s, reveal) {
+    const g = cv.getContext('2d'), c = cv.width / W;
+    g.fillStyle = '#121a33'; g.fillRect(0, 0, cv.width, cv.height);
+    M.forEach((row, y) => row.split('').forEach((ch, x) => { if (ch === '#') { g.fillStyle = '#3b4a78'; g.fillRect(x * c + 2, y * c + 2, c - 4, c - 4); } }));
+    const dot = (p, r, col) => { g.fillStyle = col; g.beginPath(); g.arc(p[0] * c + c / 2, p[1] * c + c / 2, r, 0, Math.PI * 2); g.fill(); };
+    s.trail.forEach((p, k) => { g.globalAlpha = 0.15 + 0.6 * k / s.trail.length; dot(p, c * 0.18, '#ff8a3d'); });
+    g.globalAlpha = 1;
+    if (s.mate) { dot(s.mate.p, c * 0.32, '#e0483c'); g.fillStyle = '#fff'; g.font = `${Math.round(c * 0.42)}px sans-serif`; g.fillText('напарник', s.mate.p[0] * c - c * 0.6, s.mate.p[1] * c - 2); }
+    dot(s.hero.p, c * 0.38, '#ffd23f');
+    dot(s.hunter.p, c * 0.4, '#ff8a3d');
+    const t = reveal && target(s);
+    if (t) { // после ответа: куда целился охотник
+      const tx = t[0] * c + c / 2, ty = t[1] * c + c / 2;
+      g.strokeStyle = '#ff8a3d'; g.lineWidth = 3; g.setLineDash([6, 5]); g.beginPath(); g.moveTo(s.hunter.p[0] * c + c / 2, s.hunter.p[1] * c + c / 2); g.lineTo(tx, ty); g.stroke(); g.setLineDash([]);
+      g.beginPath(); g.moveTo(tx - 8, ty - 8); g.lineTo(tx + 8, ty + 8); g.moveTo(tx + 8, ty - 8); g.lineTo(tx - 8, ty + 8); g.stroke();
+    }
+  }
+  function intro() {
+    phase = 'intro'; cancelAnimationFrame(raf);
+    box.innerHTML = '';
+    const prev = ctx.value;
+    box.append(el('div', { class: 'stack', style: 'align-items:center;text-align:center;margin:auto' },
+      el('h3', {}, `${st.rounds || 8} охотников · ${st.seconds} секунд на каждого`),
+      el('p', { class: 'muted' }, `Жёлтый — герой, оранжевый — охотник и его след. Назови правило охотника: клавиши 1–${R.length} или стрелки и пробел, на геймпаде — крестовина и A.`),
+      prev && prev.total ? el('p', {}, `Твой результат: ${prev.correct} из ${prev.total}, очки ${prev.score}`) : null,
+      el('button', { class: 'btn', type: 'button', onclick: begin }, prev && prev.total ? 'Сыграть ещё раз' : '▶ Начать')));
+  }
+  function begin() {
+    const n = st.rounds || 8, ids = R.map(r => r.id);
+    order = [];
+    while (order.length < n) order = order.concat(ids.slice().sort(() => Math.random() - 0.5)); // каждое правило встретится
+    order = order.slice(0, n);
+    i = 0; score = 0; streak = 0; bestStreak = 0; correct = 0; mistakes = [];
+    box.innerHTML = ''; box.append(hud, timer, cv, why, bins); box.focus();
+    select(0); show();
+    let last = performance.now();
+    const loop = t => {
+      if (!box.isConnected || phase === 'intro' || phase === 'end') return;
+      const dt = Math.min(0.05, (t - last) / 1000); last = t;
+      tick(sim, dt);
+      if (phase === 'ask') { left -= dt; if (left <= 0) answer(-1); }
+      timer.firstChild.style.width = Math.max(0, 100 * left / st.seconds) + '%';
+      draw(sim, phase === 'why');
+      pollPad();
+      raf = requestAnimationFrame(loop);
+    };
+    raf = requestAnimationFrame(loop);
+  }
+  function show() {
+    if (i >= order.length) return finish();
+    sim = newSim(order[i]);
+    for (let k = 0; k < 15; k++) tick(sim, 0.2); // след уже виден с первой секунды
+    phase = 'ask'; left = st.seconds; why.textContent = '';
+    btns.forEach(b => b.classList.remove('flash-good', 'flash-bad')); select(sel);
+    hud.innerHTML = ''; hud.append(el('span', {}, `${i + 1} / ${order.length}`), el('span', {}, streak > 1 ? `серия ×${streak}` : ''), el('span', {}, `очки ${score}`));
+  }
+  function answer(k) {
+    if (phase !== 'ask') return;
+    phase = 'why';
+    const right = R.findIndex(r => r.id === sim.rule), ok = k === right;
+    if (ok) { streak++; bestStreak = Math.max(bestStreak, streak); correct++; score += 100 * Math.min(streak, 5) + Math.round(left * 10); beep('good'); }
+    else { streak = 0; mistakes.push(`${R[right].label}${k >= 0 ? ' (ответ: ' + R[k].label + ')' : ''}`); beep('bad'); }
+    btns.forEach(b => b.classList.remove('sel'));
+    if (k >= 0) btns[k].classList.add(ok ? 'flash-good' : 'flash-bad');
+    if (!ok) btns[right].classList.add('flash-good');
+    why.innerHTML = ''; why.append(el('b', {}, ok ? 'Верно! ' : k < 0 ? `Время вышло. Это «${R[right].label}». ` : `Это «${R[right].label}». `), R[right].why || '', target(sim) ? ' Пунктир — куда он целился.' : '');
+    setTimeout(() => { if (phase === 'why') { i++; show(); } }, ok ? 1800 : 3600);
+  }
+  function finish() {
+    phase = 'end'; cancelAnimationFrame(raf);
+    const v = { score, correct, total: order.length, bestStreak, mistakes };
+    ctx.save(v, true);
+    box.innerHTML = '';
+    const result = `Квиз «${st.title}»: ${correct} из ${order.length}, ${score} очков, серия ${bestStreak}.` + (mistakes.length ? ' Ошибки: ' + mistakes.join('; ') : '');
+    box.append(el('div', { class: 'stack', style: 'align-items:center;text-align:center;margin:auto' },
+      el('div', { class: 'eyebrow' }, 'Итог'), el('h2', {}, `${correct} из ${order.length} · ${score} очков`),
+      el('p', { class: 'muted' }, `Лучшая серия: ${bestStreak}`),
+      mistakes.length ? el('div', { class: 'small', style: 'text-align:left' }, el('b', {}, 'Ошибки:'), el('ul', {}, mistakes.map(m => el('li', {}, m)))) : el('p', {}, 'Без ошибок!'),
+      el('div', { class: 'row', style: 'justify-content:center' },
+        el('button', { class: 'btn', type: 'button', onclick: begin }, 'Ещё раз'),
+        el('button', { class: 'btn ghost', type: 'button', onclick: () => copy(result) }, '⧉ Скопировать результат'))));
+  }
+  function pollPad() {
+    let pads = []; try { pads = [...navigator.getGamepads()].filter(Boolean); } catch (e) { return; }
+    const gp = pads[0]; if (!gp) return;
+    const b = gp.buttons.map(x => x && x.pressed);
+    [[14, -1], [15, 1], [12, -4], [13, 4]].forEach(([btn, d], k) => { if (b[btn] && !padPrev[k]) select(sel + d); padPrev[k] = b[btn]; });
+    if (b[0] && !padPrev[4]) answer(sel);
+    padPrev[4] = b[0];
+  }
+  box.addEventListener('keydown', e => {
+    if (phase !== 'ask') return;
+    const d = /^(Digit|Numpad)([1-8])$/.exec(e.code);
+    if (d && Number(d[2]) <= R.length) { e.preventDefault(); answer(Number(d[2]) - 1); return; }
+    const mv = { ArrowLeft: -1, ArrowRight: 1, ArrowUp: -4, ArrowDown: 4 }[e.code];
+    if (mv) { e.preventDefault(); select(sel + mv); return; }
+    if (e.code === 'Space' || e.code === 'Enter') { e.preventDefault(); answer(sel); }
+  });
+  intro();
+  return box;
+};
+
+// predict: предсказание динамики. Ученик выбирает, что будут делать игроки и охотники, потом играет в шаге play,
+// и шаг сравнивает предсказание со счётчиками телеметрии этого шага (в среднем за партию).
+STEPS.predict = ctx => {
+  const st = ctx.step, max = st.max || 2;
+  let v = Object.assign({ picked: [], locked: false }, ctx.value);
+  const host = el('div', { class: 'stack predict' });
+  function draw() {
+    host.innerHTML = '';
+    if (!v.locked) {
+      const grid = el('div', { class: 'opts', role: 'group' });
+      st.options.forEach(o => grid.append(el('button', { type: 'button', class: 'opt' + (v.picked.includes(o.counter) ? ' on' : ''), 'aria-pressed': String(v.picked.includes(o.counter)), onclick: () => {
+        if (v.picked.includes(o.counter)) v.picked = v.picked.filter(x => x !== o.counter);
+        else { if (v.picked.length >= max) { toast(`Можно выбрать не больше ${max}`); return; } v.picked = v.picked.concat(o.counter); }
+        beep('tick'); ctx.save(v); draw();
+      } }, o.text)));
+      host.append(el('div', { class: 'eyebrow' }, st.question || 'Что будет происходить в игре?'), grid,
+        el('div', {}, el('button', { class: 'btn', type: 'button', onclick: () => { if (!v.picked.length) { toast('Выбери хотя бы одно предсказание'); return; } v.locked = true; ctx.save(v, null, true); beep('done'); draw(); } }, '🔮 Записать предсказание')));
+      return;
+    }
+    const mine = st.options.filter(o => v.picked.includes(o.counter)).map(o => o.text);
+    host.append(el('p', {}, el('b', {}, '🔮 Твоё предсказание: '), mine.join('; ')));
+    const play = ans(st.play).value || {};
+    if (!play.rounds) { host.append(el('p', { class: 'muted' }, 'Теперь сыграй в шаге ниже. Телеметрия посчитает, что происходило на самом деле.')); return; }
+    const per = o => Math.round(10 * ((play.custom || {})[o.counter] || 0) / play.rounds) / 10;
+    const vals = st.options.map(per), top = Math.max(...vals);
+    const hit = top > 0 && st.options.some((o, k) => vals[k] === top && v.picked.includes(o.counter));
+    const rows = el('div', { class: 'prows' });
+    st.options.forEach((o, k) => rows.append(el('div', { class: 'prow' + (vals[k] === top && top > 0 ? ' top' : '') },
+      el('span', { class: 'pl' }, (v.picked.includes(o.counter) ? '🔮 ' : '') + o.text),
+      el('span', { class: 'pbar' }, el('i', { style: `width:${top ? Math.round(100 * vals[k] / top) : 0}%` })),
+      el('b', {}, String(vals[k])))));
+    const topOpt = st.options[vals.indexOf(top)];
+    host.append(el('div', { class: 'eyebrow' }, `Телеметрия: в среднем за партию (партий: ${play.rounds})`), rows,
+      el('p', { class: 'verdict ' + (hit ? 'good' : 'bad') }, top === 0 ? 'Телеметрия пока ничего не заметила — сыграй ещё партию подольше.' : hit ? '🎯 Предсказание сбылось: ты угадал главную динамику.' : `Игроки и волки сделали другое: чаще всего — «${topOpt.text}».`),
+      top > 0 && topOpt.why ? el('p', { class: 'concept' }, topOpt.why) : null,
+      el('div', {}, el('button', { class: 'btn', type: 'button', onclick: () => { v.result = { hit, top: topOpt.counter, values: Object.fromEntries(st.options.map((o, k) => [o.counter, vals[k]])) }; ctx.save(v, true, true); } }, ctx.done ? 'Сравнил ✓' : 'Понятно, дальше')));
+  }
+  S.hooks.push((kind, d) => { if (kind === 'played' && d.step === st.play && v.locked) draw(); });
+  draw();
+  return host;
+};
+
 STEPS.factory = ctx => {
   const st = ctx.step;
   let v = Object.assign({ level: st.levels[0].id, fields: {} }, ctx.value);
@@ -1108,6 +1325,10 @@ STEPS.playtest = ctx => {
       el('button', { class: 'btn ghost small', type: 'button', onclick: drawMine }, '↻ Обновить')));
     if (!r.game) mineHost.append(el('p', { class: 'muted' }, 'Ты ещё не собрал игру — открытие плейтеста появится, когда в неё сыграют соседи.'));
     else mineHost.append(Games.discovery(r.discovery));
+    // predict: что автор предсказал в Фабрике (удовольствие, динамика) — рядом с тем, что телеметрия увидела у соседей
+    const pred = (st.predict || []).map(p => [p.label, valText((((ans(p.step).value || {}).fields) || {})[p.field])]).filter(p => p[1]);
+    if (r.game && pred.length) mineHost.append(el('div', { class: 'secret-reveal' }, el('div', { class: 'eyebrow' }, 'Твоё предсказание из Фабрики — совпало с тем, что делали соседи?'),
+      el('ul', {}, pred.map(([label, text]) => el('li', {}, el('b', {}, label + ': '), text)))));
     mineHost.append(Games.feedback(r.feedback));
   }
   const cardHost = el('div');
@@ -1337,6 +1558,8 @@ function stepSummary(step) {
     case 'choice': return [(v.selected || []).join('; '), valText(v.own) ? 'свои слова: ' + f(v.own) : ''].filter(Boolean).join(' · ') || '—';
     case 'cycle': return v.total ? `без ошибок ${v.perfect} из ${v.total}, очки ${v.score}, серия ${v.bestStreak}` + ((v.mistakes || []).length ? '; трудно: ' + v.mistakes.join('; ') : '') : 'не пройден';
     case 'release': return v.released ? `выпущена версия 1.0: «${v.released.title}» (урок ${v.released.lesson}, v${v.released.version}); что изменено: ${f(v.note)}` : `не выпущена; отмечено пунктов: ${Object.values(v.checks || {}).filter(Boolean).length}`;
+    case 'trace': return v.total ? `верно ${v.correct} из ${v.total}, очки ${v.score}, серия ${v.bestStreak}` + ((v.mistakes || []).length ? '; ошибки: ' + v.mistakes.join('; ') : '') : 'не пройден';
+    case 'predict': return (v.picked || []).length ? `предсказание: ${step.options.filter(o => v.picked.includes(o.counter)).map(o => o.text).join('; ')}` + (v.result ? ` — ${v.result.hit ? 'сбылось' : 'не сбылось'}; телеметрия за партию: ` + step.options.map(o => `${o.text} ${v.result.values[o.counter]}`).join(', ') : '') : 'не предсказывал';
     case 'sort': return v.total ? `верно ${v.correct} из ${v.total}, очки ${v.score}, серия ${v.bestStreak}` + ((v.mistakes || []).length ? '; ошибки: ' + v.mistakes.join('; ') : '') : 'не пройден';
     case 'text': return a.done ? 'прочитано' : 'не прочитано';
     case 'factory': return [`уровень: ${(step.levels.find(l => l.id === v.level) || {}).label || '—'}`].concat(step.fields.filter(x => valText((v.fields || {})[x.id])).map(x => `${x.label}: ${f(v.fields[x.id])}`)).join('\n');
