@@ -8,6 +8,8 @@
 // фильтр «застряли», лимиты и «+10 запросов», сравнение моделей, отчёт журнала генераций и CSV, статусы заметок и Markdown;
 // Урок 2 в обоих прогонах: донор с ручками из шага, варианты игры, «Найди секрет» донора, квиз-раунды «Игра или не игра?»,
 // сортировщик на 8 лотков, Фабрика с донором на выбор и его колодами, черновик ИГРА по правилам донора, сборка, дуэль вдвоём.
+// Урок 4 в обоих прогонах: «Каменный стакан» и его секрет (мешок и предпросмотр), квиз «Собери цикл», Фабрика под донора,
+// образец урока в промпте программиста и демо-игра урока, релиз модуля с чек-листом, дуэль двух стаканов по ручке duo.
 // Данные и настройки — во временной папке, настоящий portal/config.json и portal/data/ не трогаются.
 // Запуск: node portal/tools/e2e-portal.js [--headed]   Снимки — в portal/.check/portal-*.png
 'use strict';
@@ -28,6 +30,7 @@ const ai = require('../lib/ai');
 const portal = require('../server');
 const lesson1 = require('../lessons/urok-01');
 const lesson2 = require('../lessons/urok-02');
+const lesson4 = require('../lessons/urok-04');
 const store = require('../lib/store');
 
 const PASSWORD = 'e2e-пароль';
@@ -252,6 +255,7 @@ async function run(browser, base, mode) {
   await shot(teacher, '8-ai', true);
   await fixtureLesson(mode, teacher, student, pj, shot);
   await lessonTwo(mode, teacher, student, shot);
+  await lessonFour(mode, teacher, student, shot);
   await pj.close();
 
   check('Без ошибок JavaScript на страницах портала', !errors.length, errors.slice(0, 3).join(' | '));
@@ -386,12 +390,12 @@ async function openProjector(base, code, teacher, errors, shot) {
 /* ---------- вау-старт урока 1 на проекторе: те же карты, игра у всех, секрета не видно ---------- */
 async function projectorWow(pj, teacher, shot) {
   await pj.click('#demoTab');
-  await pj.waitForFunction(() => document.querySelectorAll('.pj-card.on').length === 4, null, { timeout: 8000 });
+  await pj.waitForFunction(() => document.querySelectorAll('.pj-card.on').length === 4, null, { timeout: 15000 });
   await sleep(1000); // барабан карт докрутился
   const cards = await pj.$$eval('.pj-card .cv', bs => bs.map(b => b.textContent.trim()));
   const inPanel = await teacher.$$eval('#wowCards .wc-text', bs => bs.map(b => b.textContent.trim()));
   check('Проектор: те же четыре карты, что у учителя', cards.join('|') === inPanel.join('|'), cards.join(' | '));
-  await pj.waitForSelector('#pjWowGame iframe, #pjWowGame .veil', { timeout: 8000 });
+  await pj.waitForSelector('#pjWowGame iframe, #pjWowGame .veil', { timeout: 15000 });
   const text = await pj.textContent('#pj-demo');
   check('Проектор: игра класса роздана, секрета на экране нет', /Игра у всех/.test(text) && !lesson1.wow.secrets.some(x => text.includes(x.title)));
   await shot(pj, 'p2-wow');
@@ -646,6 +650,187 @@ async function lessonTwo(mode, teacher, student, shot) {
   await gf.evaluate(() => window.__lab.end('win', 'Проверка'));
   await student.waitForSelector('#step-duel.done', { timeout: 10000 });
   await shot(student, '24-u2-duel');
+}
+
+/* ---------- урок 4: «Каменный стакан», секрет «мешок и предпросмотр», квиз «Собери цикл», Фабрика, образец урока для ИИ, релиз модуля, дуэль ---------- */
+const step4 = id => lesson4.checkpoints.flatMap(c => c.steps).find(s => s.id === id);
+async function lessonFour(mode, teacher, student, shot) {
+  await teacher.click('.tabs >> text=Урок');
+  await teacher.selectOption('#moduleSel', '1');
+  await teacher.selectOption('#lessonSel', 'urok-04');
+  await teacher.waitForSelector('text=Открыть все', { timeout: 10000 });
+  await teacher.click('text=Открыть все');
+  await student.waitForSelector('#step-donor-play', { timeout: 15000 });
+  await student.waitForFunction(() => /Урок 4/.test(document.querySelector('#lessonTitle').textContent), null, { timeout: 15000 });
+  check('Урок 4 открылся у ученика', /Урок 4 · Глагол и основной цикл/.test(await student.textContent('#lessonTitle')));
+
+  // донор: «Каменный стакан» как задумано — мешок и три камня в предпросмотре, один стакан
+  await student.click('#step-donor-play .veil button');
+  let gf = await gameFrame(student, 'kamennyi-stakan', 0);
+  check('Донор урока 4: «Каменный стакан» с мешком и предпросмотром', await gf.evaluate(() => window.__lab.cfg.bag === 1 && window.__lab.cfg.preview === 3 && window.__lab.cfg.vs === 0 && window.__lab.lab.players === 1));
+  await gf.evaluate(() => window.__lab.confirm());
+  await sleep(300);
+  await gf.evaluate(() => { window.__lab.lab.count('линии', 3); window.__lab.lab.score = 300; window.__lab.end('lose', 'Проверка'); });
+  await student.waitForSelector('#step-donor-play.done', { timeout: 10000 });
+  await student.click('#step-donor-hook .opt >> nth=1');
+  await student.click('#step-donor-hook >> text=Ответить');
+  await student.waitForSelector('#step-donor-hook.done');
+
+  // тот же стакан без секрета: ручки из шага выключают мешок и предпросмотр
+  await student.click('.cp >> text=Секрет');
+  await student.click('#step-secret-play .veil button');
+  gf = await gameFrame(student, 'kamennyi-stakan', 0);
+  await gf.waitForFunction(() => window.__lab.cfg.bag === 0 && window.__lab.cfg.preview === 0, null, { timeout: 5000 }).catch(() => {});
+  check('Без секрета: мешок и предпросмотр выключены ручками шага', await gf.evaluate(() => window.__lab.cfg.bag === 0 && window.__lab.cfg.preview === 0));
+  await gf.evaluate(() => window.__lab.confirm());
+  await sleep(300);
+  await gf.evaluate(() => { window.__lab.lab.count('засухи', 2); window.__lab.lab.count('линии', 1); window.__lab.lab.score = 90; window.__lab.end('lose', 'Проверка'); });
+  await student.waitForSelector('#step-secret-play.done', { timeout: 10000 });
+
+  const hunt = step4('secret-hunt').hunt;
+  const me = await student.evaluate(async () => JSON.stringify(await (await fetch('/api/me', { headers: { 'x-lab-token': Lab.token.get() } })).json()));
+  check('Урок 4: ответ «Найди секрет» не уходит ученику заранее', me.includes(hunt.question) && !me.includes(hunt.reveal.slice(0, 30)));
+  await student.waitForSelector('#step-secret-hunt .opt');
+  await student.click(`#step-secret-hunt .opt >> text=${mode === 'mock' ? hunt.trap : hunt.right}`);
+  await student.click('#step-secret-hunt >> text=Ответить');
+  await student.waitForSelector('#step-secret-hunt.done');
+  const reveal = (await student.textContent('#step-secret-hunt')).replace(/\s+/g, ' ');
+  check(mode === 'mock' ? 'Секрет урока 4: ловушка «падали медленнее» распознана' : 'Секрет урока 4 угадан: мешок и предпросмотр',
+    (mode === 'mock' ? /Ловушка! Скорость не менялась/.test(reveal) : /Точно!/.test(reveal)) && /Предпросмотр и «мешок»/.test(reveal), reveal.slice(0, 120));
+  check('Сравнение: линии и засухи с мешком и без, мешок сработал', /линии 3/.test(reveal) && /засухи 2/.test(reveal) && /секрет сработал [1-9]\d* раз/.test(reveal), (reveal.match(/С мешком.*?вслепую[^О]*/) || [''])[0].slice(0, 200));
+  await shot(student, '30-u4-secret', true);
+  await student.click('#step-secret-story >> text=Понятно');
+
+  // квиз «Собери цикл»: ошибка с чужой карточкой и мышь, клавиши 1–4, стрелки с пробелом
+  const quiz = step4('sobery-cikl');
+  await student.click('#step-sobery-cikl >> text=▶ Начать');
+  for (let r = 0; r < quiz.rounds.length; r++) {
+    const name = (await student.textContent('#step-sobery-cikl .cyc-game')).trim();
+    const rd = quiz.rounds.find(x => name.endsWith(x.game));
+    const texts = await student.$$eval('#step-sobery-cikl .cyc-card', bs => bs.map(b => b.textContent.slice(1)));
+    if (r === 0) { // чужая карточка — подсказка, потом по порядку мышью
+      await student.click(`#step-sobery-cikl .cyc-card >> nth=${texts.indexOf(rd.decoy)}`);
+      check('Собери цикл: чужая карточка — подсказка «из другой игры»', /из другой игры/.test(await student.textContent('#step-sobery-cikl .why')));
+      await shot(student, '31-u4-cycle');
+      for (const c of rd.cards) await student.click(`#step-sobery-cikl .cyc-card >> nth=${texts.indexOf(c)}`);
+    } else if (r === 1) { // стрелками и пробелом
+      for (const c of rd.cards) {
+        const want = texts.indexOf(c);
+        for (let n = 0; n < 4 && await student.$eval('#step-sobery-cikl', (b, w) => [...b.querySelectorAll('.cyc-card')].findIndex(x => x.classList.contains('cur')) !== w, want); n++) await student.keyboard.press('ArrowRight');
+        await student.keyboard.press('Space');
+      }
+    } else for (const c of rd.cards) await student.keyboard.press('Digit' + (texts.indexOf(c) + 1));
+    await student.waitForSelector('#step-sobery-cikl .cyc-ring.closed');
+    if (r === 0) check('Цикл замкнулся: разбор после раунда', (await student.textContent('#step-sobery-cikl .why')).includes(rd.why));
+    await student.keyboard.press('Space');
+  }
+  await student.waitForSelector('#step-sobery-cikl.done');
+  const cres = await student.textContent('#step-sobery-cikl h2 >> nth=1');
+  check('Квиз «Собери цикл»: мышь, стрелки, цифры, итог', new RegExp(`${quiz.rounds.length - 1} из ${quiz.rounds.length} без ошибок`).test(cres) && await student.locator('#step-sobery-cikl >> text=⧉ Скопировать результат').count() === 1, cres);
+  await shot(student, '32-u4-cycle-result');
+
+  // Фабрика под донора: колода твистов падающих фигур, своё название и вид фигур
+  await student.click('.cp >> text=Фабрика');
+  check('Фабрика урока 4: карта донора «Тетрис»', (await student.textContent('#step-fabrika .donor-card')).includes('🧱'));
+  await student.click('#step-fabrika >> text=🎲 Кубик для пустых полей');
+  const fab = step4('fabrika'), twist = await student.inputValue('#f-fabrikatwist');
+  check('Кубик твиста — из колоды падающих фигур', fab.fields.find(f => f.id === 'twist').deck.includes(twist), twist);
+  await student.fill('#f-fabrikatitle', 'Сырная башня');
+  await student.click('#step-fabrika >> text=Замысел готов');
+  await student.waitForSelector('#step-fabrika.done');
+  for (let i = 0; i < 3; i++) await student.click(`#step-resheniya .dicebtn >> nth=${i}`);
+  await student.click('#step-resheniya >> text=Решения приняты');
+  await student.waitForSelector('#step-resheniya.done');
+  await student.click('.cp >> text=Промпт ИГРА');
+  const r = await student.inputValue('#f-igrar'), reward = await student.evaluate(() => S.answers.fabrika.value.fields.reward.text);
+  check('Черновик ИГРА урока 4: стакан, твист и награда за линию', r.includes('стакан 10 × 20') && r.includes(twist) && r.includes(reward), r.slice(0, 90));
+  await student.click('#step-igra >> text=Промпт готов');
+  await student.click('#step-prodyuser >> text=Отдать замысел продюсеру');
+  await student.waitForSelector('#step-prodyuser .fork .opt', { timeout: 30000 });
+  if (mode === 'demo') check('Демо-продюсер: развилки под донора урока, а не волна пришельцев', (await student.textContent('#step-prodyuser')).includes(lesson4.demoForks[0].question));
+  const forks = await student.locator('#step-prodyuser .fork').count();
+  for (let i = 0; i < forks; i++) await student.click(`#step-prodyuser .fork >> nth=${i} >> .opt >> nth=0`); // шаг готов, когда выбраны все развилки
+  await student.waitForSelector('#step-prodyuser.done');
+
+  // сборка: программист получает образец урока — «Каменный стакан»; демо-игра урока — тоже он
+  await student.click('.cp >> text=Сборка');
+  await student.click('#step-sborka >> text=⚙ Собрать игру');
+  let own = await gameFrame(student, '/play/', 0);
+  if (mode === 'mock') {
+    const sys = mock.last.system || '';
+    check('Программист урока 4 получил образец «Каменный стакан» вместо «Камней мудреца»', sys.includes("title: 'Каменный стакан'") && !sys.includes("title: 'Камни мудреца'") && sys.includes('по мотивам «Тетриса»'));
+    await own.evaluate(() => window.__lab.confirm());
+    await student.waitForFunction(() => document.querySelectorAll('#step-sborka .ver').length >= 2, null, { timeout: 30000 });
+    own = await gameFrame(student, '/play/', 0);
+  } else check('Демо-режим урока 4: вместо игры ученика — «Каменный стакан» с его названием', await own.evaluate(() => GAME.title === 'Сырная башня' && !!GAME.KINDS && GAME.donor === '«Тетрис»'));
+  await playRound(own);
+  await student.waitForSelector('#step-sborka.done', { timeout: 10000 });
+  const card = await student.evaluate(async () => (await (await fetch('/api/arcade', { headers: { 'x-lab-token': Lab.token.get() } })).json()).mine.find(c => c.lesson && c.lesson.id === 'urok-04'));
+  check('Игра урока 4 собрана, в аркаде донор «Тетрис»', card && card.title === 'Сырная башня' && card.donor === '«Тетрис»', card ? `${card.title} · ${card.donor}` : 'нет карточки');
+  const p4 = require('./build-prompt'), sys4 = p4.systemPrompt({ lesson: 'urok-04' });
+  check('Промпт программиста урока 4 не больше 25 тысяч токенов', p4.tokens(sys4) <= 25000 && !/\{\{/.test(sys4), `примерно ${p4.tokens(sys4)} токенов`);
+
+  // релиз модуля: выбор игры модуля, чек-лист с подсказками из аркады, метка 1.0 — одна на модуль
+  await student.click('.cp >> text=Мастерская');
+  await student.waitForSelector('#step-reliz .seg .opt');
+  const games = await student.$$eval('#step-reliz .seg .opt', bs => bs.map(b => b.dataset.game));
+  check('Релиз: на выбор все игры модуля 1 (уроки 1, 2, 4)', games.length === 3 && /из 4/.test(await student.textContent('#step-reliz')), `игр: ${games.length}`);
+  const first = await student.evaluate(async () => (await (await fetch('/api/arcade', { headers: { 'x-lab-token': Lab.token.get() } })).json()).mine.find(c => c.lesson && c.lesson.id === 'urok-01'));
+  await student.click(`#step-reliz .seg .opt[data-game="${first.id}"]`);
+  await student.waitForSelector(`#step-reliz .seg .opt.on[data-game="${first.id}"]`);
+  const ev = (await student.textContent('#step-reliz .checklist')).replace(/\s+/g, ' ');
+  check('Чек-лист: подпись донора и решения видны из аркады', /по мотивам механики Space Invaders/.test(ev) && /решений: 3 из 3/.test(ev), ev.slice(0, 160));
+  check(mode === 'mock' ? 'Чек-лист: чужие партии в игре урока 1 видны' : 'Чек-лист: без соседей — предупреждение «не играл никто»', mode === 'mock' ? /соседи сыграли [1-9]/.test(ev) : /не играл никто/.test(ev));
+  await student.click('#step-reliz >> text=🚀 Выпустить версию 1.0');
+  check('Релиз не выходит, пока чек-лист не отмечен', await student.locator('#step-reliz.done').count() === 0);
+  for (const it of step4('reliz').checklist) await student.click(`#step-reliz .check[data-check="${it.id}"]`);
+  await student.click('#step-reliz .dicebtn');
+  await student.click('#step-reliz >> text=🚀 Выпустить версию 1.0');
+  await student.waitForSelector('#step-reliz.done', { timeout: 10000 });
+  await student.waitForSelector('#step-reliz .acard .tag.release', { timeout: 10000 });
+  await shot(student, '33-u4-release', true);
+  // повторный релиз другой игры модуля снимает метку с первой
+  await student.click(`#step-reliz .seg .opt[data-game="${card.id}"]`);
+  await student.waitForSelector(`#step-reliz .seg .opt.on[data-game="${card.id}"]`);
+  for (const it of step4('reliz').checklist) await student.click(`#step-reliz .check[data-check="${it.id}"]`);
+  await student.click('#step-reliz >> text=🚀 Выпустить версию 1.0');
+  await student.waitForFunction(id => document.querySelector(`#step-reliz .seg .opt.on[data-game="${id}"]`) && /1\.0/.test(document.querySelector(`#step-reliz .seg .opt.on[data-game="${id}"]`).textContent), card.id, { timeout: 10000 });
+  const rel = await student.evaluate(async () => (await (await fetch('/api/arcade', { headers: { 'x-lab-token': Lab.token.get() } })).json()).mine.filter(c => c.release).map(c => c.title));
+  check('Релиз модуля: метка 1.0 — у одной игры модуля', rel.length === 1 && rel[0] === 'Сырная башня', rel.join(', '));
+  await teacher.click('.tabs >> text=Аркада');
+  await teacher.waitForSelector('#tab-arcade .acard .tag.release', { timeout: 10000 });
+  check('Учитель видит релиз в аркаде класса', (await teacher.textContent('#tab-arcade')).includes('версия 1.0 · релиз'));
+  await teacher.click('.tabs >> text=Урок');
+
+  // дуэль двух стаканов: оболочка включает второго игрока ручкой vs, клавиши делятся
+  await student.click('.cp >> text=Играем вместе');
+  await student.click('#step-duel .veil button');
+  gf = await gameFrame(student, 'kamennyi-stakan', 0);
+  await gf.waitForFunction(() => window.__lab.cfg.vs === 1 && window.__lab.lab.players === 2, null, { timeout: 5000 }).catch(() => {});
+  check('Дуэль: два стакана, оболочка переключилась на двоих', await gf.evaluate(() => window.__lab.cfg.vs === 1 && window.__lab.lab.players === 2 && window.__lab.lab.state.wells.length === 2));
+  await gf.evaluate(() => window.__lab.confirm());
+  await gf.locator('#cv').focus();
+  await sleep(400);
+  await student.keyboard.press('KeyG'); await sleep(400); // игрок 1 роняет камень
+  await student.keyboard.press('KeyL'); await sleep(600); // игрок 2 роняет камень
+  const dropped = await gf.evaluate(() => window.__lab.lab.state.wells.map(w => w.grid.flat().filter(Boolean).length));
+  check('Дуэль: каждый игрок роняет камень своей клавишей', dropped[0] === 4 && dropped[1] === 4, `камней в стаканах: ${dropped.join(' и ')}`);
+  await gf.evaluate(() => window.__lab.end('win', 'Проверка'));
+  await student.waitForSelector('#step-duel.done', { timeout: 10000 });
+  await student.click('#step-duel .seg .opt >> nth=1');
+  await student.click('#step-duel .veil button');
+  gf = await gameFrame(student, 'kamennyi-stakan', 0);
+  await gf.waitForFunction(() => window.__lab.cfg.bag === 0 && window.__lab.cfg.vs === 1, null, { timeout: 5000 }).catch(() => {});
+  check('Дуэль без секрета: вариант кнопкой', await gf.evaluate(() => window.__lab.cfg.bag === 0 && window.__lab.cfg.preview === 0 && window.__lab.cfg.vs === 1));
+  await shot(student, '34-u4-duel');
+
+  // открытие: самооценка модуля
+  await student.click('.cp >> text=Открытие');
+  await student.click('#step-samootsenka .opt >> nth=3');
+  await student.click('#step-samootsenka .opt >> nth=4');
+  await student.click('#step-samootsenka >> text=Ответить');
+  await student.waitForSelector('#step-samootsenka.done');
+  check('Самооценка модуля 1 сохранена', true);
 }
 
 /* ---------- «Играем вместе»: второй ученик, игры друг друга, вызов, плейтест, отзыв, аркада ---------- */

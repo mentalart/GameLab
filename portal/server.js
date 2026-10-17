@@ -270,8 +270,9 @@ function gameCard(code, g, viewer) {
   const all = store.scores(code + ':game:' + g.id), rec = records(all, viewer);
   return {
     id: g.id, title: g.title || 'Моя игра', nick: g.nick, donor: g.donor || (les ? les.donor : ''),
-    lesson: les ? { id: les.id, number: les.number, title: les.title } : null,
+    lesson: les ? { id: les.id, number: les.number, title: les.title, module: les.module || 0 } : null,
     decisions: dec || {}, version: g.current, versions: g.versions.length,
+    release: g.release ? { version: g.release.version, at: g.release.at, note: g.release.note.text, lesson: g.release.lesson } : null,
     record: rec.record, top: rec.top.slice(0, 5), authorBest: all[g.nick] ? all[g.nick].score : 0, myBest: rec.mine,
     plays: store.plays(g.id).filter(p => p.type === 'over' && p.nick !== g.nick).length,
     hidden: !!g.hidden, mine: g.nick === viewer,
@@ -328,6 +329,24 @@ route('POST', '/api/arcade/hide', (ctx) => {
   g.hidden = !!ctx.body.hidden; store.saveGame(g);
   broadcast(w.class, 'arcade', { game: g.id, author: g.nick });
   return { hidden: g.hidden };
+});
+// релиз модуля: лучшая игра модуля получает метку «1.0» в аркаде. Одна игра на модуль: новый релиз снимает метку с прежней
+route('POST', '/api/release', (ctx) => {
+  const { w, les } = needStudent(ctx);
+  const g = classGame(w, ctx.body.game);
+  if (!g || g.nick !== w.nick) throw Object.assign(new Error('Выпустить можно только свою игру'), { status: 403 });
+  const gl = lesson(g.lesson), mod = les.module || 0;
+  if (!gl || (gl.module || 0) !== mod) throw Object.assign(new Error('На релиз идёт игра этого модуля'), { status: 400 });
+  const note = cleanField(ctx.body.note);
+  if (!note.text) throw Object.assign(new Error('Напиши, что изменил после плейтестов'), { status: 400 });
+  const checks = Object.fromEntries(Object.entries(ctx.body.checks || {}).slice(0, 12).map(([k, v]) => [String(k).slice(0, 30), !!v]));
+  for (const other of classGames(w.class)) {
+    if (other.id !== g.id && other.nick === w.nick && other.release && other.release.module === mod) { delete other.release; store.saveGame(other); }
+  }
+  g.release = { version: g.current, at: store.now(), module: mod, lesson: les.id, note, checks };
+  store.saveGame(g);
+  broadcast(w.class, 'arcade', { game: g.id, author: g.nick });
+  return { release: g.release };
 });
 route('POST', '/api/play/again', (ctx) => {
   const { w } = needStudent(ctx);

@@ -1,4 +1,4 @@
-// Страница ученика: урок по чекпоинтам и типовые шаги (play, teacher-demo, choice, text, sort, rounds, cards, secret, factory, decisions, igra, producer, build, aicheck, workshop, arcade, playtest).
+// Страница ученика: урок по чекпоинтам и типовые шаги (play, teacher-demo, choice, text, sort, rounds, cycle, cards, secret, factory, decisions, igra, producer, build, aicheck, workshop, release, arcade, playtest).
 // Рамка игры, карточки аркады и открытие плейтеста — в games.js, поле с кубиком — в common.js.
 'use strict';
 const { el, api, toast, roll, beep, copy, valText, fieldEditor } = Lab;
@@ -662,7 +662,7 @@ STEPS.factory = ctx => {
   const count = () => { counterHost.innerHTML = ''; counterHost.append(ownCounter(visible().map(f => v.fields[f.id]))); };
   wrap.append(el('div', { class: 'formula' }, el('span', {}, 'Донор'), '×', el('span', {}, 'Твист'), '×', el('span', {}, 'Мир')));
   wrap.append(el('div', { class: 'eyebrow' }, 'Уровень'), levelSeg);
-  if (st.donorCard) wrap.append(el('div', { class: 'donor-card' }, el('div', { class: 'ico' }, '👾'), el('div', {}, el('div', { class: 'eyebrow' }, 'Донор урока · карта'), el('h3', {}, st.donorCard.title), el('p', { class: 'muted' }, st.donorCard.text))));
+  if (st.donorCard) wrap.append(el('div', { class: 'donor-card' }, el('div', { class: 'ico' }, st.donorCard.icon || '👾'), el('div', {}, el('div', { class: 'eyebrow' }, 'Донор урока · карта'), el('h3', {}, st.donorCard.title), el('p', { class: 'muted' }, st.donorCard.text))));
   const donorHost = el('div', { class: 'stack' });
   function drawDonor() {
     if (!st.donors) return;
@@ -1049,6 +1049,206 @@ STEPS.playtest = ctx => {
   return host;
 };
 
+// cycle: квиз «Собери цикл». У каждой игры четыре карточки: три — её основной цикл, четвёртая — из другой игры.
+// Собери цикл по порядку: действие → результат → награда или новая задача → и снова действие. Таймер на раунд, серия, звук,
+// клавиши 1–4 или ← → и пробел, геймпад (крестовина и A), тап. Ошибка — подсказка; время вышло — цикл показывается сам. После раунда — разбор.
+STEPS.cycle = ctx => {
+  const st = ctx.step, slots = st.slots || ['Действие', 'Результат', 'Награда или новая задача'];
+  const box = el('div', { class: 'rounds cycle', tabindex: '0', 'aria-label': 'Квиз «Собери цикл»' });
+  let order = [], i = 0, cards = [], filled = 0, cur = 0, left = 0, errs = 0, phase = 'intro', raf = 0, padPrev = {};
+  let score = 0, streak = 0, bestStreak = 0, perfect = 0, mistakes = [], slotEls = [], cardEls = [];
+  const hud = el('div', { class: 'hud' }), timer = el('div', { class: 'timer' }, el('i')), name = el('h3', { class: 'cyc-game' });
+  const ring = el('div', { class: 'cyc-ring' }), deck = el('div', { class: 'cyc-cards' }), why = el('div', { class: 'why', 'aria-live': 'polite' });
+  const nextBtn = el('button', { type: 'button', class: 'btn', hidden: true, onclick: () => press('next') }, 'Дальше ▶');
+  const shuffle = a => a.map(x => [Math.random(), x]).sort((p, q) => p[0] - q[0]).map(p => p[1]);
+  const round = () => st.rounds[order[i]];
+  function intro() {
+    phase = 'intro'; cancelAnimationFrame(raf); box.innerHTML = '';
+    const prev = ctx.value;
+    box.append(el('div', { class: 'stack', style: 'align-items:center;text-align:center;margin:auto' },
+      el('div', { class: 'cyc-ring demo' }, slots.map((s, k) => [el('div', { class: 'cyc-slot on' }, el('small', {}, `${k + 1}`), el('b', {}, s)), el('span', { class: 'cyc-arrow' }, k < slots.length - 1 ? '→' : '↻')]).flat()),
+      el('h3', {}, `${st.rounds.length} игр · ${st.seconds} секунд на каждую`),
+      el('p', { class: 'muted' }, 'Нажимай карточки по порядку цикла. Одна карточка — из другой игры: не попадись. Клавиши 1–4, стрелки и пробел, на геймпаде — крестовина и A.'),
+      prev && prev.total ? el('p', {}, `Твой результат: ${prev.perfect} из ${prev.total} без ошибок, очки ${prev.score}`) : null,
+      el('button', { class: 'btn', type: 'button', onclick: begin }, prev && prev.total ? 'Сыграть ещё раз' : '▶ Начать')));
+  }
+  function begin() {
+    order = shuffle(st.rounds.map((x, k) => k)); i = 0; score = 0; streak = 0; bestStreak = 0; perfect = 0; mistakes = [];
+    box.innerHTML = ''; box.append(hud, timer, name, ring, deck, why, el('div', { class: 'row', style: 'justify-content:center' }, nextBtn)); box.focus();
+    show();
+    let last = performance.now();
+    const loop = t => {
+      if (phase === 'intro' || phase === 'end') return;
+      const dt = (t - last) / 1000; last = t;
+      if (phase === 'ask') { left -= dt; if (left <= 0) finishRound(false); }
+      timer.firstChild.style.width = Math.max(0, 100 * left / st.seconds) + '%';
+      pollPad();
+      raf = requestAnimationFrame(loop);
+    };
+    raf = requestAnimationFrame(loop);
+  }
+  function show() {
+    if (i >= order.length) return finish();
+    const r = round();
+    phase = 'ask'; left = st.seconds; filled = 0; errs = 0; cur = 0;
+    cards = shuffle(r.cards.map((text, slot) => ({ text, slot })).concat({ text: r.decoy, slot: -1 }));
+    name.textContent = (r.icon ? r.icon + ' ' : '') + r.game;
+    ring.innerHTML = ''; ring.classList.remove('closed');
+    slotEls = slots.map((s, k) => el('div', { class: 'cyc-slot' }, el('small', {}, `${k + 1}. ${s}`), el('b', {}, '?')));
+    slotEls.forEach((e, k) => ring.append(e, el('span', { class: 'cyc-arrow' }, k < slots.length - 1 ? '→' : '↻')));
+    deck.innerHTML = '';
+    cardEls = cards.map((c, k) => el('button', { type: 'button', class: 'opt cyc-card', onclick: () => pick(k) }, el('kbd', {}, String(k + 1)), c.text));
+    deck.append(...cardEls);
+    why.textContent = ''; nextBtn.hidden = true; mark();
+    hud.innerHTML = ''; hud.append(el('span', {}, `${i + 1} / ${order.length}`), el('span', { class: 'streak' }, streak > 1 ? `серия ×${streak}` : ''), el('span', {}, `очки ${score}`));
+    box.focus({ preventScroll: true });
+  }
+  const mark = () => { cardEls.forEach((b, k) => b.classList.toggle('cur', k === cur)); slotEls.forEach((s, k) => s.classList.toggle('next', k === filled && phase === 'ask')); };
+  function pick(k) {
+    if (phase !== 'ask') return;
+    const c = cards[k];
+    if (!c || c.used) return;
+    if (c.slot === filled) {
+      c.used = true; cardEls[k].classList.add('used'); cardEls[k].disabled = true;
+      slotEls[filled].classList.add('on'); slotEls[filled].querySelector('b').textContent = c.text;
+      filled++; beep('good');
+      if (filled === slots.length) return finishRound(true);
+      cur = cards.findIndex(x => !x.used); mark();
+      return;
+    }
+    errs++; beep('bad');
+    cardEls[k].classList.remove('bad'); void cardEls[k].offsetWidth; cardEls[k].classList.add('bad');
+    why.textContent = c.slot < 0 ? `Эта карточка из другой игры${round().decoyFrom ? ': ' + round().decoyFrom : ''}. Кубик из другой игры ломает цикл.` : `Не по порядку: сейчас нужен шаг «${slots[filled]}».`;
+  }
+  function finishRound(ok) {
+    if (phase !== 'ask') return;
+    phase = 'why';
+    const r = round(), clean = ok && !errs;
+    slotEls.forEach((s, k) => { if (!s.classList.contains('on')) { s.classList.add('on', 'miss'); s.querySelector('b').textContent = r.cards[k]; } });
+    cardEls.forEach((b, k) => { b.disabled = true; if (cards[k].slot < 0) b.classList.add('decoy'); });
+    ring.classList.add('closed');
+    if (clean) { streak++; perfect++; bestStreak = Math.max(bestStreak, streak); } else { streak = 0; mistakes.push(r.game + (ok ? ` (ошибок: ${errs})` : ' (время вышло)')); }
+    const pts = ok ? Math.max(10, 100 + Math.round(left * 10) - 40 * errs) * Math.max(1, Math.min(streak, 3)) : 0;
+    score += pts; beep(clean ? 'done' : ok ? 'tick' : 'bad');
+    why.innerHTML = '';
+    why.append(el('b', {}, clean ? `Цикл собран! +${pts}. ` : ok ? `Собран с ошибками: +${pts}. ` : 'Время вышло. '), r.why || '');
+    hud.querySelector('.streak').textContent = streak > 1 ? `серия ×${streak}` : ''; hud.lastChild.textContent = `очки ${score}`;
+    nextBtn.hidden = false; nextBtn.textContent = i + 1 >= order.length ? 'Итог ▶' : 'Дальше ▶';
+    box.focus({ preventScroll: true });
+  }
+  function press(what) {
+    if (phase === 'ask') {
+      if (what === 'left' || what === 'right') { const free = cards.map((c, k) => k).filter(k => !cards[k].used); if (!free.length) return; const at = Math.max(0, free.indexOf(cur)); cur = free[(at + (what === 'right' ? 1 : free.length - 1)) % free.length]; mark(); }
+      else if (what === 'next') pick(cur);
+      else if (typeof what === 'number') pick(what);
+    } else if (phase === 'why' && what === 'next') { i++; show(); }
+  }
+  function pollPad() {
+    let pads = []; try { pads = [...navigator.getGamepads()].filter(Boolean); } catch (e) { return; }
+    const gp = pads[0]; if (!gp) return;
+    const b = k => !!(gp.buttons[k] && gp.buttons[k].pressed), ax = gp.axes[0] || 0;
+    const now = { left: b(14) || ax < -0.6, right: b(15) || ax > 0.6, next: b(0) };
+    for (const k of Object.keys(now)) { if (now[k] && !padPrev[k]) press(k); padPrev[k] = now[k]; }
+  }
+  function finish() {
+    phase = 'end'; cancelAnimationFrame(raf);
+    const v = { score, perfect, total: order.length, bestStreak, mistakes };
+    ctx.save(v, true);
+    box.innerHTML = '';
+    const result = `Квиз «${st.title}»: ${perfect} из ${order.length} циклов без ошибок, ${score} очков, серия ${bestStreak}.` + (mistakes.length ? ' Трудно было: ' + mistakes.join('; ') : '');
+    box.append(el('div', { class: 'stack', style: 'align-items:center;text-align:center;margin:auto' },
+      el('div', { class: 'eyebrow' }, 'Итог'), el('h2', {}, `${perfect} из ${order.length} без ошибок · ${score} очков`),
+      el('p', { class: 'muted' }, `Лучшая серия: ${bestStreak}`),
+      mistakes.length ? el('div', { class: 'small', style: 'text-align:left' }, el('b', {}, 'Трудно было:'), el('ul', {}, mistakes.map(m => el('li', {}, m)))) : el('p', {}, 'Все циклы — без ошибок!'),
+      el('div', { class: 'row', style: 'justify-content:center' },
+        el('button', { class: 'btn', type: 'button', onclick: begin }, 'Ещё раз'),
+        el('button', { class: 'btn ghost', type: 'button', onclick: () => copy(result) }, '⧉ Скопировать результат'))));
+  }
+  box.addEventListener('keydown', e => {
+    if (phase === 'intro' || phase === 'end') return;
+    const m = /^(?:Digit|Numpad)([1-9])$/.exec(e.code);
+    const k = m ? Number(m[1]) - 1 : { ArrowLeft: 'left', KeyA: 'left', ArrowRight: 'right', KeyD: 'right', Space: 'next', Enter: 'next', NumpadEnter: 'next' }[e.code];
+    if (k != null) { e.preventDefault(); press(k); }
+  });
+  intro();
+  return box;
+};
+
+// release: релиз модуля. Ученик выбирает лучшую игру модуля (не обязательно сегодняшнюю), проверяет её в рамке и идёт по чек-листу.
+// У пунктов с auto портал показывает, что видно из аркады (подпись донора, три решения, чужие партии, время партии, версии);
+// отмечает пункты сам ученик. «Выпустить 1.0» — метка релиза в аркаде класса, одна игра на модуль.
+const RELEASE_AUTO = {
+  donor: g => g.donor ? [true, `подпись: по мотивам механики ${g.donor}`] : [false, 'нет подписи донора — пересобери игру из Фабрики'],
+  decisions: g => { const n = ['feeling', 'honesty', 'choice'].filter(k => valText((g.decisions || {})[k])).length; return [n === 3, `в карточке решений: ${n} из 3`]; },
+  plays: g => { const d = g.discovery || {}; return [d.rounds > 0, d.rounds ? `соседи сыграли ${d.rounds} партий, «ещё раз» — ${d.again}, рекорд класса ${g.record ? g.record.score : 0}` : 'в игру ещё не играл никто, кроме тебя']; },
+  time: g => { const d = g.discovery || {}; const avg = d.rounds ? Math.round(d.time / d.rounds) : 0; return [avg >= 60, d.rounds ? `соседи играли в среднем ${avg} с за партию` : 'нет чужих партий — проверь с соседом']; },
+  versions: g => [g.versions > 1, `версий: ${g.versions}${g.versions > 1 ? ' — были правки' : ' — правок ещё не было'}`],
+};
+STEPS.release = ctx => {
+  const st = ctx.step;
+  let v = Object.assign({ game: null, checks: {}, note: { text: '' }, released: null }, ctx.value);
+  const host = el('div', { class: 'stack' });
+  let data = null, cur = null, waiting = false;
+  async function load() {
+    try { data = await api('/api/arcade'); } catch (e) { host.innerHTML = ''; host.append(el('p', { class: 'err' }, e.message)); return; }
+    draw();
+  }
+  function draw() {
+    if (cur) { cur.destroy(); cur = null; }
+    host.innerHTML = '';
+    const games = data.mine.filter(c => c.lesson && c.lesson.module === S.lesson.module);
+    const inArcade = data.games.filter(c => c.lesson && c.lesson.module === S.lesson.module && c.nick === S.me.nick).length;
+    waiting = !games.length;
+    if (!games.length) {
+      host.append(el('div', { class: 'locked-msg card' }, el('h3', {}, 'Пока нет игр этого модуля'),
+        el('p', { style: 'margin-top:6px' }, 'Собери игру в шаге «Сборка» — она появится здесь сама.'),
+        el('div', { style: 'margin-top:12px' }, el('button', { class: 'btn ghost small', type: 'button', onclick: load }, '↻ Проверить'))));
+      return;
+    }
+    if (!games.some(g => g.id === v.game)) v.game = (games.find(g => g.release) || games[games.length - 1]).id;
+    const g = games.find(x => x.id === v.game);
+    const seg = el('div', { class: 'seg', role: 'radiogroup', 'aria-label': 'Игра на релиз' });
+    games.forEach(x => seg.append(el('button', { type: 'button', class: 'opt' + (x.id === g.id ? ' on' : ''), 'aria-pressed': String(x.id === g.id), 'data-game': x.id, onclick: () => {
+      if (x.id === v.game) return;
+      v.game = x.id; v.checks = {}; ctx.save(v); beep('tick'); draw();
+    } }, el('b', {}, x.title), el('div', { class: 'small muted' }, `урок ${x.lesson.number} · версия ${x.version}` + (x.release ? ' · 1.0' : '')))));
+    host.append(el('p', { class: 'small' }, el('b', {}, `Твоих игр модуля ${S.lesson.module} в аркаде: ${inArcade} из ${st.goal || 4}. `), 'Выбери лучшую — не обязательно сегодняшнюю.'), seg);
+    const h = cur = Games.frame({ src: () => `/play/${g.id}/${g.version}`, key: () => 'game:' + g.id, info: () => ({ version: g.version }), label: 'Проверить игру перед релизом' });
+    host.append(Games.card(g, { compact: true }), h.box, Games.bar(h));
+    const list = el('div', { class: 'checklist' });
+    st.checklist.forEach(item => {
+      const auto = item.auto && RELEASE_AUTO[item.auto] ? RELEASE_AUTO[item.auto](g) : null;
+      const on = !!v.checks[item.id];
+      const b = el('button', { type: 'button', class: 'check' + (on ? ' on' : ''), 'aria-pressed': String(on), 'data-check': item.id, onclick: () => {
+        v.checks[item.id] = !v.checks[item.id]; ctx.save(v); beep('tick');
+        b.classList.toggle('on', v.checks[item.id]); b.setAttribute('aria-pressed', String(v.checks[item.id])); b.querySelector('.box').textContent = v.checks[item.id] ? '✓' : '';
+      } }, el('span', { class: 'box' }, on ? '✓' : ''),
+      el('span', { class: 'stack', style: 'gap:2px' }, el('b', {}, item.label), item.hint ? el('span', { class: 'small muted' }, item.hint) : null,
+        auto ? el('span', { class: 'small ' + (auto[0] ? 'ok-text' : 'warn-text') }, (auto[0] ? '✓ ' : '⚠ ') + auto[1]) : null));
+      list.append(b);
+    });
+    host.append(el('div', { class: 'eyebrow' }, 'Чек-лист версии 1.0'), list,
+      fieldEditor({ id: 'note', label: 'Что изменено после плейтестов', hint: 'Запись в журнал релиза: что поменял и почему', deck: st.deck }, v.note, nv => { v.note = nv; ctx.save(v); }, { idPrefix: st.id }));
+    const go = el('button', { class: 'btn', type: 'button' }, g.release ? '↻ Выпустить заново' : '🚀 Выпустить версию 1.0');
+    go.addEventListener('click', async () => {
+      const missing = st.checklist.filter(item => !v.checks[item.id]);
+      if (missing.length) { toast('Не отмечено: ' + missing.map(x => x.label).join('; ')); return; }
+      if (!valText(v.note)) { toast('Напиши, что изменил после плейтестов'); return; }
+      go.disabled = true;
+      try {
+        const r = await api('/api/release', { game: g.id, checks: v.checks, note: v.note });
+        v.released = { game: g.id, title: g.title, version: r.release.version, lesson: g.lesson.number };
+        ctx.save(v, true, true); beep('done'); toast(`«${g.title}» вышла версией 1.0!`, 'ok'); load();
+      } catch (e) { toast(e.message, 'err'); go.disabled = false; }
+    });
+    host.append(el('div', { class: 'row' }, go, g.release ? el('span', { class: 'tag ok' }, `версия 1.0 — это v${g.release.version} от урока ${g.lesson.number}`) : null));
+  }
+  S.hooks.push(kind => { if (kind === 'arcade' && waiting) load(); });
+  host.append(el('p', { class: 'muted' }, 'Загружаем твои игры…'));
+  load();
+  return host;
+};
+
 /* =================== итог чекпоинта для чата =================== */
 function stepSummary(step) {
   const a = ans(step.id), v = a.value || {};
@@ -1060,6 +1260,8 @@ function stepSummary(step) {
     case 'teacher-demo': return `партий ${v.rounds || 0}, лучший счёт ${v.best || 0}`;
     case 'rounds': return v.total ? `верно ${v.correct} из ${v.total}, очки ${v.score}, серия ${v.bestStreak}` + ((v.mistakes || []).length ? '; ошибки: ' + v.mistakes.join('; ') : '') : 'не пройден';
     case 'choice': return [(v.selected || []).join('; '), valText(v.own) ? 'свои слова: ' + f(v.own) : ''].filter(Boolean).join(' · ') || '—';
+    case 'cycle': return v.total ? `без ошибок ${v.perfect} из ${v.total}, очки ${v.score}, серия ${v.bestStreak}` + ((v.mistakes || []).length ? '; трудно: ' + v.mistakes.join('; ') : '') : 'не пройден';
+    case 'release': return v.released ? `выпущена версия 1.0: «${v.released.title}» (урок ${v.released.lesson}, v${v.released.version}); что изменено: ${f(v.note)}` : `не выпущена; отмечено пунктов: ${Object.values(v.checks || {}).filter(Boolean).length}`;
     case 'sort': return v.total ? `верно ${v.correct} из ${v.total}, очки ${v.score}, серия ${v.bestStreak}` + ((v.mistakes || []).length ? '; ошибки: ' + v.mistakes.join('; ') : '') : 'не пройден';
     case 'text': return a.done ? 'прочитано' : 'не прочитано';
     case 'factory': return [`уровень: ${(step.levels.find(l => l.id === v.level) || {}).label || '—'}`].concat(step.fields.filter(x => valText((v.fields || {})[x.id])).map(x => `${x.label}: ${f(v.fields[x.id])}`)).join('\n');

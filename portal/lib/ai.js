@@ -6,7 +6,7 @@ const path = require('path');
 const vm = require('vm');
 const crypto = require('crypto');
 const store = require('./store');
-const { systemPrompt, userTemplate } = require('../tools/build-prompt');
+const { systemPrompt, userTemplate, lessonSample } = require('../tools/build-prompt');
 
 const PORTAL = path.resolve(__dirname, '..');
 const CONFIG_FILE = process.env.LAB_CONFIG ? path.resolve(process.env.LAB_CONFIG) : path.join(PORTAL, 'config.json');
@@ -166,7 +166,7 @@ function parseProducer(text) {
   };
 }
 async function producer(plan, lesson, who) {
-  if (demo()) return demoProducer(plan, who);
+  if (demo()) return demoProducer(plan, who, lesson);
   const model = models().text;
   const t0 = Date.now();
   try {
@@ -180,13 +180,15 @@ async function producer(plan, lesson, who) {
     return result;
   } catch (e) { log(Object.assign({ kind: 'продюсер', model, ms: Date.now() - t0, ok: false, error: e.message }, meta(who))); throw e; }
 }
-function demoProducer(plan, who) {
+// demoForks в сценарии урока — развилки под донора урока, чтобы демо-продюсер не приносил волну пришельцев в «Тетрис»
+function demoProducer(plan, who, lesson) {
   const findings = [], forks = [];
   const all = [plan.igra.i, plan.igra.g, plan.igra.r, plan.igra.a].join(' ');
   if (plan.diceCount >= 3) findings.push({ kind: 'кубик', text: `Кубику оставлено полей: ${plan.diceCount}. Скажи хотя бы одно из них своими словами — так игра станет твоей.` });
   if (!/кнопк|пробел|стрелк|\bA\b|\bB\b|←|→|клавиш/i.test(plan.igra.g)) findings.push({ kind: 'без кнопки', text: 'В «Глаголе и кнопках» не видно, какой кнопкой игрок действует. Назови кнопку для каждого действия.' });
   if (!/рекорд|вдвоём|второй игрок|вызов|зерн|соревн/i.test(all)) forks.push({ question: 'Как с этой игрой соревноваться?', options: ['Рекорд класса: побей рекорд автора', 'Вдвоём на одном экране', 'Вызов на зерне: у всех одна и та же волна'] });
-  forks.push({ question: 'Как растёт напряжение к концу волны?', options: ['Волна ускоряется с каждым сбитым, как в доноре', 'Чем меньше врагов, тем чаще они стреляют', 'Каждая новая волна начинается ниже'] });
+  if (lesson && lesson.demoForks) forks.push(...lesson.demoForks);
+  else forks.push({ question: 'Как растёт напряжение к концу волны?', options: ['Волна ускоряется с каждым сбитым, как в доноре', 'Чем меньше врагов, тем чаще они стреляют', 'Каждая новая волна начинается ниже'] });
   log(Object.assign({ kind: 'продюсер', model: 'демо', ms: 0, ok: true, demo: true }, meta(who)));
   return { praise: 'Демо-режим: продюсер без модели проверяет только кнопки, кубики и крючок.', findings, forks };
 }
@@ -206,7 +208,7 @@ function newGameMessage(plan) {
 // model — другая модель для сравнения на том же замысле (иначе — модель из панели учителя). В ответе — время и рубли всех попыток.
 async function program(kind, firstUser, who, onProgress, model) {
   model = model || models().code;
-  const system = systemPrompt();
+  const system = systemPrompt({ lesson: who && who.lesson }); // второй образец — ремейк урока (sample в сценарии)
   let messages = [{ role: 'system', content: system }, { role: 'user', content: firstUser }];
   const attempts = [];
   const total = () => ({ ms: attempts.reduce((n, e) => n + (e.ms || 0), 0), rub: attempts.some(e => e.rub != null) ? Math.round(attempts.reduce((n, e) => n + (e.rub || 0), 0) * 100) / 100 : null });
@@ -267,9 +269,10 @@ function demoShared(wow, who) {
   return { code, model: 'демо', attempts: 1, warnings: [], demo: true, knob: fb.knob, fallback: true };
 }
 
-// Демо: вместо модели — образец урока с названием и решениями ученика.
+// Демо: вместо модели — образец урока с названием и решениями ученика (ремейк из sample сценария, иначе «НЛО в станице»).
 function demoGame(plan, who, kind) {
-  let code = fs.readFileSync(path.join(PORTAL, 'games', 'nlo-v-stanice.js'), 'utf8');
+  const sample = lessonSample(who && who.lesson);
+  let code = fs.readFileSync(path.join(PORTAL, sample ? sample.file : 'games/nlo-v-stanice.js'), 'utf8');
   const q = s => JSON.stringify(String(s || ''));
   code = code.replace(/title: '[^']*'/, 'title: ' + q(plan.title || 'Моя игра'))
     .replace(/subtitle: '[^']*'/, 'subtitle: ' + q('Демо-режим: вместо Qwen — образец урока с твоим названием. ' + (plan.igra.i || '')))

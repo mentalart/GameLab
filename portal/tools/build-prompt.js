@@ -1,7 +1,9 @@
 #!/usr/bin/env node
 // Собирает системный промпт для Qwen из portal/ai/game-prompt.md:
 // подставляет версию Babylon и код образцов. Так же делает портал.
-// Запуск: node portal/tools/build-prompt.js [файл]  — без файла печатает промпт в консоль.
+// Второй образец зависит от урока: поле sample сценария ({ file, about }), без него — «Камни мудреца».
+// Запуск: node portal/tools/build-prompt.js [файл] [--lesson urok-04]  — без файла печатает промпт в консоль.
+//         node portal/tools/build-prompt.js --sizes  — оценка размера промпта для каждого урока (потолок 30 тысяч токенов).
 //         node portal/tools/build-prompt.js --template new|change|fix  — шаблон сообщения ученика.
 'use strict';
 const fs = require('fs');
@@ -9,6 +11,8 @@ const path = require('path');
 
 const PORTAL = path.resolve(__dirname, '..');
 const read = p => fs.readFileSync(path.join(PORTAL, p), 'utf8');
+const LIMIT = 30000; // токенов: потолок из журнала курса (17.10.2026)
+const tokens = text => Math.round(text.length / 3); // грубая оценка, как в журнале: три знака на токен
 
 function between(text, start, end) {
   const a = text.indexOf(start), b = text.indexOf(end);
@@ -22,12 +26,30 @@ function babylonVersion() {
   return m[1];
 }
 
-// образцы механик для ИИ: метка в game-prompt.md → ремейк-донор урока
+// образцы механик для ИИ: образец 1 — всегда «НЛО в станице», образец 2 — ремейк урока (sample в сценарии) или «Камни мудреца»
 const SAMPLES = { '{{ПРИМЕР}}': 'games/nlo-v-stanice.js', '{{ПРИМЕР2}}': 'games/kamni-mudreca.js' };
+const SAMPLE2 = {
+  file: SAMPLES['{{ПРИМЕР2}}'],
+  about: 'ремейк-донор урока 2 по мотивам крестиков-ноликов — пошаговая игра на сетке\nКурсор по клеткам, ход бота перебором с ограничением глубины, матч из нескольких партий, режим «вдвоём за одним экраном», правило-секрет ручкой.',
+};
 
-function systemPrompt(example = SAMPLES['{{ПРИМЕР}}']) {
+// образец урока по id сценария (portal/lessons/<id>.js); уроки-проверки и уроки без sample — образец по умолчанию
+function lessonSample(lessonId) {
+  if (!lessonId || !/^[\w-]+$/.test(lessonId)) return null;
+  try {
+    const les = require(path.join(PORTAL, 'lessons', lessonId + '.js'));
+    return les.sample && les.sample.file ? les.sample : null;
+  } catch (e) { return null; }
+}
+
+// opts: { lesson } — id урока, { sample } — { file, about }; строка — старый вызов: файл образца 1
+function systemPrompt(opts = {}) {
+  if (typeof opts === 'string') opts = { example: opts };
+  const second = opts.sample || lessonSample(opts.lesson) || SAMPLE2;
   let text = between(read('ai/game-prompt.md'), '<!-- prompt:start -->', '<!-- prompt:end -->').split('{{BABYLON}}').join(babylonVersion());
-  for (const [mark, file] of Object.entries(Object.assign({}, SAMPLES, { '{{ПРИМЕР}}': example }))) text = text.split(mark).join(read(file).trim());
+  text = text.split('{{ПРИМЕР2_ЧТО}}').join(second.about || 'ремейк-донор урока');
+  const files = { '{{ПРИМЕР}}': opts.example || SAMPLES['{{ПРИМЕР}}'], '{{ПРИМЕР2}}': second.file };
+  for (const [mark, file] of Object.entries(files)) text = text.split(mark).join(read(file).trim());
   return text;
 }
 
@@ -35,16 +57,36 @@ function userTemplate(name) {
   return between(read('ai/game-prompt.md'), `<!-- user:${name}:start -->`, `<!-- user:${name}:end -->`);
 }
 
-module.exports = { systemPrompt, userTemplate, babylonVersion, SAMPLES };
+// размер промпта для каждого урока из portal/lessons/
+function sizes() {
+  return fs.readdirSync(path.join(PORTAL, 'lessons')).filter(f => /^urok-\d+\.js$/.test(f)).sort().map(f => {
+    const id = f.replace(/\.js$/, ''), s = lessonSample(id), text = systemPrompt({ lesson: id });
+    return { lesson: id, sample: (s || SAMPLE2).file, chars: text.length, tokens: tokens(text) };
+  });
+}
+
+module.exports = { systemPrompt, userTemplate, babylonVersion, lessonSample, sizes, tokens, SAMPLES, LIMIT };
 
 if (require.main === module) {
   const args = process.argv.slice(2);
   const ti = args.indexOf('--template');
   if (ti >= 0) { console.log(userTemplate(args[ti + 1] || 'new')); process.exit(0); }
-  const text = systemPrompt();
-  if (args[0]) {
-    fs.writeFileSync(args[0], text);
-    console.error(`Промпт записан в ${args[0]}: ${text.length} символов, примерно ${Math.round(text.length / 3)} токенов`);
+  if (args.includes('--sizes')) {
+    let ok = true;
+    for (const r of sizes()) {
+      const over = r.tokens > LIMIT; ok = ok && !over;
+      console.log(`${over ? '✗' : '✓'} ${r.lesson}: образец 2 — ${r.sample}, ${r.chars} знаков, примерно ${r.tokens} токенов`);
+    }
+    console.log(ok ? `Все промпты не больше ${LIMIT} токенов` : `Есть промпты больше ${LIMIT} токенов`);
+    process.exit(ok ? 0 : 1);
+  }
+  const li = args.indexOf('--lesson');
+  const lesson = li >= 0 ? args[li + 1] : null;
+  const file = args.find((a, i) => !a.startsWith('--') && !(li >= 0 && i === li + 1));
+  const text = systemPrompt({ lesson });
+  if (file) {
+    fs.writeFileSync(file, text);
+    console.error(`Промпт записан в ${file}: ${text.length} символов, примерно ${tokens(text)} токенов`);
   } else {
     console.log(text);
   }

@@ -12,7 +12,7 @@
   'use strict';
   const B = window.BABYLON;
   const $ = s => document.querySelector(s);
-  const SHELL_VERSION = '0.1';
+  const SHELL_VERSION = '0.2';
 
   /* ---------------- хранилище и связь с порталом ---------------- */
   const store = {
@@ -100,8 +100,10 @@
     ArrowLeft: [1, 'left'], ArrowRight: [1, 'right'], ArrowUp: [1, 'up'], ArrowDown: [1, 'down'], KeyK: [1, 'a'], KeyL: [1, 'b'],
   };
   function usesMove4() { return !!(G && (G.controls || []).some(c => c.input === 'move4')); }
+  // вдвоём: players: 2 всегда или ручка из GAME.duo, когда она ≥ 1 (например, пресет «Вдвоём» в игре на одного)
+  function duo() { return !!G && (G.players === 2 || (!!G.duo && Number(cfg[G.duo]) >= 1)); }
   function keyTarget(code) {
-    if (G && G.players === 2) return KEYS_DUO[code] || null;
+    if (duo()) return KEYS_DUO[code] || null;
     let k = KEYS_SOLO[code];
     if (!k) return null;
     if (!usesMove4() && (code === 'ArrowUp' || code === 'KeyW')) k = 'a'; // в играх «влево-вправо» стрелка вверх — главная кнопка
@@ -113,13 +115,13 @@
     let list; try { list = [...navigator.getGamepads()].filter(Boolean); } catch (e) { return; }
     let any = false;
     list.forEach((gp, n) => {
-      const who = G && G.players === 2 ? Math.min(n, 1) : 0;
+      const who = duo() ? Math.min(n, 1) : 0;
       const b = gp.buttons.map(x => !!(x && x.pressed)), ax = gp.axes[0] || 0, ay = gp.axes[1] || 0;
       const h = pad[who];
       h.left = h.left || ax < -0.4 || b[14]; h.right = h.right || ax > 0.4 || b[15];
       h.up = h.up || ay < -0.4 || b[12]; h.down = h.down || ay > 0.4 || b[13];
       h.a = h.a || b[0] || b[7]; h.b = h.b || b[1] || b[2] || b[6];
-      if (!usesMove4() && G && G.players !== 2 && b[12]) h.a = true;
+      if (!usesMove4() && !duo() && b[12]) h.a = true;
       if (Math.hypot(ax, ay) > 0.25) { padAx[who][0] = ax; padAx[who][1] = -ay; }
       if (b.some(Boolean) || Math.hypot(ax, ay) > 0.4) any = true;
       if (n === 0) {
@@ -612,18 +614,18 @@
   };
   function labels() {
     if (!G) return;
-    const duo = G.players === 2;
+    const two = duo();
     const ctl = (G.controls || []).map(c => {
       let keys;
       if (padMode) keys = CTRL_KEYS.pad[c.input] || '';
-      else if (duo) keys = { move: '<kbd>A</kbd><kbd>D</kbd> / <kbd>←</kbd><kbd>→</kbd>', move4: '<kbd>WASD</kbd> / стрелки', a: '<kbd>F</kbd> / <kbd>K</kbd>', b: '<kbd>G</kbd> / <kbd>L</kbd>' }[c.input] || '';
+      else if (two) keys = { move: '<kbd>A</kbd><kbd>D</kbd> / <kbd>←</kbd><kbd>→</kbd>', move4: '<kbd>WASD</kbd> / стрелки', a: '<kbd>F</kbd> / <kbd>K</kbd>', b: '<kbd>G</kbd> / <kbd>L</kbd>' }[c.input] || '';
       else keys = CTRL_KEYS.solo[c.input] || '';
       return `<div>${keys} ${esc(c.text || '')}</div>`;
     }).join('');
     $('#controls').innerHTML = ctl;
     $('#padHint').textContent = padMode
-      ? (duo ? 'Геймпад 1 — игрок 1, геймпад 2 — игрок 2. Клавиатура тоже работает.' : 'Геймпад подключён: удары отдаются вибрацией. Клавиатура тоже работает.')
-      : (duo ? 'Игрок 1 — левая половина клавиатуры, игрок 2 — стрелки. Есть геймпады? Нажми на них любую кнопку.' : 'Есть геймпад? Нажми на нём любую кнопку.');
+      ? (two ? 'Геймпад 1 — игрок 1, геймпад 2 — игрок 2. Клавиатура тоже работает.' : 'Геймпад подключён: удары отдаются вибрацией. Клавиатура тоже работает.')
+      : (two ? 'Игрок 1 — левая половина клавиатуры, игрок 2 — стрелки. Есть геймпады? Нажми на них любую кнопку.' : 'Есть геймпад? Нажми на нём любую кнопку.');
     $('#startBtn').textContent = padMode ? 'Играть · A' : 'Играть · пробел';
     $('#againBtn').textContent = padMode ? 'Ещё раз · A' : 'Ещё раз · пробел';
     $('#resumeBtn').textContent = padMode ? 'Продолжить · Start' : 'Продолжить · P';
@@ -638,7 +640,7 @@
     const dec = (G.decisions || []).filter(Boolean);
     $('#decBox').hidden = !dec.length;
     $('#decisions').innerHTML = dec.map(d => `<li>${esc(d)}</li>`).join('');
-    lab.players = G.players === 2 ? 2 : 1;
+    lab.players = duo() ? 2 : 1;
     lab.best = Number(store.get(bestKey())) || 0;
     labels(); updateMuteBtn();
   }
@@ -668,6 +670,8 @@
     hudLines = {}; shakeAmp = 0; flashA = 0; hitstopT = 0; camShakeOff = null;
     resetTele();
     lab.round = ++session.rounds;
+    const two = duo() ? 2 : 1; // ручка duo могла переключить игру на двоих
+    if (two !== lab.players) { lab.players = two; for (const h of kb.concat(kbTap)) for (const k in h) h[k] = false; labels(); }
     safe(() => G.start(lab, scene), 'start');
     freshPreview = preview;
   }

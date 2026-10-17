@@ -122,7 +122,8 @@ const Games = (() => {
   // карточка: обложка, название, автор, донор, «Что решил я», версия, рекорд класса; actions — кнопки внизу
   function card(c, { actions, compact, extra } = {}) {
     const dec = DEC.filter(([k]) => valText((c.decisions || {})[k]));
-    const tags = [c.hidden ? el('span', { class: 'tag' }, 'скрыта автором') : null, c.mine ? el('span', { class: 'tag own' }, 'моя') : null].filter(Boolean);
+    const tags = [c.release ? el('span', { class: 'tag ok release', title: 'Релиз модуля: ' + (c.release.note || '') }, `версия 1.0 · релиз (v${c.release.version})`) : null,
+      c.hidden ? el('span', { class: 'tag' }, 'скрыта автором') : null, c.mine ? el('span', { class: 'tag own' }, 'моя') : null].filter(Boolean);
     return el('article', { class: 'acard' + (compact ? ' compact' : '') + (c.hidden ? ' hidden-game' : ''), 'data-game': c.id },
       compact ? null : cover(c),
       el('div', { class: 'stack', style: 'gap:6px' },

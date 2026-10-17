@@ -12,9 +12,11 @@ const path = require('path');
 const SAMPLE = fs.readFileSync(path.join(__dirname, '..', 'games', 'nlo-v-stanice.js'), 'utf8');
 const BROKEN = SAMPLE.replace('  update(lab, dt) {', '  update(lab, dt) {\n    if (lab.t > 1.2) lab.state.nothing.position.x = 1; // подставная ошибка для проверки автопочинки');
 
+const last = {}; // последний системный промпт программиста — e2e проверяет, какой образец урока ушёл модели
 function answer(messages, model) {
   const sys = (messages.find(m => m.role === 'system') || {}).content || '';
   const user = (messages.filter(m => m.role === 'user').pop() || {}).content || '';
+  if (!/продюсер/i.test(sys)) last.system = sys;
   if (/продюсер/i.test(sys)) {
     return JSON.stringify({ praise: 'Понятная идея и честное предупреждение перед выстрелом.', findings: [{ kind: 'нет крючка', text: 'Непонятно, как соревноваться с друзьями.' }], forks: [{ question: 'Как соревноваться?', options: ['Рекорд класса', 'Вдвоём на одном экране'] }] });
   }
@@ -63,5 +65,5 @@ function start(port = 0) {
   });
   return new Promise(r => srv.listen(port, '127.0.0.1', () => r(srv)));
 }
-module.exports = { start };
+module.exports = { start, last };
 if (require.main === module) start(Number(process.argv[2]) || 8090).then(s => console.log('Подставной ИИ: http://127.0.0.1:' + s.address().port + '/v1'));
