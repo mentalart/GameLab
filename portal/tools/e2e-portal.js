@@ -395,6 +395,13 @@ async function projectorWow(pj, teacher, shot) {
   const text = await pj.textContent('#pj-demo');
   check('Проектор: игра класса роздана, секрета на экране нет', /Игра у всех/.test(text) && !lesson1.wow.secrets.some(x => text.includes(x.title)));
   await shot(pj, 'p2-wow');
+  // туда и обратно по вкладкам: на проекторе по-прежнему одна рамка игры класса
+  await pj.click('.pj-tabs >> text=Урок');
+  await pj.click('#demoTab');
+  await pj.waitForSelector('#pjWowGame iframe, #pjWowGame .veil', { timeout: 8000 });
+  await sleep(500);
+  const boxes = await pj.$$eval('#pjWowGame .gamebox', b => b.length);
+  check('Проектор: после смены вкладок одна рамка игры', boxes === 1, 'рамок: ' + boxes);
   await pj.click('.pj-tabs >> text=Урок');
 }
 

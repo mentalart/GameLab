@@ -39,7 +39,10 @@ async function refresh() {
 function showTab() {
   document.querySelectorAll('.pj-tabs button').forEach(b => b.classList.toggle('on', b.dataset.tab === P.tab));
   $('#pj-lesson').hidden = P.tab !== 'lesson'; $('#pj-demo').hidden = P.tab !== 'demo';
-  if (P.tab !== 'demo' && (P.tf || P.wFrame)) { Games.stopAll(); P.tf = null; P.frameFor = null; P.wFrame = null; P.wKey = null; }
+  if (P.tab !== 'demo' && (P.tf || P.wFrame)) {
+    Games.stopAll(); P.tf = null; P.frameFor = null; P.wFrame = null; P.wKey = null;
+    const gh = $('#pjWowGame'); if (gh) gh.innerHTML = ''; // остановленная рамка не остаётся на странице второй игрой
+  }
 }
 
 /* ---------- урок: код, чекпоинт, таймер, кто закончил шаги ---------- */
@@ -279,13 +282,14 @@ function drawWow(prev) {
   if (!gkey || P.wFrame && P.wFrame.gkey !== gkey) { if (P.wFrame) { P.wFrame.h.destroy(); P.wFrame = null; } gh.innerHTML = ''; }
   if (!gkey) { gh.append(el('p', { class: 'pj-sub', id: 'pjWowStatus' }, status)); return; }
   if (!P.wFrame) {
+    gh.innerHTML = ''; // после вкладки «Урок» рамка остановлена, но её коробка ещё на странице — иначе на проекторе две игры
     const g = r.game;
     const h = Games.frame({ src: () => `/play/${g.id}/${g.version}`, key: () => 'wow:' + g.id, label: 'Играть в игру класса', score: false,
       onError: err => h.message(el('b', {}, 'Игра упала: ' + (err.message || 'ошибка') + '. Соберите заново или возьмите запасную игру в панели учителя.')) });
     P.wFrame = { h, gkey };
     gh.append(el('p', { class: 'pj-sub', id: 'pjWowStatus' }), el('h2', {}, g.title || 'Игра класса'), h.box, Games.bar(h, el('span', {})));
   }
-  $('#pjWowStatus').textContent = status;
+  const ws = $('#pjWowStatus'); if (ws) ws.textContent = status;
 }
 async function wowDraw(card) {
   try { await api('/api/teacher/wow/draw', { code: P.code, card }); await refreshWow(); } catch (e) { toast(e.message, 'err'); }
