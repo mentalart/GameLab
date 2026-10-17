@@ -86,7 +86,7 @@ const Lab = (() => {
     let v = Object.assign({ text: '', dice: false }, typeof value === 'object' ? value : { text: value || '' });
     const tagHost = el('span');
     const setTag = () => { tagHost.innerHTML = ''; const t = fieldTag(v); if (t) tagHost.append(t); };
-    const ta = el(opts.single ? 'input' : 'textarea', { type: opts.single ? 'text' : null, rows: opts.rows || 2, id: 'f-' + (opts.idPrefix || '') + f.id, placeholder: f.placeholder || 'Своими словами или брось кубик' });
+    const ta = el(opts.single ? 'input' : 'textarea', { type: opts.single ? 'text' : null, rows: opts.rows || 2, id: 'f-' + (opts.idPrefix || '') + f.id, placeholder: f.placeholder || (f.deck && f.deck.length ? 'Своими словами или брось кубик' : 'Своими словами') }); // без колоды кубика нет
     ta.value = v.text;
     ta.addEventListener('input', () => { v = { text: ta.value, dice: false }; setTag(); onChange(v); });
     const kids = [ta];

@@ -23,7 +23,7 @@ function babylonVersion() {
 }
 
 // образцы механик для ИИ: метка в game-prompt.md → ремейк-донор урока
-const SAMPLES = { '{{ПРИМЕР}}': 'games/tarelki-nad-aulom.js', '{{ПРИМЕР2}}': 'games/kamni-mudreca.js' };
+const SAMPLES = { '{{ПРИМЕР}}': 'games/nlo-v-stanice.js', '{{ПРИМЕР2}}': 'games/kamni-mudreca.js' };
 
 function systemPrompt(example = SAMPLES['{{ПРИМЕР}}']) {
   let text = between(read('ai/game-prompt.md'), '<!-- prompt:start -->', '<!-- prompt:end -->').split('{{BABYLON}}').join(babylonVersion());

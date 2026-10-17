@@ -269,7 +269,7 @@ function demoShared(wow, who) {
 
 // Демо: вместо модели — образец урока с названием и решениями ученика.
 function demoGame(plan, who, kind) {
-  let code = fs.readFileSync(path.join(PORTAL, 'games', 'tarelki-nad-aulom.js'), 'utf8');
+  let code = fs.readFileSync(path.join(PORTAL, 'games', 'nlo-v-stanice.js'), 'utf8');
   const q = s => JSON.stringify(String(s || ''));
   code = code.replace(/title: '[^']*'/, 'title: ' + q(plan.title || 'Моя игра'))
     .replace(/subtitle: '[^']*'/, 'subtitle: ' + q('Демо-режим: вместо Qwen — образец урока с твоим названием. ' + (plan.igra.i || '')))

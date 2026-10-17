@@ -166,7 +166,7 @@
   const engine = new B.Engine(canvas, true, { stencil: true, powerPreference: 'high-performance' }, true);
   let G = null, state = 'loading', paused = false, errored = false, freshPreview = false, havok = null;
   let scene = null, cam = null, camKind = 'iso', camFit = null, sg = null, glow = null;
-  let sps = null, parts = [], popups = [], warns = [], pulses = [], follow = null;
+  let sps = null, parts = [], popups = [], warns = [], pulses = [], whites = [], follow = null;
   let shakeAmp = 0, flashA = 0, hitstopT = 0, camShakeOff = null, matCache = {};
   const cfg = {}, DEFAULTS = {}, META = {};
   const tele = { presses: {}, hold: {}, hurts: 0, custom: {}, stats: {} };
@@ -210,6 +210,7 @@
     burst(at, o = {}) { burst(posOf(at), o); },
     popup(at, text, color = '#ffffff', size = 18) { popup(at, text, color, size); },
     pulse(mesh, k = 1.3, sec = 0.14) { if (mesh && mesh.scaling) pulses.push({ mesh, base: mesh.scaling.clone(), k, t: 0, dur: sec }); },
+    whiten(mesh, sec = 0.08, color = '#ffffff') { if (mesh) whiten(mesh, sec, color); },
     warn(at, radius = 1, sec = 0.6, color = '#ff4d5e') { return warn(posOf(at), radius, sec, color); },
     vibrate: rumble,
 
@@ -267,7 +268,7 @@
 
   /* ---------------- сцена, свет, камера ---------------- */
   function disposeScene() {
-    parts = []; popups.forEach(p => p.el.remove()); popups = []; warns = []; pulses = []; follow = null; matCache = {};
+    parts = []; popups.forEach(p => p.el.remove()); popups = []; warns = []; pulses = []; whites = []; follow = null; matCache = {};
     if (scene) { try { scene.dispose(); } catch (e) { /* уже освобождена */ } }
     scene = null; sg = null; glow = null; sps = null; cam = null;
   }
@@ -352,22 +353,25 @@
     const m = new B.StandardMaterial('лаб:частицы', scene);
     m.disableLighting = true; m.emissiveColor = new B.Color3(1, 1, 1);
     mesh.material = m;
-    for (const p of sps.particles) { p.isVisible = false; p.alive = false; }
+    // своё поле busy, а не alive: alive = false у Babylon выключает частицу из setParticles, и все 600 кубиков висели белым квадратом в центре сцены
+    for (const p of sps.particles) { p.isVisible = false; p.busy = false; }
     sps.setParticles();
   }
   const toArr = c => Array.isArray(c) ? c : [c || '#ffffff'];
   function burst(pos, o = {}) {
     if (!sps) return;
     const n = Math.round((o.count == null ? 16 : o.count) * cfg.juice), cols = toArr(o.colors || o.color);
+    const dir = o.dir ? posOf(o.dir).clone().normalize() : null; // искры летят по направлению удара: сквозь врага
     let made = 0;
     for (const p of sps.particles) {
       if (made >= n) break;
-      if (p.alive) continue;
+      if (p.busy) continue;
       const a = rngFx() * Math.PI * 2, e = (rngFx() - 0.3) * Math.PI;
       const sp = (o.speed || 6) * (0.3 + rngFx() * 0.9);
-      p.alive = true; p.isVisible = true;
+      p.busy = true; p.isVisible = true;
       p.position.copyFrom(pos);
       p.vel = new B.Vector3(Math.cos(a) * Math.cos(e) * sp, Math.abs(Math.sin(e)) * sp + (o.up || 0), Math.sin(a) * Math.cos(e) * sp);
+      if (dir) p.vel.scaleInPlace(0.4).addInPlace(dir.scale(sp * 1.3));
       p.life = p.max = (o.life || 0.6) * (0.5 + rngFx() * 0.7);
       p.size = (o.size || 0.22) * (0.6 + rngFx() * 0.8);
       p.grav = o.gravity == null ? 9 : o.gravity;
@@ -382,10 +386,10 @@
     if (!sps) return;
     let any = false;
     for (const p of sps.particles) {
-      if (!p.alive) continue;
+      if (!p.busy) continue;
       any = true;
       p.life -= dt;
-      if (p.life <= 0) { p.alive = false; p.isVisible = false; continue; }
+      if (p.life <= 0) { p.busy = false; p.isVisible = false; continue; }
       p.vel.y -= p.grav * dt;
       p.vel.scaleInPlace(Math.max(0, 1 - 2.2 * dt));
       p.position.addInPlace(p.vel.scale(dt));
@@ -441,6 +445,20 @@
       h.fill.scaling.set(k, k, k);
       if (h.left <= 0) { h.dispose(); return false; }
       return true;
+    });
+  }
+  // вспышка попадания: меш (или все части узла) на миг становится белым. У копий createInstance не работает — вспыхнули бы все копии
+  function whiten(target, sec, color) {
+    const ms = [target].concat(target.getChildMeshes ? target.getChildMeshes() : []).filter(m => m instanceof B.Mesh);
+    ms.forEach(m => { m.overlayColor = B.Color3.FromHexString(color); m.overlayAlpha = 0.85; m.renderOverlay = true; });
+    whites.push({ ms, t: sec });
+  }
+  function tickWhites(dt) {
+    whites = whites.filter(w => {
+      w.t -= dt;
+      if (w.t > 0) return true;
+      w.ms.forEach(m => { if (!m.isDisposed()) m.renderOverlay = false; });
+      return false;
     });
   }
   function tickPulses(dt) {
@@ -718,7 +736,7 @@
       }
     }
     if (scene && cam) {
-      tickParticles(dt); tickPopups(dt); tickWarns(dt); tickPulses(dt); tickCamera(dt);
+      tickParticles(dt); tickPopups(dt); tickWarns(dt); tickPulses(dt); tickWhites(dt); tickCamera(dt);
       try { scene.render(); } catch (e) { fail(e, 'отрисовка'); }
     }
     tickFlash(dt);

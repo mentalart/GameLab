@@ -375,6 +375,16 @@ route('GET', '/api/playtest/mine', (ctx) => {
 // Состояние живёт в классе (cls.wow) для текущего урока. Секрет и его раскрытие ученики получают только после своей догадки.
 const randFrom = (list, not) => { const l = list.filter(x => x !== not); return l.length ? l[Math.floor(Math.random() * l.length)] : not; };
 const cap = t => (t ? t[0].toUpperCase() + t.slice(1) : t);
+// колода без повторов: карта не выпадает снова, пока класс не вытянет всю колоду; потом колода тасуется заново.
+// seen — что уже выпало, по id колоды (хранится в классе, переживает перезапуск сервера)
+function drawFresh(seen, id, deck, cur) {
+  let used = (seen[id] || []).filter(x => deck.includes(x));
+  let pool = deck.filter(x => !used.includes(x) && x !== cur);
+  if (!pool.length) { used = []; pool = deck.filter(x => x !== cur); }
+  const pick = pool.length ? pool[Math.floor(Math.random() * pool.length)] : cur;
+  seen[id] = used.concat(pick);
+  return pick;
+}
 const hashOf = t => [...String(t)].reduce((n, c) => (n * 31 + c.charCodeAt(0)) >>> 0, 7);
 function wowState(cls, les) {
   if (!les.wow) return null;
@@ -492,7 +502,8 @@ route('POST', '/api/teacher/wow/draw', (ctx) => {
   const { cls, les, w } = needWow(ctx);
   const list = ctx.body.card === 'all' ? les.wow.cards : les.wow.cards.filter(c => c.id === ctx.body.card);
   if (!list.length) throw Object.assign(new Error('Нет такой карты'), { status: 400 });
-  for (const c of list) { w.cards[c.id] = randFrom(c.deck, w.cards[c.id]); w.votes[c.id] = []; }
+  const seen = ((cls.wowSeen = cls.wowSeen || {})[les.id] = cls.wowSeen[les.id] || {});
+  for (const c of list) { w.cards[c.id] = drawFresh(seen, c.id, c.deck, w.cards[c.id]); w.votes[c.id] = []; }
   if (!w.given && w.status !== 'building') w.status = 'cards';
   store.saveClass(cls); wowChanged(cls, les);
   return { wow: w };
@@ -872,10 +883,10 @@ route('POST', '/api/teacher/demo/draw', (ctx) => {
   // card: hero | place | twist | all, title — только название с кубика
   const which = ctx.body.card === 'all' ? DEMO_CARDS : DEMO_CARDS.filter(c => c === ctx.body.card);
   if (!which.length && ctx.body.card !== 'title') throw Object.assign(new Error('Какую карту тянуть?'), { status: 400 });
-  const pick = (deck, cur) => { const list = (deck || []).filter(x => x !== cur); return list.length ? list[Math.floor(Math.random() * list.length)] : cur; };
-  for (const c of which) d.cards[c] = pick((step.decks || {})[c], d.cards[c]);
+  const seen = d.seen = d.seen || {}, pick = (id, cur) => drawFresh(seen, id, (step.decks || {})[id] || [], cur);
+  for (const c of which) d.cards[c] = pick(c, d.cards[c]);
   if (ctx.body.card === 'title') d.titleAuto = true;
-  if (d.titleAuto !== false && (ctx.body.card === 'title' || !d.title)) d.title = pick((step.decks || {}).names, d.title) || d.title;
+  if (d.titleAuto !== false && (ctx.body.card === 'title' || !d.title)) d.title = pick('names', d.title) || d.title;
   if (!d.startedAt) { d.startedAt = store.now(); d.deadline = new Date(Date.now() + (step.minutes || 5) * 60e3).toISOString(); }
   store.saveDemo(cls.code, les.id, d); demoChanged(cls.code, les.id);
   return demoPublic(cls.code, les.id, false);

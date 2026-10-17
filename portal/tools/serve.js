@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Простой сервер для разработки: отдаёт папку portal/ по HTTP.
 // Запуск: node portal/tools/serve.js [порт]  →  http://localhost:8080/
-// Игра: http://localhost:8080/engine/game.html?game=../games/tarelki-nad-aulom.js
+// Игра: http://localhost:8080/engine/game.html?game=../games/nlo-v-stanice.js
 // Без зависимостей. Нужен потому, что физика Havok (WebAssembly) не грузится с file://.
 'use strict';
 const http = require('http');
@@ -24,7 +24,7 @@ function handler(req, res) {
   if (!file.startsWith(ROOT + path.sep)) { res.writeHead(403); return res.end(); }
   fs.stat(file, (err, st) => {
     if (err || !st.isFile()) {
-      if (p === '/index.html') { res.writeHead(302, { Location: '/engine/game.html?game=../games/tarelki-nad-aulom.js' }); return res.end(); }
+      if (p === '/index.html') { res.writeHead(302, { Location: '/engine/game.html?game=../games/nlo-v-stanice.js' }); return res.end(); }
       res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' }); return res.end('Не найдено: ' + p);
     }
     res.writeHead(200, { 'Content-Type': TYPES[path.extname(file).toLowerCase()] || 'application/octet-stream', 'Cache-Control': 'no-cache' });
@@ -46,6 +46,6 @@ if (require.main === module) {
   const port = Number(process.argv[2]) || 8080;
   start(port).then(() => {
     console.log(`Лаборатория игр: http://localhost:${port}/`);
-    console.log(`Игра-образец: http://localhost:${port}/engine/game.html?game=../games/tarelki-nad-aulom.js`);
+    console.log(`Игра-образец: http://localhost:${port}/engine/game.html?game=../games/nlo-v-stanice.js`);
   }).catch(e => { console.error('Не удалось запустить сервер:', e.message); process.exit(1); });
 }
