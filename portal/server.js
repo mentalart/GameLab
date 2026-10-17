@@ -693,8 +693,8 @@ route('POST', '/api/teacher/wow/link/edit', (ctx) => { // учитель пра�
   const missing = les.wow.cards.filter(c => !w.cards[c.id]);
   if (missing.length) throw Object.assign(new Error('Сначала вытяните карты: ' + missing.map(c => c.label).join(', ')), { status: 400 });
   if (w.given || w.status === 'building') throw Object.assign(new Error('Игра уже собирается — связку не поменять'), { status: 409 });
-  const src = ctx.body.link || {}, text = (k, n) => String(src[k] == null ? '' : src[k]).replace(/\s+/g, ' ').trim().slice(0, n);
-  const fields = { phrase: text('phrase', 400), loop: text('loop', 400), twist: text('twist', 400), funny: text('funny', 300) };
+  const src = ctx.body.link || {}, text = k => String(src[k] == null ? '' : src[k]).replace(/\s+/g, ' ').trim().slice(0, 400);
+  const fields = {}; for (const [k] of ai.LINK_FIELDS) fields[k] = text(k);
   if (!fields.phrase) throw Object.assign(new Error('Нужна хотя бы фраза игры'), { status: 400 });
   const prev = w.link && w.link.cards === cardsKey(w) ? w.link : {};
   w.link = Object.assign({ model: prev.model || 'учитель' }, fields, { edited: true, cards: cardsKey(w), accepted: true, at: store.now() });

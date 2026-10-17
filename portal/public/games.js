@@ -253,6 +253,10 @@ const Games = (() => {
   /* ---------- вау-старт: связка карт от ИИ (панель учителя и проектор) ---------- */
   // геймдизайнер сводит четыре карты в одну игру: фраза, главный цикл, поворот × действие, смешной момент.
   // Учитель принимает связку или просит другую; принятая уходит программисту вместе с картами. onChange — перерисовать вкладку.
+  // строки связки под фразой игры (как LINK_FIELDS в lib/ai.js): ключ, подпись, подсказка для правки учителем
+  const LINK_ROWS = [['frame', 'Каркас и камера', 'Арена, изометрия / Ловля / Бег навстречу / Вид сбоку / Тир'], ['controls', 'Кнопки', 'Движение — …, A — …, B — …'],
+    ['loop', 'Главный цикл', 'Каждые 2–4 секунды игрок …'], ['risk', 'Риск и очки', 'Рискнул — очки ×2: …'], ['threats', 'Угрозы', '2–3 угрозы, разные по поведению; жизнь отнимает …'],
+    ['curve', 'Нарастание', 'К 30-й секунде …, к 60-й …, к 90-й …'], ['twist', 'Поворот × действие', 'Поворот мешает …, но и помогает …'], ['funny', 'Смешной момент', 'Класс смеётся, когда …']];
   function linkBox({ link, ready, editable, code, onChange }) {
     const box = el('div', { class: 'linkbox' + (link && link.accepted ? ' ok' : '') });
     if (!ready || (!link && !editable)) { box.hidden = true; return box; }
@@ -266,12 +270,11 @@ const Games = (() => {
     // ручная правка учителем: четыре поля связки; сохранённая связка сразу принята
     const editForm = () => {
       box.innerHTML = ''; box.classList.add('editing');
-      const fields = [['phrase', 'Фраза игры', 'Ты — …, ты … в …, но … Цель — …', 3], ['loop', 'Главный цикл', 'Каждые несколько секунд игрок …', 2],
-        ['twist', 'Поворот × действие', 'Поворот мешает …, но и помогает …', 2], ['funny', 'Смешной момент', 'Класс смеётся, когда …', 2]];
+      const fields = [['phrase', 'Фраза игры', 'Ты — …, ты … в …, но … Цель — …', 3], ...LINK_ROWS.map(([k, label, ph]) => [k, label, ph, 2])];
       const inputs = {};
       box.append(el('div', { class: 'eyebrow' }, 'Связка геймдизайнера · правка учителя'),
         ...fields.map(([k, label, ph, rows]) => el('label', { class: 'stack', style: 'gap:2px' }, el('b', { class: 'small' }, label),
-          inputs[k] = el('textarea', { rows, placeholder: ph, maxlength: k === 'funny' ? 300 : 400, 'data-link': k }, (link && link[k]) || ''))));
+          inputs[k] = el('textarea', { rows, placeholder: ph, maxlength: 400, 'data-link': k }, (link && link[k]) || ''))));
       const save = el('button', { class: 'btn warm', type: 'button' }, '✓ Сохранить и принять');
       save.addEventListener('click', async () => {
         const data = {}; for (const k in inputs) data[k] = inputs[k].value.trim();
@@ -286,7 +289,7 @@ const Games = (() => {
     const editBtn = label => el('button', { class: 'btn ghost', type: 'button', onclick: editForm }, label);
     if (!link) {
       box.append(el('div', { class: 'row' }, el('div', { class: 'grow stack', style: 'gap:2px' }, el('b', {}, '🧠 Связка: как четыре карты становятся одной игрой'),
-        el('span', { class: 'muted small' }, 'Геймдизайнер за несколько секунд сведёт карты: фраза игры, главный цикл, поворот × действие, смешной момент. Принятая связка уйдёт программисту.')),
+        el('span', { class: 'muted small' }, 'Геймдизайнер сведёт карты в одну игру: фраза, каркас и камера, кнопки, цикл, риск, угрозы, нарастание, поворот, смешной момент. Принятая связка уйдёт программисту.')),
       el('div', { class: 'row' }, askBtn('🧠 Связка от ИИ'), editBtn('✎ Написать самому'))));
       return box;
     }
@@ -294,8 +297,7 @@ const Games = (() => {
       link.edited ? el('span', { class: 'tag' }, '✎ учитель') : null,
       link.accepted ? el('span', { class: 'tag ok' }, '✓ принята — уйдёт в сборку') : editable ? el('span', { class: 'tag' }, 'ждёт решения учителя') : null),
     el('p', { class: 'link-phrase' }, link.phrase),
-    el('div', { class: 'link-rows' }, [['Главный цикл', link.loop], ['Поворот × действие', link.twist], ['Смешной момент', link.funny]].filter(x => x[1])
-      .map(([k, v]) => el('div', {}, el('b', {}, k + ': '), v))));
+    el('div', { class: 'link-rows' }, LINK_ROWS.filter(([k]) => link[k]).map(([k, label]) => el('div', { 'data-row': k }, el('b', {}, label + ': '), link[k]))));
     if (editable) box.append(el('div', { class: 'row' }, link.accepted ? el('button', { class: 'btn ghost small', type: 'button', onclick: () => act(false) }, 'Снять принятие')
       : el('button', { class: 'btn warm', type: 'button', onclick: () => act(true) }, '✓ Принять связку'), editBtn('✎ Править'), askBtn('↻ Другая связка')));
     return box;

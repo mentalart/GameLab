@@ -353,6 +353,7 @@ async function wowStart(teacher, student, mode, shot) {
   const info = (await teacher.textContent('#wowBuild')).replace(/\s+/g, ' ');
   if (mode === 'mock') check('ИИ собрал игру класса с ручкой secret и скрытым счётчиком', !/нет ручки secret|не считается/.test(info) && !/запасная игра «/.test(info), info.slice(0, 120));
   if (mode === 'mock') check('Принятая связка ушла программисту вместе с картами', /Связка геймдизайнера — класс принял её/.test(mock.last.wowUser || '') && (mock.last.wowUser || '').includes(phrase));
+  if (mode === 'mock') check('Связка задаёт программисту каркас, кнопки и риск', /- Каркас и камера: Арена/.test(mock.last.wowUser || '') && /- Риск и очки: /.test(mock.last.wowUser || ''));
   else check('Без ключа собралась запасная игра урока', /запасная игра/.test(info), info.slice(0, 120));
   await teacher.click('#wowBuild .veil button');
   await gameFrame(teacher, '/play/', 0);

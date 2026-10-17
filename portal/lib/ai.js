@@ -31,7 +31,9 @@ function reloadConfig() { configCache = null; return loadConfig(); }
 const demo = () => !loadConfig().ai.apiKey;
 function models() {
   const c = loadConfig(), s = store.settings();
-  return { code: s.codeModel || c.ai.codeModel, text: s.textModel || c.ai.textModel };
+  const code = s.codeModel || c.ai.codeModel;
+  // связка карт — замысел для программиста: без отдельной linkModel её пишет модель программиста, а не быстрая текстовая
+  return { code, text: s.textModel || c.ai.textModel, link: s.linkModel || c.ai.linkModel || code };
 }
 // лимиты: config.json, поверх — то, что учитель поменял в панели (data/settings.json)
 function limits() { return Object.assign({}, loadConfig().limits, store.settings().limits || {}); }
@@ -266,19 +268,23 @@ function demoProducerFix(plan, review, who) {
 }
 
 /* ---------------- связка карт вау-старта: геймдизайнер сводит четыре карты в одну игру ---------------- */
+// поля связки: ключ и подпись — в таком порядке их видит учитель и получает программист
+const LINK_FIELDS = [['phrase', 'Фраза игры'], ['frame', 'Каркас и камера'], ['controls', 'Кнопки'], ['loop', 'Главный цикл'], ['risk', 'Риск и очки'],
+  ['threats', 'Угрозы'], ['curve', 'Нарастание'], ['twist', 'Поворот × действие'], ['funny', 'Главный смешной момент']];
 function parseLink(text) {
   const a = text.indexOf('{'), b = text.lastIndexOf('}');
   const j = JSON.parse(text.slice(a, b + 1));
-  const link = { phrase: cleanText(j.phrase, 400), loop: cleanText(j.loop, 400), twist: cleanText(j.twist, 400), funny: cleanText(j.funny, 300) };
+  const link = {};
+  for (const [k] of LINK_FIELDS) link[k] = cleanText(j[k], 400);
   if (!link.phrase || !link.loop) throw new Error('нет фразы игры');
   return link;
 }
 async function wowLink(cards, prev, who) {
   if (demo()) return demoLink(cards, who);
-  const model = models().text;
+  const model = models().link;
   const t0 = Date.now();
   const user = ['Карты:', `- Герой: ${cards.hero}`, `- Действие: ${cards.action}`, `- Место: ${cards.place}`, `- Поворот: ${cards.twist}`,
-    prev ? `\nУчитель попросил другую связку. Прошлая была: «${prev.phrase}» — найди другое чтение карт.` : ''].filter(Boolean).join('\n');
+    prev ? `\nУчитель попросил другую связку. Прошлая была: «${prev.phrase}»${prev.frame ? ` (${prev.frame})` : ''} — найди другое чтение карт, лучше в другом каркасе.` : ''].filter(Boolean).join('\n');
   try {
     const { text, entry } = await call('связка карт', who, model, [
       { role: 'system', content: promptSection('link-prompt.md', '<!-- prompt:start -->', '<!-- prompt:end -->') },
@@ -294,12 +300,17 @@ function demoLink(cards, who) {
   log(Object.assign({ kind: 'связка карт', model: 'демо', ms: 0, ok: true, demo: true }, meta(who)));
   return {
     phrase: `Ты — ${cards.hero}. Главное действие: ${cards.action}. Место: «${cards.place}». Поворот: ${cards.twist}. Цель — продержаться и набрать рекорд класса.`,
+    frame: 'Арена, изометрия: всё поле видно целиком, герой бегает по нему.',
+    controls: `Движение — бегать, A — ${cards.action}, B не нужна.`,
     loop: `Каждые несколько секунд: ${cards.action} — и сразу видно, попал ли ты; промах стоит времени.`,
+    risk: 'Действие рядом с опасностью даёт очки ×2.',
+    threats: 'Одни угрозы идут прямо, другие заходят сбоку; касание отнимает жизнь.',
+    curve: 'К 30-й секунде — второй вид угроз, к 60-й — быстрее, к 90-й — всё вместе.',
     twist: `Поворот «${cards.twist}» меняет то, как работает главное действие: им можно и помешать себе, и выиграть.`,
     funny: 'Демо-режим: без ключа ИИ связка собрана по шаблону из карт.', model: 'демо', demo: true,
   };
 }
-const linkText = link => (link ? ['Связка геймдизайнера — класс принял её до сборки, строй игру по ней:', `- Фраза игры: ${link.phrase}`, `- Главный цикл: ${link.loop}`, `- Поворот × действие: ${link.twist}`, `- Главный смешной момент: ${link.funny}`].join('\n')
+const linkText = link => (link ? ['Связка геймдизайнера — класс принял её до сборки, строй игру по ней: каркас, камеру, кнопки, риск и угрозы бери отсюда.', ...LINK_FIELDS.filter(([k]) => link[k]).map(([k, label]) => `- ${label}: ${link[k]}`)].join('\n')
   : 'Связки геймдизайнера нет: найди чтение карт сам — одну понятную, напряжённую и смешную игру.');
 
 async function producer(plan, lesson, who) {
@@ -418,4 +429,4 @@ function demoGame(plan, who, kind) {
   return { code, model: 'демо', attempts: 1, warnings: [], demo: true, ms: 0, rub: null };
 }
 
-module.exports = { loadConfig, reloadConfig, demo, models, limits, listModels, producer, producerFix, wowLink, build, buildShared, demoShared, change, fix, planText, extractCode, syntaxError };
+module.exports = { LINK_FIELDS, loadConfig, reloadConfig, demo, models, limits, listModels, producer, producerFix, wowLink, build, buildShared, demoShared, change, fix, planText, extractCode, syntaxError };
