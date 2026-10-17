@@ -278,7 +278,7 @@ async function wowStart(teacher, student, mode, shot) {
   check('Учитель видит секрет кубика', (await teacher.textContent('#wowSecret')).includes('[кубик]'));
   await teacher.selectOption('#wowSecretSel', 'yarost');
   await teacher.waitForSelector('#wowSecret >> text=выбор учителя', { timeout: 10000 });
-  check('Учитель тайно заменил секрет', (await teacher.textContent('#wowSecret')).includes('Последний враг впадает в ярость'));
+  check('Учитель тайно заменил секрет', (await teacher.textContent('#wowSecret')).includes('Под конец игра злится'));
   await teacher.click('#wowSecret >> text=Скрыть');
   await shot(teacher, '1a-wow-cards');
   // сборка: ученики видят, что ИИ собирает игру; учитель проверяет и раздаёт
@@ -327,12 +327,12 @@ async function secretHunt(teacher, student, mode, shot) {
   const twist = (await teacher.textContent('#wowCards [data-card=twist] .wc-text')).trim(); // вкладка учителя скрыта, но карты в ней остались
   // в прогоне с ИИ ученик попадается в ловушку карт, в демо — угадывает секрет запасной игры
   const pick = mode === 'mock' ? options.find(o => o.toLowerCase() === twist.toLowerCase()) : 'Волна ускоряется, когда врагов становится меньше';
-  check('«Найди секрет»: 4 варианта, среди них ловушка с карты', options.length === 4 && options.some(o => o.toLowerCase() === twist.toLowerCase()) && (mode === 'demo' || options.includes('Последний враг впадает в ярость')), options.join(' | '));
+  check('«Найди секрет»: 4 варианта, среди них ловушка с карты', options.length === 4 && options.some(o => o.toLowerCase() === twist.toLowerCase()) && (mode === 'demo' || options.includes('Под конец игра злится')), options.join(' | '));
   await student.click(`#step-secret-hunt .opt >> text=${pick}`);
   await student.click('#step-secret-hunt >> text=Это секрет!');
   await student.waitForSelector('#step-secret-hunt.done');
   const reveal = (await student.textContent('#step-secret-hunt')).replace(/\s+/g, ' ');
-  if (mode === 'mock') check('Ловушка распознана, секрет раскрыт: «ярость», счётчик из партий', /Ловушка/.test(reveal) && /впадает в ярость/.test(reveal) && /сработал 6 раз/.test(reveal), reveal.slice(0, 160));
+  if (mode === 'mock') check('Ловушка распознана, секрет раскрыт: «ярость», счётчик из партий', /Ловушка/.test(reveal) && /Под конец игра злится/.test(reveal) && /сработал 6 раз/.test(reveal), reveal.slice(0, 160));
   else check('Секрет угадан и раскрыт', /Угадал/.test(reveal) && /Нисикадо/.test(reveal), reveal.slice(0, 120));
   await shot(student, '2a-secret', true);
   await student.click('#step-secret-feel .opt >> nth=0');

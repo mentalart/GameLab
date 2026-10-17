@@ -247,12 +247,12 @@ async function fix(code, error, who, onProgress, model) {
   }), who, onProgress, model);
 }
 
-// Общая игра урока (вау-старт): карты колоды безумных идей + секретная механика из колоды секретов урока.
+// Общая игра урока (вау-старт): своя игра только из четырёх карт колоды безумных идей (без донора урока) + секретная механика из колоды секретов урока.
 // Секрет живёт в ручке secret и в скрытом счётчике телеметрии _secret. Без ключа — запасная игра урока.
 async function buildShared(wow, who, onProgress) {
   if (demo()) return demoShared(wow, who);
   const r = await program('общая игра', fill(userTemplate('wow'), {
-    'донор': wow.donor, 'герой': wow.cards.hero, 'действие': wow.cards.action, 'место': wow.cards.place, 'поворот': wow.cards.twist, 'секрет': wow.secret,
+    'герой': wow.cards.hero, 'действие': wow.cards.action, 'место': wow.cards.place, 'поворот': wow.cards.twist, 'секрет': wow.secret,
   }), who, onProgress);
   if (!/\bsecret\s*:\s*\{/.test(r.code)) r.warnings = r.warnings.concat('нет ручки secret');
   if (!/_secret/.test(r.code)) r.warnings = r.warnings.concat('секрет не считается в телеметрии');

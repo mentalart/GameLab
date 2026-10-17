@@ -390,11 +390,12 @@ const hashOf = t => [...String(t)].reduce((n, c) => (n * 31 + c.charCodeAt(0)) >
 function wowState(cls, les) {
   if (!les.wow) return null;
   if (!cls.wow || cls.wow.lesson !== les.id) {
-    cls.wow = { lesson: les.id, cards: {}, votes: {}, secret: randFrom(les.wow.secrets.map(x => x.id)), secretBy: 'кубик', status: 'cards', gameId: null, given: false };
+    cls.wow = { lesson: les.id, cards: {}, votes: {}, secret: randFrom(aiSecrets(les).map(x => x.id)), secretBy: 'кубик', status: 'cards', gameId: null, given: false };
     store.saveClass(cls);
   }
   return cls.wow;
 }
+const aiSecrets = les => les.wow.secrets.filter(x => !x.fallbackOnly); // секреты для игры ИИ; fallbackOnly — только у запасной игры
 const secretOf = (les, id) => les.wow.secrets.find(x => x.id === id) || les.wow.secrets[0];
 const builtSecret = (les, w) => secretOf(les, w.builtSecret || w.secret); // секрет, который лежит в собранной игре
 function publicWow(cls, les) {
@@ -412,7 +413,7 @@ const wowChanged = (cls, les) => broadcast(cls.code, 'wow', publicWow(cls, les))
 // варианты шага «Найди секрет»: настоящий секрет, два чужих из колоды и ловушка — поворот с карты (он был в замысле, значит, не секрет)
 function huntOptions(cls, les, w) {
   const sec = builtSecret(les, w), h = hashOf(cls.code + sec.id);
-  const others = les.wow.secrets.filter(x => x.id !== sec.id).sort((a, b) => hashOf(h + a.id) - hashOf(h + b.id)).slice(0, 2);
+  const others = aiSecrets(les).filter(x => x.id !== sec.id).sort((a, b) => hashOf(h + a.id) - hashOf(h + b.id)).slice(0, 2);
   const trap = w.cards.twist ? cap(w.cards.twist) : null;
   const options = [sec.title, ...others.map(x => x.title), trap].filter(Boolean).sort((a, b) => hashOf(h + a) - hashOf(h + b));
   return { options, right: sec.title, trap, secret: sec };
@@ -494,7 +495,7 @@ route('GET', '/api/teacher/wow', (ctx) => {
   const g = w.gameId ? store.getGame(w.gameId) : null, v = g && g.versions[g.current - 1];
   return {
     wow: w, demo: ai.demo(), formula: les.wow.formula, cards: les.wow.cards.map(c => ({ id: c.id, label: c.label })),
-    secrets: les.wow.secrets.map(x => ({ id: x.id, title: x.title, effect: x.effect })), secret: secretOf(les, w.secret), built: w.gameId ? builtSecret(les, w) : null,
+    secrets: aiSecrets(les).map(x => ({ id: x.id, title: x.title, effect: x.effect })), secret: secretOf(les, w.secret), built: w.gameId ? builtSecret(les, w) : null,
     game: g && v ? { id: g.id, version: g.current, title: g.title, model: v.model, warnings: v.warnings || [], fallback: !!v.fallback, attempts: v.attempts } : null,
     summary: wowSummary(cls, les),
   };
@@ -511,8 +512,8 @@ route('POST', '/api/teacher/wow/draw', (ctx) => {
 });
 route('POST', '/api/teacher/wow/secret', (ctx) => { // без id — кубик, с id — тайный выбор учителя
   const { cls, les, w } = needWow(ctx);
-  if (ctx.body.id) { if (!les.wow.secrets.some(x => x.id === ctx.body.id)) throw Object.assign(new Error('Нет такого секрета'), { status: 400 }); w.secret = ctx.body.id; w.secretBy = 'учитель'; }
-  else { w.secret = randFrom(les.wow.secrets.map(x => x.id), w.secret); w.secretBy = 'кубик'; }
+  if (ctx.body.id) { if (!aiSecrets(les).some(x => x.id === ctx.body.id)) throw Object.assign(new Error('Нет такого секрета'), { status: 400 }); w.secret = ctx.body.id; w.secretBy = 'учитель'; }
+  else { w.secret = randFrom(aiSecrets(les).map(x => x.id), w.secret); w.secretBy = 'кубик'; }
   store.saveClass(cls);
   return { secret: secretOf(les, w.secret), secretBy: w.secretBy };
 });
@@ -544,7 +545,7 @@ route('POST', '/api/teacher/wow/build', (ctx) => {
   const whoAI = { class: cls.code, nick: 'учитель', lesson: les.id };
   const job = startJob(ctx.who.token, 'wow', async (progress) => {
     try {
-      const r = await ai.buildShared({ donor: `${les.donor} — ${stepOf(les, les.plan.factory).step.donorCard.text}`, cards: w.cards, secret: sec.prompt, title: wowTitle(les, w), fallback: fb }, whoAI, progress);
+      const r = await ai.buildShared({ cards: w.cards, secret: sec.prompt, title: wowTitle(les, w), fallback: fb }, whoAI, progress);
       return wowVersion(cls.code, r, secretId);
     } catch (e) {
       const c2 = store.getClass(cls.code), w2 = wowState(c2, les); w2.status = w2.gameId ? 'preview' : 'cards'; store.saveClass(c2); wowChanged(c2, les);
