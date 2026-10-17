@@ -43,7 +43,7 @@ jobs:
           for d in b l h; do echo "== $d"; (cd "$d/package" && find . -type f -printf '%s\t%p\n' | sort -k2); done > "$OUT/MANIFEST.txt"
           cp b/package/babylon.js "$OUT/babylon/"
           cp b/package/package.json "$OUT/babylon/"
-          find b/package -maxdepth 1 -name '*.d.ts' -exec cp {} "$OUT/babylon/" \;
+          cp b/package/babylon.d.ts "$OUT/babylon/"
           if [ -f l/package/babylonjs.loaders.min.js ]; then cp l/package/babylonjs.loaders.min.js "$OUT/loaders/"; else cp l/package/babylonjs.loaders.js "$OUT/loaders/"; fi
           cp l/package/package.json "$OUT/loaders/"
           find h/package -name 'HavokPhysics_umd.js' -exec cp {} "$OUT/havok/" \;
