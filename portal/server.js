@@ -27,7 +27,13 @@ function lessons() {
     });
 }
 // ученику — урок без колоды секретов: какой секрет в игре класса, он узнаёт только после своей догадки
-function studentLesson(les) { return les.wow ? Object.assign({}, les, { wow: { formula: les.wow.formula, cards: les.wow.cards.map(c => ({ id: c.id, label: c.label })) } }) : les; }
+// и без ответа шага «Найди секрет» с hunt в сценарии: правильный вариант, ловушка и раскрытие приходят после догадки
+const publicHunt = h => ({ question: h.question, options: h.options, compare: h.compare, after: h.after });
+function studentLesson(les) {
+  const out = Object.assign({}, les, { checkpoints: les.checkpoints.map(cp => Object.assign({}, cp, { steps: cp.steps.map(s => (s.hunt ? Object.assign({}, s, { hunt: publicHunt(s.hunt) }) : s)) })) });
+  if (les.wow) out.wow = { formula: les.wow.formula, cards: les.wow.cards.map(c => ({ id: c.id, label: c.label })) };
+  return out;
+}
 function lesson(id) { return lessons().find(l => l.id === id) || null; }
 function stepOf(les, stepId) { for (const cp of les.checkpoints) for (const s of cp.steps) if (s.id === stepId) return { cp, step: s }; return null; }
 
@@ -60,6 +66,8 @@ function buildPlan(les, st) {
   const fac = A(P.factory), facFields = fac.fields || {};
   const facStep = stepOf(les, P.factory).step;
   const level = (facStep.levels || []).find(l => l.id === fac.level) || (facStep.levels || [])[0] || { label: 'Базовый', hint: '' };
+  // донор на выбор (шаг factory с donors): в замысел идёт выбранная классика, а не донор урока
+  const chosen = facStep.donors ? (facStep.donors.find(d => d.id === fac.donor) || facStep.donors[0]) : null;
   const details = facStep.fields.filter(f => !['title', 'twist', 'world'].includes(f.id) && fieldText(facFields[f.id]))
     .map(f => `${f.label}: ${fieldText(facFields[f.id])}`);
   const dec = (A(P.decisions).fields) || {}, igra = (A(P.igra).fields) || {};
@@ -68,7 +76,8 @@ function buildPlan(les, st) {
   const all = [facFields, dec, igra].flatMap(o => Object.values(o));
   return {
     title: fieldText(facFields.title) || 'Моя игра',
-    donor: `${les.donor} — ${facStep.donorCard ? facStep.donorCard.text : ''}`,
+    donor: chosen ? `${chosen.title} — ${chosen.text} ${chosen.rules || ''}`.trim() : `${les.donor} — ${facStep.donorCard ? facStep.donorCard.text : ''}`,
+    donorTitle: chosen ? chosen.title : les.donor,
     twist: fieldText(facFields.twist), world: fieldText(facFields.world),
     level: `${level.label} (${level.hint})`, details,
     decisions: { feeling: fieldText(dec.feeling), honesty: fieldText(dec.honesty), choice: fieldText(dec.choice) },
@@ -399,7 +408,7 @@ function huntOptions(cls, les, w) {
 }
 const wowSteps = les => {
   const all = les.checkpoints.flatMap(c => c.steps);
-  return { on: all.find(x => x.type === 'play' && x.shared && !x.secretOff), off: all.find(x => x.type === 'play' && x.shared && x.secretOff), hunt: all.find(x => x.type === 'secret') };
+  return { on: all.find(x => x.type === 'play' && x.shared && !x.secretOff), off: all.find(x => x.type === 'play' && x.shared && x.secretOff), hunt: all.find(x => x.type === 'secret' && !x.hunt) };
 };
 // сводка для учителя: рекорды с секретом и без, сколько раз сработал секрет, кто угадал
 function wowSummary(cls, les) {
@@ -433,8 +442,12 @@ route('POST', '/api/wow/vote', (ctx) => { // голос «перетянуть �
   store.saveClass(cls); wowChanged(cls, les);
   return { voters: w.votes[card.id] };
 });
+// шаг «Найди секрет» с hunt в сценарии: варианты и ответ — из шага, игры класса не нужно
+const huntStep = (les, id) => { const f = id && stepOf(les, id); return f && f.step.type === 'secret' && f.step.hunt ? f.step : null; };
 route('GET', '/api/wow/hunt', (ctx) => {
   const { cls, les, st } = needStudent(ctx);
+  const hs = huntStep(les, ctx.url.searchParams.get('step'));
+  if (hs) return { options: hs.hunt.options, answer: (st.answers[hs.id] && st.answers[hs.id].value) || null };
   const w = wowState(cls, les);
   if (!w || !w.gameId) return { options: [] };
   const S = wowSteps(les);
@@ -442,6 +455,17 @@ route('GET', '/api/wow/hunt', (ctx) => {
 });
 route('POST', '/api/wow/guess', (ctx) => {
   const { w: who, cls, les, s, st } = needStudent(ctx);
+  const hs = huntStep(les, ctx.body.step);
+  if (hs) {
+    const prev = st.answers[hs.id];
+    if (prev && prev.value && prev.value.secret) return prev.value;
+    const h = hs.hunt, guess = String(ctx.body.guess || '');
+    if (!h.options.includes(guess)) throw Object.assign(new Error('Выбери один из вариантов'), { status: 400 });
+    const value = { guess, correct: guess === h.right, trap: guess === h.trap, trapText: h.trapText || null, secret: { title: h.title, reveal: h.reveal, effect: h.effect || null } };
+    st.answers[hs.id] = { value, done: true, at: store.now() };
+    s.where = hs.id; store.saveStudent(who.class, s);
+    return value;
+  }
   const w = wowState(cls, les), S = wowSteps(les);
   if (!w || !w.gameId || !S.hunt) throw Object.assign(new Error('Общей игры ещё нет'), { status: 400 });
   const prev = st.answers[S.hunt.id];
@@ -588,7 +612,7 @@ route('POST', '/api/ai/build', (ctx) => {
   const job = startJob(c.w.token, 'build', async (progress) => {
     const r = await ai.build(plan, Object.assign({}, c.whoAI, { game: g.id, build }), progress);
     // название, донор и три решения — подпись игры в аркаде класса; замысел — для сравнения моделей на том же замысле
-    const g2 = store.getGame(g.id); g2.title = plan.title; g2.donor = c.les.donor; g2.decisions = plan.decisions; g2.plan = plan; store.saveGame(g2);
+    const g2 = store.getGame(g.id); g2.title = plan.title; g2.donor = plan.donorTitle || c.les.donor; g2.decisions = plan.decisions; g2.plan = plan; store.saveGame(g2);
     return addVersion(g.id, r, { kind: 'сборка', build });
   });
   return { job: job.id };
@@ -774,7 +798,7 @@ route('POST', '/api/teacher/compare', (ctx) => {
   const model = String(ctx.body.model || '').trim().slice(0, 80);
   if (!model) throw Object.assign(new Error('Выберите модель'), { status: 400 });
   const plan = g.plan || buildPlan(les, st);
-  const cg = store.createGame({ class: cls.code, nick: s.nick, lesson: les.id, compareOf: g.id, model, title: plan.title, donor: les.donor });
+  const cg = store.createGame({ class: cls.code, nick: s.nick, lesson: les.id, compareOf: g.id, model, title: plan.title, donor: plan.donorTitle || les.donor });
   const g0 = store.getGame(g.id); g0.compares = (g0.compares || []).concat(cg.id); store.saveGame(g0);
   const build = store.id(8);
   const job = startJob(ctx.who.token, 'compare', async (progress) =>

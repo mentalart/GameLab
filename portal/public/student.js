@@ -145,18 +145,41 @@ STEPS.text = ctx => el('div', { class: 'stack' },
   el('div', { class: 'text-html', html: ctx.step.html }),
   el('div', {}, el('button', { class: 'btn', type: 'button', onclick: () => ctx.save({ read: true }, true) }, ctx.done ? 'Прочитано ✓' : 'Понятно')));
 
+// play: ремейк учителя. variants — варианты одной игры кнопками (свои значения ручек), например «классика» и «одно правило».
+// Скрытый счётчик _secret и счётчики телеметрии (lab.count) копятся по всем партиям шага: их сравнивает шаг secret.
 STEPS.play = ctx => {
   const st = ctx.step;
   if (st.shared) return sharedPlay(ctx);
-  let v = Object.assign({ rounds: 0, best: 0 }, ctx.value);
+  let v = Object.assign({ rounds: 0, best: 0, secret: 0, custom: {} }, ctx.value);
+  const variants = st.variants || null;
+  let vi = variants ? Math.max(0, variants.findIndex(x => x.label === v.variant)) : 0;
   const status = el('b', {});
   const show = () => { status.textContent = `Партий: ${v.rounds} · лучший счёт: ${v.best}` + (st.minRounds && v.rounds < st.minRounds ? ` · нужно партий: ${st.minRounds}` : ''); };
-  const h = Games.frame({
-    src: () => '/engine/game.html?game=../' + st.game, key: () => 'remake:' + st.id, cfg: st.cfg, label: 'Играть',
-    onOver: m => { v = { rounds: v.rounds + 1, best: Math.max(v.best, m.score || 0) }; show(); ctx.save(v, ctx.done || v.rounds >= (st.minRounds || 1)); },
-  });
-  show();
-  return el('div', { class: 'stack' }, h.box, Games.bar(h, status),
+  const host = el('div', { class: 'stack' });
+  let h = null;
+  function mount() {
+    if (h) h.destroy();
+    h = Games.frame({
+      src: () => '/engine/game.html?game=../' + st.game, key: () => 'remake:' + st.id, cfg: Object.assign({}, st.cfg, variants ? variants[vi].cfg : null), label: variants ? 'Играть: ' + variants[vi].label : 'Играть',
+      onOver: m => {
+        const custom = Object.assign({}, v.custom);
+        for (const [k, n] of Object.entries((m.tele || {}).custom || {})) custom[k] = (custom[k] || 0) + (Number(n) || 0);
+        v = Object.assign({}, v, { rounds: v.rounds + 1, best: Math.max(v.best, m.score || 0), secret: v.secret + (Number(((m.tele || {}).custom || {})._secret) || 0), custom });
+        if (variants) v.variant = variants[vi].label;
+        show(); ctx.save(v, ctx.done || v.rounds >= (st.minRounds || 1));
+      },
+    });
+    host.innerHTML = '';
+    if (variants) {
+      const seg = el('div', { class: 'seg', role: 'radiogroup', 'aria-label': 'Вариант игры' });
+      variants.forEach((x, k) => seg.append(el('button', { type: 'button', class: 'opt' + (k === vi ? ' on' : ''), 'aria-pressed': String(k === vi), onclick: () => { if (k === vi) return; vi = k; v.variant = x.label; ctx.save(v); beep('tick'); mount(); } },
+        el('b', {}, x.label), x.hint ? el('div', { class: 'small muted' }, x.hint) : null)));
+      host.append(seg);
+    }
+    host.append(h.box, Games.bar(h, status));
+  }
+  mount(); show();
+  return el('div', { class: 'stack' }, host,
     el('div', {}, el('button', { class: 'btn ghost small', type: 'button', onclick: () => ctx.save(v, true) }, 'Готово, дальше')));
 };
 
@@ -311,43 +334,53 @@ STEPS.cards = ctx => {
 
 // найди секрет: варианты с сервера (настоящий, два чужих из колоды и ловушка с карты), раскрытие только после догадки
 const lessonSteps = () => S.lesson.checkpoints.flatMap(c => c.steps);
+// hunt в шаге — секрет донора без игры класса: варианты, сравнение и подписи из сценария, ответ и раскрытие — с сервера после догадки
+const stepById = id => lessonSteps().find(x => x.id === id);
 STEPS.secret = ctx => {
   const host = el('div', { class: 'stack' });
+  const H = ctx.step.hunt || null;
   let data = null, pick = null;
   async function load() {
-    try { data = await api('/api/wow/hunt'); } catch (e) { host.innerHTML = ''; host.append(el('p', { class: 'err' }, e.message)); return; }
+    try { data = await api('/api/wow/hunt?step=' + encodeURIComponent(ctx.step.id)); } catch (e) { host.innerHTML = ''; host.append(el('p', { class: 'err' }, e.message)); return; }
     if (data.answer && !(ctx.value && ctx.value.secret)) S.answers[ctx.step.id] = { value: data.answer, done: true };
     draw();
   }
   function draw() {
     host.innerHTML = '';
     const a = ctx.value && ctx.value.secret ? ctx.value : null;
-    if (!data || !data.options.length) { host.append(el('p', { class: 'muted' }, 'Сначала учитель соберёт игру класса в чекпоинте «Вау-старт».')); return; }
+    if (!data || !data.options.length) { host.append(el('p', { class: 'muted' }, H ? 'Варианты не загрузились — обнови страницу.' : 'Сначала учитель соберёт игру класса в чекпоинте «Вау-старт».')); return; }
     if (!a) {
       const grid = el('div', { class: 'opts', role: 'radiogroup' });
       data.options.forEach(o => grid.append(el('button', { type: 'button', class: 'opt' + (pick === o ? ' on' : ''), 'aria-pressed': String(pick === o), onclick: () => { pick = o; beep('tick'); draw(); } }, o)));
-      host.append(el('div', { class: 'eyebrow' }, 'Что было спрятано в коде игры класса?'), grid,
-        el('div', {}, el('button', { class: 'btn', type: 'button', onclick: guess }, 'Это секрет!')));
+      host.append(el('div', { class: 'eyebrow' }, H ? H.question : 'Что было спрятано в коде игры класса?'), grid,
+        el('div', {}, el('button', { class: 'btn', type: 'button', onclick: guess }, H ? 'Ответить' : 'Это секрет!')));
       return;
     }
-    const verdict = a.correct ? ['good', '🎯 Угадал! Ты почувствовал секрет, не видя его.']
-      : a.trap ? ['bad', 'Ловушка! Это было на картах, а значит, не секрет. Проверяй, а не верь: то, что заказал сам, игра не прятала.']
+    const verdict = a.correct ? ['good', H ? '🎯 Точно! Ты назвал секрет донора.' : '🎯 Угадал! Ты почувствовал секрет, не видя его.']
+      : a.trap ? ['bad', a.trapText || 'Ловушка! Это было на картах, а значит, не секрет. Проверяй, а не верь: то, что заказал сам, игра не прятала.']
         : ['bad', 'Не угадал: секрет был другим. Зато теперь ты знаешь, что искать.'];
-    const on = lessonSteps().find(x => x.type === 'play' && x.shared && !x.secretOff), off = lessonSteps().find(x => x.type === 'play' && x.shared && x.secretOff);
+    const C = H && H.compare;
+    const on = C ? stepById(C.on) : lessonSteps().find(x => x.type === 'play' && x.shared && !x.secretOff);
+    const off = C ? stepById(C.off) : lessonSteps().find(x => x.type === 'play' && x.shared && x.secretOff);
     const V = step => (step && ans(step.id).value) || {};
+    // строка сравнения: лучший счёт, партии и счётчики телеметрии из шага play (compare.show — их имена)
+    const line = (step, withSecret) => {
+      const x = V(step), cs = (C && C.show) || [];
+      return [`партий ${x.rounds || 0}`].concat(cs.map(k => `${k} ${(x.custom || {})[k] || 0}`), withSecret ? [`секрет сработал ${x.secret || 0} раз`] : []).join(' · ');
+    };
     host.append(el('p', { class: 'verdict ' + verdict[0] }, verdict[1]),
       el('div', { class: 'secret-reveal' },
-        el('div', { class: 'eyebrow' }, 'Секрет игры класса'), el('h3', {}, a.secret.title),
+        el('div', { class: 'eyebrow' }, H ? 'Секрет донора' : 'Секрет игры класса'), el('h3', {}, a.secret.title),
         el('p', {}, a.secret.reveal),
-        el('span', { class: 'tag' }, a.secret.effect === 'помощник' ? 'помощник: незаметно помогает игроку' : 'нагнетатель: делает игру напряжённее')),
+        a.secret.effect ? el('span', { class: 'tag' }, a.secret.effect === 'помощник' ? 'помощник: незаметно помогает игроку' : a.secret.effect === 'нагнетатель' ? 'нагнетатель: делает игру напряжённее' : a.secret.effect) : null),
       el('div', { class: 'compare' },
-        el('div', {}, el('div', { class: 'eyebrow' }, 'С секретом'), el('b', {}, `лучший счёт ${V(on).best || 0}`), el('div', { class: 'small muted' }, `партий ${V(on).rounds || 0} · секрет сработал ${V(on).secret || 0} раз`)),
-        el('div', {}, el('div', { class: 'eyebrow' }, 'Без секрета'), el('b', {}, `лучший счёт ${V(off).best || 0}`), el('div', { class: 'small muted' }, `партий ${V(off).rounds || 0}`))),
-      el('p', { class: 'concept' }, 'Открой ручки (Tab) в игре выше и покрути ручку «Секрет» от 0 до 1. Как меняется чувство игры?'));
+        el('div', {}, el('div', { class: 'eyebrow' }, (C && C.onLabel) || 'С секретом'), el('b', {}, `лучший счёт ${V(on).best || 0}`), el('div', { class: 'small muted' }, line(on, true))),
+        el('div', {}, el('div', { class: 'eyebrow' }, (C && C.offLabel) || 'Без секрета'), el('b', {}, `лучший счёт ${V(off).best || 0}`), el('div', { class: 'small muted' }, line(off, false)))),
+      el('p', { class: 'concept' }, (H && H.after) || 'Открой ручки (Tab) в игре выше и покрути ручку «Секрет» от 0 до 1. Как меняется чувство игры?'));
   }
   async function guess() {
     if (!pick) { toast('Выбери вариант'); return; }
-    try { const r = await api('/api/wow/guess', { guess: pick }); ctx.save(r, true, true); beep(r.correct ? 'good' : 'bad'); draw(); } catch (e) { toast(e.message, 'err'); }
+    try { const r = await api('/api/wow/guess', { guess: pick, step: ctx.step.id }); ctx.save(r, true, true); beep(r.correct ? 'good' : 'bad'); draw(); } catch (e) { toast(e.message, 'err'); }
   }
   S.hooks.push(kind => { if (kind === 'wow' && (!data || !data.options.length)) load(); });
   host.append(el('p', { class: 'muted' }, 'Загружаем…'));
@@ -399,9 +432,13 @@ STEPS.sort = ctx => {
   const box = el('div', { class: 'sorter', tabindex: '0', 'aria-label': 'Квиз-сортировщик' });
   let order = [], i = 0, score = 0, streak = 0, bestStreak = 0, correct = 0, mistakes = [], left = 0, raf = 0, locked = false, active = false, padPrev = [];
   const hud = el('div', { class: 'hud' }), timer = el('div', { class: 'timer' }, el('i')), item = el('div', { class: 'item' }), why = el('div', { class: 'why', 'aria-live': 'polite' });
-  const bins = el('div', { class: 'bins' });
-  const keysHint = ['1 · ←', '2 · ↓', '3 · →'];
-  const binBtns = st.bins.map((b, k) => { const btn = el('button', { type: 'button', class: 'bin', onclick: () => answer(k) }, b.label, el('kbd', {}, keysHint[k])); bins.append(btn); return btn; });
+  // до 3 лотков — клавиши 1 2 3 или ← ↓ →; больше (до 8) — цифры, или стрелками выбрать лоток и пробел; у лотка — пример, после ошибки — подсказка
+  const many = st.bins.length > 3;
+  let sel = 0;
+  const bins = el('div', { class: 'bins' + (many ? ' many' : '') });
+  const keysHint = many ? st.bins.map((b, k) => String(k + 1)) : ['1 · ←', '2 · ↓', '3 · →'];
+  const binBtns = st.bins.map((b, k) => { const btn = el('button', { type: 'button', class: 'bin', onclick: () => answer(k) }, b.label, b.example ? el('small', {}, b.example) : null, el('kbd', {}, keysHint[k])); bins.append(btn); return btn; });
+  const select = k => { sel = (k + st.bins.length) % st.bins.length; binBtns.forEach((x, n) => x.classList.toggle('sel', n === sel)); };
   function intro() {
     active = false; cancelAnimationFrame(raf);
     ITEMS = st.items.concat(wowItems(st));
@@ -409,7 +446,7 @@ STEPS.sort = ctx => {
     const prev = ctx.value;
     box.append(el('div', { class: 'stack', style: 'align-items:center;text-align:center;margin:auto' },
       el('h3', {}, `${ITEMS.length} решений · ${st.seconds} секунд на каждое`),
-      el('p', { class: 'muted' }, 'Серия правильных ответов умножает очки. Геймпад: крестовина ◀ ▼ ▶.'),
+      el('p', { class: 'muted' }, many ? `Серия правильных ответов умножает очки. Клавиши 1–${st.bins.length} или стрелки и пробел, на геймпаде — крестовина и A.` : 'Серия правильных ответов умножает очки. Геймпад: крестовина ◀ ▼ ▶.'),
       prev ? el('p', {}, `Твой результат: ${prev.correct} из ${prev.total}, очки ${prev.score}`) : null,
       el('button', { class: 'btn', type: 'button', onclick: begin }, prev ? 'Сыграть ещё раз' : '▶ Начать')));
   }
@@ -418,6 +455,7 @@ STEPS.sort = ctx => {
     order = ITEMS.map((x, k) => k).sort(() => Math.random() - 0.5);
     i = 0; score = 0; streak = 0; bestStreak = 0; correct = 0; mistakes = [];
     box.innerHTML = ''; box.append(hud, timer, item, why, bins); box.focus();
+    if (many) select(0);
     active = true; next();
     let last = performance.now();
     const loop = t => {
@@ -434,6 +472,12 @@ STEPS.sort = ctx => {
     let pads = []; try { pads = [...navigator.getGamepads()].filter(Boolean); } catch (e) { return; }
     const gp = pads[0]; if (!gp) return;
     const b = gp.buttons.map(x => x && x.pressed);
+    if (many) { // крестовина выбирает лоток, A кладёт карточку
+      [[14, -1], [15, 1], [12, -4], [13, 4]].forEach(([btn, d], k) => { if (b[btn] && !padPrev[k]) select(sel + d); padPrev[k] = b[btn]; });
+      if (b[0] && !padPrev[4]) answer(sel);
+      padPrev[4] = b[0];
+      return;
+    }
     const map = [[14, 2], [13, 0], [15, 1]];
     map.forEach(([btn, alt], k) => { const on = b[btn] || b[alt]; if (on && !padPrev[k]) answer(k); padPrev[k] = on; });
   }
@@ -455,8 +499,9 @@ STEPS.sort = ctx => {
     const btn = binBtns[k >= 0 ? k : right];
     btn.classList.add(ok ? 'flash-good' : 'flash-bad');
     if (!ok) binBtns[right].classList.add('flash-good');
-    why.textContent = (ok ? 'Верно! ' : k < 0 ? 'Время вышло. ' : `Это ${st.bins[right].label.toLowerCase()}. `) + it.why;
-    setTimeout(() => { binBtns.forEach(b => b.classList.remove('flash-good', 'flash-bad')); i++; next(); }, ok ? 900 : 2200);
+    const hint = !ok && st.bins[right].hint ? ' Подсказка: ' + st.bins[right].hint : '';
+    why.textContent = (ok ? 'Верно! ' : k < 0 ? 'Время вышло. ' : `Это ${st.bins[right].label.toLowerCase()}. `) + it.why + hint;
+    setTimeout(() => { binBtns.forEach(b => b.classList.remove('flash-good', 'flash-bad')); i++; next(); }, ok ? 900 : hint ? 3200 : 2200);
   }
   function finish() {
     active = false; cancelAnimationFrame(raf);
@@ -473,6 +518,14 @@ STEPS.sort = ctx => {
   }
   box.addEventListener('keydown', e => {
     if (!active) return;
+    if (many) {
+      const d = /^(Digit|Numpad)([1-8])$/.exec(e.code);
+      if (d && Number(d[2]) <= st.bins.length) { e.preventDefault(); answer(Number(d[2]) - 1); return; }
+      const mv = { ArrowLeft: -1, ArrowRight: 1, ArrowUp: -4, ArrowDown: 4 }[e.code];
+      if (mv) { e.preventDefault(); select(sel + mv); return; }
+      if (e.code === 'Space' || e.code === 'Enter') { e.preventDefault(); answer(sel); }
+      return;
+    }
     const k = { Digit1: 0, Numpad1: 0, ArrowLeft: 0, Digit2: 1, Numpad2: 1, ArrowDown: 1, Digit3: 2, Numpad3: 2, ArrowRight: 2 }[e.code];
     if (k != null) { e.preventDefault(); answer(k); }
   });
@@ -585,6 +638,10 @@ STEPS.rounds = ctx => {
 STEPS.factory = ctx => {
   const st = ctx.step;
   let v = Object.assign({ level: st.levels[0].id, fields: {} }, ctx.value);
+  // donors — несколько доноров на выбор (урок 2: змейка, пинг-понг…): у каждого свои колоды кубиков, чтобы кубик не приносил правило из другой игры
+  if (st.donors && !st.donors.some(d => d.id === v.donor)) v.donor = st.donors[0].id;
+  const donor = () => st.donors ? st.donors.find(d => d.id === v.donor) : null;
+  const withDeck = f => { const d = donor(); return d && d.decks && d.decks[f.id] ? Object.assign({}, f, { deck: d.decks[f.id] }) : f; };
   const wrap = el('div', { class: 'stack' });
   const levelSeg = el('div', { class: 'seg', role: 'radiogroup', 'aria-label': 'Уровень задания' });
   st.levels.forEach(l => {
@@ -597,7 +654,8 @@ STEPS.factory = ctx => {
   function draw() {
     levelSeg.querySelectorAll('.opt').forEach((b, k) => { const on = st.levels[k].id === v.level; b.classList.toggle('on', on); b.setAttribute('aria-pressed', String(on)); });
     fieldsHost.innerHTML = '';
-    visible().forEach(f => fieldsHost.append(fieldEditor(f, v.fields[f.id], nv => { v.fields[f.id] = nv; ctx.save(v); count(); }, { single: f.id === 'title', idPrefix: st.id })));
+    drawDonor();
+    visible().map(withDeck).forEach(f => fieldsHost.append(fieldEditor(f, v.fields[f.id], nv => { v.fields[f.id] = nv; ctx.save(v); count(); }, { single: f.id === 'title', idPrefix: st.id })));
     count();
   }
   const visible = () => st.fields.filter(f => !f.levels || f.levels.includes(v.level));
@@ -605,9 +663,25 @@ STEPS.factory = ctx => {
   wrap.append(el('div', { class: 'formula' }, el('span', {}, 'Донор'), '×', el('span', {}, 'Твист'), '×', el('span', {}, 'Мир')));
   wrap.append(el('div', { class: 'eyebrow' }, 'Уровень'), levelSeg);
   if (st.donorCard) wrap.append(el('div', { class: 'donor-card' }, el('div', { class: 'ico' }, '👾'), el('div', {}, el('div', { class: 'eyebrow' }, 'Донор урока · карта'), el('h3', {}, st.donorCard.title), el('p', { class: 'muted' }, st.donorCard.text))));
+  const donorHost = el('div', { class: 'stack' });
+  function drawDonor() {
+    if (!st.donors) return;
+    donorHost.innerHTML = '';
+    const seg = el('div', { class: 'seg', role: 'radiogroup', 'aria-label': 'Донор' });
+    st.donors.forEach(d => seg.append(el('button', { type: 'button', class: 'opt' + (d.id === v.donor ? ' on' : ''), 'aria-pressed': String(d.id === v.donor), 'data-donor': d.id, onclick: () => {
+      if (d.id === v.donor) return;
+      // кубики прошлого донора уходят: правило змейки не годится пинг-понгу; свои слова остаются
+      for (const [k, f] of Object.entries(v.fields)) if (f && f.dice) delete v.fields[k];
+      v.donor = d.id; beep('tick'); ctx.save(v); draw();
+    } }, el('b', {}, (d.icon ? d.icon + ' ' : '') + d.title))));
+    const d = donor();
+    donorHost.append(el('div', { class: 'eyebrow' }, 'Донор: какую классику берёшь'), seg,
+      el('div', { class: 'donor-card' }, el('div', { class: 'ico' }, d.icon || '🎮'), el('div', {}, el('div', { class: 'eyebrow' }, 'Донор · карта'), el('h3', {}, d.title), el('p', { class: 'muted' }, d.text))));
+  }
+  if (st.donors) { if (!ctx.value || !ctx.value.donor) ctx.save(v); wrap.append(donorHost); }
   wrap.append(fieldsHost, el('div', { class: 'row' }, counterHost, el('span', { class: 'grow' }),
     el('button', { class: 'btn ghost', type: 'button', onclick: () => {
-      const empty = visible().filter(f => !valText(v.fields[f.id]) && f.deck);
+      const empty = visible().map(withDeck).filter(f => !valText(v.fields[f.id]) && f.deck);
       empty.forEach(f => { v.fields[f.id] = { text: roll(f.deck), dice: true }; });
       beep('dice'); ctx.save(v); draw();
     } }, '🎲 Кубик для пустых полей'),
@@ -639,6 +713,10 @@ STEPS.decisions = ctx => {
 function planVars() {
   const P = S.lesson.plan, out = {};
   for (const id of [P.factory, P.decisions]) for (const [k, f] of Object.entries((ans(id).value || {}).fields || {})) out[k] = valText(f);
+  // донор на выбор: {donor} — название, {donorRules} и {donorKeys} — правила и кнопки классики для черновика ИГРА
+  const fac = lessonSteps().find(x => x.id === P.factory), dv = (ans(P.factory).value || {}).donor;
+  const d = fac && fac.donors && (fac.donors.find(x => x.id === dv) || fac.donors[0]);
+  if (d) Object.assign(out, { donor: d.title, donorRules: d.rules || '', donorKeys: d.keys || '' });
   return out;
 }
 const fillTpl = (tpl, vars) => tpl.replace(/\{(\w+)\}/g, (_, k) => vars[k] || '…');

@@ -6,7 +6,8 @@
 // бросают вызов на зерне, оставляют плейтест; учитель пишет отзыв; аркада класса и личная аркада, скрытие игры.
 // Срез 3: проектор (код, таймер, кто закончил шаг), вау-старт teacher-demo (карты, сборка при всех, автопочинка, «открыть всем»),
 // фильтр «застряли», лимиты и «+10 запросов», сравнение моделей, отчёт журнала генераций и CSV, статусы заметок и Markdown;
-// в демо-прогоне — квиз-раунды rounds на уроке-проверке из fixtures/lessons.
+// Урок 2 в обоих прогонах: донор с ручками из шага, варианты игры, «Найди секрет» донора, квиз-раунды «Игра или не игра?»,
+// сортировщик на 8 лотков, Фабрика с донором на выбор и его колодами, черновик ИГРА по правилам донора, сборка, дуэль вдвоём.
 // Данные и настройки — во временной папке, настоящий portal/config.json и portal/data/ не трогаются.
 // Запуск: node portal/tools/e2e-portal.js [--headed]   Снимки — в portal/.check/portal-*.png
 'use strict';
@@ -17,7 +18,7 @@ const path = require('path');
 const TMP = fs.mkdtempSync(path.join(os.tmpdir(), 'lab-e2e-'));
 process.env.LAB_DATA = path.join(TMP, 'data');
 process.env.LAB_CONFIG = path.join(TMP, 'config.json');
-process.env.LAB_LESSONS = path.join(__dirname, 'fixtures', 'lessons'); // урок-проверка шага rounds
+process.env.LAB_LESSONS = path.join(__dirname, 'fixtures', 'lessons'); // урок-проверка шага teacher-demo
 const OUT = path.resolve(__dirname, '..', '.check');
 fs.mkdirSync(OUT, { recursive: true });
 
@@ -26,7 +27,7 @@ const mock = require('./mock-ai');
 const ai = require('../lib/ai');
 const portal = require('../server');
 const lesson1 = require('../lessons/urok-01');
-const lesson90 = require('./fixtures/lessons/urok-90');
+const lesson2 = require('../lessons/urok-02');
 const store = require('../lib/store');
 
 const PASSWORD = 'e2e-пароль';
@@ -241,6 +242,7 @@ async function run(browser, base, mode) {
   } else check('Демо-режим виден учителю', /демо-режим/i.test(aiTab));
   await shot(teacher, '8-ai', true);
   await fixtureLesson(mode, teacher, student, pj, shot);
+  await lessonTwo(mode, teacher, student, shot);
   await pj.close();
 
   check('Без ошибок JavaScript на страницах портала', !errors.length, errors.slice(0, 3).join(' | '));
@@ -467,16 +469,69 @@ async function compareModels(teacher, shot) {
   check('Сравнение: версия A — игра ученика в той же рамке', await of.evaluate(() => window.__lab.ready) && /Ученик/.test(await teacher.textContent('#studentDlg .cmpbox .seg .opt.on')));
 }
 
-/* ---------- урок-проверка: вау-старт учителя (teacher-demo) и квиз-раунды «Игра или не игра?» (rounds) ---------- */
+/* ---------- урок-проверка: вау-старт учителя (teacher-demo) ---------- */
 async function fixtureLesson(mode, teacher, student, pj, shot) {
   await teacher.click('.tabs >> text=Урок');
   await teacher.selectOption('#lessonSel', 'urok-90');
   await teacher.waitForSelector('text=Открыть: Вау-старт →', { timeout: 10000 });
   await teacher.click('text=Открыть: Вау-старт →');
   await demoStart(mode, teacher, student, pj, shot);
-  await teacher.click('text=Открыть: Игра или не игра? →');
-  await student.waitForSelector('#step-igra-ili-net >> text=▶ Начать', { timeout: 15000 });
-  const quiz = lesson90.checkpoints.find(c => c.id === 'kviz').steps[0];
+}
+
+/* ---------- урок 2: донор и одно правило, секрет донора, квизы, Фабрика с донором на выбор, сборка, дуэль ---------- */
+const step2 = id => lesson2.checkpoints.flatMap(c => c.steps).find(s => s.id === id);
+async function lessonTwo(mode, teacher, student, shot) {
+  await teacher.click('.tabs >> text=Урок');
+  await teacher.selectOption('#lessonSel', 'urok-02');
+  await teacher.waitForSelector('text=Открыть все', { timeout: 10000 });
+  await teacher.click('text=Открыть все');
+  await student.waitForSelector('#step-donor-play', { timeout: 15000 }); // смена урока перезагрузила страницу ученика
+  check('Урок 2 открылся у ученика', /Урок 2/.test(await student.textContent('#lessonTitle')));
+
+  // донор: классика против мудреца — ручки из шага (rule 0, 3 партии) доходят до игры
+  await student.click('#step-donor-play .veil button');
+  let gf = await gameFrame(student, 'kamni-mudreca', 0);
+  await gf.waitForFunction(() => window.__lab.cfg.rule === 0 && window.__lab.cfg.games === 3, null, { timeout: 5000 }).catch(() => {});
+  check('Донор урока 2: «Камни мудреца» в классике, матч из трёх партий', await gf.evaluate(() => window.__lab.cfg.rule === 0 && window.__lab.cfg.games === 3 && window.__lab.cfg.vs === 0));
+  await gf.evaluate(() => window.__lab.confirm());
+  await sleep(300);
+  await gf.evaluate(() => { window.__lab.lab.count('ничьи', 3); window.__lab.lab.score = 75; window.__lab.end('win', 'Проверка'); });
+  await student.waitForSelector('#step-donor-play.done', { timeout: 10000 });
+  await student.click('#step-donor-hook .opt >> nth=0');
+  await student.click('#step-donor-hook >> text=Ответить');
+  await student.waitForSelector('#step-donor-hook.done');
+  await shot(student, '20-u2-donor');
+
+  // одно правило: варианты игры кнопками, секрет считается скрытым счётчиком
+  await student.click('.cp >> text=Секрет');
+  await student.click('#step-secret-play .seg .opt >> nth=1');
+  await student.click('#step-secret-play .veil button');
+  gf = await gameFrame(student, 'kamni-mudreca', 0);
+  await gf.waitForFunction(() => window.__lab.cfg.rule === 2, null, { timeout: 5000 }).catch(() => {});
+  check('Вариант «Ветер с Фишта» включил правило 2', await gf.evaluate(() => window.__lab.cfg.rule === 2));
+  await gf.evaluate(() => window.__lab.confirm());
+  await sleep(300);
+  await gf.evaluate(() => { window.__lab.lab.count('_secret', 4); window.__lab.lab.count('победы', 1); window.__lab.lab.score = 150; window.__lab.end('win', 'Проверка'); });
+  await student.waitForSelector('#step-secret-play.done', { timeout: 10000 });
+
+  // «Найди секрет» донора: ответ — с сервера только после догадки
+  const hunt = step2('secret-hunt').hunt;
+  const me = await student.evaluate(async () => JSON.stringify(await (await fetch('/api/me', { headers: { 'x-lab-token': Lab.token.get() } })).json()));
+  check('Ответ «Найди секрет» не уходит ученику заранее', me.includes(hunt.question) && !me.includes('"trapText"') && !me.includes(hunt.reveal.slice(0, 30)));
+  await student.waitForSelector('#step-secret-hunt .opt');
+  const pick = mode === 'mock' ? hunt.trap : hunt.right;
+  await student.click(`#step-secret-hunt .opt >> text=${pick}`);
+  await student.click('#step-secret-hunt >> text=Ответить');
+  await student.waitForSelector('#step-secret-hunt.done');
+  const reveal = (await student.textContent('#step-secret-hunt')).replace(/\s+/g, ' ');
+  check(mode === 'mock' ? 'Секрет донора: ловушка «мудрец поддавался» распознана' : 'Секрет донора угадан: неопределённость исхода',
+    (mode === 'mock' ? /Ловушка! Мудрец не поддавался/.test(reveal) : /Точно!/.test(reveal)) && /Неопределённость исхода/.test(reveal), reveal.slice(0, 120));
+  check('Сравнение: классика и одно правило, счётчики телеметрии и секрет', /ничьи 3/.test(reveal) && /победы 1/.test(reveal) && /секрет сработал 4 раз/.test(reveal), (reveal.match(/С одним правилом.*?Классика[^О]*/) || [''])[0].slice(0, 160));
+  await shot(student, '21-u2-secret', true);
+  await student.click('#step-secret-story >> text=Понятно');
+
+  // квиз-раунды «Игра или не игра?»: свайп, кнопка с ошибкой, клавиши
+  const quiz = step2('igra-ili-net');
   await student.click('#step-igra-ili-net >> text=▶ Начать');
   let wrong = null;
   for (let i = 0; i < quiz.items.length; i++) {
@@ -495,9 +550,84 @@ async function fixtureLesson(mode, teacher, student, pj, shot) {
   }
   await student.waitForSelector('#step-igra-ili-net.done');
   const res = await student.textContent('#step-igra-ili-net h2 >> nth=1');
-  check('Квиз «Игра или не игра?»: свайп, кнопки, клавиши, итог', /11 из 12/.test(res) && (await student.textContent('#step-igra-ili-net')).includes(wrong.text), res);
+  check('Квиз «Игра или не игра?» в уроке 2: свайп, кнопки, клавиши, итог', /11 из 12/.test(res) && (await student.textContent('#step-igra-ili-net')).includes(wrong.text), res);
   check('Итог раундов: «Скопировать результат»', await student.locator('#step-igra-ili-net >> text=⧉ Скопировать результат').count() === 1);
   await shot(student, '17-rounds-result');
+
+  // сортировщик на 8 лотков: цифры и стрелки с пробелом, одна ошибка — подсказка лотка
+  const det = step2('detali');
+  await student.click('#step-detali >> text=▶ Начать');
+  check('Сортировщик: 8 лотков с примерами', await student.locator('#step-detali .bins.many .bin').count() === 8 && await student.locator('#step-detali .bin small').count() === 8);
+  for (let i = 0; i < det.items.length; i++) {
+    const text = (await student.textContent('#step-detali .item')).trim();
+    const k = det.bins.findIndex(b => b.id === det.items.find(x => x.text === text).bin);
+    if (i === 0) { // ошибка: соседний лоток — после неё подсказка
+      await student.keyboard.press('Digit' + (((k + 1) % 8) + 1));
+      await student.waitForSelector('#step-detali .item.bad');
+      check('Сортировщик: после ошибки — подсказка лотка', (await student.textContent('#step-detali .why')).includes('Подсказка: ' + det.bins[k].hint), (await student.textContent('#step-detali .why')).slice(0, 100));
+      await shot(student, '22-u2-detali');
+      await sleep(3400);
+      continue;
+    }
+    if (i === 1) { for (let n = 0; n < k; n++) await student.keyboard.press('ArrowRight'); await student.keyboard.press('Space'); } // стрелками и пробелом
+    else await student.keyboard.press('Digit' + (k + 1));
+    await sleep(1050);
+  }
+  await student.waitForSelector('#step-detali.done', { timeout: 10000 });
+  const dres = await student.textContent('#step-detali h2 >> nth=1');
+  check('Квиз «Разбери игру на детали» пройден', new RegExp(`${det.items.length - 1} из ${det.items.length}`).test(dres), dres);
+
+  // Фабрика: донор на выбор, кубики из колоды выбранной классики
+  await student.click('.cp >> text=Фабрика');
+  await student.click('#step-fabrika [data-donor=pong]');
+  await student.click('#step-fabrika >> text=🎲 Кубик для пустых полей');
+  const pong = step2('fabrika').donors.find(d => d.id === 'pong');
+  const twist = await student.inputValue('#f-fabrikatwist');
+  check('Кубик правила — из колоды пинг-понга, а не другой классики', pong.decks.twist.includes(twist), twist);
+  await student.fill('#f-fabrikatitle', 'Сыр над пропастью');
+  await student.click('#step-fabrika >> text=Замысел готов');
+  await student.waitForSelector('#step-fabrika.done');
+  for (let i = 0; i < 3; i++) await student.click(`#step-resheniya .dicebtn >> nth=${i}`);
+  await student.click('#step-resheniya >> text=Решения приняты');
+  await student.waitForSelector('#step-resheniya.done');
+  await shot(student, '23-u2-fabrika', true);
+  await student.click('.cp >> text=Промпт ИГРА');
+  const r = await student.inputValue('#f-igrar');
+  check('Черновик ИГРА: правила выбранной классики и наказание', r.includes('Две ракетки') && r.includes(twist) && /Наказание за ошибку/.test(r), r.slice(0, 90));
+  await student.click('#step-igra >> text=Промпт готов');
+  await student.click('#step-prodyuser >> text=Отдать замысел продюсеру');
+  await student.waitForSelector('#step-prodyuser .fork .opt', { timeout: 30000 });
+  await student.click('#step-prodyuser .fork .opt >> nth=0');
+  await student.waitForSelector('#step-prodyuser.done');
+
+  // сборка: в аркаде у игры донор — выбранная классика
+  await student.click('.cp >> text=Сборка');
+  await student.click('#step-sborka >> text=⚙ Собрать игру');
+  let own = await gameFrame(student, '/play/', 0);
+  if (mode === 'mock') {
+    await own.evaluate(() => window.__lab.confirm());
+    await student.waitForFunction(() => document.querySelectorAll('#step-sborka .ver').length >= 2, null, { timeout: 30000 });
+    own = await gameFrame(student, '/play/', 0);
+  }
+  await playRound(own);
+  await student.waitForSelector('#step-sborka.done', { timeout: 10000 });
+  const card = await student.evaluate(async () => (await (await fetch('/api/arcade', { headers: { 'x-lab-token': Lab.token.get() } })).json()).mine.find(c => c.lesson && c.lesson.id === 'urok-02'));
+  check('Игра урока 2 собрана, в аркаде донор — выбранная классика', card && card.title === 'Сыр над пропастью' && card.donor === 'Пинг-понг', card ? `${card.title} · ${card.donor}` : 'нет карточки');
+
+  // дуэль вдвоём за одним экраном
+  await student.click('.cp >> text=Играем вместе');
+  await student.click('#step-duel .veil button');
+  gf = await gameFrame(student, 'kamni-mudreca', 0);
+  await gf.waitForFunction(() => window.__lab.cfg.vs === 1 && window.__lab.cfg.rule === 0, null, { timeout: 5000 }).catch(() => {});
+  check('Дуэль: «Камни мудреца» вдвоём, первый вариант — классика', await gf.evaluate(() => window.__lab.cfg.vs === 1 && window.__lab.cfg.rule === 0));
+  await gf.evaluate(() => window.__lab.confirm());
+  await gf.locator('#cv').focus();
+  for (const k of ['Space', 'Space']) { await student.keyboard.press(k); await sleep(700); } // солнце в центр, луна — курсор занят, сдвиг не нужен: ждём ход лун
+  const placed = await gf.evaluate(() => window.__lab.lab.state.pos.b.filter(Boolean).length);
+  check('Дуэль: оба игрока ходят одними кнопками', placed >= 1, `камней на доске: ${placed}`);
+  await gf.evaluate(() => window.__lab.end('win', 'Проверка'));
+  await student.waitForSelector('#step-duel.done', { timeout: 10000 });
+  await shot(student, '24-u2-duel');
 }
 
 /* ---------- «Играем вместе»: второй ученик, игры друг друга, вызов, плейтест, отзыв, аркада ---------- */

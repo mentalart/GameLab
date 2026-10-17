@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // Собирает системный промпт для Qwen из portal/ai/game-prompt.md:
-// подставляет версию Babylon и код образца. Так же будет делать портал.
+// подставляет версию Babylon и код образцов. Так же делает портал.
 // Запуск: node portal/tools/build-prompt.js [файл]  — без файла печатает промпт в консоль.
 //         node portal/tools/build-prompt.js --template new|change|fix  — шаблон сообщения ученика.
 'use strict';
@@ -22,17 +22,20 @@ function babylonVersion() {
   return m[1];
 }
 
-function systemPrompt(example = 'games/tarelki-nad-aulom.js') {
-  return between(read('ai/game-prompt.md'), '<!-- prompt:start -->', '<!-- prompt:end -->')
-    .split('{{BABYLON}}').join(babylonVersion())
-    .split('{{ПРИМЕР}}').join(read(example).trim());
+// образцы механик для ИИ: метка в game-prompt.md → ремейк-донор урока
+const SAMPLES = { '{{ПРИМЕР}}': 'games/tarelki-nad-aulom.js', '{{ПРИМЕР2}}': 'games/kamni-mudreca.js' };
+
+function systemPrompt(example = SAMPLES['{{ПРИМЕР}}']) {
+  let text = between(read('ai/game-prompt.md'), '<!-- prompt:start -->', '<!-- prompt:end -->').split('{{BABYLON}}').join(babylonVersion());
+  for (const [mark, file] of Object.entries(Object.assign({}, SAMPLES, { '{{ПРИМЕР}}': example }))) text = text.split(mark).join(read(file).trim());
+  return text;
 }
 
 function userTemplate(name) {
   return between(read('ai/game-prompt.md'), `<!-- user:${name}:start -->`, `<!-- user:${name}:end -->`);
 }
 
-module.exports = { systemPrompt, userTemplate, babylonVersion };
+module.exports = { systemPrompt, userTemplate, babylonVersion, SAMPLES };
 
 if (require.main === module) {
   const args = process.argv.slice(2);
