@@ -1,6 +1,7 @@
 // Проектор учителя (/projector?code=КОД): крупно код класса, открытый чекпоинт с таймером и сколько учеников закончили каждый шаг.
 // Вкладка «Вау-старт»: учитель тянет карты колоды безумных идей и при всех собирает игру с ИИ. Для урока с колодой wow (урок 1) —
 // карты, голоса «перетянуть», сборка и раздача общей игры класса; секрет на проектор не выводится. Для шага teacher-demo — его карты и таймер.
+// Вкладка «Мир дня»: учитель даёт всему классу один мир одной из игр урока, таблица мира растёт на проекторе.
 'use strict';
 const { el, api, toast, beep } = Lab;
 const $ = s => document.querySelector(s);
@@ -14,7 +15,7 @@ async function boot() {
   try { P.code = q.get('code') || localStorage.getItem('lab:teacher:class'); } catch (e) { P.code = q.get('code'); }
   if (!P.code) { $('#pj-lesson').append(el('div', { class: 'card' }, 'Сначала создайте класс в панели учителя.')); return; }
   try { P.isDemo = (await api('/api/info')).demo; } catch (e) { /* без разницы */ }
-  if (q.get('tab') === 'demo') P.tab = 'demo';
+  if (q.get('tab') === 'demo' || q.get('tab') === 'day') P.tab = q.get('tab');
   await refresh();
   setInterval(refresh, 2000);
   setInterval(tick, 250);
@@ -33,16 +34,45 @@ async function refresh() {
   if (!P.mode && P.tab === 'demo') P.tab = 'lesson';
   showTab();
   if (P.tab === 'lesson') drawLesson();
+  else if (P.tab === 'day') await refreshDay();
   else if (P.mode === 'wow') await refreshWow();
   else await refreshDemo();
 }
 function showTab() {
   document.querySelectorAll('.pj-tabs button').forEach(b => b.classList.toggle('on', b.dataset.tab === P.tab));
-  $('#pj-lesson').hidden = P.tab !== 'lesson'; $('#pj-demo').hidden = P.tab !== 'demo';
+  $('#pj-lesson').hidden = P.tab !== 'lesson'; $('#pj-demo').hidden = P.tab !== 'demo'; $('#pj-day').hidden = P.tab !== 'day';
+  if (P.tab !== 'day') P.dayKey = null;
   if (P.tab !== 'demo' && (P.tf || P.wFrame)) {
     Games.stopAll(); P.tf = null; P.frameFor = null; P.wFrame = null; P.wKey = null;
     const gh = $('#pjWowGame'); if (gh) gh.innerHTML = ''; // остановленная рамка не остаётся на странице второй игрой
   }
+}
+
+/* ---------- мир дня: один мир одной игры урока для всего класса, живая таблица ---------- */
+async function refreshDay() {
+  let r;
+  try { r = await api('/api/teacher/day?code=' + encodeURIComponent(P.code)); } catch (e) { toast(e.message, 'err'); return; }
+  const key = JSON.stringify(r);
+  if (key === P.dayKey) return; // без перерисовки: не сбивать выбор игры
+  P.dayKey = key;
+  const host = $('#pj-day'); host.innerHTML = '';
+  const act = (url, body) => async () => { try { await api(url, Object.assign({ code: P.code }, body)); beep('done'); P.dayKey = null; await refreshDay(); } catch (e) { toast(e.message, 'err'); } };
+  if (!r.day) {
+    const sel = el('select', { id: 'pjDaySel', 'aria-label': 'Игра для мира дня' }, r.options.map(o => el('option', { value: o.id }, o.label)));
+    host.append(el('div', { class: 'stack', style: 'gap:14px;max-width:760px' },
+      el('div', { class: 'eyebrow' }, 'Мир дня'), el('h1', {}, 'Один мир на весь класс'),
+      el('p', { class: 'pj-sub' }, 'Все играют одну и ту же расстановку: одно зерно, одни ручки. Таблица растёт здесь, а у каждого в игре — призрак лидера.'),
+      r.options.length ? el('div', { class: 'row' }, sel, el('button', { class: 'btn', type: 'button', id: 'pjDayGo', onclick: () => act('/api/teacher/day', { option: sel.value })() }, '🌍 Дать классу мир дня'))
+        : el('p', { class: 'muted' }, 'В этом уроке пока нет игры для мира дня: нужен донор урока или розданная игра класса.')));
+    return;
+  }
+  const d = r.day;
+  host.append(el('div', { class: 'pj-day' },
+    el('div', { class: 'stack', style: 'gap:12px' }, el('div', { class: 'eyebrow' }, 'Мир дня · мир №' + d.seed), el('h1', {}, d.title),
+      el('p', { class: 'pj-sub' }, `Сыграли: ${d.players}. Кнопка «▶ Играть» — на доске вызовов у каждого ученика.`),
+      el('p', { class: 'concept' }, 'Одно зерно — честное сравнение: мир у всех одинаковый, разница только в игроке. Где здесь мастерство, а где удача?'),
+      el('div', { class: 'row' }, el('button', { class: 'btn ghost small', type: 'button', onclick: act('/api/teacher/day/end') }, '■ Закончить мир дня'))),
+    el('div', { class: 'pj-dtop', id: 'pjDayTop' }, d.top.length ? d.top.map(x => el('div', {}, el('span', {}, x.nick), el('b', {}, String(x.score)))) : el('p', { class: 'pj-sub' }, 'Ждём первые партии…'))));
 }
 
 /* ---------- урок: код, чекпоинт, таймер, кто закончил шаги ---------- */

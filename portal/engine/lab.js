@@ -77,6 +77,7 @@
   }
   let rng = Math.random;
   let fixedSeed = params.has('seed') ? (Number(params.get('seed')) >>> 0) : null;
+  let ghost = null, challengeOn = false; // вызов «побей мой мир»: призрак соперника и есть ли кнопка вызова под игрой
 
   /* ---------------- ввод ---------------- */
   const BTN = ['left', 'right', 'up', 'down', 'a', 'b'];
@@ -171,7 +172,7 @@
   let sps = null, parts = [], popups = [], warns = [], pulses = [], whites = [], follow = null;
   let shakeAmp = 0, flashA = 0, hitstopT = 0, camShakeOff = null, matCache = {};
   const cfg = {}, DEFAULTS = {}, META = {};
-  const tele = { presses: {}, hold: {}, hurts: 0, custom: {}, stats: {}, marks: {} };
+  const tele = { presses: {}, hold: {}, hurts: 0, custom: {}, stats: {}, marks: {}, line: [] }; // line — счёт на каждой секунде партии (призрак соперника в вызове)
   const session = { rounds: 0, restarts: 0 };
   let classRecord = null;
 
@@ -514,7 +515,7 @@
   /* ---------------- телеметрия ---------------- */
   function resetTele() {
     for (const k of BTN) { tele.presses[k] = 0; tele.hold[k] = 0; }
-    tele.hurts = 0; tele.custom = {}; tele.stats = {}; tele.marks = {};
+    tele.hurts = 0; tele.custom = {}; tele.stats = {}; tele.marks = {}; tele.line = [];
   }
   function tickTele(dt) {
     for (const k of BTN) {
@@ -534,7 +535,7 @@
     return out;
   }
   function teleData() {
-    return { time: Math.round(lab.t * 10) / 10, presses: { ...tele.presses }, hold: Object.fromEntries(BTN.map(k => [k, Math.round(tele.hold[k] * 10) / 10])), hurts: tele.hurts, custom: { ...tele.custom }, stats: { ...tele.stats }, marks: JSON.parse(JSON.stringify(tele.marks)) };
+    return { time: Math.round(lab.t * 10) / 10, presses: { ...tele.presses }, hold: Object.fromEntries(BTN.map(k => [k, Math.round(tele.hold[k] * 10) / 10])), hurts: tele.hurts, custom: { ...tele.custom }, stats: { ...tele.stats }, marks: JSON.parse(JSON.stringify(tele.marks)), line: tele.line.slice() };
   }
 
   /* ---------------- ошибки ---------------- */
@@ -661,6 +662,20 @@
     $('#hudLives').textContent = lab.lives > 0 ? (lab.lives <= 8 ? '♥'.repeat(lab.lives) : '♥ × ' + lab.lives) : '';
     $('#hudExtra').innerHTML = Object.values(hudLines).map(esc).join('<br>');
     $('#hudBest').textContent = lab.best ? 'Мой рекорд: ' + lab.best : '';
+    const gh = $('#hudGhost'), g = ghostNow();
+    gh.hidden = !g;
+    if (g) {
+      const d = Math.round(lab.score) - g.at;
+      gh.textContent = `⚔ ${g.nick}: ${g.at}` + (d > 0 ? ` · ты впереди на ${d}` : d < 0 ? ` · отстаёшь на ${-d}` : ' · поровну');
+      gh.className = d > 0 ? 'ahead' : d < 0 ? 'behind' : '';
+    }
+  }
+  // призрак соперника в вызове: его счёт на той же секунде партии (после конца его записи — итог)
+  function ghostNow() {
+    if (!ghost || state === 'menu') return null;
+    const s = Math.floor(lab.t), line = ghost.line;
+    const at = s < line.length ? line[s] : ghost.score;
+    return { nick: ghost.nick, at: Math.round(Number(at) || 0) };
   }
   function updateMuteBtn() { $('#muteBtn').setAttribute('aria-pressed', String(muted)); $('#muteBtn').textContent = muted ? 'Звук выкл · M' : 'Звук · M'; }
 
@@ -723,9 +738,11 @@
     if (typeof G.overNote === 'function') safe(() => { const n = G.overNote(lab); (Array.isArray(n) ? n : [n]).filter(Boolean).forEach(x => notes.push(String(x))); }, 'overNote');
     notes.push(...teleNotes());
     $('#overNotes').innerHTML = notes.map(n => `<div>${esc(n)}</div>`).join('');
-    $('#overSeed').textContent = window.parent !== window
-      ? `Зерно партии: ${lab.seed}. Тот же мир для друга — кнопка «Вызов: побей мой мир» под игрой.`
-      : `Зерно партии: ${lab.seed}. Тот же мир для друга: ссылка с ?seed=${lab.seed}`;
+    $('#overSeed').textContent = ghost
+      ? (score > ghost.score ? `⚔ Вызов выигран: ${score} против ${ghost.score} у ${ghost.nick}!` : `⚔ Лидер этого мира — ${ghost.nick}: ${ghost.score}. Не хватило ${ghost.score - score}. Ещё раз?`)
+      : window.parent === window ? `Зерно партии: ${lab.seed}. Тот же мир для друга: ссылка с ?seed=${lab.seed}`
+      : challengeOn ? `Зерно партии: ${lab.seed}. Тот же мир для друга — кнопка «⚔ Вызов: побей мой мир» под игрой.`
+      : `Зерно партии: ${lab.seed}.`;
     showRecord();
     showScreen('overScreen');
     disarm();
@@ -743,6 +760,7 @@
         if (lab.invuln > 0) lab.invuln = Math.max(0, lab.invuln - dt);
         tickTele(dt);
         safe(() => G.update(lab, dt), 'update');
+        while (tele.line.length < Math.min(600, Math.floor(lab.t) + 1)) tele.line.push(Math.round(lab.score));
       }
     }
     if (scene && cam) {
@@ -808,6 +826,8 @@
     if (m.type === 'seed') { fixedSeed = m.seed == null ? null : (Number(m.seed) >>> 0); if (state === 'menu') buildRound(true); }
     if (m.type === 'setCfg' && m.cfg) { for (const k in m.cfg) if (k in cfg) cfg[k] = Number(m.cfg[k]); document.querySelectorAll('.knob').forEach(w => w._sync && w._sync()); knobChanged(true); }
     if (m.type === 'pause') setPause(true);
+    if (m.type === 'challengeOn') challengeOn = true;
+    if (m.type === 'ghost') ghost = m.ghost && Array.isArray(m.ghost.line) ? { nick: String(m.ghost.nick || 'соперник').slice(0, 24), score: Number(m.ghost.score) || 0, line: m.ghost.line.slice(0, 600) } : null;
   });
 
   /* ---------------- загрузка ---------------- */

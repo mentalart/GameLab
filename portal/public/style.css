@@ -402,3 +402,17 @@ td.warn{color:var(--warm);font-weight:700}
 .pbar{height:10px;border-radius:6px;background:var(--panel2);overflow:hidden}
 .pbar i{display:block;height:100%;background:var(--info)}
 .prow.top .pbar i{background:var(--accent)}
+/* вызов «побей мой мир»: доска вызовов класса, окно вызова, мир дня на проекторе */
+.chboard{display:flex;flex-direction:column;gap:6px;padding:10px 12px;border-radius:var(--r);border:1px solid #6b4d1a;background:#1c150a}
+.chrow{display:flex;align-items:center;gap:10px;padding:6px 8px;border-radius:10px;background:#0006}
+.chrow .ico{font-size:20px;line-height:1}
+.chrow.beaten{outline:1px solid var(--danger)}
+.chrow.day{outline:1px solid var(--info)}
+.chrow.lead{opacity:.85}
+dialog.chdlg{width:min(1100px,calc(100% - 32px));max-height:calc(100vh - 32px);overflow:auto}
+.pj-day{display:grid;grid-template-columns:minmax(0,1fr) minmax(320px,.8fr);gap:24px;align-items:start}
+.pj-day .pj-dtop{display:flex;flex-direction:column;gap:8px;counter-reset:pl}
+.pj-day .pj-dtop div{display:flex;gap:14px;align-items:baseline;font-size:26px;padding:6px 14px;border-radius:12px;background:var(--panel)}
+.pj-day .pj-dtop div b{margin-left:auto;font-variant-numeric:tabular-nums;color:var(--warm)}
+.pj-day .pj-dtop div:first-child{font-size:34px;outline:2px solid var(--warm)}
+.pj-day .pj-dtop div::before{counter-increment:pl;content:counter(pl) '.';color:var(--muted);min-width:1.6em}

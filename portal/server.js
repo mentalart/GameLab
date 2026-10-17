@@ -4,6 +4,7 @@
 'use strict';
 const http = require('http');
 const fs = require('fs');
+const crypto = require('crypto');
 const path = require('path');
 const store = require('./lib/store');
 const ai = require('./lib/ai');
@@ -229,7 +230,16 @@ route('POST', '/api/score', (ctx) => {
     if (w.nick !== g.nick) broadcast(w.class, 'arcade', { game: g.id, author: g.nick });
   }
   const ch = ctx.body.challenge && store.getChallenge(w.class, ctx.body.challenge);
-  if (ch) out.challenge = records(store.addScore(w.class + ':challenge:' + ch.code, w.nick, score), w.nick);
+  if (ch) {
+    const prev = chLeader(ch);
+    out.challenge = records(store.addScore(w.class + ':challenge:' + ch.code, w.nick, score), w.nick);
+    if (score > prev.score) { // новый лидер: его запись — призрак для остальных, прежнему лидеру — «отыграться»
+      ch.leader = { nick: w.nick, score, line: cleanLine((ctx.body.tele || {}).line), at: store.now() };
+      store.saveChallenge(w.class, ch);
+      const loser = prev.nick !== w.nick && !(ch.day && prev.nick === ch.nick) ? prev.nick : null;
+      broadcast(w.class, 'challenge', { kind: 'lead', code: ch.code, title: ch.title, nick: w.nick, score, loser, loserScore: prev.score, day: !!ch.day });
+    } else if (ch.day) broadcast(w.class, 'challenge', { kind: 'score', code: ch.code, day: true });
+  }
   return out;
 });
 route('GET', '/api/records', (ctx) => {
@@ -355,24 +365,116 @@ route('POST', '/api/play/again', (ctx) => {
   if (g) store.addPlay(g.id, { type: 'again', nick: w.nick });
   return { ok: true };
 });
+/* ---------- вызов «побей мой мир»: любая игра урока — донор (ремейк шага play), игра класса, игра учителя, игра ученика ---------- */
+// Вызов — игра + версия + зерно + ручки. Лидер — лучший счёт в этом мире, его счёт по секундам (tele.line) — призрак для соперников.
+// Кого обошли, тому приходит «отыграться». Мир дня — вызов учителя всему классу, таблица живёт на проекторе.
+const GAME_FILE = /^games\/[\w-]+\.js$/;
+function remakeTitle(file) {
+  try { return (/\btitle\s*:\s*(['"`])([^'"`]{1,80})\1/.exec(fs.readFileSync(path.join(PORTAL, file), 'utf8')) || [])[2] || null; } catch (e) { return null; }
+}
+const notFound = () => Object.assign(new Error('Нет такой игры'), { status: 404 });
+function challengeTarget(code, les, body) {
+  if (body.step) {
+    const st = (stepOf(les, String(body.step)) || {}).step;
+    if (!st || st.type !== 'play' || st.shared || !GAME_FILE.test(st.game || '')) throw notFound();
+    return { kind: 'remake', step: st.id, file: st.game, version: 1, key: 'remake:' + st.id, title: remakeTitle(st.game) || st.title };
+  }
+  const g = body.game && store.getGame(String(body.game));
+  if (!g || g.class !== code || !g.current) throw notFound();
+  const version = Number(body.version) || g.current;
+  if (!g.versions[version - 1]) throw notFound();
+  return { kind: 'game', game: g.id, version, key: (g.shared ? 'wow:' : g.teacher ? 'demo:' : 'game:') + g.id, title: g.title || 'Игра' };
+}
+const cleanLine = l => (Array.isArray(l) ? l.slice(0, 600).map(x => Math.round(Number(x) || 0)) : []);
+const cleanCfg = c => Object.fromEntries(Object.entries(c && typeof c === 'object' ? c : {}).filter(([, v]) => Number.isFinite(Number(v))).slice(0, 24).map(([k, v]) => [String(k).slice(0, 40), Number(v)]));
+const chSrc = ch => (ch.kind === 'remake' ? `/engine/game.html?game=../${ch.file}&seed=${ch.seed}` : `/play/${ch.game}/${ch.version}?seed=${ch.seed}`);
+const chLeader = ch => ch.leader || { nick: ch.nick, score: ch.score, line: ch.line || [] };
+// вызов глазами ученика nick: где играть, кто лидер, призрак (линия — только для одного вызова), мой лучший и что мне с ним делать
+function chPublic(code, ch, nick, withLine) {
+  const all = store.scores(code + ':challenge:' + ch.code), rec = records(all, nick), lead = chLeader(ch);
+  const played = !!all[nick] || ch.nick === nick;
+  const status = ch.day ? 'day' : lead.nick === nick ? 'lead' : played ? 'beaten' : 'new';
+  return {
+    code: ch.code, nick: ch.nick, title: ch.title, score: ch.score, seed: ch.seed, version: ch.version, day: !!ch.day, at: ch.at,
+    src: chSrc(ch), key: ch.key || 'game:' + ch.game, game: ch.kind === 'remake' ? null : ch.game, cfg: ch.cfg || null,
+    leader: { nick: lead.nick, score: lead.score },
+    ghost: lead.score > 0 ? Object.assign({ nick: lead.nick, score: lead.score }, withLine ? { line: lead.line || [] } : {}) : null,
+    top: rec.top, mine: rec.mine, status,
+  };
+}
+// вызовы класса за последние сутки: мир дня первым, потом свежие
+function classChallenges(cls, nick) {
+  const since = Date.now() - 864e5;
+  return Object.values(store.challenges(cls.code)).filter(ch => Date.parse(ch.at) > since && (!ch.day || ch.code === cls.day))
+    .sort((a, b) => Number(!!b.day) - Number(!!a.day) || Date.parse(b.at) - Date.parse(a.at)).slice(0, 12)
+    .map(ch => chPublic(cls.code, ch, nick));
+}
 route('POST', '/api/challenge', (ctx) => {
-  const { w } = needStudent(ctx);
-  const g = classGame(w, ctx.body.game);
-  const version = Number(ctx.body.version) || (g && g.current);
+  const { w, les } = needStudent(ctx);
+  const t = challengeTarget(w.class, les, ctx.body);
   const seed = seedOf(ctx.body.seed);
-  if (!g || !g.versions[version - 1]) throw Object.assign(new Error('Нет такой игры'), { status: 404 });
   if (seed == null) throw Object.assign(new Error('Нет зерна партии — сыграй партию до конца'), { status: 400 });
   const score = Math.round(Number(ctx.body.score) || 0);
-  const ch = store.createChallenge(w.class, { game: g.id, version, seed, score, nick: w.nick, title: g.title });
+  const ch = store.createChallenge(w.class, Object.assign(t, { seed, score, nick: w.nick, cfg: cleanCfg(ctx.body.cfg), line: cleanLine(ctx.body.line) }));
   store.addScore(w.class + ':challenge:' + ch.code, w.nick, score);
-  return { code: ch.code, url: '/arcade?ch=' + ch.code, seed, version };
+  broadcast(w.class, 'challenge', { kind: 'new', code: ch.code, nick: w.nick, title: ch.title, score });
+  return { code: ch.code, url: '/arcade?ch=' + ch.code, seed, version: ch.version, challenge: chPublic(w.class, ch, w.nick) };
+});
+route('GET', '/api/challenges', (ctx) => {
+  const { w, cls } = needStudent(ctx);
+  return { list: classChallenges(cls, w.nick), day: cls.day || null };
 });
 route('GET', '/api/challenge', (ctx) => {
   const { w } = needStudent(ctx);
   const ch = store.getChallenge(w.class, ctx.url.searchParams.get('code'));
-  const g = ch && classGame(w, ch.game);
-  if (!g) throw Object.assign(new Error('Нет такого вызова в твоём классе. Проверь код.'), { status: 404 });
-  return { challenge: ch, game: gameCard(w.class, g, w.nick), records: records(store.scores(w.class + ':challenge:' + ch.code), w.nick) };
+  if (!ch) throw Object.assign(new Error('Нет такого вызова в твоём классе. Проверь код.'), { status: 404 });
+  const g = ch.kind !== 'remake' && classGame(w, ch.game);
+  return { challenge: chPublic(w.class, ch, w.nick, true), game: g && !g.shared && !g.teacher ? gameCard(w.class, g, w.nick) : null, records: records(store.scores(w.class + ':challenge:' + ch.code), w.nick) };
+});
+// мир дня: учитель даёт всему классу один мир одной из игр урока, таблица — на проекторе
+function dayOptions(cls, les) {
+  const out = les.checkpoints.flatMap(c => c.steps).filter(st => st.type === 'play' && !st.shared && GAME_FILE.test(st.game || ''))
+    .filter((st, i, a) => a.findIndex(x => x.game === st.game) === i)
+    .map(st => ({ id: 'step:' + st.id, label: 'Донор: ' + (remakeTitle(st.game) || st.title) }));
+  const games = [];
+  if (les.wow) { const w = wowState(cls, les); if (w.given && w.gameId) games.push([w.gameId, 'Игра класса']); }
+  const d = store.getDemo(cls.code, les.id); if (d && d.gameId) games.push([d.gameId, 'Игра учителя']);
+  for (const [id, what] of games) { const g = store.getGame(id); if (g && g.current) out.push({ id: 'game:' + id, label: `${what}: «${g.title || 'Игра'}»` }); }
+  return out;
+}
+function needDayClass(ctx) {
+  needTeacher(ctx);
+  const cls = store.getClass(ctx.body.code || ctx.url.searchParams.get('code'));
+  if (!cls) throw Object.assign(new Error('Нет класса'), { status: 404 });
+  return { cls, les: lesson(cls.lesson) };
+}
+function dayPublic(cls) {
+  const ch = cls.day && store.getChallenge(cls.code, cls.day);
+  if (!ch) return null;
+  const all = Object.entries(store.scores(cls.code + ':challenge:' + ch.code)).filter(([n]) => n !== ch.nick)
+    .map(([nick, v]) => ({ nick, score: v.score })).sort((a, b) => b.score - a.score);
+  return { code: ch.code, title: ch.title, seed: ch.seed, at: ch.at, players: all.length, top: all.slice(0, 10) };
+}
+route('GET', '/api/teacher/day', (ctx) => {
+  const { cls, les } = needDayClass(ctx);
+  return { options: dayOptions(cls, les), day: dayPublic(cls) };
+});
+route('POST', '/api/teacher/day', (ctx) => {
+  const { cls, les } = needDayClass(ctx);
+  const [kind, id] = String(ctx.body.option || '').split(':');
+  if (!dayOptions(cls, les).some(o => o.id === ctx.body.option)) throw notFound();
+  const t = challengeTarget(cls.code, les, kind === 'step' ? { step: id } : { game: id });
+  const ch = store.createChallenge(cls.code, Object.assign(t, { seed: crypto.randomInt(1, 2 ** 31), score: 0, nick: 'Учитель', day: true, cfg: {}, line: [] }));
+  cls.day = ch.code; store.saveClass(cls);
+  broadcast(cls.code, 'challenge', { kind: 'day', code: ch.code, title: ch.title });
+  return { day: dayPublic(cls) };
+});
+route('POST', '/api/teacher/day/end', (ctx) => {
+  const { cls } = needDayClass(ctx);
+  const last = dayPublic(cls);
+  cls.day = null; store.saveClass(cls);
+  broadcast(cls.code, 'challenge', { kind: 'dayEnd' });
+  return { last };
 });
 route('POST', '/api/playtest', (ctx) => {
   const { w } = needStudent(ctx);

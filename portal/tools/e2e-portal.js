@@ -117,6 +117,13 @@ async function run(browser, base, mode) {
   await playRound(remake);
   await student.waitForSelector('#step-donor-play.done', { timeout: 10000 });
   check('Партия в ремейке засчитана, шаг готов', true);
+  // вызов «побей мой мир» на доноре: экран конца партии обещает кнопку — и она есть; вызов сразу на доске вызовов класса
+  const overSeed = await remake.textContent('#overSeed');
+  check('Экран конца партии обещает кнопку вызова, и она есть под донором', /«⚔ Вызов: побей мой мир» под игрой/.test(overSeed) && await student.locator('#step-donor-play >> text=⚔ Вызов: побей мой мир').count() === 1, overSeed);
+  await student.click('#step-donor-play >> text=⚔ Вызов: побей мой мир');
+  await student.waitForSelector('#step-donor-play .chcode');
+  await student.waitForSelector('.chboard .chrow.lead', { timeout: 10000 });
+  check('Вызов на доноре: код и строка «Твой вызов» на доске вызовов', /Твой вызов «НЛО в станице»/.test(await student.textContent('.chboard')), (await student.textContent('.chboard')).replace(/\s+/g, ' ').slice(0, 120));
   await student.click('#step-donor-hook .opt >> nth=0');
   await student.click('#step-donor-hook >> text=Ответить');
   await student.waitForSelector('#step-donor-hook.done');
@@ -1059,6 +1066,8 @@ async function together(browser, base, code, teacher, student, errors, shot) {
   await student.waitForSelector('#step-sosed .chcode');
   const chCode = (await student.textContent('#step-sosed .chcode')).trim();
   check('Вызов «побей мой мир» выдал код', /^[A-Z0-9]{6}$/.test(chCode), chCode + ', зерно ' + seed);
+  await nb.waitForSelector(`.chboard .chrow.new[data-code="${chCode}"]`, { timeout: 10000 });
+  check('Доска вызовов: вызов одноклассника появился у соседки сам', /Тестер вызывает: 80/.test(await nb.textContent(`.chboard .chrow[data-code="${chCode}"]`)));
   await shot(student, '9-arcade-step', true);
 
   // плейтест тап-карточкой
@@ -1119,10 +1128,49 @@ async function together(browser, base, code, teacher, student, errors, shot) {
   const cf = await gameFrame(nb, 'seed=', 0);
   const cseed = await cf.evaluate(() => window.__lab.lab.seed);
   check('Вызов открыл тот же мир: /play/…?seed= передал зерно в оболочку', cseed === seed, `зерно ${cseed}`);
-  await playRound(cf, { score: 200 });
+  await cf.evaluate(() => window.__lab.confirm());
+  await cf.waitForFunction(() => !document.querySelector('#hudGhost').hidden, null, { timeout: 5000 });
+  const gtext = await cf.textContent('#hudGhost');
+  check('Призрак соперника в игре: счёт Тестера на той же секунде', /^⚔ Тестер: \d+/.test(gtext), gtext);
+  await cf.evaluate(() => { window.__lab.lab.score = 200; window.__lab.end('lose', 'Проверка'); });
+  check('Конец партии по вызову: итог против лидера', /Вызов выигран: 200 против 80/.test(await cf.textContent('#overSeed')), await cf.textContent('#overSeed'));
   await nb.waitForSelector('#stage >> text=Таблица вызова', { timeout: 10000 });
   check('Таблица вызова: результат принявшего вызов', /Соседка — 200/.test(await nb.textContent('#stage')));
   await shot(nb, '14-challenge');
+  // реванш: Тестера обошли — на доске «Отыграться», окно вызова поверх урока, призрак — новый лидер
+  await student.waitForSelector(`.chboard .chrow.beaten[data-code="${chCode}"]`, { timeout: 10000 });
+  check('Обойдённому автору — «Отыграться» на доске вызовов', /Тебя обогнали.*Соседка — 200/.test(await student.textContent(`.chboard .chrow[data-code="${chCode}"]`)));
+  await student.click(`.chboard .chrow[data-code="${chCode}"] button`);
+  await student.waitForSelector('dialog.chdlg[open] iframe');
+  const rf = await gameFrame(student, 'seed=', 0);
+  check('«Отыграться» открыл тот же мир в окне поверх урока', await rf.evaluate(() => window.__lab.lab.seed) === seed);
+  await rf.evaluate(() => window.__lab.confirm());
+  await rf.waitForFunction(() => /^⚔ Соседка/.test(document.querySelector('#hudGhost').textContent), null, { timeout: 5000 });
+  check('Призрак реванша — новый лидер Соседка', true);
+  await shot(student, '14b-revenge');
+  await student.click('dialog.chdlg >> text=✕ Закрыть');
+  // мир дня: учитель даёт классу один мир на проекторе, ученик играет с доски вызовов, таблица растёт на проекторе
+  const pd = await teacher.context().newPage();
+  watch(pd, errors);
+  await pd.setViewportSize({ width: 1600, height: 900 });
+  await pd.goto(base + '/projector?code=' + code + '&tab=day');
+  await pd.waitForSelector('#pjDayGo');
+  await pd.click('#pjDayGo');
+  await student.waitForSelector('.chboard .chrow.day', { timeout: 10000 });
+  check('Мир дня: строка первой на доске вызовов у ученика', (await student.getAttribute('.chboard .chrow >> nth=0', 'class')).includes('day'));
+  await student.click('.chboard .chrow.day button');
+  await student.waitForSelector('dialog.chdlg[open] iframe');
+  const df = await gameFrame(student, 'seed=', 0);
+  await playRound(df, { score: 321 });
+  await pd.waitForSelector('#pjDayTop >> text=321', { timeout: 10000 });
+  check('Мир дня: таблица на проекторе растёт', /Тестер\s*321/.test(await pd.textContent('#pjDayTop')), (await pd.textContent('#pjDayTop')).replace(/\s+/g, ' '));
+  await shot(pd, 'p3-day');
+  await student.click('dialog.chdlg >> text=✕ Закрыть');
+  await pd.click('text=■ Закончить мир дня');
+  await pd.waitForSelector('#pjDayGo');
+  await student.waitForFunction(() => !document.querySelector('.chboard .chrow.day'), null, { timeout: 10000 });
+  check('Мир дня закончен — строка пропала с доски', true);
+  await pd.close();
 
   // автор скрывает игру — у соседа её больше нет в аркаде
   await nb.click('#mine >> text=🙈 Скрыть из аркады');

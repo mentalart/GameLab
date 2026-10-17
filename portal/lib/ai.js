@@ -43,7 +43,20 @@ function rubles(model, inT, outT) {
 }
 
 /* ---------------- вызов модели ---------------- */
-async function chat({ model, messages, onProgress, temperature }) {
+// Модели без параметра temperature (Claude Sonnet 5 и новее): провайдер отвечает 400 unsupported_parameter.
+// Такую модель портал запоминает и повторяет запрос без temperature; Claude — сразу без него.
+const noTemperature = new Set();
+const skipsTemperature = model => noTemperature.has(model) || /claude|anthropic/i.test(model || '');
+async function chat(opts) {
+  try { return await chatOnce(opts); } catch (e) {
+    if (e.status === 400 && /temperature/.test(e.body || '') && /unsupported|not support/i.test(e.body || '') && !skipsTemperature(opts.model)) {
+      noTemperature.add(opts.model);
+      return chatOnce(opts);
+    }
+    throw e;
+  }
+}
+async function chatOnce({ model, messages, onProgress, temperature }) {
   const c = loadConfig().ai;
   // timeoutSec — сколько модель может молчать (до первого знака и между кусками потока), maxSec — предел на весь ответ.
   // Игра целиком — 10–20 тысяч токенов, и живой поток идёт дольше 240 с, поэтому общий предел отдельный и больше.
@@ -55,7 +68,8 @@ async function chat({ model, messages, onProgress, temperature }) {
   if (c.stream) idle();
   const t0 = Date.now();
   try {
-    const body = { model, messages, temperature: temperature == null ? c.temperature : temperature };
+    const body = { model, messages };
+    if (!skipsTemperature(model)) body.temperature = temperature == null ? c.temperature : temperature;
     if (c.stream) { body.stream = true; body.stream_options = { include_usage: true }; }
     const res = await fetch(c.baseUrl.replace(/\/$/, '') + '/chat/completions', {
       method: 'POST', signal: ctrl.signal,
@@ -64,7 +78,7 @@ async function chat({ model, messages, onProgress, temperature }) {
     });
     if (!res.ok) {
       const t = await res.text().catch(() => '');
-      throw new Error(`Модель ответила ${res.status}: ${t.slice(0, 300)}`);
+      throw Object.assign(new Error(`Модель ответила ${res.status}: ${t.slice(0, 300)}`), { status: res.status, body: t });
     }
     let text = '', usage = null;
     const type = res.headers.get('content-type') || '';

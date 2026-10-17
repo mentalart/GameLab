@@ -150,6 +150,7 @@ const store = {
     writeJSON(path.join(classDir(code), 'challenges.json'), all);
     return all[ch];
   },
+  saveChallenge(code, ch) { const all = this.challenges(code); all[ch.code] = ch; writeJSON(path.join(classDir(code), 'challenges.json'), all); return ch; },
   getChallenge(code, ch) { return this.challenges(code)[String(ch || '').trim().toUpperCase()] || null; },
 
   // ---------- вау-старт: игра учителя на проекторе, своя на каждый урок класса ----------

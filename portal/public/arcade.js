@@ -1,6 +1,6 @@
 // Аркада класса (/arcade): игры одноклассников с рекордами, вызов «побей мой мир» по коду и личная аркада ученика.
 'use strict';
-const { el, api, toast, beep } = Lab;
+const { el, api, toast } = Lab;
 const $ = s => document.querySelector(s);
 const A = { data: null, playing: null };
 
@@ -27,50 +27,44 @@ function drawGames() {
 }
 
 /* ---------- сцена: игра, табло, вызов ---------- */
-function play(c, ch) {
+function play(c) {
   Games.stopAll();
   A.playing = c.id;
   const stage = $('#stage'); stage.innerHTML = ''; stage.hidden = false;
-  const seed = ch ? ch.challenge.seed : null, version = ch ? ch.challenge.version : c.version;
   const scoreHost = el('div'), chHost = el('div'), topHost = el('div');
   const showScores = () => { scoreHost.innerHTML = ''; scoreHost.append(Games.scores(c)); };
   const showTop = list => {
     topHost.innerHTML = '';
-    if (list && list.length) topHost.append(el('div', { class: 'small' }, el('b', {}, ch ? 'Таблица вызова: ' : 'Таблица рекордов: '), list.slice(0, 5).map((r, i) => `${i + 1}. ${r.nick} — ${r.score}`).join(' · ')));
+    if (list && list.length) topHost.append(el('div', { class: 'small' }, el('b', {}, 'Таблица рекордов: '), list.slice(0, 5).map((r, i) => `${i + 1}. ${r.nick} — ${r.score}`).join(' · ')));
   };
-  const game = Object.assign({}, c, { version });
   const h = Games.frame({
-    src: () => `/play/${c.id}/${version}` + (seed != null ? '?seed=' + seed : ''), key: () => 'game:' + c.id,
-    info: () => ({ version, challenge: ch ? ch.challenge.code : undefined }), label: ch ? 'Принять вызов' : 'Играть', autostart: true,
-    onOver: m => { chHost.innerHTML = ''; chHost.append(Games.challenge(game, m)); },
-    onScore: (m, r) => {
-      c.authorBest = r.authorBest || 0; c.myBest = r.mine; c.record = r.record; showScores();
-      if (ch && r.challenge) {
-        showTop(r.challenge.top);
-        if (m.score > ch.challenge.score) { beep('done'); toast(`Вызов принят и выигран: ${m.score} против ${ch.challenge.score}!`, 'ok'); }
-      } else showTop(r.top);
-    },
+    src: () => `/play/${c.id}/${c.version}`, key: () => 'game:' + c.id, info: () => ({ version: c.version }), label: 'Играть', autostart: true, challenge: true,
+    onOver: m => { chHost.innerHTML = ''; chHost.append(Games.challenge(c, m)); },
+    onScore: (m, r) => { c.authorBest = r.authorBest || 0; c.myBest = r.mine; c.record = r.record; showScores(); showTop(r.top); },
     onError: err => h.message(el('b', {}, 'Игра упала: ' + (err.message || 'ошибка') + '. Скажи автору.')),
   });
   stage.append(
     el('div', { class: 'row' }, el('div', { class: 'grow stack', style: 'gap:2px' },
-      el('div', { class: 'eyebrow' }, ch ? `Вызов ${ch.challenge.code} от ${ch.challenge.nick}` : 'Сейчас играешь'),
-      el('h2', {}, c.title), el('div', { class: 'small muted' }, `автор: ${c.nick} · версия ${version}` + (c.donor ? ` · по мотивам механики ${c.donor}` : ''))),
-      el('button', { class: 'btn ghost small', type: 'button', onclick: () => { Games.stopAll(); stage.hidden = true; A.playing = null; history.replaceState(null, '', '/arcade'); } }, '✕ Закрыть')),
-    ch ? el('p', { class: 'concept' }, `⚔ ${ch.challenge.nick} набрал ${ch.challenge.score} очков в мире №${seed}. У тебя тот же мир — побей!`) : null,
+      el('div', { class: 'eyebrow' }, 'Сейчас играешь'),
+      el('h2', {}, c.title), el('div', { class: 'small muted' }, `автор: ${c.nick} · версия ${c.version}` + (c.donor ? ` · по мотивам механики ${c.donor}` : ''))),
+      el('button', { class: 'btn ghost small', type: 'button', onclick: closeStage }, '✕ Закрыть')),
     scoreHost, h.box, Games.bar(h), topHost, chHost);
   showScores();
-  if (ch) showTop(ch.records.top);
   stage.scrollIntoView({ behavior: 'smooth' });
 }
+function closeStage() { Games.stopAll(); $('#stage').hidden = true; A.playing = null; history.replaceState(null, '', '/arcade'); }
+// вызов по коду или с доски вызовов: тот же мир, призрак лидера, таблица вызова — для любой игры урока (донор, игра класса, игра ученика)
 async function openChallenge(code) {
   code = String(code || '').trim().toUpperCase();
   if (!code) return;
-  try {
-    const r = await api('/api/challenge?code=' + encodeURIComponent(code));
-    history.replaceState(null, '', '/arcade?ch=' + code);
-    play(r.game, r);
-  } catch (e) { toast(e.message, 'err'); }
+  let r;
+  try { r = await api('/api/challenge?code=' + encodeURIComponent(code)); } catch (e) { toast(e.message, 'err'); return; }
+  history.replaceState(null, '', '/arcade?ch=' + code);
+  Games.stopAll();
+  A.playing = r.challenge.game;
+  const stage = $('#stage'); stage.innerHTML = ''; stage.hidden = false;
+  stage.append(Games.challengeStage(r, { onClose: closeStage }));
+  stage.scrollIntoView({ behavior: 'smooth' });
 }
 
 /* ---------- личная аркада ---------- */
@@ -95,11 +89,14 @@ $('#logout').addEventListener('click', () => { Lab.token.clear(); location.href 
 
 (async () => {
   if (!(await load())) return;
+  A.board = Games.board({ open: openChallenge });
+  $('#board').append(A.board);
   const q = new URLSearchParams(location.search);
   if (q.get('ch')) openChallenge(q.get('ch'));
   else if (q.get('game')) { const c = A.data.games.concat(A.data.mine).find(g => g.id === q.get('game')); if (c) play(c); }
   // соседи собрали игру или поставили рекорд — аркада обновляется сама (сцена с игрой не трогается)
   const es = new EventSource('/api/events?token=' + encodeURIComponent(Lab.token.get()));
+  es.addEventListener('challenge', e => Games.challengeEvent(JSON.parse(e.data), A.data.nick, A.board));
   let t = null;
   es.addEventListener('arcade', () => { clearTimeout(t); t = setTimeout(load, 800); });
 })();

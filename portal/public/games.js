@@ -1,5 +1,5 @@
 // Общие помощники игр для страниц ученика, аркады и учителя: рамка-песочница, карточка игры аркады,
-// вызов «побей мой мир», открытие плейтеста и отзыв учителя.
+// вызов «побей мой мир» (кнопка, игра по вызову с призраком, доска вызовов), открытие плейтеста и отзыв учителя.
 'use strict';
 const Games = (() => {
   const { el, api, toast, copy, beep, valText } = Lab;
@@ -9,7 +9,8 @@ const Games = (() => {
   // Игра идёт в изолированной рамке (sandbox без allow-same-origin). Одновременно работает только одна рамка: запуск новой ставит остальные на паузу.
   // key — ключ таблицы рекордов в классе (game:<id> — игра ученика, её партии идут в плейтест автора); info() — версия и код вызова для сервера.
   // score: false — партии не записываются (рамки учителя на проекторе и в карточке ученика).
-  function frame({ src, key, info, cfg, label, onReady, onOver, onScore, onAgain, onError, autostart, score = true }) {
+  // challenge — под игрой есть кнопка вызова (оболочка пишет о ней на экране конца партии), ghost — призрак соперника { nick, score, line }.
+  function frame({ src, key, info, cfg, label, onReady, onOver, onScore, onAgain, onError, autostart, score = true, challenge, ghost }) {
     const box = el('div', { class: 'gamebox' });
     const veil = el('div', { class: 'veil' });
     let iframe = null, timer = null, ready = false;
@@ -24,7 +25,7 @@ const Games = (() => {
       if (!iframe || e.source !== iframe.contentWindow) return;
       const m = e.data || {};
       if (m.source !== 'lab-game') return;
-      if (m.type === 'ready') { ready = true; clearTimeout(timer); if (score) sendRecords(); if (cfg) post({ type: 'setCfg', cfg }); if (onReady) onReady(m.meta || {}); }
+      if (m.type === 'ready') { ready = true; clearTimeout(timer); if (score) sendRecords(); if (cfg) post({ type: 'setCfg', cfg }); if (challenge) post({ type: 'challengeOn' }); if (ghost) post({ type: 'ghost', ghost }); if (onReady) onReady(m.meta || {}); }
       if (m.type === 'over' && score) {
         api('/api/score', Object.assign({ game: key(), score: m.score, seed: m.seed, tele: m.tele }, extra()))
           .then(r => { postRecords(r); if (onScore) onScore(m, r); }).catch(() => {});
@@ -58,6 +59,7 @@ const Games = (() => {
       message(content) { if (iframe) { iframe.remove(); iframe = null; } clearTimeout(timer); showVeil(content); },
       destroy() { removeEventListener('message', onMsg); h.stop(true); const i = frames.indexOf(h); if (i >= 0) frames.splice(i, 1); },
       fullscreen() { if (box.requestFullscreen) box.requestFullscreen().catch(() => {}); },
+      post,
     };
     box.append(veil);
     frames.push(h);
@@ -145,27 +147,106 @@ const Games = (() => {
   }
 
   /* ---------- вызов «побей мой мир» ---------- */
-  // после партии: игра + версия + зерно → короткий код и ссылка; друг играет в тот же мир и бьёт мой счёт
-  function challenge(c, over) {
+  // после партии: игра (донор — по шагу step, игра класса, учителя или ученика — по id и версии) + зерно + ручки → код вызова.
+  // Вызов сам появляется на доске вызовов у одноклассников, счёт по секундам (tele.line) становится призраком соперника.
+  function challenge(t, over) {
     const host = el('div', { class: 'challenge' });
     if (!over) return host;
     const btn = el('button', { class: 'btn warm', type: 'button' }, `⚔ Вызов: побей мой мир (${over.score} очков)`);
     btn.addEventListener('click', async () => {
       btn.disabled = true;
       try {
-        const r = await api('/api/challenge', { game: c.id, version: c.version, seed: over.seed, score: over.score });
+        const body = Object.assign(t.step ? { step: t.step } : { game: t.id, version: t.version }, { seed: over.seed, score: over.score, cfg: over.cfg, line: (over.tele || {}).line });
+        const r = await api('/api/challenge', body);
         const url = location.origin + r.url;
-        const text = `Побей мой мир в «${c.title}»: ${over.score} очков. Код вызова ${r.code} — введи его в аркаде класса или открой ${url}`;
+        const text = `Побей мой мир в «${r.challenge.title}»: ${over.score} очков. Код вызова ${r.code} — введи его в аркаде класса или открой ${url}`;
         host.innerHTML = '';
         host.append(el('div', { class: 'row' },
           el('div', { class: 'stack', style: 'gap:2px' }, el('div', { class: 'eyebrow' }, 'Код вызова'), el('div', { class: 'chcode' }, r.code)),
-          el('div', { class: 'grow small muted' }, `Тот же мир (зерно ${r.seed}), версия ${r.version}. Код работает в аркаде класса, ссылка — на любом компьютере класса.`, el('br'), el('a', { href: r.url, target: '_blank', rel: 'noopener' }, url)),
+          el('div', { class: 'grow small muted' }, `Вызов уже на доске вызовов у всего класса: тот же мир (зерно ${r.seed}), кто наберёт больше? Код и ссылка — для аркады и другого компьютера класса.`, el('br'), el('a', { href: r.url, target: '_blank', rel: 'noopener' }, url)),
           el('button', { class: 'btn ghost small', type: 'button', onclick: () => copy(text) }, '⧉ Скопировать вызов')));
         beep('good');
       } catch (e) { toast(e.message, 'err'); btn.disabled = false; }
     });
-    host.append(el('div', { class: 'row' }, btn, el('span', { class: 'muted small' }, 'Код и ссылка «побей мой мир»: тот же мир для друга, кто наберёт больше?')));
+    host.append(el('div', { class: 'row' }, btn, el('span', { class: 'muted small' }, 'Тот же мир для всего класса: вызов появится у одноклассников на доске вызовов.')));
     return host;
+  }
+
+  // игра по вызову: тот же мир и ручки, призрак лидера сверху в игре, таблица вызова. После партии призрак обновляется (новый лидер — новый призрак).
+  function challengeStage(r, { onClose } = {}) {
+    let ch = r.challenge;
+    const box = el('div', { class: 'stack chstage' });
+    const head = el('p', { class: 'concept' }), topHost = el('div', { class: 'small' });
+    const ghostOf = c => (c.ghost && c.status === 'lead' ? Object.assign({}, c.ghost, { nick: 'твой рекорд' }) : c.ghost);
+    const showHead = () => {
+      head.textContent = ch.day ? `🌍 Мир дня: весь класс играет один и тот же мир №${ch.seed}. ` + (ch.ghost ? `Лидер — ${ch.leader.nick}, ${ch.leader.score}. Сверху в игре — его счёт на той же секунде.` : 'Лидера пока нет — стань первым!')
+        : ch.status === 'lead' ? `🏆 Ты лидер этого мира: ${ch.leader.score}. Сверху в игре — твой рекорд на той же секунде. Сможешь больше?`
+        : `⚔ Лидер мира №${ch.seed} — ${ch.leader.nick}: ${ch.leader.score} очков. У тебя тот же мир — побей!` + (ch.ghost ? ' Сверху в игре — его счёт на той же секунде.' : '');
+    };
+    const showTop = list => { topHost.innerHTML = ''; if (list && list.length) topHost.append(el('b', {}, 'Таблица вызова: '), list.slice(0, 5).map((x, i) => `${i + 1}. ${x.nick} — ${x.score}`).join(' · ')); };
+    const h = frame({
+      src: () => ch.src, key: () => ch.key, info: () => ({ version: ch.version, challenge: ch.code }), cfg: ch.cfg && Object.keys(ch.cfg).length ? ch.cfg : null,
+      ghost: ghostOf(ch), label: ch.day ? 'Играть в мир дня' : 'Принять вызов', autostart: true,
+      onScore: async (m, res) => {
+        if (res.challenge) showTop(res.challenge.top);
+        if (m.score > ch.leader.score && ch.status !== 'lead') { beep('done'); toast(ch.day ? `Ты лидер мира дня: ${m.score}!` : `Вызов выигран: ${m.score} против ${ch.leader.score}!`, 'ok'); }
+        try { ch = (await api('/api/challenge?code=' + encodeURIComponent(ch.code))).challenge; showHead(); h.post({ type: 'ghost', ghost: ghostOf(ch) }); } catch (e) { /* без обновления */ }
+      },
+      onError: err => h.message(el('b', {}, 'Игра упала: ' + (err.message || 'ошибка') + '. Скажи автору.')),
+    });
+    showHead(); showTop(r.records ? r.records.top : ch.top);
+    box.append(el('div', { class: 'row' }, el('div', { class: 'grow stack', style: 'gap:2px' },
+      el('div', { class: 'eyebrow' }, ch.day ? 'Мир дня от учителя' : `Вызов ${ch.code} от ${ch.nick}`), el('h2', {}, ch.title)),
+    onClose ? el('button', { class: 'btn ghost small', type: 'button', onclick: () => { h.destroy(); onClose(); } }, '✕ Закрыть') : null),
+    head, h.box, bar(h), topHost);
+    box.frame = h;
+    return box;
+  }
+  // вызов в окне поверх урока: страница ученика не уходит с шага
+  async function openChallenge(code) {
+    let r;
+    try { r = await api('/api/challenge?code=' + encodeURIComponent(code)); } catch (e) { toast(e.message, 'err'); return; }
+    const dlg = el('dialog', { class: 'chdlg', 'aria-label': 'Вызов' });
+    const stage = challengeStage(r, { onClose: () => dlg.close() });
+    dlg.append(stage);
+    dlg.addEventListener('close', () => { stage.frame.destroy(); dlg.remove(); });
+    document.body.append(dlg); dlg.showModal();
+  }
+
+  /* ---------- доска вызовов класса ---------- */
+  // вызовы одноклассников и мир дня: «принять», «отыграться», «ты лидер». Обновляется по событию challenge (challengeEvent).
+  const BOARD_ORDER = { day: 0, beaten: 1, new: 2, lead: 3 };
+  function board({ open = openChallenge } = {}) {
+    const host = el('section', { class: 'chboard', hidden: true, 'aria-label': 'Доска вызовов класса' });
+    let all = false, list = [];
+    function row(c) {
+      const t = `«${c.title}»`;
+      const [ico, text, label] = c.status === 'day' ? ['🌍', `Мир дня: ${t} — весь класс играет один мир. ` + (c.ghost ? `Лидер: ${c.leader.nick} — ${c.leader.score}` : 'Лидера пока нет'), '▶ Играть']
+        : c.status === 'beaten' ? ['😤', `Тебя обогнали в ${t}: ${c.leader.nick} — ${c.leader.score}, у тебя ${c.mine}`, '↺ Отыграться']
+        : c.status === 'lead' ? ['🏆', c.top.length < 2 ? `Твой вызов ${t}: ${c.leader.score} — ждём соперников` : `Ты лидер в ${t}: ${c.leader.score}`, 'Ещё раз']
+        : ['⚔', `${c.nick} вызывает: ${c.score} в ${t}` + (c.leader.nick !== c.nick ? ` · лидер ${c.leader.nick} — ${c.leader.score}` : ''), 'Принять'];
+      return el('div', { class: 'chrow ' + c.status, 'data-code': c.code },
+        el('span', { class: 'ico', 'aria-hidden': 'true' }, ico), el('span', { class: 'grow' }, text),
+        el('button', { class: 'btn small' + (c.status === 'lead' ? ' ghost' : ' warm'), type: 'button', onclick: () => open(c.code) }, label));
+    }
+    function draw() {
+      host.innerHTML = '';
+      host.hidden = !list.length;
+      if (!list.length) return;
+      const sorted = list.slice().sort((a, b) => BOARD_ORDER[a.status] - BOARD_ORDER[b.status]);
+      host.append(el('div', { class: 'row', style: 'gap:8px' }, el('div', { class: 'eyebrow grow' }, '⚔ Доска вызовов класса'),
+        sorted.length > 3 ? el('button', { class: 'btn ghost small', type: 'button', onclick: () => { all = !all; draw(); } }, all ? 'Свернуть' : `Все вызовы (${sorted.length})`) : null),
+      ...(all ? sorted : sorted.slice(0, 3)).map(row));
+    }
+    host.refresh = async () => { try { list = (await api('/api/challenges')).list; } catch (e) { return; } draw(); };
+    host.refresh();
+    return host;
+  }
+  // событие challenge: доска обновляется, обойдённому лидеру — «отыграйся», всем — «мир дня»
+  function challengeEvent(d, me, b) {
+    if (b) b.refresh();
+    if (d.kind === 'lead' && d.loser && d.loser === me) { beep('bad'); toast(`Тебя обогнали в «${d.title}»: ${d.nick} — ${d.score}, у тебя ${d.loserScore}. Отыграйся — кнопка на доске вызовов!`, 'err', 7000); }
+    if (d.kind === 'day') { beep('done'); toast(`Учитель дал мир дня: «${d.title}». Весь класс играет один мир — кнопка на доске вызовов.`, 'ok', 7000); }
   }
 
   /* ---------- открытие плейтеста и отзыв учителя ---------- */
@@ -203,5 +284,5 @@ const Games = (() => {
       el('div', {}, el('b', {}, 'Вопрос: '), valText(fb.question)));
   }
 
-  return { frames, frame, teacherFrame, bar, stopAll, card, scores, challenge, discovery, feedback };
+  return { frames, frame, teacherFrame, bar, stopAll, card, scores, challenge, challengeStage, openChallenge, board, challengeEvent, discovery, feedback };
 })();

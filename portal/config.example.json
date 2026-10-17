@@ -4,7 +4,7 @@
   "ai": {
     "baseUrl": "https://api.provod.ai/v1",
     "apiKey": "",
-    "codeModel": "qwen3.7-max",
+    "codeModel": "anthropic/claude-sonnet-5",
     "textModel": "qwen3.8-flash",
     "stream": true,
     "timeoutSec": 240,
@@ -12,8 +12,8 @@
     "temperature": 0.4
   },
   "models": [
+    { "id": "anthropic/claude-sonnet-5", "label": "Claude Sonnet 5", "rubPer1MIn": null, "rubPer1MOut": null },
     { "id": "qwen3.7-max", "label": "Qwen 3.7 Max", "rubPer1MIn": null, "rubPer1MOut": null },
-    { "id": "claude-sonnet-5", "label": "Claude Sonnet 5", "rubPer1MIn": null, "rubPer1MOut": null },
     { "id": "qwen3.8-flash", "label": "Qwen 3.8 Flash", "rubPer1MIn": null, "rubPer1MOut": null }
   ],
   "limits": {

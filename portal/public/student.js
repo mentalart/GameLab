@@ -18,6 +18,7 @@ async function boot() {
   $('#demoBanner').hidden = !me.demo;
   $('#noteBtn').hidden = !me.class.authorMode;
   S.cpId = pickCheckpoint();
+  S.board = Games.board(); // доска вызовов класса: над шагами любого чекпоинта
   render();
   listen();
 }
@@ -41,6 +42,8 @@ function listen() {
   });
   // аркада класса: соседи собрали игру, сыграли в мою, оставили плейтест — шаги arcade и playtest обновляются сами
   es.addEventListener('arcade', e => { const d = JSON.parse(e.data); S.hooks.forEach(h => h('arcade', d)); });
+  // вызовы «побей мой мир»: новый вызов, новый лидер (обойдённому — «отыграйся»), мир дня от учителя
+  es.addEventListener('challenge', e => Games.challengeEvent(JSON.parse(e.data), S.me.nick, S.board));
   // вау-старт: учитель тянет карты, собирает и раздаёт игру класса — шаги cards, play (shared) и secret обновляются сами
   es.addEventListener('wow', e => {
     const before = S.wow;
@@ -107,6 +110,7 @@ function renderMain() {
     return;
   }
   const idx = S.lesson.checkpoints.indexOf(cp);
+  if (S.board) main.append(S.board);
   main.append(el('div', { class: 'stack', style: 'gap:6px' },
     el('div', { class: 'eyebrow' }, `Чекпоинт ${idx + 1} из ${S.lesson.checkpoints.length} · ${cp.minutes} минут`),
     el('h1', {}, cp.title)));
@@ -155,13 +159,16 @@ STEPS.play = ctx => {
   let vi = variants ? Math.max(0, variants.findIndex(x => x.label === v.variant)) : 0;
   const status = el('b', {});
   const show = () => { status.textContent = `Партий: ${v.rounds} · лучший счёт: ${v.best}` + (st.minRounds && v.rounds < st.minRounds ? ` · нужно партий: ${st.minRounds}` : ''); };
-  const host = el('div', { class: 'stack' });
+  const host = el('div', { class: 'stack' }), chHost = el('div');
   let h = null;
   function mount() {
     if (h) h.destroy();
+    chHost.innerHTML = '';
     h = Games.frame({
       src: () => '/engine/game.html?game=../' + st.game, key: () => 'remake:' + st.id, cfg: Object.assign({}, st.cfg, variants ? variants[vi].cfg : null), label: variants ? 'Играть: ' + variants[vi].label : 'Играть',
+      challenge: true,
       onOver: m => {
+        chHost.innerHTML = ''; chHost.append(Games.challenge({ step: st.id }, m));
         const custom = Object.assign({}, v.custom);
         for (const [k, n] of Object.entries((m.tele || {}).custom || {})) custom[k] = (custom[k] || 0) + (Number(n) || 0);
         v = Object.assign({}, v, { rounds: v.rounds + 1, best: Math.max(v.best, m.score || 0), secret: v.secret + (Number(((m.tele || {}).custom || {})._secret) || 0), custom });
@@ -177,7 +184,7 @@ STEPS.play = ctx => {
         el('b', {}, x.label), x.hint ? el('div', { class: 'small muted' }, x.hint) : null)));
       host.append(seg);
     }
-    host.append(h.box, Games.bar(h, status));
+    host.append(h.box, Games.bar(h, status), chHost);
   }
   mount(); show();
   return el('div', { class: 'stack' }, host,
@@ -224,14 +231,18 @@ STEPS['teacher-demo'] = ctx => {
     shownGame = d.game.id + ':' + d.game.current;
     const game = d.game;
     h = Games.frame({
-      src: () => `/play/${game.id}/${game.current}`, key: () => 'demo:' + game.id, label: 'Играть в игру класса', autostart: false,
-      onOver: m => { v = { rounds: v.rounds + 1, best: Math.max(v.best, m.score || 0) }; showStatus(); ctx.save(v, ctx.done || v.rounds >= (st.minRounds || 1)); },
+      src: () => `/play/${game.id}/${game.current}`, key: () => 'demo:' + game.id, label: 'Играть в игру класса', autostart: false, challenge: true,
+      onOver: m => {
+        v = { rounds: v.rounds + 1, best: Math.max(v.best, m.score || 0) }; showStatus(); ctx.save(v, ctx.done || v.rounds >= (st.minRounds || 1));
+        chHost.innerHTML = ''; chHost.append(Games.challenge({ id: game.id, version: game.current }, m));
+      },
       onError: err => h.message(el('div', { class: 'stack', style: 'align-items:center' }, el('b', {}, 'Игра упала: ' + (err.message || 'ошибка')), el('p', { class: 'muted small' }, 'Учитель починит её на проекторе — она обновится сама.'))),
     });
     showStatus();
+    const chHost = el('div');
     host.append(el('div', { class: 'donor-card' }, el('div', { class: 'ico' }, '🎲'), el('div', { class: 'stack', style: 'gap:6px' },
       el('div', { class: 'eyebrow' }, 'Игра класса за пять минут'), el('h3', {}, game.title || d.title), formula, cards())),
-    h.box, Games.bar(h, status),
+    h.box, Games.bar(h, status), chHost,
     el('p', { class: 'concept' }, 'Это формула курса: ', el('b', {}, 'Донор × Твист × Мир'), '. Сегодня ты соберёшь по ней свою игру — и решать будешь ты, а не карты.'),
     el('div', {}, el('button', { class: 'btn ghost small', type: 'button', onclick: () => ctx.save(v, true) }, 'Готово, дальше')));
   }
@@ -275,18 +286,21 @@ function sharedPlay(ctx) {
     const show = () => { status.textContent = `Партий: ${v.rounds} · лучший счёт: ${v.best}` + (st.minRounds && v.rounds < st.minRounds ? ` · нужно партий: ${st.minRounds}` : ''); };
     cur = Games.frame({
       src: () => `/play/${g.id}/${g.version}`, key: () => 'wow:' + g.id, cfg: st.secretOff && g.knob ? { [g.knob]: 0 } : null, label: st.secretOff ? 'Играть без секрета' : 'Играть в игру класса',
+      challenge: true,
       onOver: m => {
         const hits = Number(((m.tele || {}).custom || {})._secret) || 0;
         v = Object.assign(v, { rounds: v.rounds + 1, best: Math.max(v.best, m.score || 0), secret: v.secret + hits });
         show(); ctx.save(v, ctx.done || v.rounds >= (st.minRounds || 1));
+        chHost.innerHTML = ''; chHost.append(Games.challenge({ id: g.id, version: g.version }, m));
       },
       onError: err => cur.message(el('div', { class: 'stack', style: 'align-items:center' }, el('b', {}, 'Игра класса упала: ' + (err.message || 'ошибка')), el('p', { class: 'muted small' }, 'Скажи учителю — он пересоберёт игру или возьмёт запасную.'))),
     });
     show();
+    const chHost = el('div');
     host.append(el('div', { class: 'donor-card' }, el('div', { class: 'ico' }, '🃏'), el('div', {},
       el('div', { class: 'eyebrow' }, st.secretOff ? 'Игра класса · секрет выключен' : 'Игра класса'), el('h3', {}, g.title || 'Игра класса'),
       el('p', { class: 'muted small' }, S.wow.cards.map(c => c.text).filter(Boolean).join(' · ')))),
-    cur.box, Games.bar(cur, status),
+    cur.box, Games.bar(cur, status), chHost,
     el('div', {}, el('button', { class: 'btn ghost small', type: 'button', onclick: () => { if (!v.rounds) { toast('Сначала сыграй хотя бы одну партию'); return; } ctx.save(v, true); } }, 'Готово, дальше')));
   }
   S.hooks.push(kind => { if (kind === 'wow') draw(); });
@@ -1243,7 +1257,7 @@ STEPS.arcade = ctx => {
     const status = el('b', {});
     const showStatus = () => { status.textContent = `Партий: ${v.rounds} · лучший счёт: ${v.best}` + (v.beat ? ' · рекорд автора побит!' : ''); };
     const h = cur = Games.frame({
-      src: () => `/play/${game.id}/${game.version}`, key: () => 'game:' + game.id, info: () => ({ version: game.version }), label: 'Играть в игру соседа',
+      src: () => `/play/${game.id}/${game.version}`, key: () => 'game:' + game.id, info: () => ({ version: game.version }), label: 'Играть в игру соседа', challenge: true,
       onOver: m => {
         v.rounds++; v.played = (v.played || 0) + 1; v.best = Math.max(v.best, m.score || 0);
         ctx.save(v, ctx.done || v.played >= (st.minRounds || 1)); showStatus();
