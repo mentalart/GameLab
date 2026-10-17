@@ -22,7 +22,7 @@ function loadConfig() {
     console.log(`Создан ${path.relative(process.cwd(), CONFIG_FILE)}. Пароль учителя: ${example.teacherPassword}`);
   }
   configCache = JSON.parse(fs.readFileSync(CONFIG_FILE, 'utf8'));
-  configCache.ai = Object.assign({ baseUrl: 'https://api.provod.ai/v1', apiKey: '', codeModel: '', textModel: '', stream: true, timeoutSec: 240, temperature: 0.4 }, configCache.ai || {});
+  configCache.ai = Object.assign({ baseUrl: 'https://api.provod.ai/v1', apiKey: '', codeModel: '', textModel: '', stream: true, timeoutSec: 240, maxSec: 900, temperature: 0.4 }, configCache.ai || {});
   configCache.limits = Object.assign({ aiCallsPerStudentPerLesson: 40, rublesPerLesson: 0 }, configCache.limits || {});
   configCache.models = configCache.models || [];
   return configCache;
@@ -45,8 +45,14 @@ function rubles(model, inT, outT) {
 /* ---------------- вызов модели ---------------- */
 async function chat({ model, messages, onProgress, temperature }) {
   const c = loadConfig().ai;
+  // timeoutSec — сколько модель может молчать (до первого знака и между кусками потока), maxSec — предел на весь ответ.
+  // Игра целиком — 10–20 тысяч токенов, и живой поток идёт дольше 240 с, поэтому общий предел отдельный и больше.
   const ctrl = new AbortController();
-  const timer = setTimeout(() => ctrl.abort(), (c.timeoutSec || 240) * 1000);
+  let why = '', timer = null;
+  const abort = w => { why = w; ctrl.abort(); };
+  const idle = () => { clearTimeout(timer); timer = setTimeout(() => abort('idle'), (c.timeoutSec || 240) * 1000); };
+  const hard = setTimeout(() => abort('max'), (c.maxSec || 900) * 1000);
+  if (c.stream) idle();
   const t0 = Date.now();
   try {
     const body = { model, messages, temperature: temperature == null ? c.temperature : temperature };
@@ -66,6 +72,7 @@ async function chat({ model, messages, onProgress, temperature }) {
       const dec = new TextDecoder();
       let buf = '';
       for await (const chunk of res.body) {
+        idle();
         buf += dec.decode(chunk, { stream: true });
         let i;
         while ((i = buf.indexOf('\n')) >= 0) {
@@ -91,9 +98,9 @@ async function chat({ model, messages, onProgress, temperature }) {
     const outT = usage ? usage.completion_tokens : Math.round(text.length / 3);
     return { text, ms: Date.now() - t0, tokensIn: inT, tokensOut: outT, estimated: !usage };
   } catch (e) {
-    if (e.name === 'AbortError') throw new Error(`Модель не ответила за ${c.timeoutSec} с`);
+    if (e.name === 'AbortError') throw new Error(why === 'max' ? `Модель писала ответ дольше ${c.maxSec || 900} с` : `Модель молчала дольше ${c.timeoutSec || 240} с`);
     throw e;
-  } finally { clearTimeout(timer); }
+  } finally { clearTimeout(timer); clearTimeout(hard); }
 }
 
 async function listModels() {

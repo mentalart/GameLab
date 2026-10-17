@@ -8,6 +8,7 @@
     "textModel": "qwen3.8-flash",
     "stream": true,
     "timeoutSec": 240,
+    "maxSec": 900,
     "temperature": 0.4
   },
   "models": [
