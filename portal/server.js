@@ -23,6 +23,8 @@ function lessons() {
     return require('./lessons/' + f);
   });
 }
+// ученику — урок без колоды секретов: какой секрет в игре класса, он узнаёт только после своей догадки
+function studentLesson(les) { return les.wow ? Object.assign({}, les, { wow: { formula: les.wow.formula, cards: les.wow.cards.map(c => ({ id: c.id, label: c.label })) } }) : les; }
 function lesson(id) { return lessons().find(l => l.id === id) || null; }
 function stepOf(les, stepId) { for (const cp of les.checkpoints) for (const s of cp.steps) if (s.id === stepId) return { cp, step: s }; return null; }
 
@@ -160,7 +162,7 @@ route('GET', '/api/me', (ctx) => {
   const { w, cls, les, s, st } = needStudent(ctx);
   s.seen = store.now(); store.saveStudent(w.class, s);
   const g = st.gameId ? store.getGame(st.gameId) : null;
-  return { nick: w.nick, class: { code: cls.code, name: cls.name, opened: cls.opened, authorMode: cls.authorMode }, lesson: les, answers: st.answers, game: g, feedback: st.feedback || null, demo: ai.demo(), aiCalls: st.aiCalls, aiLimit: ai.loadConfig().limits.aiCallsPerStudentPerLesson };
+  return { nick: w.nick, class: { code: cls.code, name: cls.name, opened: cls.opened, authorMode: cls.authorMode }, lesson: studentLesson(les), answers: st.answers, game: g, wow: les.wow ? publicWow(cls, les) : null, feedback: st.feedback || null, demo: ai.demo(), aiCalls: st.aiCalls, aiLimit: ai.loadConfig().limits.aiCallsPerStudentPerLesson };
 });
 
 route('POST', '/api/answer', (ctx) => {
@@ -340,6 +342,175 @@ route('GET', '/api/playtest/mine', (ctx) => {
   const { w, st } = needStudent(ctx);
   const g = st.gameId && store.getGame(st.gameId);
   return { game: g && g.current ? gameCard(w.class, g, w.nick) : null, discovery: g && g.current ? discovery(g) : null, feedback: st.feedback || null };
+});
+
+/* ---------- вау-старт: карты безумных идей, секрет, общая игра урока ---------- */
+// Состояние живёт в классе (cls.wow) для текущего урока. Секрет и его раскрытие ученики получают только после своей догадки.
+const randFrom = (list, not) => { const l = list.filter(x => x !== not); return l.length ? l[Math.floor(Math.random() * l.length)] : not; };
+const cap = t => (t ? t[0].toUpperCase() + t.slice(1) : t);
+const hashOf = t => [...String(t)].reduce((n, c) => (n * 31 + c.charCodeAt(0)) >>> 0, 7);
+function wowState(cls, les) {
+  if (!les.wow) return null;
+  if (!cls.wow || cls.wow.lesson !== les.id) {
+    cls.wow = { lesson: les.id, cards: {}, votes: {}, secret: randFrom(les.wow.secrets.map(x => x.id)), secretBy: 'кубик', status: 'cards', gameId: null, given: false };
+    store.saveClass(cls);
+  }
+  return cls.wow;
+}
+const secretOf = (les, id) => les.wow.secrets.find(x => x.id === id) || les.wow.secrets[0];
+const builtSecret = (les, w) => secretOf(les, w.builtSecret || w.secret); // секрет, который лежит в собранной игре
+function publicWow(cls, les) {
+  const w = wowState(cls, les);
+  if (!w) return null;
+  const g = w.given && w.gameId ? store.getGame(w.gameId) : null;
+  return {
+    formula: les.wow.formula,
+    cards: les.wow.cards.map(c => ({ id: c.id, label: c.label, text: w.cards[c.id] || null, voters: w.votes[c.id] || [] })),
+    status: w.given ? 'given' : w.status,
+    game: g && g.current ? { id: g.id, version: g.current, title: g.title, knob: w.knob } : null,
+  };
+}
+const wowChanged = (cls, les) => broadcast(cls.code, 'wow', publicWow(cls, les));
+// варианты шага «Найди секрет»: настоящий секрет, два чужих из колоды и ловушка — поворот с карты (он был в замысле, значит, не секрет)
+function huntOptions(cls, les, w) {
+  const sec = builtSecret(les, w), h = hashOf(cls.code + sec.id);
+  const others = les.wow.secrets.filter(x => x.id !== sec.id).sort((a, b) => hashOf(h + a.id) - hashOf(h + b.id)).slice(0, 2);
+  const trap = w.cards.twist ? cap(w.cards.twist) : null;
+  const options = [sec.title, ...others.map(x => x.title), trap].filter(Boolean).sort((a, b) => hashOf(h + a) - hashOf(h + b));
+  return { options, right: sec.title, trap, secret: sec };
+}
+const wowSteps = les => {
+  const all = les.checkpoints.flatMap(c => c.steps);
+  return { on: all.find(x => x.type === 'play' && x.shared && !x.secretOff), off: all.find(x => x.type === 'play' && x.shared && x.secretOff), hunt: all.find(x => x.type === 'secret') };
+};
+// сводка для учителя: рекорды с секретом и без, сколько раз сработал секрет, кто угадал
+function wowSummary(cls, les) {
+  const S = wowSteps(les);
+  const rows = store.students(cls.code).map(s => {
+    const st = (s.lessons || {})[les.id] || { answers: {} };
+    const A = step => (step && st.answers[step.id] && st.answers[step.id].value) || {};
+    const on = A(S.on), off = A(S.off), g = A(S.hunt);
+    return { nick: s.nick, onRounds: on.rounds || 0, onBest: on.best || 0, hits: on.secret || 0, offRounds: off.rounds || 0, offBest: off.best || 0, guess: g.guess || null, correct: !!g.correct, trap: !!g.trap };
+  }).filter(r => r.onRounds || r.offRounds || r.guess);
+  const avg = (list, k) => { const x = list.filter(r => r[k.replace('Best', 'Rounds')]); return x.length ? Math.round(x.reduce((n, r) => n + r[k], 0) / x.length) : 0; };
+  return { rows, onAvg: avg(rows, 'onBest'), offAvg: avg(rows, 'offBest'), hits: rows.reduce((n, r) => n + r.hits, 0), guessed: rows.filter(r => r.guess).length, correct: rows.filter(r => r.correct).length, trap: rows.filter(r => r.trap).length };
+}
+function needWow(ctx) {
+  needTeacher(ctx);
+  const cls = store.getClass(ctx.body.code || ctx.url.searchParams.get('code'));
+  if (!cls) throw Object.assign(new Error('Нет класса'), { status: 404 });
+  const les = lesson(cls.lesson);
+  if (!les.wow) throw Object.assign(new Error('В этом уроке нет вау-старта'), { status: 400 });
+  return { cls, les, w: wowState(cls, les) };
+}
+
+route('POST', '/api/wow/vote', (ctx) => { // голос «перетянуть карту»: повторный голос снимает
+  const { w: who, cls, les } = needStudent(ctx);
+  const w = wowState(cls, les);
+  if (!w) throw Object.assign(new Error('В этом уроке нет колоды'), { status: 400 });
+  const card = les.wow.cards.find(c => c.id === ctx.body.card);
+  if (!card || !w.cards[card.id] || w.status !== 'cards' || w.given) throw Object.assign(new Error('Голосовать можно, пока учитель тянет карты'), { status: 400 });
+  const list = w.votes[card.id] || [];
+  w.votes[card.id] = list.includes(who.nick) ? list.filter(n => n !== who.nick) : list.concat(who.nick);
+  store.saveClass(cls); wowChanged(cls, les);
+  return { voters: w.votes[card.id] };
+});
+route('GET', '/api/wow/hunt', (ctx) => {
+  const { cls, les, st } = needStudent(ctx);
+  const w = wowState(cls, les);
+  if (!w || !w.gameId) return { options: [] };
+  const S = wowSteps(les);
+  return { options: huntOptions(cls, les, w).options, answer: (S.hunt && st.answers[S.hunt.id] && st.answers[S.hunt.id].value) || null };
+});
+route('POST', '/api/wow/guess', (ctx) => {
+  const { w: who, cls, les, s, st } = needStudent(ctx);
+  const w = wowState(cls, les), S = wowSteps(les);
+  if (!w || !w.gameId || !S.hunt) throw Object.assign(new Error('Общей игры ещё нет'), { status: 400 });
+  const prev = st.answers[S.hunt.id];
+  if (prev && prev.value && prev.value.secret) return prev.value;
+  const H = huntOptions(cls, les, w), guess = String(ctx.body.guess || '');
+  if (!H.options.includes(guess)) throw Object.assign(new Error('Выбери один из вариантов'), { status: 400 });
+  const value = { guess, correct: guess === H.right, trap: guess === H.trap, secret: { title: H.secret.title, reveal: H.secret.reveal, effect: H.secret.effect } };
+  st.answers[S.hunt.id] = { value, done: true, at: store.now() };
+  s.where = S.hunt.id; store.saveStudent(who.class, s);
+  return value;
+});
+
+route('GET', '/api/teacher/wow', (ctx) => {
+  const { cls, les, w } = needWow(ctx);
+  const g = w.gameId ? store.getGame(w.gameId) : null, v = g && g.versions[g.current - 1];
+  return {
+    wow: w, demo: ai.demo(), formula: les.wow.formula, cards: les.wow.cards.map(c => ({ id: c.id, label: c.label })),
+    secrets: les.wow.secrets.map(x => ({ id: x.id, title: x.title, effect: x.effect })), secret: secretOf(les, w.secret), built: w.gameId ? builtSecret(les, w) : null,
+    game: g && v ? { id: g.id, version: g.current, title: g.title, model: v.model, warnings: v.warnings || [], fallback: !!v.fallback, attempts: v.attempts } : null,
+    summary: wowSummary(cls, les),
+  };
+});
+route('POST', '/api/teacher/wow/draw', (ctx) => {
+  const { cls, les, w } = needWow(ctx);
+  const list = ctx.body.card === 'all' ? les.wow.cards : les.wow.cards.filter(c => c.id === ctx.body.card);
+  if (!list.length) throw Object.assign(new Error('Нет такой карты'), { status: 400 });
+  for (const c of list) { w.cards[c.id] = randFrom(c.deck, w.cards[c.id]); w.votes[c.id] = []; }
+  if (!w.given && w.status !== 'building') w.status = 'cards';
+  store.saveClass(cls); wowChanged(cls, les);
+  return { wow: w };
+});
+route('POST', '/api/teacher/wow/secret', (ctx) => { // без id — кубик, с id — тайный выбор учителя
+  const { cls, les, w } = needWow(ctx);
+  if (ctx.body.id) { if (!les.wow.secrets.some(x => x.id === ctx.body.id)) throw Object.assign(new Error('Нет такого секрета'), { status: 400 }); w.secret = ctx.body.id; w.secretBy = 'учитель'; }
+  else { w.secret = randFrom(les.wow.secrets.map(x => x.id), w.secret); w.secretBy = 'кубик'; }
+  store.saveClass(cls);
+  return { secret: secretOf(les, w.secret), secretBy: w.secretBy };
+});
+// общая игра: новая версия той же игры класса; пока учитель проверяет сборку, ученики ждут
+function wowGame(cls, les, w) {
+  let g = w.gameId && store.getGame(w.gameId);
+  if (!g) { g = store.createGame({ class: cls.code, nick: 'учитель', lesson: les.id, shared: true }); w.gameId = g.id; }
+  return g;
+}
+function wowVersion(code, r, secretId) {
+  const cls = store.getClass(code), les = lesson(cls.lesson), w = wowState(cls, les);
+  const g = wowGame(cls, les, w);
+  store.addVersion(g, r.code, { kind: r.fallback ? 'запасная игра' : 'общая игра', model: r.model, attempts: r.attempts, warnings: r.warnings, demo: !!r.demo, fallback: !!r.fallback });
+  const g2 = store.getGame(g.id); g2.title = (/\btitle\s*:\s*(['"`])([^'"`]{1,80})\1/.exec(r.code) || [])[2] || g2.title || 'Игра класса'; store.saveGame(g2);
+  w.builtSecret = secretId; w.knob = r.knob; w.status = 'preview'; w.given = false;
+  store.saveClass(cls); wowChanged(cls, les);
+  return { gameId: g.id, version: g2.current, title: g2.title, warnings: r.warnings || [], fallback: !!r.fallback };
+}
+const wowTitle = (les, w) => `${cap(w.cards.hero || 'Герой')} ${w.cards.place || ''}`.trim();
+route('POST', '/api/teacher/wow/build', (ctx) => {
+  const { cls, les, w } = needWow(ctx);
+  const missing = les.wow.cards.filter(c => !w.cards[c.id]);
+  if (missing.length) throw Object.assign(new Error('Сначала вытяните карты: ' + missing.map(c => c.label).join(', ')), { status: 400 });
+  if (w.status === 'building') throw Object.assign(new Error('Игра уже собирается'), { status: 409 });
+  const fb = Object.assign({}, les.wow.fallback);
+  const secretId = ai.demo() ? fb.secret : w.secret; // без ключа собирается запасная игра — у неё свой секрет
+  const sec = secretOf(les, secretId);
+  w.status = 'building'; w.given = false; store.saveClass(cls); wowChanged(cls, les);
+  const whoAI = { class: cls.code, nick: 'учитель', lesson: les.id };
+  const job = startJob(ctx.who.token, 'wow', async (progress) => {
+    try {
+      const r = await ai.buildShared({ donor: `${les.donor} — ${stepOf(les, les.plan.factory).step.donorCard.text}`, cards: w.cards, secret: sec.prompt, title: wowTitle(les, w), fallback: fb }, whoAI, progress);
+      return wowVersion(cls.code, r, secretId);
+    } catch (e) {
+      const c2 = store.getClass(cls.code), w2 = wowState(c2, les); w2.status = w2.gameId ? 'preview' : 'cards'; store.saveClass(c2); wowChanged(c2, les);
+      throw e;
+    }
+  });
+  return { job: job.id };
+});
+route('POST', '/api/teacher/wow/fallback', (ctx) => {
+  const { cls, les, w } = needWow(ctx);
+  const fb = les.wow.fallback;
+  const r = ai.demoShared({ title: wowTitle(les, w), fallback: fb }, { class: cls.code, nick: 'учитель', lesson: les.id });
+  return wowVersion(cls.code, r, fb.secret);
+});
+route('POST', '/api/teacher/wow/give', (ctx) => {
+  const { cls, les, w } = needWow(ctx);
+  if (!w.gameId) throw Object.assign(new Error('Сначала соберите игру'), { status: 400 });
+  w.given = ctx.body.given !== false; w.status = 'preview';
+  store.saveClass(cls); wowChanged(cls, les);
+  return { given: w.given };
 });
 
 /* ---------- ИИ ---------- */

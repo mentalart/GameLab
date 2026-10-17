@@ -1,4 +1,4 @@
-// Панель учителя: классы, чекпоинты, ученики и отзыв учителя, аркада класса, настройки ИИ, журнал генераций, заметки автора.
+// Панель учителя: классы, чекпоинты, ученики и отзыв учителя, вау-старт, аркада класса, настройки ИИ, журнал генераций, заметки автора.
 'use strict';
 const { el, api, toast, copy, fmtTime, fieldEditor, valText } = Lab;
 const $ = s => document.querySelector(s);
@@ -129,6 +129,115 @@ function feedbackEditor(nick, fb) {
     el('div', { class: 'row' }, save, state));
 }
 
+/* ---------- вкладка «Вау-старт» ---------- */
+// Учитель тянет карты при классе, кубик выбирает секрет (учитель может тайно заменить), ИИ собирает общую игру, учитель раздаёт её классу.
+// Вкладку можно держать на проекторе: секрет скрыт, пока учитель его не откроет. Пока вкладка открыта, голоса и сводка обновляются сами.
+const W = { data: null, showSecret: false, gameKey: null, preview: null, busy: false };
+async function drawWow(full) {
+  const host = $('#tab-wow');
+  if (!T.code) { host.innerHTML = ''; return; }
+  let r;
+  try { r = await api('/api/teacher/wow?code=' + T.code); } catch (e) { host.innerHTML = ''; host.append(el('p', { class: 'muted' }, e.message)); W.data = null; return; }
+  const prev = W.data; W.data = r;
+  if (full || !host.querySelector('#wowCards')) {
+    host.innerHTML = '';
+    host.append(el('div', { class: 'row' },
+      el('div', { class: 'grow stack', style: 'gap:2px' }, el('div', { class: 'eyebrow' }, 'Чекпоинт 1 · колода безумных идей'), el('h2', {}, r.formula)),
+      el('button', { class: 'btn', type: 'button', onclick: () => wowAct('/api/teacher/wow/draw', { card: 'all' }) }, '🎲 Тянуть все карты')),
+      el('p', { class: 'muted small' }, 'Карты появляются у учеников сразу. Ученики голосуют «перетянуть» — число голосов видно под картой. Вкладку можно показывать на проекторе: секрет скрыт.'),
+      el('div', { id: 'wowCards' }), el('div', { id: 'wowSecret' }), el('div', { id: 'wowBuild' }), el('div', { id: 'wowSummary' }));
+    W.gameKey = null;
+  }
+  const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+  if (full || !prev || !same(prev.wow.cards, r.wow.cards) || !same(prev.wow.votes, r.wow.votes) || prev.wow.status !== r.wow.status) drawWowCards();
+  if (full || !prev || !same(prev.secret, r.secret) || prev.wow.secretBy !== r.wow.secretBy || !same(prev.built, r.built)) drawWowSecret();
+  const key = (r.game ? r.game.id + '/' + r.game.version : '') + '|' + r.wow.status + '|' + r.wow.given + '|' + r.cards.every(c => r.wow.cards[c.id]);
+  if (full || key !== W.gameKey) { W.gameKey = key; drawWowBuild(); }
+  if (full || !prev || !same(prev.summary, r.summary)) drawWowSummary();
+}
+function drawWowCards() {
+  const r = W.data, host = $('#wowCards'); host.innerHTML = '';
+  const row = el('div', { class: 'wowcards' });
+  r.cards.forEach(c => {
+    const text = r.wow.cards[c.id], votes = (r.wow.votes[c.id] || []).length;
+    row.append(el('div', { class: 'wowcard' + (text ? ' up' : ''), 'data-card': c.id },
+      el('div', { class: 'wc-label' }, c.label), el('div', { class: 'wc-text' }, text || '?'),
+      el('div', { class: 'row' }, el('button', { class: 'btn ghost small', type: 'button', onclick: () => wowAct('/api/teacher/wow/draw', { card: c.id }) }, text ? '🎲 Перетянуть' : '🎲 Тянуть'),
+        votes ? el('span', { class: 'tag dice', title: (r.wow.votes[c.id] || []).join(', ') }, `перетянуть: ${votes}`) : null)));
+  });
+  host.append(row);
+}
+function drawWowSecret() {
+  const r = W.data, host = $('#wowSecret'); host.innerHTML = '';
+  const box = el('div', { class: 'secretbox' });
+  box.append(el('div', { class: 'row' }, el('b', { class: 'grow' }, '🤫 Секрет игры — его видите только вы'),
+    el('button', { class: 'btn ghost small', type: 'button', onclick: () => { W.showSecret = !W.showSecret; drawWowSecret(); } }, W.showSecret ? 'Скрыть' : 'Показать')));
+  if (W.showSecret) {
+    const sel = el('select', { id: 'wowSecretSel', 'aria-label': 'Выбрать секрет' });
+    r.secrets.forEach(x => sel.append(el('option', { value: x.id, selected: x.id === r.secret.id ? true : null }, `${x.title} (${x.effect})`)));
+    sel.addEventListener('change', () => wowAct('/api/teacher/wow/secret', { id: sel.value }));
+    box.append(el('div', {}, el('span', { class: 'tag ' + (r.wow.secretBy === 'кубик' ? 'dice' : 'own') }, r.wow.secretBy === 'кубик' ? '[кубик]' : 'выбор учителя'), ' ', el('b', {}, r.secret.title)),
+      el('div', { class: 'row' }, el('div', { class: 'grow' }, sel), el('button', { class: 'btn ghost small', type: 'button', onclick: () => wowAct('/api/teacher/wow/secret', {}) }, '🎲 Другой секрет')),
+      r.built && r.built.id !== r.secret.id ? el('p', { class: 'small', style: 'color:var(--warm)' }, `В собранной игре сейчас другой секрет: «${r.built.title}». Пересоберите игру, чтобы заложить новый.`) : null,
+      r.demo ? el('p', { class: 'small muted' }, 'Демо-режим: без ключа ИИ собирается запасная игра урока, у неё свой секрет — ускорение волны.') : null);
+  }
+  host.append(box);
+}
+function drawWowBuild() {
+  const r = W.data, host = $('#wowBuild');
+  if (W.preview) { W.preview.destroy(); W.preview = null; }
+  host.innerHTML = '';
+  const ready = r.cards.every(c => r.wow.cards[c.id]);
+  const box = el('div', { class: 'card stack' });
+  const statusLine = { cards: ready ? 'Карты на столе. Собирайте игру.' : 'Вытяните все четыре карты.', building: '⚙ ИИ собирает игру…', preview: r.wow.given ? '✓ Игра у учеников.' : 'Игра собрана. Проверьте её и раздайте классу.' }[r.wow.status] || '';
+  box.append(el('div', { class: 'row' }, el('h3', { class: 'grow' }, 'Игра класса'), el('span', { class: 'muted small' }, statusLine)));
+  const prog = el('div');
+  const buildBtn = el('button', { class: 'btn', type: 'button', disabled: !ready || r.wow.status === 'building' || W.busy ? true : null, onclick: async () => {
+    W.busy = true; buildBtn.disabled = true;
+    const p = el('p', {}, 'ИИ собирает игру класса…');
+    prog.innerHTML = ''; prog.append(el('div', { class: 'progress' }, el('div', { class: 'spinner' }), p));
+    try {
+      const res = await Lab.job('/api/teacher/wow/build', { code: T.code }, j => { p.textContent = `ИИ собирает игру класса… ${j.seconds} с` + (j.chars ? ` · ${j.chars.toLocaleString('ru-RU')} символов кода` : '') + (j.phase === 'синтаксис' ? ' · чинит опечатку' : ''); });
+      toast(`Игра «${res.title}» собрана`, 'ok');
+    } catch (e) { toast(e.message, 'err', 8000); }
+    W.busy = false; drawWow(true);
+  } }, r.game ? '↻ Собрать заново' : '⚙ Собрать с ИИ');
+  box.append(el('div', { class: 'row' }, buildBtn,
+    el('button', { class: 'btn ghost small', type: 'button', onclick: () => { if (confirm('Взять запасную игру урока вместо сборки ИИ? Её секрет — ускорение волны.')) wowAct('/api/teacher/wow/fallback', {}, true); } }, 'Запасная игра'),
+    el('span', { class: 'muted small' }, r.demo ? 'Демо-режим: соберётся запасная игра урока с названием по картам.' : 'Обычно 1–3 минуты. Пока ИИ пишет — спросите класс, что они ждут от этой игры.')), prog);
+  if (r.game) {
+    const g = r.game;
+    box.append(el('div', { class: 'row small' }, el('b', {}, `«${g.title}» v${g.version}`), el('span', { class: 'muted' }, g.fallback ? 'запасная игра' : `модель ${g.model}${g.attempts > 1 ? ', попыток ' + g.attempts : ''}`),
+      ...(g.warnings || []).map(w => el('span', { class: 'tag err', title: 'Замечание проверки' }, w))));
+    W.preview = Games.frame({ src: () => `/play/${g.id}/${g.version}`, key: () => 'wow:' + g.id, label: 'Проверить игру',
+      onError: err => W.preview.message(el('div', { class: 'stack', style: 'align-items:center' }, el('b', {}, 'Игра упала: ' + (err.message || 'ошибка')), el('p', { class: 'muted small' }, 'Соберите заново или возьмите запасную игру.'))) });
+    box.append(W.preview.box, Games.bar(W.preview),
+      el('div', { class: 'row' },
+        r.wow.given ? el('button', { class: 'btn ghost', type: 'button', onclick: () => wowAct('/api/teacher/wow/give', { given: false }, true) }, 'Забрать у класса')
+          : el('button', { class: 'btn warm', type: 'button', onclick: () => wowAct('/api/teacher/wow/give', { given: true }, true) }, '📣 Раздать классу'),
+        el('a', { class: 'btn ghost small', href: `/play/${g.id}/${g.version}`, target: '_blank', rel: 'noopener' }, '⛶ Открыть на проектор ↗')));
+  }
+  host.append(box);
+}
+function drawWowSummary() {
+  const r = W.data, s = r.summary, host = $('#wowSummary'); host.innerHTML = '';
+  const box = el('div', { class: 'card stack' }, el('h3', {}, 'Чекпоинт 2 · как секрет влияет на игру'));
+  if (!s.rows.length) { box.append(el('p', { class: 'muted' }, 'Пока никто не сыграл в игру класса.')); host.append(box); return; }
+  box.append(el('div', { class: 'compare' },
+    el('div', {}, el('div', { class: 'eyebrow' }, 'С секретом'), el('b', {}, `средний лучший счёт ${s.onAvg}`), el('div', { class: 'small muted' }, `секрет сработал ${s.hits} раз за все партии класса`)),
+    el('div', {}, el('div', { class: 'eyebrow' }, 'Без секрета'), el('b', {}, `средний лучший счёт ${s.offAvg}`), el('div', { class: 'small muted' }, `угадали секрет: ${s.correct} из ${s.guessed}, попались в ловушку карт: ${s.trap}`))),
+  el('div', { class: 'tablewrap' }, el('table', {},
+    el('thead', {}, el('tr', {}, ['Ник', 'С секретом: партий / лучший', 'Сработал', 'Без секрета: партий / лучший', 'Догадка'].map(h => el('th', {}, h)))),
+    el('tbody', {}, s.rows.map(x => el('tr', {}, el('td', {}, el('b', {}, x.nick)), el('td', {}, `${x.onRounds} / ${x.onBest}`), el('td', {}, String(x.hits)), el('td', {}, `${x.offRounds} / ${x.offBest}`),
+      el('td', {}, x.guess ? [x.guess + ' ', el('span', { class: 'tag ' + (x.correct ? 'ok' : x.trap ? 'dice' : '') }, x.correct ? 'угадал' : x.trap ? 'ловушка' : 'мимо')] : '—')))))));
+  host.append(box);
+}
+async function wowAct(path, body, full) {
+  try { await api(path, Object.assign({ code: T.code }, body)); } catch (e) { toast(e.message, 'err'); }
+  drawWow(full);
+}
+setInterval(() => { if (!$('#tab-wow').hidden && !W.busy) drawWow(); }, 4000);
+
 /* ---------- вкладка «Аркада» ---------- */
 async function drawArcade() {
   const host = $('#tab-arcade'); host.innerHTML = '';
@@ -209,12 +318,14 @@ async function drawNotes() {
 /* ---------- события ---------- */
 document.querySelectorAll('.tabs button').forEach(b => b.addEventListener('click', () => {
   document.querySelectorAll('.tabs button').forEach(x => x.classList.toggle('on', x === b));
-  ['lesson', 'arcade', 'ai', 'notes'].forEach(t => { $('#tab-' + t).hidden = t !== b.dataset.tab; });
+  ['lesson', 'wow', 'arcade', 'ai', 'notes'].forEach(t => { $('#tab-' + t).hidden = t !== b.dataset.tab; });
+  if (b.dataset.tab !== 'wow' && W.preview) { W.preview.destroy(); W.preview = null; W.gameKey = null; }
+  if (b.dataset.tab === 'wow') drawWow(true);
   if (b.dataset.tab === 'arcade') drawArcade();
   if (b.dataset.tab === 'ai') drawAI();
   if (b.dataset.tab === 'notes') drawNotes();
 }));
-$('#classSel').addEventListener('change', e => selectClass(e.target.value));
+$('#classSel').addEventListener('change', e => { selectClass(e.target.value); if (!$('#tab-wow').hidden) drawWow(true); });
 $('#lessonSel').addEventListener('change', async e => {
   if (!confirm('Сменить урок класса? Открытые чекпоинты закроются, ответы учеников сохранятся.')) { e.target.value = T.overview.class.lesson; return; }
   try { await api('/api/teacher/class/update', { code: T.code, lesson: e.target.value }); await refresh(true); } catch (err) { toast(err.message, 'err'); }
