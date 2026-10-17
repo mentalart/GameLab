@@ -739,7 +739,7 @@
     notes.push(...teleNotes());
     $('#overNotes').innerHTML = notes.map(n => `<div>${esc(n)}</div>`).join('');
     $('#overSeed').textContent = ghost
-      ? (score > ghost.score ? `⚔ Вызов выигран: ${score} против ${ghost.score} у ${ghost.nick}!` : `⚔ Лидер этого мира — ${ghost.nick}: ${ghost.score}. Не хватило ${ghost.score - score}. Ещё раз?`)
+      ? (score > ghost.score ? `⚔ Вызов выигран: ${score} против ${ghost.score} — лидер этого мира теперь ты!` : `⚔ Лидер этого мира — ${ghost.nick}: ${ghost.score}. Не хватило ${ghost.score - score}. Ещё раз?`)
       : window.parent === window ? `Зерно партии: ${lab.seed}. Тот же мир для друга: ссылка с ?seed=${lab.seed}`
       : challengeOn ? `Зерно партии: ${lab.seed}. Тот же мир для друга — кнопка «⚔ Вызов: побей мой мир» под игрой.`
       : `Зерно партии: ${lab.seed}.`;
