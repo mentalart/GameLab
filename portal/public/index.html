@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Лаборатория игр</title>
+<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+<main class="login">
+  <div class="wrap">
+    <div class="hero">
+      <div class="logo"><i></i> Лаборатория игр</div>
+      <h1>Придумай игру — и сыграй в неё через 20 минут</h1>
+      <p class="muted">Курс геймдизайна Школы креативных индустрий. Ты решаешь, ИИ пишет код.</p>
+      <p class="muted small" id="demoNote" hidden>Портал в демо-режиме: ИИ не подключён, вместо своей игры будет образец урока.</p>
+    </div>
+    <form class="card stack" id="studentForm" autocomplete="off">
+      <h2>Я ученик</h2>
+      <div><label class="lbl" for="code">Код класса</label><input type="text" id="code" maxlength="8" placeholder="Например, K7M2Q" style="text-transform:uppercase;letter-spacing:.12em;font-weight:800" required></div>
+      <div><label class="lbl" for="nick">Ник</label><input type="text" id="nick" maxlength="20" placeholder="Как тебя звать в таблице рекордов" required></div>
+      <p class="muted small">Без фамилии и личных данных: ник видят одноклассники.</p>
+      <div class="err" id="sErr" role="alert"></div>
+      <div><button class="btn" type="submit">Войти в урок</button></div>
+    </form>
+    <form class="card stack" id="teacherForm">
+      <h2>Я учитель</h2>
+      <div><label class="lbl" for="pass">Пароль</label><input type="password" id="pass" required></div>
+      <p class="muted small">Пароль — в файле portal/config.json на сервере.</p>
+      <div class="err" id="tErr" role="alert"></div>
+      <div><button class="btn ghost" type="submit">Открыть панель учителя</button></div>
+    </form>
+  </div>
+</main>
+<script src="/common.js"></script>
+<script>
+const $ = s => document.querySelector(s);
+Lab.api('/api/info').then(i => { $('#demoNote').hidden = !i.demo; }).catch(() => {});
+const q = new URLSearchParams(location.search);
+if (q.get('code')) $('#code').value = q.get('code');
+$('#studentForm').addEventListener('submit', async e => {
+  e.preventDefault(); $('#sErr').textContent = '';
+  try {
+    const r = await Lab.api('/api/login', { role: 'student', code: $('#code').value, nick: $('#nick').value });
+    Lab.token.set(r.token, 'student'); location.href = '/student';
+  } catch (err) { $('#sErr').textContent = err.message; }
+});
+$('#teacherForm').addEventListener('submit', async e => {
+  e.preventDefault(); $('#tErr').textContent = '';
+  try {
+    const r = await Lab.api('/api/login', { role: 'teacher', password: $('#pass').value });
+    Lab.token.set(r.token, 'teacher'); location.href = '/teacher';
+  } catch (err) { $('#tErr').textContent = err.message; }
+});
+</script>
+</body>
+</html>

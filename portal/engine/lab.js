@@ -774,7 +774,7 @@
   addEventListener('message', e => {
     const m = e.data;
     if (!m || m.target !== 'lab-game') return;
-    if (m.type === 'records') { classRecord = m.record || null; showRecord(); }
+    if (m.type === 'records') { classRecord = m.record || null; if (m.best > lab.best) lab.best = Math.round(m.best); showRecord(); }
     if (m.type === 'seed') { fixedSeed = m.seed == null ? null : (Number(m.seed) >>> 0); if (state === 'menu') buildRound(true); }
     if (m.type === 'setCfg' && m.cfg) { for (const k in m.cfg) if (k in cfg) cfg[k] = Number(m.cfg[k]); document.querySelectorAll('.knob').forEach(w => w._sync && w._sync()); knobChanged(true); }
     if (m.type === 'pause') setPause(true);
@@ -815,7 +815,7 @@
       $('#startBtn').disabled = false;
       showRecord();
       window.__lab.ready = true;
-      post({ type: 'ready', shell: SHELL_VERSION, babylon: B.Engine.Version, meta: { title: G.title, donor: G.donor || '', players: lab.players, controls: G.controls || [], config: G.config || {}, presets: G.presets || {} } });
+      post({ type: 'ready', shell: SHELL_VERSION, babylon: B.Engine.Version, meta: { title: G.title, donor: G.donor || '', players: lab.players, controls: G.controls || [], config: G.config || {}, presets: G.presets || {}, decisions: G.decisions || [], notes: G.notes || [] } });
     } catch (e) { fail(e, 'загрузка'); }
   }
 

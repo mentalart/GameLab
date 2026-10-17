@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="ru" data-role="student">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Урок · Лаборатория игр</title>
+<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+<header class="top">
+  <div class="logo"><i></i> Лаборатория игр</div>
+  <div class="muted small" id="lessonTitle"></div>
+  <div class="who"><span id="nick"></span><button class="btn ghost small" id="logout" type="button">Выйти</button></div>
+</header>
+<div class="banner" id="demoBanner" hidden>Демо-режим: ИИ не подключён. Продюсер проверяет только простые вещи, а вместо своей игры собирается образец урока с твоим названием.</div>
+<div class="layout">
+  <nav class="side" id="side" aria-label="Чекпоинты урока"></nav>
+  <main class="main" id="main"><div class="locked-msg">Загрузка урока…</div></main>
+</div>
+<button class="btn ghost note-fab" id="noteBtn" type="button" hidden>✎ Заметка автора</button>
+<dialog id="noteDlg">
+  <form method="dialog" class="stack" id="noteForm">
+    <h3>Заметка автора курса</h3>
+    <p class="muted small">Что поправить в уроке, шаге или портале. Заметки собираются у учителя и превращаются в правки.</p>
+    <select id="noteWhere"></select>
+    <textarea id="noteText" rows="5" placeholder="Например: в Фабрике не хватает колоды героев-девочек"></textarea>
+    <div class="row"><button class="btn" value="send" id="noteSend">Сохранить</button><button class="btn ghost" value="cancel" formnovalidate>Отмена</button></div>
+  </form>
+</dialog>
+<script src="/common.js"></script>
+<script src="/student.js"></script>
+</body>
+</html>

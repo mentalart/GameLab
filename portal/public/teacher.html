@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="ru" data-role="teacher">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Панель учителя · Лаборатория игр</title>
+<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+<header class="top">
+  <div class="logo"><i></i> Лаборатория игр · учитель</div>
+  <div class="who"><a class="btn ghost small" href="/" target="_blank" rel="noopener">Вход ученика ↗</a><button class="btn ghost small" id="logout" type="button">Выйти</button></div>
+</header>
+<div class="banner" id="demoBanner" hidden>Демо-режим: ключ ИИ не задан в portal/config.json. Продюсер работает упрощённо, вместо игр учеников собирается образец урока.</div>
+<div class="tlayout">
+  <aside class="tside">
+    <div class="stack">
+      <div class="eyebrow">Класс</div>
+      <select id="classSel" aria-label="Класс"></select>
+      <div id="classBox" class="stack" hidden>
+        <div class="muted small">Код для входа учеников:</div>
+        <div class="classcode" id="classCode">—</div>
+        <div class="muted small" id="classLink"></div>
+        <label class="lbl" for="lessonSel">Урок</label>
+        <select id="lessonSel"></select>
+        <div class="row"><div class="switch" id="authorSw" role="switch" tabindex="0" aria-checked="false" aria-label="Режим автора курса"></div><span class="small">Режим автора: заметки на каждом шаге</span></div>
+      </div>
+    </div>
+    <form class="card stack" id="newClass">
+      <h3>Новый класс</h3>
+      <input type="text" id="newName" placeholder="Например, 9Б или «Прохождение автора»" maxlength="60">
+      <button class="btn small" type="submit">Создать класс</button>
+    </form>
+  </aside>
+  <main class="tmain">
+    <div class="tabs" role="tablist">
+      <button type="button" class="on" data-tab="lesson">Урок</button>
+      <button type="button" data-tab="ai">ИИ и расходы</button>
+      <button type="button" data-tab="notes">Заметки автора</button>
+    </div>
+    <section id="tab-lesson" class="stack"></section>
+    <section id="tab-ai" class="stack" hidden></section>
+    <section id="tab-notes" class="stack" hidden></section>
+  </main>
+</div>
+<dialog id="studentDlg" style="width:min(860px,calc(100% - 32px))">
+  <div class="stack">
+    <div class="row"><h2 id="sdTitle" class="grow"></h2><button class="btn ghost small" type="button" onclick="document.getElementById('studentDlg').close()">Закрыть</button></div>
+    <div id="sdBody" class="stack"></div>
+  </div>
+</dialog>
+<script src="/common.js"></script>
+<script src="/teacher.js"></script>
+</body>
+</html>
