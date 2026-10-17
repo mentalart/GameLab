@@ -12,7 +12,7 @@
   'use strict';
   const B = window.BABYLON;
   const $ = s => document.querySelector(s);
-  const SHELL_VERSION = '0.2';
+  const SHELL_VERSION = '0.3';
 
   /* ---------------- хранилище и связь с порталом ---------------- */
   const store = {
@@ -34,7 +34,7 @@
     } catch (e) { AC = null; }
   }
   function tone(freq, dur = 0.12, type = 'square', vol = 0.1, slideTo = 0, delay = 0) {
-    if (!AC || muted) return;
+    if (!AC || muted || !on('sound')) return;
     try {
       const t = AC.currentTime + delay, o = AC.createOscillator(), gn = AC.createGain();
       o.type = type; o.frequency.setValueAtTime(Math.max(20, freq), t);
@@ -44,7 +44,7 @@
     } catch (e) { /* звук не критичен */ }
   }
   function noise(dur = 0.2, vol = 0.15, freq = 1000, delay = 0) {
-    if (!AC || muted) return;
+    if (!AC || muted || !on('sound')) return;
     try {
       const t = AC.currentTime + delay, s = AC.createBufferSource(), f = AC.createBiquadFilter(), gn = AC.createGain();
       s.buffer = noiseBuf; f.type = 'lowpass'; f.frequency.value = freq;
@@ -156,6 +156,7 @@
   }
   function disarm() { armed = false; for (const h of kbTap) for (const k in h) h[k] = false; }
   function rumble(ms = 150, strength = 0.6) {
+    if (!on('vibrate')) return;
     try {
       for (const gp of navigator.getGamepads()) if (gp && gp.vibrationActuator) gp.vibrationActuator.playEffect('dual-rumble', { duration: ms, strongMagnitude: strength, weakMagnitude: strength * 0.6 });
     } catch (e) { /* без вибрации */ }
@@ -183,6 +184,14 @@
     glow: { value: 1, min: 0, max: 2, step: 0.1, label: 'Свечение' },
     quality: { value: 1, min: 0, max: 2, step: 1, label: 'Качество графики', names: ['быстро', 'обычно', 'красиво'], restart: true },
   };
+  // 12 переключателей сочности (урок 6): каждый эффект оболочки можно выключить в любой игре, механика остаётся той же.
+  // Пресеты игры могут их менять (пресет «Без секрета» в «Ледоломе» выключает все), «Как задумано» включает обратно.
+  const JUICE = [['hitstop', 'Стоп-кадр на ударе'], ['shake', 'Тряска камеры'], ['squash', 'Сжатие и растяжение'], ['burst', 'Частицы'],
+    ['flash', 'Вспышка экрана'], ['whiten', 'Вспышка попадания'], ['popup', 'Всплывающие очки и надписи'], ['sound', 'Звук'],
+    ['pitch', 'Звук выше с каждым ударом подряд'], ['vibrate', 'Вибрация геймпада'], ['glow', 'Свечение'], ['slowmo', 'Замедление в решающий момент']];
+  for (const [k, label] of JUICE) SHELL_KNOBS['j_' + k] = { value: 1, min: 0, max: 1, step: 1, label, names: ['выкл', 'вкл'], juice: true };
+  function on(name) { return !(('j_' + name) in cfg) || cfg['j_' + name] >= 1; }
+  let slowT = 0, slowK = 1;
 
   /* ---------------- API для игры: объект lab ---------------- */
   const lab = {
@@ -197,7 +206,7 @@
     hurt(at, text) {
       if (lab.invuln > 0 || state !== 'play') return false;
       tele.hurts++;
-      lab.invuln = 1.2; hitstopT = Math.max(hitstopT, 0.08);
+      lab.invuln = 1.2; if (on('hitstop')) hitstopT = Math.max(hitstopT, 0.08);
       lab.shake(0.9); lab.flash('#ff4d5e', 0.35); sfx.hit(); rumble(250, 0.9);
       if (at) lab.burst(at, { count: 22, colors: ['#ff4d5e', '#ffb35c', '#ffffff'], speed: 7 });
       if (lab.lives > 0) { lab.lives--; if (lab.lives <= 0) lab.gameOver(text); }
@@ -208,13 +217,16 @@
     win(text) { end('win', text || 'Победа!'); },
 
     // сочность
-    shake(power = 0.5) { shakeAmp = Math.max(shakeAmp, power * cfg.shake); },
-    flash(color = '#ffffff', alpha = 0.3) { const f = $('#flash'); f.style.background = color; flashA = Math.max(flashA, alpha * Math.min(1, cfg.juice || 1)); },
-    hitstop(sec = 0.06) { hitstopT = Math.max(hitstopT, sec); },
-    burst(at, o = {}) { burst(posOf(at), o); },
-    popup(at, text, color = '#ffffff', size = 18) { popup(at, text, color, size); },
-    pulse(mesh, k = 1.3, sec = 0.14) { if (mesh && mesh.scaling) pulses.push({ mesh, base: mesh.scaling.clone(), k, t: 0, dur: sec }); },
-    whiten(mesh, sec = 0.08, color = '#ffffff') { if (mesh) whiten(mesh, sec, color); },
+    shake(power = 0.5) { if (on('shake')) shakeAmp = Math.max(shakeAmp, power * cfg.shake); },
+    flash(color = '#ffffff', alpha = 0.3) { if (!on('flash')) return; const f = $('#flash'); f.style.background = color; flashA = Math.max(flashA, alpha * Math.min(1, cfg.juice || 1)); },
+    hitstop(sec = 0.06) { if (on('hitstop')) hitstopT = Math.max(hitstopT, sec); },
+    burst(at, o = {}) { if (on('burst')) burst(posOf(at), o); },
+    popup(at, text, color = '#ffffff', size = 18) { if (on('popup')) popup(at, text, color, size); },
+    pulse(mesh, k = 1.3, sec = 0.14) { if (on('squash') && mesh && mesh.scaling && !pulses.some(p => p.mesh === mesh)) pulses.push({ mesh, base: mesh.scaling.clone(), k, t: 0, dur: sec }); },
+    whiten(mesh, sec = 0.08, color = '#ffffff') { if (mesh && on('whiten')) whiten(mesh, sec, color); },
+    slowmo(sec = 0.6, scale = 0.3) { if (on('slowmo')) { slowT = Math.max(slowT, sec); slowK = lab.clamp(scale, 0.05, 1); } },
+    pitch(n = 0) { return on('pitch') ? Math.pow(2, Math.min(Math.max(0, n), 24) / 12) : 1; }, // на полутон выше с каждым ударом подряд
+    juicy(name) { return on(name); }, // свой эффект игры подчиняется переключателю: lab.juicy('squash')
     warn(at, radius = 1, sec = 0.6, color = '#ff4d5e') { return warn(posOf(at), radius, sec, color); },
     vibrate: rumble,
 
@@ -304,7 +316,7 @@
       sg.bias = 0.0015;
     }
     lab.shadows = sg;
-    if (q > 0 && cfg.glow > 0) { glow = new B.GlowLayer('свечение', scene, { blurKernelSize: 32 }); glow.intensity = 0.65 * cfg.glow; }
+    if (q > 0 && cfg.glow > 0) { glow = new B.GlowLayer('свечение', scene, { blurKernelSize: 32 }); glow.intensity = 0.65 * cfg.glow * (on('glow') ? 1 : 0); }
     // каждый новый меш принимает тени и (кроме земли и служебных) отбрасывает их
     scene.onNewMeshAddedObservable.add(m => {
       m.receiveShadows = true;
@@ -578,7 +590,9 @@
     const host = $('#knobs'), sh = $('#shellKnobs');
     host.innerHTML = ''; sh.innerHTML = '';
     for (const [k, c] of Object.entries(G.config || {})) knobRow(k, c, host);
-    for (const [k, c] of Object.entries(SHELL_KNOBS)) knobRow(k, c, sh);
+    const jh = $('#juiceKnobs');
+    if (jh) jh.innerHTML = '';
+    for (const [k, c] of Object.entries(SHELL_KNOBS)) knobRow(k, c, c.juice && jh ? jh : sh);
     const pr = $('#presets'); pr.innerHTML = '';
     const mk = (name, values) => {
       const b = document.createElement('button'); b.type = 'button'; b.className = 'ghost'; b.textContent = name;
@@ -591,7 +605,7 @@
   function applyPreset(values) {
     let restartNeeded = false;
     for (const k of Object.keys(META)) {
-      if (k in SHELL_KNOBS) continue;
+      if (k in SHELL_KNOBS && !SHELL_KNOBS[k].juice) continue; // тряску, частицы и качество пресет не трогает, сочность — может
       const v = k in values ? values[k] : DEFAULTS[k];
       if (cfg[k] !== v && META[k].restart) restartNeeded = true;
       cfg[k] = v;
@@ -601,7 +615,7 @@
     sfx.beep();
   }
   function knobChanged(restartNeeded) {
-    if (glow) glow.intensity = 0.65 * cfg.glow;
+    if (glow) glow.intensity = 0.65 * cfg.glow * (on('glow') ? 1 : 0);
     post({ type: 'cfg', cfg: changedCfg() });
     if (restartNeeded) {
       if (state === 'play' || state === 'over') restart(false);
@@ -689,7 +703,7 @@
     lab.seed = fixedSeed != null ? fixedSeed : (Math.random() * 1e9) >>> 0;
     rng = mulberry32(lab.seed);
     lab.state = {}; lab.t = 0; lab.dt = 0; lab.score = 0; lab.invuln = 0; lab.lives = initialLives();
-    hudLines = {}; shakeAmp = 0; flashA = 0; hitstopT = 0; camShakeOff = null;
+    hudLines = {}; shakeAmp = 0; flashA = 0; hitstopT = 0; slowT = 0; camShakeOff = null;
     resetTele();
     lab.round = ++session.rounds;
     const two = duo() ? 2 : 1; // ручка duo могла переключить игру на двоих
@@ -755,8 +769,10 @@
   /* ---------------- главный цикл ---------------- */
   engine.runRenderLoop(() => {
     readInput();
-    const dt = Math.min(engine.getDeltaTime() / 1000, 0.05);
-    if (state === 'play' && !paused && !errored && scene) {
+    let dt = Math.min(engine.getDeltaTime() / 1000, 0.05);
+    const live = state === 'play' && !paused && !errored && scene;
+    if (live && slowT > 0) { slowT -= dt; dt *= slowK; } // замедление: игра и частицы идут медленнее, интерфейс — как обычно
+    if (live) {
       if (hitstopT > 0) hitstopT -= dt;
       else {
         lab.dt = dt; lab.t += dt;

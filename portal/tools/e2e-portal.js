@@ -13,7 +13,11 @@
 // Урок 4 в обоих прогонах: «Каменный стакан» и его секрет (мешок и предпросмотр), квиз «Собери цикл», Фабрика под донора,
 // образец урока в промпте программиста и демо-игра урока, релиз модуля с чек-листом, дуэль двух стаканов по ручке duo.
 // Данные и настройки — во временной папке, настоящий portal/config.json и portal/data/ не трогаются.
-// Запуск: node portal/tools/e2e-portal.js [--headed]   Снимки — в portal/.check/portal-*.png
+// Урок 5 в обоих прогонах: «Тур над Хаджохом», сырой прыжок и «Найди секрет», лаборатория прыжка, слепой турнир по одной ручке,
+// образец урока в промпте программиста и демо-игра урока, спидран с призраком лучшей попытки.
+// Урок 6 в обоих прогонах: «Ледолом» и 12 переключателей сочности оболочки 0.3, сухой «Ледолом» и «Найди секрет», квиз «Сухая или сочная?»,
+// образец урока и демо-игра, кооператив двух лопат, слепая проба игры соседа (сухая и сочная копии).
+// Запуск: node portal/tools/e2e-portal.js [--headed] [--from=5]   Снимки — в portal/.check/portal-*.png
 'use strict';
 const fs = require('fs');
 const os = require('os');
@@ -34,9 +38,12 @@ const lesson1 = require('../lessons/urok-01');
 const lesson2 = require('../lessons/urok-02');
 const lesson3 = require('../lessons/urok-03');
 const lesson4 = require('../lessons/urok-04');
+const lesson5 = require('../lessons/urok-05');
+const lesson6 = require('../lessons/urok-06');
 const store = require('../lib/store');
 
 const PASSWORD = 'e2e-пароль';
+const FROM = Number((process.argv.find(a => a.startsWith('--from=')) || '=0').split('=')[1]) || 0; // --from=5 — для отладки: уроки 2…4 пропустить
 const results = [];
 const check = (what, ok, detail = '') => { results.push({ what, ok: !!ok, detail }); console.log(`  ${ok ? '✓' : '✗'} ${what}${detail ? ' — ' + detail : ''}`); };
 const sleep = ms => new Promise(r => setTimeout(r, ms));
@@ -273,9 +280,16 @@ async function run(browser, base, mode) {
   } else check('Демо-режим виден учителю', /демо-режим/i.test(aiTab));
   await shot(teacher, '8-ai', true);
   await fixtureLesson(mode, teacher, student, pj, shot);
-  await lessonTwo(mode, teacher, student, shot);
-  await lessonThree(mode, teacher, student, shot);
-  await lessonFour(mode, teacher, student, shot);
+  if (FROM <= 2) await lessonTwo(mode, teacher, student, shot);
+  if (FROM <= 3) await lessonThree(mode, teacher, student, shot);
+  if (FROM <= 4) await lessonFour(mode, teacher, student, shot);
+  if (FROM <= 5) await lessonFive(mode, teacher, student, shot);
+  await lessonSix(mode, teacher, student, shot);
+  // учитель возвращает класс к модулю 1: следующий прогон начинает с него
+  await teacher.click('.tabs >> text=Урок');
+  await teacher.selectOption('#moduleSel', '1');
+  await teacher.selectOption('#lessonSel', 'urok-01');
+  await student.waitForFunction(() => /Урок 1/.test(document.querySelector('#lessonTitle').textContent), null, { timeout: 15000 });
   await pj.close();
 
   check('Без ошибок JavaScript на страницах портала', !errors.length, errors.slice(0, 3).join(' | '));
@@ -1039,6 +1053,276 @@ async function lessonFour(mode, teacher, student, shot) {
   check('Самооценка модуля 1 сохранена', true);
 }
 
+const step5 = id => lesson5.checkpoints.flatMap(c => c.steps).find(s => s.id === id);
+// открыть урок модуля у учителя и дождаться его у ученика
+async function openLesson(teacher, student, module, id, title) {
+  await teacher.click('.tabs >> text=Урок');
+  await teacher.selectOption('#moduleSel', String(module));
+  await teacher.selectOption('#lessonSel', id);
+  await teacher.waitForSelector('text=Открыть все', { timeout: 10000 });
+  await teacher.click('text=Открыть все');
+  await student.waitForFunction(t => document.querySelector('#lessonTitle').textContent.includes(t), title, { timeout: 15000 });
+  await student.waitForSelector('#step-donor-play', { timeout: 15000 });
+}
+// Фабрика → решения → ИГРА → продюсер → сборка; возвращает рамку собранной игры
+async function buildOwn(mode, student, les, title, sampleTitle) {
+  await student.click('.cp >> text=Фабрика');
+  await student.click('#step-fabrika >> text=🎲 Кубик для пустых полей');
+  const twist = await student.inputValue('#f-fabrikatwist');
+  check(`Урок ${les.number}: кубик твиста — из колоды донора`, les.checkpoints.flatMap(c => c.steps).find(s => s.id === 'fabrika').fields.find(f => f.id === 'twist').deck.includes(twist), twist);
+  await student.fill('#f-fabrikatitle', title);
+  await student.click('#step-fabrika >> text=Замысел готов');
+  await student.waitForSelector('#step-fabrika.done');
+  for (let i = 0; i < 3; i++) await student.click(`#step-resheniya .dicebtn >> nth=${i}`);
+  await student.click('#step-resheniya >> text=Решения приняты');
+  await student.waitForSelector('#step-resheniya.done');
+  await student.click('.cp >> text=Промпт ИГРА');
+  const r = await student.inputValue('#f-igrar'), i = await student.inputValue('#f-igrai');
+  await student.click('#step-igra >> text=Промпт готов');
+  await student.click('#step-prodyuser >> text=Отдать замысел продюсеру');
+  await student.waitForSelector('#step-prodyuser .fork .opt', { timeout: 30000 });
+  if (mode === 'demo') check(`Демо-продюсер урока ${les.number}: развилки под донора`, (await student.textContent('#step-prodyuser')).includes(les.demoForks[0].question));
+  const forks = await student.locator('#step-prodyuser .fork').count();
+  for (let k = 0; k < forks; k++) await student.click(`#step-prodyuser .fork >> nth=${k} >> .opt >> nth=0`);
+  await student.waitForSelector('#step-prodyuser.done');
+  await student.click('.cp >> text=Сборка');
+  await student.click('#step-sborka >> text=⚙ Собрать игру');
+  let own = await gameFrame(student, '/play/', 0);
+  if (mode === 'mock') {
+    const sys = mock.last.system || '';
+    check(`Программист урока ${les.number} получил образец «${sampleTitle}»`, sys.includes(`title: '${sampleTitle}'`) && sys.includes(les.sample.about.slice(0, 40)));
+    await own.evaluate(() => window.__lab.confirm());
+    await student.waitForFunction(() => document.querySelectorAll('#step-sborka .ver').length >= 2, null, { timeout: 30000 });
+    own = await gameFrame(student, '/play/', 0);
+  }
+  const bp = require('./build-prompt'), sys = bp.systemPrompt({ lesson: les.id });
+  check(`Промпт программиста урока ${les.number} не больше 25 тысяч токенов`, bp.tokens(sys) <= 25000 && !/\{\{/.test(sys), `примерно ${bp.tokens(sys)} токенов`);
+  return { own, twist, r, i };
+}
+async function lessonFive(mode, teacher, student, shot) {
+  await openLesson(teacher, student, 2, 'urok-05', 'Урок 5');
+  check('Урок 5 открылся у ученика: модуль 2', /Урок 5 · Прыжок, который хочется повторять/.test(await student.textContent('#lessonTitle')));
+
+  // донор: «Тур над Хаджохом» как задумано — прыжок с секретом
+  await student.click('#step-donor-play .veil button');
+  let gf = await gameFrame(student, 'tur-nad-hadzhohom', 0);
+  check('Донор урока 5: обби с камерой сбоку и прыжком с секретом', await gf.evaluate(() => window.__lab.cfg.secret === 1 && window.__lab.cfg.coyote > 0 && GAME.LEVEL.length > 10));
+  await gf.evaluate(() => window.__lab.confirm());
+  await gf.locator('#cv').focus();
+  await student.keyboard.down('ArrowRight'); await sleep(700); await student.keyboard.press('Space'); await sleep(700); await student.keyboard.up('ArrowRight');
+  const run = await gf.evaluate(() => { const st = window.__lab.lab.state; return { x: st.hero.x, jumps: st.jumps }; });
+  check('Тур бежит и прыгает с клавиатуры', run.x > 1.8 && run.jumps >= 1, `x ${run.x.toFixed(1)}, прыжков ${run.jumps}`);
+  await gf.evaluate(() => { window.__lab.lab.score = 900; window.__lab.end('lose', 'Проверка'); });
+  await student.waitForSelector('#step-donor-play.done', { timeout: 10000 });
+  await student.click('#step-donor-hook .opt >> nth=0');
+  await student.click('#step-donor-hook >> text=Ответить');
+  await student.waitForSelector('#step-donor-hook.done');
+
+  // сырой прыжок: ручка secret из шага, нажатие чуть позже края «проглочено»
+  await student.click('.cp >> text=Секрет');
+  await student.click('#step-secret-play .veil button');
+  gf = await gameFrame(student, 'tur-nad-hadzhohom', 0);
+  await gf.waitForFunction(() => window.__lab.cfg.secret === 0, null, { timeout: 5000 }).catch(() => {});
+  check('Сырой прыжок: секрет выключен ручкой шага', await gf.evaluate(() => window.__lab.cfg.secret === 0));
+  await gf.evaluate(() => window.__lab.confirm());
+  await sleep(300);
+  // тур за краем первой скалы: прыжок через 0,05 с после края без койота не случается
+  const edge = await gf.evaluate(async () => {
+    const L = window.__lab.lab, h = L.state.hero; Object.assign(h, { x: 14.5, y: -0.05, vx: 6, vy: -1, ground: null, off: 0.05, jumped: false });
+    const before = L.state.jumps; L.p1.pressed.a = true; GAME.control(L, h, L.p1, 0.016); L.p1.pressed.a = false;
+    return { jumped: L.state.jumps - before, lost: L.state.lost };
+  });
+  check('Без секрета нажатие чуть позже края проглочено', edge.jumped === 0 && edge.lost === 1, JSON.stringify(edge));
+  await gf.evaluate(() => { window.__lab.lab.count('потерянные нажатия', 2); window.__lab.lab.score = 300; window.__lab.end('lose', 'Проверка'); });
+  await student.waitForSelector('#step-secret-play.done', { timeout: 10000 });
+
+  const hunt = step5('secret-hunt').hunt;
+  await student.waitForSelector('#step-secret-hunt .opt');
+  await student.click(`#step-secret-hunt .opt >> text=${mode === 'mock' ? hunt.trap : hunt.right}`);
+  await student.click('#step-secret-hunt >> text=Ответить');
+  await student.waitForSelector('#step-secret-hunt.done');
+  const reveal = (await student.textContent('#step-secret-hunt')).replace(/\s+/g, ' ');
+  check(mode === 'mock' ? 'Секрет урока 5: ловушка «прыгал выше» распознана' : 'Секрет урока 5 угадан: отзывчивость',
+    (mode === 'mock' ? /Ловушка! Высота не менялась/.test(reveal) : /Точно!/.test(reveal)) && /Отзывчивость/.test(reveal), reveal.slice(0, 120));
+  check('Сравнение: потерянные нажатия с секретом и без', /Сырой прыжок/.test(reveal) && /потерянные нажатия 3/.test(reveal), (reveal.match(/Прыжок с секретом.*?Сырой прыжок[^О]*/) || [''])[0].slice(0, 200));
+  await student.click('#step-secret-story >> text=Понятно');
+
+  // лаборатория прыжка: пресеты кнопками
+  await student.click('#step-laboratoriya .seg .opt >> nth=1');
+  await student.click('#step-laboratoriya .veil button');
+  gf = await gameFrame(student, 'tur-nad-hadzhohom', 0);
+  await gf.waitForFunction(() => window.__lab.cfg.apex === 0.7, null, { timeout: 5000 }).catch(() => {});
+  check('Лаборатория прыжка: вариант «Луна» — ручки шага', await gf.evaluate(() => window.__lab.cfg.apex === 0.7 && window.__lab.cfg.fall === 1.1));
+  await playRound(gf);
+  await student.waitForSelector('#step-laboratoriya.done', { timeout: 10000 });
+
+  // слепой турнир: одна ручка в загадке, ответ — после нескольких секунд игры
+  const blind = step5('slepoy-turnir');
+  await student.click('#step-slepoy-turnir .veil button');
+  gf = await gameFrame(student, 'tur-nad-hadzhohom', 0);
+  await gf.waitForFunction(() => window.__lab.cfg.coyote === 0, null, { timeout: 5000 }).catch(() => {});
+  check('Слепой турнир: в загадке повёрнута одна ручка', await gf.evaluate(() => window.__lab.cfg.coyote === 0 && window.__lab.cfg.buffer === 0.12));
+  check('Слепой турнир: ответ закрыт, пока не поиграл', await student.locator('#step-slepoy-turnir .opts .opt.dim').count() === blind.choices);
+  await student.click('#step-slepoy-turnir .seg .opt >> nth=1');
+  await sleep(600); // старая рамка загадки уходит из списка рамок страницы
+  gf = await gameFrame(student, 'tur-nad-hadzhohom', 0);
+  await gf.waitForFunction(() => window.__lab.cfg.coyote === 0.1, null, { timeout: 5000 }).catch(() => {});
+  check('Слепой турнир: «Как задумано» — все ручки на месте', await gf.evaluate(() => window.__lab.cfg.coyote === 0.1));
+  for (let r = 0; r < (mode === 'mock' ? blind.rounds.length : 1); r++) {
+    if (r === 0) await student.click('#step-slepoy-turnir .seg .opt >> nth=0');
+    await student.waitForFunction(() => !document.querySelector('#step-slepoy-turnir .opts .opt.dim'), null, { timeout: 30000 });
+    const rd = blind.rounds[r];
+    const opts = await student.$$eval('#step-slepoy-turnir .opts .opt', bs => bs.map(b => b.textContent));
+    const pick = r === 0 ? opts.find(o => o !== rd.answer) : rd.answer;
+    await student.click(`#step-slepoy-turnir .opts .opt >> text="${pick}"`);
+    await student.waitForSelector('#step-slepoy-turnir .verdict');
+    if (r === 0) { check('Слепой турнир: ошибка — разбор, какая ручка была', /изменилось другое/.test(await student.textContent('#step-slepoy-turnir .verdict')) && (await student.textContent('#step-slepoy-turnir')).includes(rd.why)); await shot(student, '40-u5-blind'); }
+    if (mode === 'mock') await student.click('#step-slepoy-turnir .btn >> text=/Следующая загадка|Итог/');
+  }
+  if (mode === 'mock') {
+    await student.waitForSelector('#step-slepoy-turnir.done', { timeout: 10000 });
+    const res = await student.textContent('#step-slepoy-turnir .blind h2');
+    check('Квиз «Слепой турнир» пройден, итог', new RegExp(`Угадано ${blind.rounds.length - 1} из ${blind.rounds.length}`).test(res), res);
+  }
+
+  // Фабрика, ИГРА, сборка по образцу «Тур над Хаджохом»
+  const { own, r } = await buildOwn(mode, student, lesson5, 'Конь над тесниной', 'Тур над Хаджохом');
+  check('Черновик ИГРА урока 5: три участка, флажки, койот и буфер', /Три участка/.test(r) && /время койота/.test(r), r.slice(0, 90));
+  if (mode === 'demo') check('Демо-режим урока 5: вместо игры ученика — «Тур над Хаджохом» с его названием', await own.evaluate(() => GAME.title === 'Конь над тесниной' && !!GAME.LEVEL));
+  await playRound(own);
+  await student.waitForSelector('#step-sborka.done', { timeout: 10000 });
+  const card = await student.evaluate(async () => (await (await fetch('/api/arcade', { headers: { 'x-lab-token': Lab.token.get() } })).json()).mine.find(c => c.lesson && c.lesson.id === 'urok-05'));
+  check('Игра урока 5 собрана, в аркаде донор — прыжок Марио и Celeste', card && card.title === 'Конь над тесниной' && /Super Mario Bros\. и Celeste/.test(card.donor), card ? `${card.title} · ${card.donor}` : 'нет карточки');
+
+  // спидран класса: без огоньков, очки только за время, призрак лучшей попытки
+  await student.click('.cp >> text=Играем вместе');
+  await student.click('#step-speedrun .veil button');
+  gf = await gameFrame(student, 'tur-nad-hadzhohom', 0);
+  await gf.waitForFunction(() => window.__lab.cfg.race === 1, null, { timeout: 5000 }).catch(() => {});
+  await gf.evaluate(() => window.__lab.confirm());
+  await sleep(300);
+  const sp = await gf.evaluate(() => { const L = window.__lab.lab, h = L.state.hero; Object.assign(h, { x: 177.9, y: 14.2, vx: 7, vy: 0 }); return { orbs: L.state.orbs.length }; });
+  await gf.waitForFunction(() => window.__lab.state === 'over', null, { timeout: 10000 });
+  const fin = await gf.evaluate(() => ({ score: window.__lab.lab.score, ghost: !!GAME.bestRun }));
+  check('Спидран: без огоньков, финиш у сакли — очки за время и призрак', sp.orbs === 0 && fin.score > 0 && fin.ghost, JSON.stringify(Object.assign(sp, fin)));
+  await gf.evaluate(() => window.__lab.restart());
+  await sleep(500);
+  check('Спидран: во второй пробежке рядом бежит призрак', await gf.evaluate(() => !!window.__lab.lab.state.ghost));
+  await shot(student, '41-u5-speedrun');
+  await gf.evaluate(() => window.__lab.end('lose', 'Проверка'));
+  await student.waitForSelector('#step-speedrun.done', { timeout: 10000 });
+}
+
+const step6 = id => lesson6.checkpoints.flatMap(c => c.steps).find(s => s.id === id);
+async function lessonSix(mode, teacher, student, shot) {
+  await openLesson(teacher, student, 2, 'urok-06', 'Урок 6');
+  check('Урок 6 открылся у ученика', /Урок 6 · Сочность/.test(await student.textContent('#lessonTitle')));
+
+  // донор: «Ледолом» как задумано — все 12 переключателей сочности включены, в ручках своя группа
+  await student.click('#step-donor-play .veil button');
+  let gf = await gameFrame(student, 'ledolom', 0);
+  const juice = await gf.evaluate(() => ({ n: document.querySelectorAll('#juiceKnobs .knob').length, on: Object.keys(window.__lab.cfg).filter(k => k.startsWith('j_') && window.__lab.cfg[k] === 1).length, pitch: window.__lab.lab.pitch(12), finale: window.__lab.cfg.finale }));
+  check('Оболочка 0.3: 12 переключателей сочности в ручках, все включены', juice.n === 12 && juice.on === 12 && juice.pitch === 2 && juice.finale === 1, JSON.stringify(juice));
+  const dry = await gf.evaluate(() => {
+    window.__lab.togglePanel(true);
+    [...document.querySelectorAll('#presets button')].find(b => b.textContent === 'Без секрета').click();
+    const off = Object.keys(window.__lab.cfg).filter(k => k.startsWith('j_') && window.__lab.cfg[k] === 0).length, shake = window.__lab.cfg.shake;
+    [...document.querySelectorAll('#presets button')].find(b => b.textContent === 'Как задумано').click();
+    window.__lab.togglePanel(false);
+    return { off, shake, back: Object.keys(window.__lab.cfg).filter(k => k.startsWith('j_') && window.__lab.cfg[k] === 1).length };
+  });
+  check('Пресет «Без секрета» выключает все 12, «Как задумано» включает обратно', dry.off === 12 && dry.shake === 1 && dry.back === 12, JSON.stringify(dry));
+  await gf.evaluate(() => window.__lab.confirm());
+  await sleep(300);
+  await gf.evaluate(() => { window.__lab.lab.count('удары', 12); window.__lab.lab.count('кирпичи', 8); window.__lab.lab.score = 700; window.__lab.end('lose', 'Проверка'); });
+  await student.waitForSelector('#step-donor-play.done', { timeout: 10000 });
+  await student.click('#step-donor-hook .opt >> nth=0');
+  await student.click('#step-donor-hook >> text=Ответить');
+  await student.waitForSelector('#step-donor-hook.done');
+
+  // сухой «Ледолом»: переключатели из шага, оболочка глушит эффекты в самих lab.shake, lab.burst, lab.tone
+  await student.click('.cp >> text=Секрет');
+  await student.click('#step-secret-play .veil button');
+  gf = await gameFrame(student, 'ledolom', 0);
+  await gf.waitForFunction(() => window.__lab.cfg.j_shake === 0, null, { timeout: 5000 }).catch(() => {});
+  await gf.evaluate(() => window.__lab.confirm());
+  await sleep(300);
+  const quiet = await gf.evaluate(() => { const L = window.__lab.lab; L.shake(1); L.slowmo(1, 0.2); return { pitch: L.pitch(12), shake: L.juicy('shake'), sound: L.juicy('sound'), finale: window.__lab.cfg.finale }; });
+  check('Сухой «Ледолом»: эффекты выключены переключателями шага', quiet.pitch === 1 && !quiet.shake && !quiet.sound && quiet.finale === 0, JSON.stringify(quiet));
+  await gf.evaluate(() => { window.__lab.lab.count('удары', 9); window.__lab.lab.count('кирпичи', 5); window.__lab.lab.score = 400; window.__lab.end('lose', 'Проверка'); });
+  await student.waitForSelector('#step-secret-play.done', { timeout: 10000 });
+  const hunt = step6('secret-hunt').hunt;
+  await student.waitForSelector('#step-secret-hunt .opt');
+  await student.click(`#step-secret-hunt .opt >> text=${mode === 'mock' ? hunt.trap : hunt.right}`);
+  await student.click('#step-secret-hunt >> text=Ответить');
+  await student.waitForSelector('#step-secret-hunt.done');
+  const reveal = (await student.textContent('#step-secret-hunt')).replace(/\s+/g, ' ');
+  check(mode === 'mock' ? 'Секрет урока 6: ловушка «хычин летал быстрее» распознана' : 'Секрет урока 6 угадан: сочность',
+    (mode === 'mock' ? /Ловушка! Скорость не менялась/.test(reveal) : /Точно!/.test(reveal)) && /Сочность: игра отзывается/.test(reveal) && /удары 12/.test(reveal) && /удары 9/.test(reveal), reveal.slice(0, 120));
+  await student.click('#step-secret-story >> text=Понятно');
+
+  // квиз «Сухая или сочная?»: основа сухая, в загадке включён один переключатель
+  const quiz = step6('suhaya-sochnaya');
+  await student.click('#step-suhaya-sochnaya .veil button');
+  gf = await gameFrame(student, 'ledolom', 0);
+  await gf.waitForFunction(() => window.__lab.cfg.j_shake === 1 && window.__lab.cfg.j_sound === 0, null, { timeout: 5000 }).catch(() => {});
+  check('Квиз «Сухая или сочная?»: в загадке включён один эффект', await gf.evaluate(() => Object.keys(window.__lab.cfg).filter(k => k.startsWith('j_') && window.__lab.cfg[k] === 1).join() === 'j_shake'));
+  await student.click('#step-suhaya-sochnaya .seg .opt >> nth=1');
+  await sleep(600);
+  gf = await gameFrame(student, 'ledolom', 0);
+  await gf.waitForFunction(() => window.__lab.cfg.j_shake === 0, null, { timeout: 5000 }).catch(() => {});
+  check('Квиз: вкладка «Сухая» — все 12 выключены', await gf.evaluate(() => Object.keys(window.__lab.cfg).filter(k => k.startsWith('j_') && window.__lab.cfg[k] === 1).length === 0) && /Сухая/.test(await student.textContent('#step-suhaya-sochnaya .seg')));
+  await student.click('#step-suhaya-sochnaya .seg .opt >> nth=0');
+  for (let r = 0; r < (mode === 'mock' ? quiz.rounds.length : 1); r++) {
+    await student.waitForFunction(() => !document.querySelector('#step-suhaya-sochnaya .opts .opt.dim'), null, { timeout: 40000 });
+    await student.click(`#step-suhaya-sochnaya .opts .opt >> text="${quiz.rounds[r].answer}"`);
+    await student.waitForSelector('#step-suhaya-sochnaya .verdict.good');
+    if (r === 0) await shot(student, '50-u6-quiz');
+    if (mode === 'mock') await student.click('#step-suhaya-sochnaya .btn >> text=/Следующая загадка|Итог/');
+  }
+  if (mode === 'mock') {
+    await student.waitForSelector('#step-suhaya-sochnaya.done', { timeout: 10000 });
+    check('Квиз «Сухая или сочная?» пройден', new RegExp(`Угадано ${quiz.rounds.length} из ${quiz.rounds.length}`).test(await student.textContent('#step-suhaya-sochnaya .blind h2')));
+  }
+
+  // Фабрика и сборка по образцу «Ледолом»
+  const { own, r } = await buildOwn(mode, student, lesson6, 'Хычин против льда', 'Ледолом');
+  const a = await student.evaluate(() => S.answers.igra.value.fields.a.text);
+  check('Черновик ИГРА урока 6: угол отскока и пять эффектов сочности', /Угол отскока/.test(r) && /Сочность на каждом ударе/.test(a), a.slice(0, 90));
+  if (mode === 'demo') check('Демо-режим урока 6: вместо игры ученика — «Ледолом» с его названием', await own.evaluate(() => GAME.title === 'Хычин против льда' && !!GAME.ROWS));
+  await playRound(own);
+  await student.waitForSelector('#step-sborka.done', { timeout: 10000 });
+
+  // кооператив: две лопаты по ручке coop
+  await student.click('.cp >> text=Играем вместе');
+  await student.click('#step-koop .veil button');
+  gf = await gameFrame(student, 'ledolom', 0);
+  await gf.waitForFunction(() => window.__lab.cfg.coop === 1 && window.__lab.lab.players === 2, null, { timeout: 5000 }).catch(() => {});
+  check('Кооператив: две лопаты, оболочка переключилась на двоих', await gf.evaluate(() => window.__lab.lab.players === 2 && window.__lab.lab.state.paddles.length === 2));
+  await playRound(gf);
+  await student.waitForSelector('#step-koop.done', { timeout: 10000 });
+
+  // слепая проба игры соседа: в одной копии сухо, голос «куда хочется вернуться»
+  if (mode === 'demo') { check('Слепая проба без соседей ждёт игру соседа', /Ждём игру соседа/.test(await student.textContent('#step-slepaya-proba'))); return; }
+  await student.waitForSelector('#step-slepaya-proba .ab-tabs');
+  const shakes = [];
+  for (const k of [0, 1]) {
+    await student.click(`#step-slepaya-proba .ab-tabs .opt >> nth=${k}`);
+    await student.click('#step-slepaya-proba .veil button');
+    await sleep(400);
+    const fr = await gameFrame(student, '/play/', 0);
+    await sleep(800); // setCfg после ready
+    shakes.push(await fr.evaluate(() => Object.keys(window.__lab.cfg).filter(x => x.startsWith('j_') && window.__lab.cfg[x] === 1).length));
+    await playRound(fr);
+    await sleep(300);
+  }
+  check('Слепая проба: в одной копии игры соседа выключены все 12 переключателей', shakes.includes(0) && shakes.includes(12), shakes.join(' и '));
+  await student.click('#step-slepaya-proba .opts .opt >> nth=' + shakes.indexOf(12));
+  await student.waitForSelector('#step-slepaya-proba.done');
+  check('Слепая проба: выбрал сочную копию, раскрытие', /Сухой была игра/.test(await student.textContent('#step-slepaya-proba')) && /сочность и правда тянет/.test(await student.textContent('#step-slepaya-proba')));
+  await shot(student, '51-u6-blindpair');
+}
+
 /* ---------- «Играем вместе»: второй ученик, игры друг друга, вызов, плейтест, отзыв, аркада ---------- */
 async function together(browser, base, code, teacher, student, errors, shot) {
   const nctx = await browser.newContext({ viewport: { width: 1280, height: 900 } });
@@ -1208,6 +1492,9 @@ async function together(browser, base, code, teacher, student, errors, shot) {
   check('Учитель видит аркаду класса, скрытую игру — с пометкой', (await teacher.textContent('#tab-arcade')).includes('скрыта автором'));
   await shot(teacher, '15-teacher-arcade');
   await teacher.click('.tabs >> text=Урок');
+  // автор возвращает игру в аркаду: она нужна соседу в следующих уроках (слепая проба урока 6)
+  await nb.click('#mine >> text=👁 Вернуть в аркаду');
+  await nb.waitForSelector('#mine >> text=🙈 Скрыть из аркады');
   await nctx.close();
 }
 

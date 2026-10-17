@@ -427,3 +427,4 @@ dialog.chdlg{width:min(1100px,calc(100% - 32px));max-height:calc(100vh - 32px);o
 .fixbox .was{color:var(--muted);text-decoration:line-through;font-size:13px}
 .fixbox .now{color:var(--text)}
 .fixbox .now::before{content:'→ ';color:var(--accent);font-weight:700}
+.opt.dim{opacity:.45;cursor:wait}

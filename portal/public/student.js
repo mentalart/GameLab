@@ -1,4 +1,4 @@
-// Страница ученика: урок по чекпоинтам и типовые шаги (play, teacher-demo, choice, text, sort, rounds, cycle, trace, predict, cards, secret, factory, decisions, igra, producer, build, aicheck, workshop, release, arcade, playtest).
+// Страница ученика: урок по чекпоинтам и типовые шаги (play, teacher-demo, choice, text, sort, rounds, cycle, trace, predict, blind, blindpair, cards, secret, factory, decisions, igra, producer, build, aicheck, workshop, release, arcade, playtest).
 // Рамка игры, карточки аркады и открытие плейтеста — в games.js, поле с кубиком — в common.js.
 'use strict';
 const { el, api, toast, roll, beep, copy, valText, fieldEditor } = Lab;
@@ -1521,6 +1521,109 @@ STEPS.cycle = ctx => {
   return box;
 };
 
+// blind: слепой турнир по одной ручке. В каждом раунде у ремейка повёрнута одна ручка (или включён один эффект) —
+// ученик играет в «Загадку», сравнивает с «Как задумано» и угадывает, что изменилось. Поле cfg — общая основа всех раундов,
+// rounds — [{ cfg, answer, why }], options — подписи ответов (на раунд берутся верный и ещё choices − 1), seconds — сколько играть до ответа,
+// baseLabel — подпись вкладки с основой (по умолчанию «Как задумано»).
+STEPS.blind = ctx => {
+  const st = ctx.step, need = st.seconds || 6, choices = st.choices || 4;
+  const host = el('div', { class: 'stack blind' });
+  let v = Object.assign({ i: 0, picks: [] }, ctx.value), tab = 'mystery', h = null, played = 0, tick = null, auto = false;
+  const round = () => st.rounds[v.i];
+  const optsOf = r => { // верный ответ и ещё несколько — у ученика в раунде всегда одни и те же
+    const others = st.options.filter(o => o !== r.answer).sort((a, b) => hashStr(S.me.nick + a) - hashStr(S.me.nick + b)).slice(0, choices - 1);
+    return others.concat(r.answer).sort((a, b) => hashStr(v.i + a) - hashStr(v.i + b));
+  };
+  function draw() {
+    clearInterval(tick); if (h) { h.destroy(); h = null; }
+    host.innerHTML = '';
+    if (v.i >= st.rounds.length) return finish();
+    const r = round(), done = v.picks[v.i];
+    const wait = el('p', { class: 'muted', 'aria-live': 'polite' });
+    const btns = optsOf(r).map(o => el('button', { type: 'button', class: 'opt' + (done && o === r.answer ? ' on' : ''), disabled: !!done,
+      onclick: () => { if (played < need) return; const ok = o === r.answer; v.picks[v.i] = { text: r.answer, chose: o, ok, right: r.answer }; beep(ok ? 'good' : 'bad'); ctx.save(v, null, true); draw(); } }, o));
+    const ready = () => { wait.textContent = done || played >= need ? '' : `Поиграй в загадку ещё ${need - played} с — потом выбирай.`; btns.forEach(b => b.classList.toggle('dim', !done && played < need)); };
+    const tabs = el('div', { class: 'seg', role: 'tablist' }, [['mystery', '❓ Загадка'], ['base', st.baseLabel || 'Как задумано']].map(([k, label]) =>
+      el('button', { type: 'button', role: 'tab', class: 'opt' + (tab === k ? ' on' : ''), 'aria-selected': String(tab === k), onclick: () => { if (tab !== k) { tab = k; auto = true; beep('tick'); draw(); } } }, el('b', {}, label))));
+    h = Games.frame({
+      src: () => '/engine/game.html?game=../' + st.game, key: () => 'remake:' + st.id, score: false, autostart: auto,
+      cfg: Object.assign({}, st.cfg, tab === 'mystery' ? r.cfg : null), label: tab === 'mystery' ? 'Играть: загадка' : 'Играть: как задумано',
+      onReady: () => { if (tab !== 'mystery' || done) return; clearInterval(tick); tick = setInterval(() => { played++; ready(); if (played >= need) clearInterval(tick); }, 1000); },
+    });
+    ready();
+    host.append(el('div', { class: 'hud' }, el('span', {}, `Загадка ${v.i + 1} из ${st.rounds.length}`), el('span', {}, `угадано ${v.picks.filter(p => p && p.ok).length}`)),
+      tabs, h.box, Games.bar(h), el('div', { class: 'eyebrow' }, st.question || 'Что изменилось?'), wait, el('div', { class: 'opts' }, btns));
+    if (done) host.append(el('p', { class: 'verdict ' + (done.ok ? 'good' : 'bad') }, done.ok ? `Верно: ${r.answer}.` : `Нет, изменилось другое: ${r.answer}.`),
+      r.why ? el('p', { class: 'concept' }, r.why) : null,
+      el('div', {}, el('button', { class: 'btn', type: 'button', onclick: () => { v.i++; played = 0; tab = 'mystery'; auto = true; ctx.save(v, null, true); draw(); } }, v.i + 1 < st.rounds.length ? 'Следующая загадка ▶' : 'Итог ▶')));
+  }
+  function finish() {
+    const ok = v.picks.filter(p => p && p.ok).length;
+    v = Object.assign(v, { correct: ok, total: st.rounds.length, mistakes: v.picks.filter(p => p && !p.ok).map(p => `${p.right} (выбрал: ${p.chose})`) });
+    if (!ctx.done) ctx.save(v, true, true);
+    host.append(el('div', { class: 'stack', style: 'align-items:center;text-align:center' },
+      el('div', { class: 'eyebrow' }, 'Итог'), el('h2', {}, `Угадано ${ok} из ${st.rounds.length}`),
+      v.mistakes.length ? el('div', { class: 'small', style: 'text-align:left' }, el('b', {}, 'Не почувствовал:'), el('ul', {}, v.mistakes.map(m => el('li', {}, m)))) : el('p', {}, 'Ты почувствовал каждую ручку!'),
+      st.after ? el('p', { class: 'concept' }, st.after) : null,
+      el('button', { class: 'btn ghost', type: 'button', onclick: () => { v = { i: 0, picks: [] }; played = 0; tab = 'mystery'; auto = false; ctx.save(v, null, true); draw(); } }, 'Пройти заново')));
+  }
+  draw();
+  return host;
+};
+
+// blindpair: слепая проба игры соседа — две одинаковые на вид копии «А» и «Б», в одной выключены все 12 переключателей сочности
+// оболочки (ручки j_…). В какой копии сухо, решает хеш ника и игры. По партии в каждую (minRounds), потом голос «куда хочется вернуться».
+// about — id шага arcade: берётся игра соседа оттуда, иначе — сосед по кругу.
+const DRY = Object.fromEntries(['hitstop', 'shake', 'squash', 'burst', 'flash', 'whiten', 'popup', 'sound', 'pitch', 'vibrate', 'glow', 'slowmo'].map(k => ['j_' + k, 0]));
+STEPS.blindpair = ctx => {
+  const st = ctx.step, need = st.minRounds || 1;
+  const host = el('div', { class: 'stack' });
+  let data = null, cur = null, pick = 'A';
+  async function load() {
+    try { data = await api('/api/arcade'); } catch (e) { host.innerHTML = ''; host.append(el('p', { class: 'err' }, e.message)); return; }
+    draw();
+  }
+  function gameOf() {
+    const id = (st.about && (ans(st.about).value || {}).game) || (ctx.value || {}).game;
+    return (id && data.games.find(g => g.id === id && !g.mine)) || data.neighbour;
+  }
+  function draw() {
+    if (cur) { cur.destroy(); cur = null; }
+    host.innerHTML = '';
+    const g = gameOf();
+    if (!g) {
+      host.append(el('div', { class: 'locked-msg card' }, el('h3', {}, 'Ждём игру соседа'), el('p', { style: 'margin-top:6px' }, 'Как только одноклассник соберёт игру, она появится здесь.'),
+        el('div', { style: 'margin-top:12px' }, el('button', { class: 'btn ghost small', type: 'button', onclick: load }, '↻ Проверить'))));
+      return;
+    }
+    let v = Object.assign({}, ctx.value);
+    if (v.game !== g.id) v = { game: g.id, title: g.title, author: g.nick, dry: hashStr(S.me.nick + g.id) % 2 ? 'B' : 'A', A: 0, B: 0, vote: null };
+    const name = k => (k === 'A' ? 'А' : 'Б'), ready = v.A >= need && v.B >= need;
+    const tabs = el('div', { class: 'seg ab-tabs', role: 'tablist' }, ['A', 'B'].map(k => el('button', { type: 'button', role: 'tab', class: 'opt ab-' + k + (pick === k ? ' on' : ''), 'aria-selected': String(pick === k),
+      onclick: () => { if (pick !== k) { pick = k; beep('tick'); draw(); } } }, el('b', {}, 'Игра ' + name(k)), el('span', { class: 'small muted' }, ` · партий ${v[k]}` + (v[k] < need ? ` из ${need}` : ' ✓')))));
+    cur = Games.frame({
+      src: () => `/play/${g.id}/${g.version}`, key: () => 'game:' + g.id, score: false, cfg: pick === v.dry ? DRY : null, label: 'Играть: игра ' + name(pick),
+      onOver: () => { v[pick]++; ctx.save(v); if (v.A >= need && v.B >= need && !ready) draw(); else tabs.querySelector('.ab-' + pick + ' .small').textContent = ` · партий ${v[pick]}` + (v[pick] < need ? ` из ${need}` : ' ✓'); },
+      onError: err => cur.message(el('b', {}, 'Игра соседа упала: ' + (err.message || 'ошибка'))),
+    });
+    const juicy = v.dry === 'A' ? 'B' : 'A';
+    const ask = v.vote ? el('div', { class: 'stack' },
+      el('p', { class: 'verdict ' + (v.vote === juicy ? 'good' : 'bad') }, v.vote === 'same' ? 'Ты не почувствовал разницы.' : `Тебе хочется вернуться в игру ${name(v.vote)}.`),
+      el('div', { class: 'secret-reveal' }, el('div', { class: 'eyebrow' }, 'Раскрытие'), el('h3', {}, `Сухой была игра ${name(v.dry)}`),
+        el('p', {}, `В ней выключены все 12 переключателей сочности: стоп-кадр, тряска, частицы, вспышки, звук и остальные. Механика та же — счёт, скорость, правила. ${v.vote === juicy ? 'Ты выбрал сочную: сочность и правда тянет вернуться.' : v.vote === 'same' ? 'Значит, в этой игре сочности пока мало — подскажи автору в плейтесте.' : 'Ты выбрал сухую — интересно! Может, эффекты в этой игре мешают видеть главное?'}`)),
+      st.after ? el('p', { class: 'concept' }, st.after) : null)
+      : ready ? el('div', { class: 'stack' }, el('div', { class: 'eyebrow' }, st.question || 'Куда хочется вернуться?'),
+        el('div', { class: 'opts' }, [['A', 'В игру А'], ['B', 'В игру Б'], ['same', 'Разницы нет']].map(([k, label]) => el('button', { type: 'button', class: 'opt', onclick: () => { v.vote = k; v.juicy = k === juicy; beep('good'); ctx.save(v, true, true); draw(); } }, label))))
+        : el('p', { class: 'muted' }, `Сыграй ${need === 1 ? 'партию' : need + ' партии'} в каждую копию — потом появится вопрос.`);
+    host.append(el('div', { class: 'donor-card' }, el('div', { class: 'ico' }, '🕹'), el('div', {}, el('div', { class: 'eyebrow' }, `Игра соседа · автор ${g.nick}`), el('h3', {}, g.title || 'Игра'))),
+      tabs, cur.box, Games.bar(cur), ask);
+  }
+  S.hooks.push(kind => { if (kind === 'arcade' && data && !gameOf()) load(); });
+  host.append(el('p', { class: 'muted' }, 'Ищем игру соседа…'));
+  load();
+  return host;
+};
+
 // release: релиз модуля. Ученик выбирает лучшую игру модуля (не обязательно сегодняшнюю), проверяет её в рамке и идёт по чек-листу.
 // У пунктов с auto портал показывает, что видно из аркады (подпись донора, три решения, чужие партии, время партии, версии);
 // отмечает пункты сам ученик. «Выпустить 1.0» — метка релиза в аркаде класса, одна игра на модуль.
@@ -1610,6 +1713,8 @@ function stepSummary(step) {
     case 'choice': return [(v.selected || []).join('; '), valText(v.own) ? 'свои слова: ' + f(v.own) : ''].filter(Boolean).join(' · ') || '—';
     case 'cycle': return v.total ? `без ошибок ${v.perfect} из ${v.total}, очки ${v.score}, серия ${v.bestStreak}` + ((v.mistakes || []).length ? '; трудно: ' + v.mistakes.join('; ') : '') : 'не пройден';
     case 'release': return v.released ? `выпущена версия 1.0: «${v.released.title}» (урок ${v.released.lesson}, v${v.released.version}); что изменено: ${f(v.note)}` : `не выпущена; отмечено пунктов: ${Object.values(v.checks || {}).filter(Boolean).length}`;
+    case 'blindpair': return v.game ? `игра «${v.title}» (автор ${v.author}); сухой была ${v.dry === 'A' ? 'А' : 'Б'}; хочется вернуться: ${v.vote ? (v.vote === 'same' ? 'разницы нет' : v.vote === 'A' ? 'в А' : 'в Б') : '—'}${v.vote && v.juicy ? ' — в сочную' : ''}` : 'не играл';
+    case 'blind': return v.total ? `угадано ${v.correct} из ${v.total}` + ((v.mistakes || []).length ? '; не почувствовал: ' + v.mistakes.join('; ') : '') : `загадок пройдено ${(v.picks || []).length}`;
     case 'trace': return v.total ? `верно ${v.correct} из ${v.total}, очки ${v.score}, серия ${v.bestStreak}` + ((v.mistakes || []).length ? '; ошибки: ' + v.mistakes.join('; ') : '') : 'не пройден';
     case 'predict': return (v.picked || []).length ? `предсказание: ${step.options.filter(o => v.picked.includes(o.counter)).map(o => o.text).join('; ')}` + (v.result ? ` — ${v.result.hit ? 'сбылось' : 'не сбылось'}; телеметрия за партию: ` + step.options.map(o => `${o.text} ${v.result.values[o.counter]}`).join(', ') : '') : 'не предсказывал';
     case 'sort': return v.total ? `верно ${v.correct} из ${v.total}, очки ${v.score}, серия ${v.bestStreak}` + ((v.mistakes || []).length ? '; ошибки: ' + v.mistakes.join('; ') : '') : 'не пройден';
