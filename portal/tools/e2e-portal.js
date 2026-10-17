@@ -62,7 +62,7 @@ async function playRound(frame, { score = 0, hold = null, page = null, restart =
   await frame.evaluate(s => { window.__lab.lab.score = s; window.__lab.end('lose', 'Проверка'); }, score);
 }
 const watch = (p, errors) => {
-  p.on('pageerror', e => errors.push(e.message));
+  p.on('pageerror', e => errors.push(e.message + ' @ ' + p.url().replace(/^https?:\/\/[^/]+/, '') + ' ' + String(e.stack || '').split('\n').slice(1, 3).join(' ').trim()));
   p.on('dialog', d => d.accept());
   p.on('console', m => { if (m.type() === 'error' && !/Failed to load resource|^\[lab3d\]/.test(m.text())) errors.push(m.text()); }); // ошибки игр [lab3d] ловит автопочинка
 };
@@ -363,6 +363,17 @@ async function secretHunt(teacher, student, mode, shot) {
   const all = quiz.items.length + quiz.wowItems.length;
   check('Квиз «Чьё это решение?» с карточками игры класса пройден', new RegExp(`${all} из ${all}`).test(quizText), quizText);
   await shot(student, '2-quiz');
+  check('Квиз: результат отправлен учителю, кнопки «Скопировать» у ученика нет', await student.locator('#step-secret-quiz >> text=✓ Результат отправлен учителю').count() === 1 && await student.locator('#step-secret-quiz >> text=Скопировать').count() === 0);
+  // вкладка «Ответы»: ответ квиза у учителя, разбор по карточкам, CSV
+  await teacher.click('.tabs >> text=Ответы');
+  await teacher.click('#tab-answers >> text=2. Секрет');
+  await teacher.waitForSelector('#answers tbody tr', { timeout: 10000 });
+  const ansText = await teacher.textContent('#tab-answers');
+  check('Ответы: квиз ученика у учителя и разбор по карточкам', new RegExp(`верно ${all} из ${all}`).test(ansText) && /какие карточки труднее всего/.test(ansText), (ansText.match(/верно \d+ из \d+/) || [''])[0]);
+  const qcsv = await teacher.evaluate(async () => (await fetch(document.querySelector('#csvQuiz').href)).text());
+  check('CSV квизов: строка на каждую карточку', /^\uFEFF?Ученик;Квиз;Карточка/.test(qcsv) && qcsv.trim().split(/\r?\n/).length === all + 1, qcsv.trim().split(/\r?\n/).length + ' строк');
+  const acsv = await teacher.evaluate(async () => (await fetch(document.querySelector('#csvAnswers').href)).text());
+  check('CSV всех ответов ученика', /Ученик;Чекпоинт;Шаг/.test(acsv) && /Квиз «Чьё это решение\?»/.test(acsv));
   // сводка учителя
   await teacher.click('.tabs >> text=Вау-старт');
   await teacher.waitForSelector('#wowSummary td .tag', { timeout: 10000 }); // ждём свежую сводку с догадкой: старая осталась во вкладке с прошлого раза
@@ -573,7 +584,7 @@ async function lessonTwo(mode, teacher, student, shot) {
   await student.waitForSelector('#step-igra-ili-net.done');
   const res = await student.textContent('#step-igra-ili-net h2 >> nth=1');
   check('Квиз «Игра или не игра?» в уроке 2: свайп, кнопки, клавиши, итог', /11 из 12/.test(res) && (await student.textContent('#step-igra-ili-net')).includes(wrong.text), res);
-  check('Итог раундов: «Скопировать результат»', await student.locator('#step-igra-ili-net >> text=⧉ Скопировать результат').count() === 1);
+  check('Итог раундов: результат у учителя', await student.locator('#step-igra-ili-net >> text=✓ Результат отправлен учителю').count() === 1);
   await shot(student, '17-rounds-result');
 
   // сортировщик на 8 лотков: цифры и стрелки с пробелом, одна ошибка — подсказка лотка

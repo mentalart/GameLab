@@ -188,6 +188,8 @@ async function openStudent(nick) {
     body.append(el('div', { class: 'row card', style: 'padding:10px 14px' }, el('span', {}, 'Запросов к ИИ на уроке: '), lim, r.aiBonus ? el('span', { class: 'muted small' }, `(учитель добавил ${r.aiBonus})`) : null, el('span', { class: 'grow' }),
       [5, 10].map(n => el('button', { class: 'btn ghost small', type: 'button', onclick: async () => { const x = await addCalls(nick, n); if (x) lim.textContent = `${x.aiCalls} из ${x.aiLimit}`; } }, `+${n} запросов`))));
     body.append(el('h3', {}, 'Замысел (так его видят продюсер и программист)'), el('pre', { class: 'plan' }, r.plan));
+    if (r.answerList && r.answerList.length) body.append(el('details', { class: 'card' }, el('summary', {}, el('b', {}, `Все ответы ученика · ${r.answerList.length}`)),
+      el('div', { class: 'stack', style: 'gap:6px;margin-top:8px' }, r.answerList.map(a => el('div', {}, el('div', { class: 'small muted' }, `${a.cp} · ${a.step}`), el('div', { style: 'white-space:pre-wrap' }, a.text || (a.done ? 'готово' : '…')))))));
     if (r.game && r.game.versions.length) {
       body.append(el('h3', {}, `Игра «${r.game.title || ''}»`));
       body.append(el('div', { class: 'stack', style: 'gap:4px' }, r.game.versions.map(v => el('div', { class: 'row small' },
@@ -383,6 +385,37 @@ async function wowAct(path, body, full) {
 setInterval(() => { if (!$('#tab-wow').hidden && !W.busy) drawWow(); }, 4000);
 
 /* ---------- вкладка «Аркада» ---------- */
+/* ---------- вкладка «Ответы»: все ответы класса по шагам урока, разбор квизов по карточкам, выгрузка для анализа ---------- */
+const AN = { cp: null };
+async function drawAnswers() {
+  const host = $('#tab-answers'); host.innerHTML = '';
+  if (!T.code) return;
+  let r;
+  try { r = await api('/api/teacher/answers?code=' + T.code); } catch (e) { toast(e.message, 'err'); return; }
+  const cps = [...new Map(r.steps.map(x => [x.cp, x.cpTitle])).entries()];
+  if (!cps.some(([id]) => id === AN.cp)) AN.cp = cps[0] && cps[0][0];
+  host.append(el('div', { class: 'row' },
+    el('p', { class: 'muted grow' }, `Урок ${r.lesson.number}: ответы сохраняются сами, как только ученик отвечает. Учеников: ${r.students.length}.`),
+    el('a', { class: 'btn ghost small', href: dl(`/api/teacher/answers.csv?code=${T.code}&kind=steps`), download: '', id: 'csvAnswers' }, '⬇ CSV всех ответов'),
+    el('a', { class: 'btn ghost small', href: dl(`/api/teacher/answers.csv?code=${T.code}&kind=quiz`), download: '', id: 'csvQuiz' }, '⬇ CSV квизов по карточкам'),
+    el('button', { class: 'btn ghost small', type: 'button', onclick: drawAnswers }, '↻ Обновить')));
+  host.append(el('div', { class: 'seg' }, cps.map(([id, title]) => el('button', { type: 'button', class: 'btn small' + (id === AN.cp ? '' : ' ghost'), onclick: () => { AN.cp = id; drawAnswers(); } }, title))));
+  const steps = r.steps.filter(x => x.cp === AN.cp);
+  if (!r.students.length) host.append(el('div', { class: 'card' }, 'В классе пока нет учеников.'));
+  else host.append(el('div', { class: 'tablewrap' }, el('table', { id: 'answers' },
+    el('thead', {}, el('tr', {}, el('th', {}, 'Ученик'), steps.map(x => el('th', {}, x.title)))),
+    el('tbody', {}, r.students.map(s => el('tr', {}, el('td', {}, el('a', { href: '#', onclick: e => { e.preventDefault(); openStudent(s.nick); } }, s.nick)),
+      steps.map(x => { const a = s.answers[x.id]; return el('td', { class: 'small ans' + (a && a.done ? '' : ' muted'), title: a ? a.text : '' }, a ? (a.text || (a.done ? 'готово' : '…')) : '—'); })))))));
+  const quizzes = r.quizzes.filter(q => steps.some(x => x.id === q.id));
+  quizzes.forEach(q => host.append(el('div', { class: 'card stack' }, el('h3', {}, `Квиз «${q.title}»: какие карточки труднее всего`),
+    el('div', { class: 'tablewrap' }, el('table', {},
+      el('thead', {}, el('tr', {}, el('th', {}, 'Карточка'), el('th', {}, 'Правильно'), el('th', {}, 'Верно'), el('th', {}, 'Чаще ошибались'))),
+      el('tbody', {}, q.cards.map(c => {
+        const w = Object.entries(c.wrong).sort((a, b) => b[1] - a[1])[0];
+        return el('tr', {}, el('td', {}, c.text), el('td', {}, c.right), el('td', {}, el('b', {}, `${Math.round(100 * c.ok / c.total)}%`), el('span', { class: 'muted small' }, ` · ${c.ok} из ${c.total}`)), el('td', { class: 'small' }, w ? `${w[0]} (${w[1]})` : '—'));
+      })))))));
+}
+
 async function drawArcade() {
   const host = $('#tab-arcade'); host.innerHTML = '';
   if (!T.code) return;
@@ -510,9 +543,10 @@ async function drawNotes() {
 /* ---------- события ---------- */
 document.querySelectorAll('.tabs button').forEach(b => b.addEventListener('click', () => {
   document.querySelectorAll('.tabs button').forEach(x => x.classList.toggle('on', x === b));
-  ['lesson', 'wow', 'arcade', 'ai', 'notes'].forEach(t => { $('#tab-' + t).hidden = t !== b.dataset.tab; });
+  ['lesson', 'wow', 'answers', 'arcade', 'ai', 'notes'].forEach(t => { $('#tab-' + t).hidden = t !== b.dataset.tab; });
   if (b.dataset.tab !== 'wow' && W.preview) { W.preview.destroy(); W.preview = null; W.gameKey = null; }
   if (b.dataset.tab === 'wow') drawWow(true);
+  if (b.dataset.tab === 'answers') drawAnswers();
   if (b.dataset.tab === 'arcade') drawArcade();
   if (b.dataset.tab === 'ai') drawAI();
   if (b.dataset.tab === 'notes') drawNotes();

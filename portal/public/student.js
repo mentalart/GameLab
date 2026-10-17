@@ -29,7 +29,7 @@ function listen() {
     const before = S.opened;
     const wasLocked = !isOpen(cpById(S.cpId)); // до обновления: ученик ждал на закрытом чекпоинте, и учитель открыл именно его
     S.opened = d.opened;
-    $('#noteBtn').hidden = !d.authorMode;
+    $('#noteBtn').hidden = !d.authorMode; S.me.class.authorMode = d.authorMode;
     const fresh = S.lesson.checkpoints.filter(cp => d.opened.includes(cp.id) && !before.includes(cp.id));
     if (fresh.length) {
       beep('tick');
@@ -113,7 +113,7 @@ function renderMain() {
   cp.steps.forEach((step, i) => main.append(stepCard(step, i, cp)));
   const next = S.lesson.checkpoints[idx + 1];
   main.append(el('div', { class: 'row' },
-    el('button', { class: 'btn ghost', type: 'button', onclick: () => copy(cpSummary(cp)) }, '⧉ Скопировать результат'),
+    S.me.class.authorMode ? el('button', { class: 'btn ghost', type: 'button', title: 'Для чата «Прохождение» с Claude', onclick: () => copy(cpSummary(cp)) }, '⧉ Скопировать результат') : null,
     next && isOpen(next) ? el('button', { class: 'btn', type: 'button', onclick: () => { S.cpId = next.id; render(); scrollTo(0, 0); } }, `Дальше: ${next.title} →`) :
       next ? el('span', { class: 'muted small' }, 'Следующий чекпоинт откроет учитель') : el('span', { class: 'muted small' }, 'Это последний чекпоинт урока')));
 }
@@ -430,7 +430,7 @@ STEPS.sort = ctx => {
   const st = ctx.step;
   let ITEMS = st.items.concat(wowItems(st));
   const box = el('div', { class: 'sorter', tabindex: '0', 'aria-label': 'Квиз-сортировщик' });
-  let order = [], i = 0, score = 0, streak = 0, bestStreak = 0, correct = 0, mistakes = [], left = 0, raf = 0, locked = false, active = false, padPrev = [];
+  let order = [], i = 0, score = 0, streak = 0, bestStreak = 0, correct = 0, mistakes = [], picks = [], left = 0, raf = 0, locked = false, active = false, padPrev = [];
   const hud = el('div', { class: 'hud' }), timer = el('div', { class: 'timer' }, el('i')), item = el('div', { class: 'item' }), why = el('div', { class: 'why', 'aria-live': 'polite' });
   // до 3 лотков — клавиши 1 2 3 или ← ↓ →; больше (до 8) — цифры, или стрелками выбрать лоток и пробел; у лотка — пример, после ошибки — подсказка
   const many = st.bins.length > 3;
@@ -453,7 +453,7 @@ STEPS.sort = ctx => {
   function begin() {
     ITEMS = st.items.concat(wowItems(st));
     order = ITEMS.map((x, k) => k).sort(() => Math.random() - 0.5);
-    i = 0; score = 0; streak = 0; bestStreak = 0; correct = 0; mistakes = [];
+    i = 0; score = 0; streak = 0; bestStreak = 0; correct = 0; mistakes = []; picks = [];
     box.innerHTML = ''; box.append(hud, timer, item, why, bins); box.focus();
     if (many) select(0);
     active = true; next();
@@ -493,6 +493,7 @@ STEPS.sort = ctx => {
     locked = true;
     const it = ITEMS[order[i]], right = st.bins.findIndex(b => b.id === it.bin);
     const ok = k === right;
+    picks.push({ text: it.text, right: st.bins[right].label, chose: k >= 0 ? st.bins[k].label : 'время вышло', ok, sec: Math.round((st.seconds - left) * 10) / 10 });
     if (ok) { streak++; bestStreak = Math.max(bestStreak, streak); correct++; score += 100 * Math.min(streak, 5) + Math.round(left * 10); beep('good'); }
     else { streak = 0; mistakes.push(`${it.text} → ${st.bins[right].label}`); beep('bad'); }
     item.classList.add(ok ? 'good' : 'bad');
@@ -505,7 +506,7 @@ STEPS.sort = ctx => {
   }
   function finish() {
     active = false; cancelAnimationFrame(raf);
-    const v = { score, correct, total: order.length, bestStreak, mistakes };
+    const v = { score, correct, total: order.length, bestStreak, mistakes, picks, tries: ((ctx.value || {}).tries || 0) + 1 };
     ctx.save(v, true);
     box.innerHTML = '';
     box.append(el('div', { class: 'stack', style: 'align-items:center;text-align:center;margin:auto' },
@@ -514,7 +515,7 @@ STEPS.sort = ctx => {
       mistakes.length ? el('div', { class: 'small', style: 'text-align:left' }, el('b', {}, 'Ошибки:'), el('ul', {}, mistakes.map(m => el('li', {}, m)))) : el('p', {}, 'Без ошибок!'),
       el('div', { class: 'row', style: 'justify-content:center' },
         el('button', { class: 'btn', type: 'button', onclick: begin }, 'Ещё раз'),
-        el('button', { class: 'btn ghost', type: 'button', onclick: () => copy(`Квиз «${st.title}»: ${correct} из ${order.length}, ${score} очков, серия ${bestStreak}.` + (mistakes.length ? ' Ошибки: ' + mistakes.join('; ') : '')) }, '⧉ Скопировать результат'))));
+        el('p', { class: 'muted small' }, '✓ Результат отправлен учителю'))));
   }
   box.addEventListener('keydown', e => {
     if (!active) return;
@@ -534,12 +535,12 @@ STEPS.sort = ctx => {
 };
 
 // rounds: квиз-раунды «Игра или не игра?» — карточка и два ответа ◀ ▶ (клавиши ← → и A D, геймпад, тап, свайп),
-// таймер, серия, звук, разбор после каждой карты (дальше — пробел, Enter или кнопка A), итог с «Скопировать результат».
+// таймер, серия, звук, разбор после каждой карты (дальше — пробел, Enter или кнопка A); итог с ответами по карточкам сам уходит учителю.
 STEPS.rounds = ctx => {
   const st = ctx.step;
   const L = st.left || { label: 'Игра' }, R = st.right || { label: 'Не игра' };
   const box = el('div', { class: 'rounds', tabindex: '0', 'aria-label': 'Квиз-раунды' });
-  let order = [], i = 0, score = 0, streak = 0, bestStreak = 0, correct = 0, mistakes = [], left = 0, raf = 0, phase = 'intro', padPrev = {}, answeredAt = 0;
+  let order = [], i = 0, score = 0, streak = 0, bestStreak = 0, correct = 0, mistakes = [], picks = [], left = 0, raf = 0, phase = 'intro', padPrev = {}, answeredAt = 0;
   const hud = el('div', { class: 'hud' }), timer = el('div', { class: 'timer' }, el('i')), card = el('div', { class: 'rcard' }), why = el('div', { class: 'why', 'aria-live': 'polite' });
   const btnL = el('button', { type: 'button', class: 'rbtn left', onclick: () => press('left') }, el('span', { class: 'arr' }, '◀'), el('b', {}, L.label), el('kbd', {}, '← или A'));
   const btnR = el('button', { type: 'button', class: 'rbtn right', onclick: () => press('right') }, el('b', {}, R.label), el('span', { class: 'arr' }, '▶'), el('kbd', {}, '→ или D'));
@@ -558,7 +559,7 @@ STEPS.rounds = ctx => {
   }
   function begin() {
     order = st.items.map((x, k) => k).sort(() => Math.random() - 0.5);
-    i = 0; score = 0; streak = 0; bestStreak = 0; correct = 0; mistakes = [];
+    i = 0; score = 0; streak = 0; bestStreak = 0; correct = 0; mistakes = []; picks = [];
     box.innerHTML = ''; box.append(hud, timer, card, why, answers, el('div', { class: 'row', style: 'justify-content:center' }, nextBtn)); box.focus();
     show();
     let last = performance.now();
@@ -584,6 +585,8 @@ STEPS.rounds = ctx => {
     if (phase !== 'ask') return;
     phase = 'why'; answeredAt = performance.now();
     const it = st.items[order[i]], ok = side === it.side;
+    const lab = x => x === 'left' ? L.label : x === 'right' ? R.label : 'время вышло';
+    picks.push({ text: it.text, right: lab(it.side), chose: lab(side), ok, sec: Math.round((st.seconds - left) * 10) / 10 });
     if (ok) { streak++; bestStreak = Math.max(bestStreak, streak); correct++; score += 100 * Math.min(streak, 5) + Math.round(Math.max(0, left) * 10); beep('good'); }
     else { streak = 0; mistakes.push(`${it.text} → ${(it.side === 'left' ? L : R).label}`); beep('bad'); }
     card.classList.add(ok ? 'good' : 'bad', side === 'left' ? 'out-left' : side === 'right' ? 'out-right' : 'out-none');
@@ -614,7 +617,7 @@ STEPS.rounds = ctx => {
   card.addEventListener('pointerup', drop); card.addEventListener('pointercancel', () => { drag = null; card.style.transform = ''; });
   function finish() {
     phase = 'end'; cancelAnimationFrame(raf);
-    const v = { score, correct, total: order.length, bestStreak, mistakes };
+    const v = { score, correct, total: order.length, bestStreak, mistakes, picks, tries: ((ctx.value || {}).tries || 0) + 1 };
     ctx.save(v, true);
     box.innerHTML = '';
     const result = `Квиз «${st.title}»: ${correct} из ${order.length}, ${score} очков, серия ${bestStreak}.` + (mistakes.length ? ' Ошибки: ' + mistakes.join('; ') : '');
@@ -624,7 +627,7 @@ STEPS.rounds = ctx => {
       mistakes.length ? el('div', { class: 'small', style: 'text-align:left' }, el('b', {}, 'Ошибки:'), el('ul', {}, mistakes.map(m => el('li', {}, m)))) : el('p', {}, 'Без ошибок!'),
       el('div', { class: 'row', style: 'justify-content:center' },
         el('button', { class: 'btn', type: 'button', onclick: begin }, 'Ещё раз'),
-        el('button', { class: 'btn ghost', type: 'button', onclick: () => copy(result) }, '⧉ Скопировать результат'))));
+        el('p', { class: 'muted small' }, '✓ Результат отправлен учителю'), S.me.class.authorMode ? el('button', { class: 'btn ghost small', type: 'button', onclick: () => copy(result) }, '⧉ Скопировать') : null)));
   }
   box.addEventListener('keydown', e => {
     if (phase === 'intro' || phase === 'end') return;

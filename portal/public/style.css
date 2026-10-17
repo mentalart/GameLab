@@ -357,6 +357,7 @@ td.warn{color:var(--warm);font-weight:700}
 .classrow{text-align:left;background:transparent;color:var(--text);border:1px solid var(--line2);border-radius:10px;padding:8px 10px;cursor:pointer;font:inherit}
 .classrow:hover{border-color:var(--accent)}
 .classrow.on{border-color:var(--accent);background:rgba(124,245,168,.1);font-weight:700}
+<<<<<<< Updated upstream
 /* квиз «Собери цикл» (шаг cycle) */
 .cyc-game{text-align:center;font-size:clamp(20px,2.8vw,26px)}
 .cyc-ring{display:flex;align-items:stretch;justify-content:center;gap:6px;flex-wrap:wrap}
@@ -387,3 +388,6 @@ td.warn{color:var(--warm);font-weight:700}
 .ok-text{color:var(--accent)}
 .warn-text{color:var(--warm)}
 .tag.release{color:#1a1200;background:var(--warm);border-color:var(--warm)}
+=======
+#answers td.ans{max-width:260px;white-space:pre-wrap;vertical-align:top}
+>>>>>>> Stashed changes

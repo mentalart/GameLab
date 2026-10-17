@@ -19,6 +19,7 @@ const TYPES = {
 /* ---------------- уроки ---------------- */
 // LAB_LESSONS — дополнительная папка сценариев (e2e-portal.js кладёт туда урок-проверку новых типов шагов)
 const MODULES = require('./lessons/moduli');
+const answers = require('./lib/answers');
 const LESSON_DIRS = [path.join(PORTAL, 'lessons')].concat(process.env.LAB_LESSONS ? [path.resolve(process.env.LAB_LESSONS)] : []);
 function lessons() {
   return LESSON_DIRS.flatMap(dir => { try { return fs.readdirSync(dir).filter(f => /^urok-\d+\.js$/.test(f)).map(f => path.join(dir, f)); } catch (e) { return []; } })
@@ -788,6 +789,15 @@ route('GET', '/api/teacher/overview', (ctx) => {
   });
   return { class: cls, lesson: les, students, stepsDone, spend: spend(cls.code, les.id), limits: ai.limits(), stuckSec: STUCK_SEC, now: new Date().toISOString() };
 });
+// ответы класса по уроку: таблица «ученик × шаг», разбор квизов по карточкам; выгрузка CSV — на странице учителя
+route('GET', '/api/teacher/answers', (ctx) => {
+  needTeacher(ctx);
+  const cls = store.getClass(ctx.url.searchParams.get('code'));
+  if (!cls) throw Object.assign(new Error('Нет класса'), { status: 404 });
+  const les = lesson(cls.lesson);
+  return Object.assign({ lesson: { id: les.id, number: les.number, title: les.title }, class: { code: cls.code, name: cls.name } },
+    answers.classAnswers(les, store.students(cls.code), id => store.getGame(id)));
+});
 route('GET', '/api/teacher/student', (ctx) => {
   needTeacher(ctx);
   const code = ctx.url.searchParams.get('code'), nick = ctx.url.searchParams.get('nick');
@@ -796,7 +806,9 @@ route('GET', '/api/teacher/student', (ctx) => {
   const les = lesson(cls.lesson), st = store.lessonState(s, les.id);
   const g = st.gameId ? store.getGame(st.gameId) : null;
   const compares = g ? (g.compares || []).map(id => store.getGame(id)).filter(Boolean) : [];
-  return { nick, answers: st.answers, plan: ai.planText(buildPlan(les, st)), game: g, compares, discovery: g && g.current ? discovery(g) : null, feedback: st.feedback || null,
+  const one = answers.classAnswers(les, [s], id => store.getGame(id));
+  const answerList = one.steps.filter(x => one.students[0].answers[x.id]).map(x => Object.assign({ cp: x.cpTitle, step: x.title }, one.students[0].answers[x.id]));
+  return { nick, answers: st.answers, answerList, plan: ai.planText(buildPlan(les, st)), game: g, compares, discovery: g && g.current ? discovery(g) : null, feedback: st.feedback || null,
     aiCalls: st.aiCalls || 0, aiLimit: aiLimit(st), aiBonus: st.aiBonus || 0, models: ai.loadConfig().models, codeModel: ai.models().code };
 });
 // учитель добавляет ученику запросов к ИИ на этот урок
@@ -1090,6 +1102,26 @@ route('GET', '/api/teacher/report.csv', (ctx) => {
     ['Без ошибки', 'ok'], ['Ошибка', 'error'], ['Демо', 'demo'], ['Игра', 'game'], ['Сборка', 'build'],
   ], store.genlog());
   return { raw: body, type: 'text/csv; charset=utf-8', headers: { 'Content-Disposition': `attachment; filename="genlog-${kind}-${date}.csv"` } };
+});
+
+// ответы класса для разбора: по строке на ответ ученика (kind=steps) или на карточку квиза (kind=quiz)
+route('GET', '/api/teacher/answers.csv', (ctx) => {
+  needTeacher(ctx);
+  const cls = store.getClass(ctx.url.searchParams.get('code'));
+  if (!cls) throw Object.assign(new Error('Нет класса'), { status: 404 });
+  const les = lesson(cls.lesson), students = store.students(cls.code), kind = ctx.url.searchParams.get('kind') === 'quiz' ? 'quiz' : 'steps';
+  let body;
+  if (kind === 'steps') {
+    const r = answers.classAnswers(les, students, id => store.getGame(id));
+    const rows = r.students.flatMap(s => r.steps.filter(x => s.answers[x.id]).map(x => ({ nick: s.nick, cp: x.cpTitle, step: x.title, type: x.type, text: s.answers[x.id].text, done: s.answers[x.id].done, at: s.answers[x.id].at })));
+    body = csv([['Ученик', 'nick'], ['Чекпоинт', 'cp'], ['Шаг', 'step'], ['Тип шага', 'type'], ['Ответ', 'text'], ['Готово', 'done'], ['Когда', r => r.at ? new Date(r.at).toLocaleString('ru-RU') : '']], rows);
+  } else {
+    const quiz = les.checkpoints.flatMap(cp => cp.steps).filter(x => x.type === 'sort' || x.type === 'rounds');
+    const rows = students.flatMap(s => quiz.flatMap(q => ((((s.lessons || {})[les.id] || {}).answers || {})[q.id] || { value: {} }).value.picks
+      ? s.lessons[les.id].answers[q.id].value.picks.map(p => Object.assign({ nick: s.nick, quiz: q.title }, p)) : []));
+    body = csv([['Ученик', 'nick'], ['Квиз', 'quiz'], ['Карточка', 'text'], ['Верно', 'ok'], ['Ответил', 'chose'], ['Правильно', 'right'], ['Секунд', r => num(r.sec)]], rows);
+  }
+  return { raw: body, type: 'text/csv; charset=utf-8', headers: { 'Content-Disposition': `attachment; filename="otvety-${cls.code}-${les.id}-${kind}.csv"` } };
 });
 
 /* ---------- заметки автора: статус и выгрузка в Markdown ---------- */
