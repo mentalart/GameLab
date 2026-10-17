@@ -1,0 +1,644 @@
+<title>Лаборатория прыжка</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Unbounded:wght@600;800&family=Golos+Text:wght@400;600;700&display=swap">
+<style>
+/* Лаборатория игр · занятие 5 · чекпоинт 2: слепой турнир по одной ручке, свободная лаборатория прыжка */
+:root{--bg:#0d0b1a;--panel:rgba(18,15,38,.95);--line:#3a3468;--ink:#f4f0ff;--muted:#b3abd8;--hot:#ffcf3a;--good:#45e39a;--bad:#ff5a6e;--dice:#ff7ad9;--vx:#3de0c8;--vy:#ff6ab0;--display:'Unbounded',system-ui,sans-serif;--body:'Golos Text',system-ui,sans-serif;color-scheme:dark}
+html,body{height:100%;margin:0;background:var(--bg);color:var(--ink);font:15px/1.45 var(--body);overflow:hidden}
+#stage{position:fixed;inset:0}
+#cv{position:absolute;inset:0;width:100%;height:100%;display:block;touch-action:none}
+kbd{font:600 12px ui-monospace,Consolas,monospace;border:1px solid var(--line);border-bottom-width:2px;border-radius:5px;padding:1px 6px;background:#05040c;color:var(--ink)}
+#hud{position:absolute;left:0;right:0;top:0;display:flex;justify-content:space-between;align-items:flex-start;gap:8px;padding:10px max(12px,env(safe-area-inset-right,0px)) 0 max(12px,env(safe-area-inset-left,0px));pointer-events:none;z-index:4}
+.hbox{background:rgba(8,6,20,.66);border:1px solid rgba(255,255,255,.14);border-radius:12px;padding:6px 12px;font:800 14px var(--display);display:flex;gap:12px;align-items:center;font-variant-numeric:tabular-nums}
+.dot{width:12px;height:12px;border-radius:4px;display:inline-block;margin-right:6px;vertical-align:-1px}
+.hbtns{display:flex;gap:6px;pointer-events:auto}
+.ghost{font:700 13px var(--body);color:var(--ink);background:rgba(8,6,20,.72);border:1px solid var(--line);border-radius:10px;padding:6px 10px;cursor:pointer}
+.ghost:focus-visible,.btn:focus-visible,.chip:focus-visible,.dice:focus-visible{outline:3px solid var(--hot);outline-offset:2px}
+#hint{position:absolute;left:50%;bottom:calc(10px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);background:rgba(8,6,20,.66);border-radius:10px;padding:5px 12px;font-size:13px;color:var(--muted);white-space:nowrap;z-index:3;pointer-events:none}
+#warn{position:absolute;left:50%;top:70px;transform:translateX(-50%);font:800 clamp(18px,3.4vw,28px) var(--display);text-shadow:0 2px 0 #000;pointer-events:none;z-index:4;text-align:center}
+.screen{position:absolute;inset:0;display:flex;padding:16px max(16px,env(safe-area-inset-right,0px)) 16px max(16px,env(safe-area-inset-left,0px));background:rgba(5,4,12,.55);overflow:auto;z-index:6}
+.card{width:min(640px,100%);margin:auto;background:var(--panel);border:1px solid var(--line);border-radius:18px;padding:20px;display:flex;flex-direction:column;gap:12px;box-shadow:0 20px 60px rgba(0,0,0,.5)}
+.eyebrow{font:700 12px var(--body);letter-spacing:.08em;text-transform:uppercase;color:var(--hot);margin:0}
+h1,h2{font-family:var(--display);margin:0;text-wrap:balance}
+h1{font-size:clamp(24px,5vw,34px);line-height:1.1}
+h2{font-size:18px}
+p{margin:0}
+.muted{color:var(--muted)}
+.row{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.btn{font:800 15px var(--display);background:var(--hot);color:#1a1300;border:0;border-radius:12px;padding:12px 18px;cursor:pointer}
+.btn.alt{background:#2a2450;color:var(--ink)}
+.chips{display:flex;flex-wrap:wrap;gap:6px}
+.chip{font:600 14px var(--body);color:var(--ink);background:#05040c;border:2px solid var(--line);border-radius:999px;padding:6px 12px;cursor:pointer}
+.chip[aria-pressed="true"]{border-color:var(--hot);background:#2a2450}
+.q{display:flex;flex-direction:column;gap:6px;padding-top:4px;border-top:1px solid var(--line)}
+.q b{font:700 14px var(--body)}
+.field{display:flex;gap:6px;align-items:stretch}
+.field textarea{flex:1;min-width:0;font:15px var(--body);color:var(--ink);background:#05040c;border:2px solid var(--line);border-radius:10px;padding:8px 10px;resize:vertical;min-height:52px}
+.dice{font-size:22px;background:#2a1838;border:2px solid var(--dice);border-radius:10px;padding:0 10px;cursor:pointer}
+.tag{font:700 11px var(--body);color:var(--dice);letter-spacing:.06em}
+.stats{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+.sbox{border:2px solid var(--line);border-radius:14px;padding:12px;display:flex;flex-direction:column;gap:4px;font-variant-numeric:tabular-nums}
+.sbox h2{display:flex;align-items:center}
+.sline{display:flex;justify-content:space-between;gap:8px;font-size:14px}
+.sline b{font-family:var(--display);font-size:15px}
+.big{font:800 26px var(--display)}
+.trick{display:grid;grid-template-columns:auto 1fr;gap:4px 10px;align-items:baseline;padding:8px 10px;border-radius:12px;background:#05040c}
+.trick .n{font:800 22px var(--display);color:var(--good);min-width:34px;text-align:right}
+.trick .n.bad{color:var(--bad)}
+.trick p{font-size:14px}
+#copyOut{width:100%;min-height:120px;font:13px ui-monospace,Consolas,monospace;background:#05040c;color:var(--ink);border:1px solid var(--line);border-radius:10px;padding:8px;box-sizing:border-box}
+/* ручки */
+#panel{position:absolute;top:0;right:0;bottom:0;width:min(360px,100%);background:var(--panel);border-left:1px solid var(--line);z-index:8;overflow:auto;padding:14px max(14px,env(safe-area-inset-right,0px)) 14px 14px;box-sizing:border-box;display:flex;flex-direction:column;gap:10px}
+.knob{display:grid;grid-template-columns:1fr auto;gap:2px 8px;font-size:13px}
+.knob label{font-weight:600}
+.knob output{font:700 13px var(--display);font-variant-numeric:tabular-nums;color:var(--hot)}
+.knob input{grid-column:1/-1;width:100%;accent-color:var(--hot)}
+.knob small{grid-column:1/-1;color:var(--muted);font-size:12px}
+.calc{background:#05040c;border-radius:10px;padding:8px 10px;font-size:13px;font-variant-numeric:tabular-nums}
+#blindGate{display:flex;flex-direction:column;gap:8px}
+/* тач */
+#touch{position:absolute;left:0;right:0;bottom:0;display:none;justify-content:space-between;padding:0 max(14px,env(safe-area-inset-right,0px)) calc(14px + env(safe-area-inset-bottom,0px)) max(14px,env(safe-area-inset-left,0px));z-index:5;pointer-events:none}
+#touch .tb{pointer-events:auto;width:70px;height:70px;border-radius:50%;background:rgba(255,255,255,.14);border:2px solid rgba(255,255,255,.3);color:#fff;font:800 22px var(--display);touch-action:none;user-select:none;-webkit-user-select:none}
+#touch .tb.jump{width:88px;height:88px;background:rgba(255,207,58,.3);border-color:var(--hot)}
+@media (hover:none) and (pointer:coarse){#touch{display:flex}#hint{display:none}}
+@media (max-width:520px){.stats{grid-template-columns:1fr}}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+.ghost[aria-pressed="true"]{background:var(--hot);color:#1a1300;border-color:var(--hot)}
+.ghost:disabled{opacity:.45;cursor:default}
+#need{position:absolute;left:50%;top:64px;transform:translateX(-50%);background:rgba(8,6,20,.7);border-radius:10px;padding:4px 12px;font-size:14px;z-index:4;pointer-events:none;font-variant-numeric:tabular-nums}
+#need:empty{display:none}
+.vote3{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
+.vbtn{font:800 15px var(--display);color:var(--ink);background:#05040c;border:2px solid var(--line);border-radius:14px;padding:18px 10px;cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:8px;text-align:center}
+.vbtn:hover,.vbtn:focus-visible{border-color:var(--hot);outline:none;background:#1c1838}
+.sw-dot{width:26px;height:26px;border-radius:7px;display:block}
+.tally{display:flex;flex-direction:column;gap:6px}
+.pill{display:flex;justify-content:space-between;gap:10px;padding:7px 12px;border-radius:10px;background:#05040c;border-left:4px solid var(--line);font-size:14px}
+.pill b{font-family:var(--display);font-size:13px;text-align:right}
+.pill.pol{border-left-color:var(--good)}.pill.raw{border-left-color:var(--hot)}.pill.none{border-left-color:var(--muted);color:var(--muted)}
+.layers{display:flex;flex-direction:column;gap:6px}
+.layer{text-align:left;font:15px var(--body);color:var(--ink);background:#05040c;border:2px solid var(--line);border-radius:12px;padding:10px 12px;cursor:pointer;display:flex;flex-direction:column;gap:4px}
+.layer[aria-pressed="true"]{border-color:var(--hot)}
+.layer:focus-visible{outline:3px solid var(--hot);outline-offset:2px}
+.ld{font-size:14px;color:var(--muted)}
+.lens{background:#2a2450;border-radius:12px;padding:10px 12px;font-size:14px}
+#nameIn{min-height:0}
+@media (max-width:520px){.vote3{grid-template-columns:1fr}.hbtns{flex-wrap:wrap;justify-content:flex-end}}
+</style>
+
+<div id="stage">
+  <canvas id="cv"></canvas>
+  <div id="hud" hidden>
+    <div class="hbox"><span id="hRound">Раунд 1/7</span><span><span class="dot" id="hDot"></span><span id="hName">Вариант X</span></span><span id="hLap">круг 1</span></div>
+    <div class="hbtns">
+      <button type="button" class="ghost sw" id="swX">X · <span class="k1">1</span></button>
+      <button type="button" class="ghost sw" id="swY">Y · <span class="k2">2</span></button>
+      <button type="button" class="ghost" id="voteBtn" disabled>Голос · <span class="kV">Enter</span></button>
+      <button type="button" class="ghost" id="doneBtn" hidden>Готово · <span class="kV">Enter</span></button>
+      <button type="button" class="ghost" id="knobBtn">Ручки · <span class="kTab">Tab</span></button>
+      <button type="button" class="ghost" id="soundBtn" aria-pressed="false">Звук вкл</button>
+    </div>
+  </div>
+  <div id="need"></div>
+  <div id="hint" hidden></div>
+  <div id="touch"><div class="row"><button type="button" class="tb" id="tL">◀</button><button type="button" class="tb" id="tR">▶</button></div><button type="button" class="tb jump" id="tJ">⤒</button></div>
+
+  <div class="screen" id="introScreen">
+    <div class="card">
+      <p class="eyebrow">Занятие 5 · Чекпоинт 2</p>
+      <h1>Лаборатория прыжка</h1>
+      <p>В «Двух прыжках» отличалось сразу всё. Здесь будет честный эксперимент: <b>7 раундов, в каждом отличается ровно одно число</b>. Какое — не скажу, пока не проголосуешь.</p>
+      <p class="muted">В классе так голосуют все сразу, вслепую. Здесь ты — весь класс.</p>
+      <div class="calc" id="ctrlText"></div>
+      <div class="row"><button type="button" class="btn" id="startBtn">Начать турнир · <span class="kA">Пробел</span></button></div>
+    </div>
+  </div>
+
+  <div class="screen" id="voteScreen" hidden>
+    <div class="card">
+      <p class="eyebrow" id="voteEyebrow">Раунд 1 · голос</p>
+      <h1>Какой прыжок приятнее?</h1>
+      <p class="muted">Голосуй руками, не головой. «Не чувствую разницы» — тоже честный и полезный ответ.</p>
+      <div class="vote3">
+        <button type="button" class="vbtn" data-v="X"><span class="sw-dot" style="background:var(--vx)"></span>Вариант X</button>
+        <button type="button" class="vbtn" data-v="Y"><span class="sw-dot" style="background:var(--vy)"></span>Вариант Y</button>
+        <button type="button" class="vbtn" data-v="=">Не чувствую разницы</button>
+      </div>
+      <div class="row"><button type="button" class="btn alt" id="backPlay">Ещё поиграть</button></div>
+    </div>
+  </div>
+
+  <div class="screen" id="roundScreen" hidden>
+    <div class="card">
+      <p class="eyebrow" id="rsEyebrow">Раунд 1 · раскрытие</p>
+      <h1 id="rsTitle"></h1>
+      <div class="stats" id="rsStats"></div>
+      <p id="rsText"></p>
+      <div class="row"><button type="button" class="btn" id="nextRound">Следующий раунд</button></div>
+    </div>
+  </div>
+
+  <div class="screen" id="openScreen" hidden>
+    <div class="card">
+      <p class="eyebrow">Открытие · ощущение игры</p>
+      <h1>Твой прыжок по турниру</h1>
+      <div id="tally" class="tally"></div>
+      <h2>Стив Свинк, «Game Feel»</h2>
+      <p>Ощущение игры собирается из трёх слоёв. Нажми на каждый, чтобы увидеть, какие твои раунды к нему относятся.</p>
+      <div class="layers" id="layers"></div>
+      <div class="lens"><b>Линза отзывчивости.</b> Через сколько мгновений игра отвечает на моё действие? Задержка 120 мс — это 7 кадров при 60 кадрах в секунду. <span id="lensMine"></span></div>
+      <div class="row"><button type="button" class="btn" id="toFree">В свободную лабораторию</button></div>
+    </div>
+  </div>
+
+  <div class="screen" id="doneScreen" hidden>
+    <div class="card">
+      <p class="eyebrow">Итог чекпоинта 2</p>
+      <h1>Прыжок для твоей игры</h1>
+      <p>Этот прыжок станет «Как задумано» в твоей 3D-игре на Фабрике. Дай ему имя и скажи, какое чувство он должен давать.</p>
+      <div class="q"><b>Имя прыжка</b><div class="field"><textarea id="nameIn" rows="1" placeholder="Например: «Пружинка нарта»"></textarea><button type="button" class="dice" id="nameDice" title="Кубик предлагает, автор решает">🎲</button></div><span class="tag" id="nameTag" hidden>[кубик]</span></div>
+      <div class="q"><b>Какое чувство он даёт?</b><div class="field"><textarea id="feelIn" placeholder="Например: я лёгкий и точный…"></textarea><button type="button" class="dice" id="feelDice" title="Кубик предлагает, автор решает">🎲</button></div><span class="tag" id="feelTag" hidden>[кубик]</span></div>
+      <div class="calc" id="doneCfg"></div>
+      <div class="q"><b>Итог для чата</b><textarea id="copyOut" readonly></textarea></div>
+      <div class="row"><button type="button" class="btn" id="copyBtn">Скопировать результат</button><button type="button" class="btn alt" id="backFree">Ещё покрутить ручки</button></div>
+    </div>
+  </div>
+
+  <aside id="panel" hidden aria-label="Ручки геймдизайнера">
+    <div class="row" style="justify-content:space-between"><h2>Ручки геймдизайнера</h2><button type="button" class="ghost" id="panelClose">Закрыть · <span class="kTab">Tab</span></button></div>
+    <div id="blindGate" hidden><p><b>Идёт слепой турнир.</b> Ручки откроются после седьмого раунда — иначе станет видно, какое число отличается.</p></div>
+    <div id="panelBody" style="display:flex;flex-direction:column;gap:10px">
+      <div class="row" id="presets"></div>
+      <div class="calc" id="calc"></div>
+      <div id="knobs" style="display:flex;flex-direction:column;gap:10px"></div>
+      <button type="button" class="ghost" id="copyCfg">Скопировать CONFIG</button>
+    </div>
+  </aside>
+</div>
+
+<script>
+/* ===== Лаборатория прыжка: слепой турнир по одному числу + свободная лаборатория ===== */
+const $ = s => document.querySelector(s);
+
+const META = {
+  gravity:  { label: 'Гравитация', min: 400, max: 4000, step: 50, unit: 'пикс/с²', hint: 'Как сильно тянет вниз' },
+  jumpV:    { label: 'Сила прыжка', min: 300, max: 1500, step: 5, unit: 'пикс/с', hint: 'Скорость вверх в момент толчка' },
+  fallMult: { label: 'Гравитация при падении ×', min: 0.5, max: 3, step: 0.05, unit: '', hint: 'Больше 1 — падает быстрее, чем взлетает' },
+  cut:      { label: 'Обрезка прыжка', min: 0.2, max: 1, step: 0.05, unit: '', hint: '1 — высота не зависит от нажатия; меньше — отпустил раньше, прыжок ниже' },
+  maxSpeed: { label: 'Макс. скорость бега', min: 100, max: 600, step: 10, unit: 'пикс/с', hint: '' },
+  accel:    { label: 'Разгон', min: 200, max: 6000, step: 50, unit: 'пикс/с²', hint: 'Как быстро набирает скорость' },
+  friction: { label: 'Трение (торможение)', min: 100, max: 6000, step: 50, unit: 'пикс/с²', hint: 'Мало — скользит после отпускания' },
+  air:      { label: 'Управление в воздухе', min: 0, max: 1, step: 0.05, unit: '', hint: '0 — в полёте не повернуть, 1 — как на земле' },
+  coyote:   { label: 'Время койота', min: 0, max: 250, step: 5, unit: 'мс', hint: 'Сколько ещё можно прыгнуть после края' },
+  buffer:   { label: 'Буфер прыжка', min: 0, max: 250, step: 5, unit: 'мс', hint: 'Нажал чуть до приземления — прыжок всё равно случится' },
+  delay:    { label: 'Задержка ввода', min: 0, max: 250, step: 5, unit: 'мс', hint: 'Через сколько игра «услышит» кнопку. Линза отзывчивости' },
+};
+const BASE = { gravity: 2200, jumpV: 865, fallMult: 1.7, cut: 0.45, maxSpeed: 330, accel: 3200, friction: 3600, air: 0.9, coyote: 100, buffer: 120, delay: 0 };
+const PRESETS = {
+  'Приятный': BASE,
+  'Тяжёлый': { gravity: 3600, jumpV: 1110, fallMult: 1.4, cut: 0.6, maxSpeed: 240, accel: 700, friction: 1400, air: 0.35, coyote: 40, buffer: 40, delay: 30 },
+  'Лунный': { gravity: 700, jumpV: 500, fallMult: 0.8, cut: 1, maxSpeed: 260, accel: 1200, friction: 900, air: 0.8, coyote: 60, buffer: 60, delay: 0 },
+  'Новичок': { gravity: 2000, jumpV: 860, fallMult: 1.5, cut: 0.5, maxSpeed: 270, accel: 2600, friction: 3600, air: 1, coyote: 160, buffer: 160, delay: 0 },
+  'Сырой (из «Двух прыжков»)': { gravity: 1500, jumpV: 715, fallMult: 1, cut: 1, maxSpeed: 300, accel: 900, friction: 650, air: 0.55, coyote: 0, buffer: 0, delay: 0 },
+};
+/* в каждом раунде отличается одна ручка (или пара, которая вместе даёт одно ощущение) */
+const ROUNDS = [
+  { k: 'fall', name: 'Гравитация при падении', a: { fallMult: 1 }, b: { fallMult: 1.8 }, layer: 'sim', fmt: c => '×' + num(c.fallMult),
+    say: 'С множителем больше 1 взлёт остаётся прежним, а падение короче. Прыжок перестаёт висеть ватой, приземление становится чётким. Высота та же — меняется только вторая половина дуги.' },
+  { k: 'weight', name: 'Вес прыжка', a: { gravity: 1300, jumpV: 665 }, b: { gravity: 3000, jumpV: 1010 }, layer: 'sim', fmt: c => `гравитация ${c.gravity}, толчок ${c.jumpV}`,
+    say: 'Высота прыжка у обоих одинаковая — 170 пикселей. Отличается время в воздухе: сильная гравитация и сильный толчок дают быстрый, «весомый» прыжок, слабые — плавный и лунный.' },
+  { k: 'accel', name: 'Разгон и трение', a: { accel: 900, friction: 650 }, b: { accel: 3200, friction: 3600 }, layer: 'ctrl', fmt: c => `разгон ${c.accel}, трение ${c.friction}`,
+    say: 'Это прыжок ещё до прыжка. С медленным разгоном герой долго набирает скорость и скользит после отпускания: точно встать на узкую доску трудно.' },
+  { k: 'cut', name: 'Высота от длительности нажатия', a: { cut: 1 }, b: { cut: 0.45 }, layer: 'ctrl', fmt: c => c.cut >= 0.99 ? 'выкл' : 'обрезка ×' + num(c.cut),
+    say: 'Отпустил кнопку на взлёте — скорость вверх режется. Короткое касание даёт маленький прыжок, длинное — большой. Одна кнопка превращается в «аналоговую».' },
+  { k: 'coyote', name: 'Время койота', a: { coyote: 0 }, b: { coyote: 120 }, layer: 'ctrl', fmt: c => c.coyote + ' мс',
+    say: 'Как койот из мультфильма, который бежит по воздуху, пока не посмотрит вниз. Прыжок засчитывается ещё немного после края. Невидимая помощь: точный игрок её не замечает, неточный — не падает.' },
+  { k: 'buffer', name: 'Буфер прыжка', a: { buffer: 0 }, b: { buffer: 140 }, layer: 'ctrl', fmt: c => c.buffer + ' мс',
+    say: 'Нажал чуть раньше, чем коснулся доски, — игра запомнила нажатие и прыгнула в момент касания. Цепочка узких досок проходится «в ритм», без проглоченных нажатий.' },
+  { k: 'delay', name: 'Задержка ввода', a: { delay: 120 }, b: { delay: 0 }, layer: 'ctrl', fmt: c => c.delay + ' мс',
+    say: 'Игра слышит кнопку на 120 мс позже. Это всего 7 кадров, но мозг замечает: прыжок кажется «ватным» и «не моим». Отзывчивость — первое условие ощущения игры.' },
+];
+const LAYERS = {
+  ctrl: { n: 'Управление в реальном времени', d: 'Ты действуешь, игра отвечает сразу, ты поправляешь движение на лету. Здесь живут задержка, разгон, высота от нажатия и невидимая помощь.' },
+  sim: { n: 'Симулированное пространство', d: 'У мира есть законы: гравитация, столкновения, потолок. Здесь живут вес прыжка и падение.' },
+  pol: { n: 'Полировка', d: 'Эффекты, которые не меняют физику, но делают её ощутимой: тряска, частицы, сжатие, звук. Это занятие 6.' },
+};
+const num = v => String(v).replace('.', ',');
+
+/* ---------- комната ---------- */
+const G = 520;
+const SOLIDS = [
+  [0, G, 360, 300], [440, G, 200, 300],
+  [710, 440, 70, 22, 'wood'], [840, 380, 70, 22, 'wood'], [970, 440, 70, 22, 'wood'],
+  [1100, G, 420, 300], [1190, 230, 210, 162, 'stone'],
+  [1610, 380, 170, 440], [1860, 300, 80, 22, 'wood'], [2010, G, 420, 300],
+];
+const SPIKES = [[1270, 60]], SPIKE_H = 22;
+const CHECKS = [[40, G], [460, G], [1120, G], [1630, 380], [2030, G]];
+const LAP_X = 2330;
+const TRIS = []; for (const [x, w] of SPIKES) for (let i = 0; i < w; i += 20) TRIS.push([[x + i, G], [x + i + 10, G - SPIKE_H], [x + i + 20, G]]);
+
+/* ---------- состояние ---------- */
+const HW = 30, HH = 34;
+const COL = { X: '#3de0c8', Y: '#ff6ab0', F: '#ffcf3a' };
+let state = 'intro', ri = 0, side = 'X', panelOpen = false;
+let rounds = [];          // {k, X:cfg, Y:cfg, xIsA, tele:{X,Y}, vote}
+let freeCfg = null, knobMoves = 0, lastPreset = '';
+let P = null, T = 0, deadT = 0, laps = 1;
+let log = [], prevJ = true;
+const tele = () => ({ time: 0, jumps: 0, falls: 0, coyoteSaves: 0, bufferSaves: 0, lateMiss: 0, earlyMiss: 0, shortHops: 0, bonks: 0, air: 0 });
+const cfg = () => state === 'free' || state === 'done' ? freeCfg : rounds[ri][side];
+const curTele = () => state === 'free' ? freeTele : rounds[ri].tele[side];
+let freeTele = tele();
+
+function makeRounds() {
+  rounds = ROUNDS.map(r => {
+    const xIsA = Math.random() < 0.5;
+    const A = { ...BASE, ...r.a }, B = { ...BASE, ...r.b };
+    return { k: r.k, X: xIsA ? A : B, Y: xIsA ? B : A, xIsA, tele: { X: tele(), Y: tele() }, vote: null };
+  });
+}
+function spawn(cp) { P = { x: cp[0], y: cp[1] - HH, vx: 0, vy: 0, on: true, face: 1, leftAt: -9, jumpedSince: false, lastPress: -9, rising: false, cp }; }
+function resetInput() { log = []; prevJ = true; }
+function enterPlay() {
+  state = rounds[ri] && state !== 'free' ? 'play' : state;
+  showOnly(null); $('#hud').hidden = false; $('#hint').hidden = false; resetInput();
+  try { document.activeElement && document.activeElement.blur(); } catch (e) {}
+  syncHud(); audio();
+}
+function startRound(i) { ri = i; side = 'X'; spawn(CHECKS[0]); laps = 1; camX = 0; state = 'play'; enterPlay(); }
+function setSide(s) { if (state !== 'play' || side === s) return; side = s; resetInput(); syncHud(); tone(s === 'X' ? 520 : 660, 0.07, 'triangle', 0.05); }
+
+/* ---------- ввод ---------- */
+const keys = {}; let pad = false;
+const touchIn = { left: false, right: false, jump: false };
+addEventListener('keydown', e => {
+  if (e.target && (e.target.tagName === 'TEXTAREA' || e.target.tagName === 'INPUT')) return;
+  if (e.code === 'Tab') { e.preventDefault(); togglePanel(); return; }
+  setPad(false);
+  if (['Space', 'ArrowUp', 'KeyW', 'KeyZ'].includes(e.code) && (state === 'play' || state === 'free')) e.preventDefault();
+  keys[e.code] = true;
+  if (e.repeat) return;
+  if (e.code === 'Digit1') setSide('X');
+  if (e.code === 'Digit2') setSide('Y');
+  if (e.code === 'Enter' && state === 'play' && !$('#voteBtn').disabled) { e.preventDefault(); openVote(); }
+  else if (e.code === 'Enter' && state === 'free') { e.preventDefault(); openDone(); }
+  if (e.code === 'KeyR' && (state === 'play' || state === 'free')) { spawn(CHECKS[0]); resetInput(); }
+  if (e.code === 'Space' && state === 'intro') { e.preventDefault(); begin(); }
+});
+addEventListener('keyup', e => { keys[e.code] = false; });
+for (const [id, k] of [['tL', 'left'], ['tR', 'right'], ['tJ', 'jump']]) {
+  const el = document.getElementById(id);
+  el.addEventListener('pointerdown', e => { e.preventDefault(); touchIn[k] = true; audio(); });
+  for (const ev of ['pointerup', 'pointercancel', 'pointerleave']) el.addEventListener(ev, () => { touchIn[k] = false; });
+}
+$('#swX').addEventListener('click', () => setSide('X'));
+$('#swY').addEventListener('click', () => setSide('Y'));
+
+let padPrev = [];
+function pollPad() {
+  let gp = null; try { gp = [...(navigator.getGamepads ? navigator.getGamepads() : [])].find(Boolean); } catch (e) {}
+  const pd = { left: false, right: false, jump: false };
+  if (!gp) return pd;
+  const b = gp.buttons.map(x => !!(x && x.pressed)), ax = gp.axes[0] || 0;
+  pd.left = ax < -0.35 || b[14]; pd.right = ax > 0.35 || b[15]; pd.jump = b[0];
+  if (b.some(Boolean) || Math.abs(ax) > 0.4) setPad(true);
+  const dn = i => b[i] && !padPrev[i];
+  if (dn(8)) togglePanel();
+  if (state === 'play' || state === 'free') {
+    if (dn(4)) setSide('X'); if (dn(5)) setSide('Y');
+    if (dn(9)) { if (state === 'play' && !$('#voteBtn').disabled) openVote(); else if (state === 'free') openDone(); }
+    if (dn(3)) { spawn(CHECKS[0]); resetInput(); }
+  } else if (!panelOpen) {
+    if (dn(14) || dn(12)) moveFocus(-1);
+    if (dn(15) || dn(13)) moveFocus(1);
+    if (dn(0)) { const f = document.activeElement; if (f && f.click && f.closest('.screen:not([hidden])')) f.click(); else moveFocus(0); }
+    if (dn(9) && state === 'intro') begin();
+  }
+  padPrev = b;
+  return pd;
+}
+function moveFocus(d) {
+  const scr = document.querySelector('.screen:not([hidden])'); if (!scr) return;
+  const els = [...scr.querySelectorAll('button:not([disabled]),textarea')]; if (!els.length) return;
+  let i = els.indexOf(document.activeElement); i = i < 0 ? 0 : (i + d + els.length) % els.length; els[i].focus();
+}
+function setPad(on) {
+  if (pad === on) return; pad = on;
+  const map = { '.kTab': ['Tab', 'Select'], '.kA': ['Пробел', 'A'], '.k1': ['1', 'LB'], '.k2': ['2', 'RB'], '.kV': ['Enter', 'Start'] };
+  for (const [s, v] of Object.entries(map)) document.querySelectorAll(s).forEach(e => e.textContent = v[on ? 1 : 0]);
+  setHint(); ctrlText();
+}
+function setHint() {
+  const free = state === 'free';
+  $('#hint').innerHTML = pad
+    ? `<kbd>стик</kbd> бег · <kbd>A</kbd> прыжок · ${free ? '' : '<kbd>LB</kbd>/<kbd>RB</kbd> вариант X/Y · '}<kbd>Start</kbd> ${free ? 'готово' : 'голос'} · <kbd>Y</kbd> в начало · <kbd>Select</kbd> ручки`
+    : `<kbd>← →</kbd> бег · <kbd>Пробел</kbd> прыжок · ${free ? '' : '<kbd>1</kbd>/<kbd>2</kbd> вариант X/Y · '}<kbd>Enter</kbd> ${free ? 'готово' : 'голос'} · <kbd>R</kbd> в начало · <kbd>Tab</kbd> ручки`;
+}
+function ctrlText() {
+  $('#ctrlText').innerHTML = (pad
+    ? 'Бег — <kbd>стик</kbd>, прыжок — <kbd>A</kbd>, переключить вариант — <kbd>LB</kbd> / <kbd>RB</kbd>, голос — <kbd>Start</kbd>.'
+    : 'Бег — <kbd>← →</kbd>, прыжок — <kbd>Пробел</kbd>, переключить вариант — <kbd>1</kbd> / <kbd>2</kbd>, голос — <kbd>Enter</kbd>. Геймпад тоже работает.')
+    + '<br>Переключай X и Y прямо на ходу, на одном и том же месте. Голос откроется, когда в каждом варианте будет хотя бы 3 прыжка.';
+}
+
+/* ---------- звук ---------- */
+let AC = null, muted = false;
+function audio() { if (AC) { if (AC.state === 'suspended') AC.resume(); return; } try { AC = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) {} }
+function tone(f, dur = 0.1, type = 'square', vol = 0.06, slide = 0) {
+  if (!AC || muted) return;
+  const t = AC.currentTime, o = AC.createOscillator(), g = AC.createGain();
+  o.type = type; o.frequency.setValueAtTime(f, t); if (slide) o.frequency.exponentialRampToValueAtTime(Math.max(40, f + slide), t + dur);
+  g.gain.setValueAtTime(vol, t); g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+  o.connect(g); g.connect(AC.destination); o.start(t); o.stop(t + dur + 0.02);
+}
+const sfx = { jump: () => tone(330, 0.12, 'square', 0.05, 260), land: () => tone(120, 0.06, 'triangle', 0.06), die: () => tone(220, 0.3, 'sawtooth', 0.06, -170), lap: () => { tone(523, 0.1, 'square', 0.05); setTimeout(() => tone(784, 0.16, 'square', 0.05), 100); } };
+$('#soundBtn').addEventListener('click', () => { muted = !muted; $('#soundBtn').textContent = muted ? 'Звук выкл' : 'Звук вкл'; $('#soundBtn').setAttribute('aria-pressed', muted); audio(); });
+function rumble(ms = 140, s = 0.5) { try { const gp = [...navigator.getGamepads()].find(Boolean); if (gp && gp.vibrationActuator) gp.vibrationActuator.playEffect('dual-rumble', { duration: ms, strongMagnitude: s, weakMagnitude: s * 0.6 }); } catch (e) {} }
+
+/* ---------- физика (как в «Двух прыжках» + задержка ввода) ---------- */
+function overlaps(x, y, w, h, s) { return x < s[0] + s[2] && x + w > s[0] && y < s[1] + s[3] && y + h > s[1]; }
+function approach(v, t, d) { return v < t ? Math.min(v + d, t) : Math.max(v - d, t); }
+function inTri(px, py, t) {
+  const [a, b, c] = t, s = (p1, p2, p3) => (p1[0] - p3[0]) * (p2[1] - p3[1]) - (p2[0] - p3[0]) * (p1[1] - p3[1]);
+  const p = [px, py], d1 = s(p, a, b), d2 = s(p, b, c), d3 = s(p, c, a);
+  return !((d1 < 0 || d2 < 0 || d3 < 0) && (d1 > 0 || d2 > 0 || d3 > 0));
+}
+function hitSpike() {
+  const pts = []; for (let i = 0; i <= 4; i++) { pts.push([P.x + HW * i / 4, P.y + HH]); pts.push([P.x + HW * i / 4, P.y + HH - 6]); }
+  for (const t of TRIS) {
+    if (P.x + HW < t[0][0] || P.x > t[2][0] || P.y + HH < G - SPIKE_H) continue;
+    if (pts.some(p => inTri(p[0], p[1], t))) return true;
+    if (t[1][0] > P.x && t[1][0] < P.x + HW && t[1][1] < P.y + HH) return true;
+  }
+  return false;
+}
+function doJump(kind) {
+  const c = cfg(), tl = curTele();
+  P.vy = -c.jumpV; P.on = false; P.jumpedSince = true; P.rising = true; P.lastPress = -9;
+  tl.jumps++; if (kind === 'coyote') tl.coyoteSaves++; if (kind === 'buffer') tl.bufferSaves++;
+  sfx.jump(); syncHud();
+}
+function step(dt, raw) {
+  const c = cfg(), tl = curTele();
+  T += dt; tl.time += dt;
+  log.push({ t: T, l: raw.left, r: raw.right, j: raw.jump });
+  while (log.length > 2 && log[1].t < T - 0.5) log.shift();
+  let d = null; const lim = T - c.delay / 1000 + 1e-9;
+  for (let i = log.length - 1; i >= 0; i--) if (log[i].t <= lim) { d = log[i]; break; }
+  if (!d) d = { l: false, r: false, j: prevJ };
+  const jumpEdge = d.j && !prevJ; prevJ = d.j;
+  if (deadT > 0) { deadT -= dt; if (deadT <= 0) { spawn(P.cp); } return; }
+  const dir = (d.r ? 1 : 0) - (d.l ? 1 : 0);
+  if (dir) P.face = dir;
+  if (!P.on) tl.air += dt;
+  const target = dir * c.maxSpeed;
+  const rate = P.on ? (dir ? (Math.sign(P.vx) === -dir ? c.accel + c.friction : c.accel) : c.friction) : (dir ? c.accel * c.air : c.friction * c.air * 0.25);
+  P.vx = approach(P.vx, target, rate * dt);
+  if (jumpEdge) {
+    const sinceLeft = T - P.leftAt;
+    if (P.on) doJump('ground');
+    else if (!P.jumpedSince && sinceLeft <= c.coyote / 1000) doJump('coyote');
+    else if (!P.jumpedSince && sinceLeft <= 0.15) { tl.lateMiss++; P.lastPress = -9; }
+    else P.lastPress = T;
+  }
+  if (P.rising && !d.j && P.vy < 0) { if (c.cut < 0.99) { P.vy *= c.cut; tl.shortHops++; } P.rising = false; }
+  if (P.vy >= 0) P.rising = false;
+  P.vy += c.gravity * (P.vy > 0 ? c.fallMult : 1) * dt; if (P.vy > 1500) P.vy = 1500;
+  P.x += P.vx * dt;
+  for (const s of SOLIDS) if (overlaps(P.x, P.y, HW, HH, s)) { if (P.vx > 0) P.x = s[0] - HW; else if (P.vx < 0) P.x = s[0] + s[2]; P.vx = 0; }
+  if (P.x < 0) { P.x = 0; P.vx = 0; }
+  const wasOn = P.on; P.on = false;
+  P.y += P.vy * dt;
+  for (const s of SOLIDS) if (overlaps(P.x, P.y, HW, HH, s)) {
+    if (P.vy > 0) { P.y = s[1] - HH; P.on = true; } else if (P.vy < 0) { P.y = s[1] + s[3]; tl.bonks++; P.rising = false; }
+    P.vy = 0;
+  }
+  if (!P.on && P.vy === 0) for (const s of SOLIDS) if (overlaps(P.x, P.y + 1, HW, HH, s)) P.on = true;
+  if (wasOn && !P.on) { P.leftAt = T; if (P.vy >= 0) P.jumpedSince = false; }
+  if (!wasOn && P.on) {
+    P.jumpedSince = false; sfx.land();
+    const since = T - P.lastPress;
+    if (since <= c.buffer / 1000) doJump('buffer');
+    else if (since <= 0.15) { tl.earlyMiss++; P.lastPress = -9; } else P.lastPress = -9;
+  }
+  for (const cp of CHECKS) if (P.x > cp[0] && cp[0] > P.cp[0]) P.cp = cp;
+  if (hitSpike() || P.y > 720) { tl.falls++; deadT = 0.35; sfx.die(); rumble(180, 0.6); }
+  if (P.x > LAP_X) { laps++; spawn(CHECKS[0]); camX = 0; sfx.lap(); syncHud(); }
+}
+
+/* ---------- турнир ---------- */
+function syncHud() {
+  const free = state === 'free';
+  $('#hRound').textContent = free ? 'Свободная лаборатория' : `Раунд ${ri + 1}/${ROUNDS.length}`;
+  $('#hName').textContent = free ? 'Твой прыжок' : 'Вариант ' + side;
+  $('#hDot').style.background = free ? COL.F : COL[side];
+  $('#hLap').textContent = 'круг ' + laps;
+  $('#swX').hidden = $('#swY').hidden = $('#voteBtn').hidden = free; $('#doneBtn').hidden = !free;
+  $('#swX').setAttribute('aria-pressed', side === 'X'); $('#swY').setAttribute('aria-pressed', side === 'Y');
+  if (!free && rounds[ri]) {
+    const t = rounds[ri].tele, ok = t.X.jumps >= 3 && t.Y.jumps >= 3;
+    $('#voteBtn').disabled = !ok;
+    $('#need').innerHTML = ok ? '' : `Прыжков: <b style="color:${COL.X}">X ${t.X.jumps}</b> · <b style="color:${COL.Y}">Y ${t.Y.jumps}</b> — нужно по 3`;
+  } else $('#need').innerHTML = '';
+  setHint();
+}
+$('#voteBtn').addEventListener('click', openVote);
+function openVote() { state = 'vote'; $('#hud').hidden = true; $('#hint').hidden = true; $('#need').innerHTML = ''; $('#voteEyebrow').textContent = `Раунд ${ri + 1} из ${ROUNDS.length} · голос`; showOnly('voteScreen'); setTimeout(() => document.querySelector('.vbtn').focus(), 50); }
+$('#backPlay').addEventListener('click', () => { state = 'play'; enterPlay(); });
+for (const b of document.querySelectorAll('.vbtn')) b.addEventListener('click', () => vote(b.dataset.v));
+function vote(v) {
+  const r = rounds[ri], R = ROUNDS[ri]; r.vote = v;
+  const aSide = r.xIsA ? 'X' : 'Y', bSide = r.xIsA ? 'Y' : 'X';
+  const pick = v === '=' ? 'none' : (v === aSide ? 'a' : 'b'); r.pick = pick;
+  tone(pick === 'none' ? 440 : 784, 0.12, 'triangle', 0.05);
+  $('#rsEyebrow').textContent = `Раунд ${ri + 1} из ${ROUNDS.length} · раскрытие`;
+  $('#rsTitle').textContent = 'Отличалось: ' + R.name.toLowerCase();
+  const tl = r.tele;
+  const extra = s => {
+    const x = tl[s];
+    if (R.k === 'coyote') return line('Спас койот', x.coyoteSaves) + line('Нажал поздно у края', x.lateMiss);
+    if (R.k === 'buffer') return line('Спас буфер', x.bufferSaves) + line('Нажал рано, впустую', x.earlyMiss);
+    if (R.k === 'cut') return line('Коротких прыжков', x.shortHops) + line('Ударов о потолок', x.bonks);
+    if (R.k === 'fall' || R.k === 'weight') return line('В воздухе за прыжок', x.jumps ? Math.round(x.air / x.jumps * 1000) + ' мс' : '—');
+    return line('Падений', x.falls);
+  };
+  const box = s => `<div class="sbox" style="border-color:${COL[s]}${v === s ? ';background:#1c1838' : ''}"><h2><span class="dot" style="background:${COL[s]}"></span>${s}${v === s ? ' · твой голос' : ''}</h2>${line('Значение', R.fmt(r[s]))}${line('Прыжков', tl[s].jumps)}${extra(s)}</div>`;
+  $('#rsStats').innerHTML = box('X') + box('Y');
+  const polished = bSide;
+  const lead = pick === 'none' ? `Ты не почувствовал разницы. Это важное открытие: этот приём <b>невидим</b> для тебя. ` :
+    pick === 'b' ? `Ты выбрал ${polished} — вариант, который обычно ставят в «отполированный» прыжок. ` :
+    `Ты выбрал ${aSide} — не тот, что обычно ставят в «отполированный» прыжок. Это не ошибка: дизайнер выбирает под чувство своей игры. `;
+  $('#rsText').innerHTML = lead + R.say;
+  $('#nextRound').textContent = ri + 1 < ROUNDS.length ? 'Следующий раунд' : 'К открытию';
+  state = 'round'; showOnly('roundScreen'); setTimeout(() => $('#nextRound').focus(), 50);
+}
+$('#nextRound').addEventListener('click', () => { if (ri + 1 < ROUNDS.length) startRound(ri + 1); else openOpen(); });
+const line = (a, b) => `<div class="sline"><span>${a}</span><b>${b}</b></div>`;
+
+function tourneyCfg() {
+  const c = { ...BASE };
+  ROUNDS.forEach((R, i) => { const p = rounds[i].pick; if (p === 'a') Object.assign(c, R.a); if (p === 'b') Object.assign(c, R.b); });
+  return c;
+}
+function openOpen() {
+  state = 'open';
+  const pills = ROUNDS.map((R, i) => {
+    const p = rounds[i].pick, cls = p === 'none' ? 'none' : p === 'b' ? 'pol' : 'raw';
+    const val = p === 'none' ? 'не почувствовал' : R.fmt({ ...BASE, ...(p === 'a' ? R.a : R.b) });
+    return `<div class="pill ${cls}"><span>${R.name}</span><b>${val}</b></div>`;
+  }).join('');
+  const nPol = rounds.filter(r => r.pick === 'b').length, nNone = rounds.filter(r => r.pick === 'none').length;
+  $('#tally').innerHTML = pills + `<p class="muted">Отполированный вариант: ${nPol} из 7 · не почувствовал разницы: ${nNone}. Из твоих голосов собран прыжок — он ждёт в свободной лаборатории как пресет «Мой по турниру».</p>`;
+  $('#layers').innerHTML = Object.entries(LAYERS).map(([k, L]) => `<button type="button" class="layer" data-l="${k}"><b>${L.n}</b><span class="ld" hidden>${L.d}<br><i>Твои раунды: ${ROUNDS.filter(R => R.layer === k).map(R => R.name.toLowerCase()).join(', ') || 'пока ни одного — дальше будет'}</i></span></button>`).join('');
+  for (const b of document.querySelectorAll('.layer')) b.addEventListener('click', () => { const s = b.querySelector('.ld'); s.hidden = !s.hidden; b.setAttribute('aria-pressed', !s.hidden); tone(600, 0.06, 'triangle', 0.04); });
+  const dr = rounds[ROUNDS.findIndex(R => R.k === 'delay')];
+  $('#lensMine').innerHTML = dr.pick === 'b' ? 'Ты выбрал вариант без задержки — руки почувствовали 7 кадров.' : dr.pick === 'a' ? 'Ты выбрал вариант с задержкой. Попробуй в лаборатории поставить 250 мс — где проходит твой порог?' : 'Ты не почувствовал 120 мс. Найди в лаборатории свой порог: с какой задержки прыжок становится «чужим»?';
+  showOnly('openScreen'); setTimeout(() => $('#toFree').focus(), 50);
+}
+$('#toFree').addEventListener('click', () => {
+  freeCfg = tourneyCfg(); lastPreset = 'Мой по турниру'; state = 'free'; spawn(CHECKS[0]); laps = 1; camX = 0; freeTele = tele();
+  enterPlay(); if (!panelOpen) togglePanel();
+});
+
+/* ---------- итог ---------- */
+const NAMES = ['Пружинка нарта', 'Прыжок горного козла', 'Лёгкий как пух', 'Камень с горы', 'Кузнечик Лаго-Наки', 'Точный, как стрела', 'Лунная походка', 'Резиновый мячик'];
+const FEELS = ['Я лёгкий и точный: куда задумал, туда и приземлился', 'Я тяжёлый и сильный: каждый прыжок — усилие', 'Я парю: можно рассмотреть мир сверху', 'Игра читает мои мысли и прощает мелкие ошибки', 'Я быстрый и резкий, как пружина'];
+let nameDice = null, feelDice = null;
+function dice(btn, inp, tag, list, get, set) {
+  btn.addEventListener('click', () => { let v; do { v = list[Math.random() * list.length | 0]; } while (v === get() && list.length > 1); set(v); inp.value = v; tag.hidden = false; tone(880, 0.06, 'square', 0.04); updateOut(); });
+  inp.addEventListener('input', () => { tag.hidden = inp.value !== get(); updateOut(); });
+}
+dice($('#nameDice'), $('#nameIn'), $('#nameTag'), NAMES, () => nameDice, v => nameDice = v);
+dice($('#feelDice'), $('#feelIn'), $('#feelTag'), FEELS, () => feelDice, v => feelDice = v);
+$('#doneBtn').addEventListener('click', openDone);
+function openDone() {
+  state = 'done'; $('#hud').hidden = true; $('#hint').hidden = true;
+  if (panelOpen) togglePanel();
+  $('#doneCfg').innerHTML = Object.entries(META).map(([k, m]) => `${m.label}: <b>${num(freeCfg[k])}${m.unit ? ' ' + m.unit : ''}</b>`).join(' · ');
+  updateOut(); showOnly('doneScreen');
+}
+$('#backFree').addEventListener('click', () => { state = 'free'; enterPlay(); });
+function updateOut() {
+  if (!freeCfg) return;
+  const nm = $('#nameIn').value.trim(), fl = $('#feelIn').value.trim();
+  const mk = (v, d) => v && v === d ? ' [кубик]' : '';
+  const votes = ROUNDS.map((R, i) => {
+    const r = rounds[i], p = r.pick;
+    return `${i + 1}. ${R.name}: ${p === 'none' ? 'не почувствовал разницы' : 'выбрал ' + R.fmt({ ...BASE, ...(p === 'a' ? R.a : R.b) }) + (p === 'b' ? ' (отполированный)' : ' (сырой)')}`;
+  });
+  const h = freeCfg.jumpV ** 2 / (2 * freeCfg.gravity);
+  $('#copyOut').value = [
+    'Занятие 5 · Чекпоинт 2 «Лаборатория прыжка»',
+    'Слепой турнир, 7 раундов:', ...votes,
+    `Отполированных: ${rounds.filter(r => r.pick === 'b').length}/7, не почувствовал: ${rounds.filter(r => r.pick === 'none').length}`,
+    `Свободная лаборатория: ручек сдвинуто ${knobMoves}, последний пресет «${lastPreset}», прыжков ${freeTele.jumps}, падений ${freeTele.falls}`,
+    `Мой прыжок: «${nm || 'без имени'}»${mk(nm, nameDice)}`,
+    `Чувство: ${fl || '—'}${mk(fl, feelDice)}`,
+    `Высота ≈ ${Math.round(h)} пикс`,
+    'CONFIG = ' + JSON.stringify(freeCfg),
+  ].join('\n');
+}
+$('#copyBtn').addEventListener('click', () => {
+  updateOut();
+  const t = $('#copyOut').value, done = () => { $('#copyBtn').textContent = 'Скопировано ✓'; tone(988, 0.12, 'triangle', 0.05); setTimeout(() => $('#copyBtn').textContent = 'Скопировать результат', 1600); };
+  try { navigator.clipboard.writeText(t).then(done, () => { $('#copyOut').select(); done(); }); } catch (e) { $('#copyOut').select(); done(); }
+});
+
+/* ---------- ручки ---------- */
+function togglePanel() { panelOpen = !panelOpen; $('#panel').hidden = !panelOpen; if (panelOpen) syncPanel(); }
+$('#knobBtn').addEventListener('click', togglePanel);
+$('#panelClose').addEventListener('click', togglePanel);
+function buildKnobs() {
+  $('#knobs').innerHTML = Object.entries(META).map(([k, m]) => `<div class="knob"><label for="k_${k}">${m.label}</label><output id="o_${k}"></output><input type="range" id="k_${k}" min="${m.min}" max="${m.max}" step="${m.step}">${m.hint ? `<small>${m.hint}</small>` : ''}</div>`).join('');
+  for (const k of Object.keys(META)) $('#k_' + k).addEventListener('input', e => { freeCfg[k] = +e.target.value; knobMoves++; lastPreset = lastPreset.replace(/ \(изменён\)$/, '') + ' (изменён)'; syncPanel(); });
+}
+function syncPanel() {
+  const blind = !freeCfg;
+  $('#blindGate').hidden = !blind; $('#panelBody').hidden = blind;
+  if (blind) return;
+  const P = Object.assign({ 'Мой по турниру': tourneyCfg() }, PRESETS);
+  $('#presets').innerHTML = Object.keys(P).map(n => `<button type="button" class="ghost" data-p="${n}">${n}</button>`).join('');
+  for (const b of $('#presets').querySelectorAll('button')) b.onclick = () => { Object.assign(freeCfg, P[b.dataset.p]); lastPreset = b.dataset.p; syncPanel(); tone(700, 0.05, 'triangle', 0.04); b.blur(); };
+  const c = freeCfg;
+  for (const [k, m] of Object.entries(META)) { $('#k_' + k).value = c[k]; $('#o_' + k).textContent = num(c[k]) + (m.unit ? ' ' + m.unit : ''); }
+  const h = c.jumpV ** 2 / (2 * c.gravity), up = c.jumpV / c.gravity, down = Math.sqrt(2 * h / (c.gravity * c.fallMult));
+  $('#calc').innerHTML = `Высота ≈ <b>${Math.round(h)}</b> пикс (уступ в комнате — 140)<br>Взлёт ${Math.round(up * 1000)} мс · падение ${Math.round(down * 1000)} мс · в воздухе ${Math.round((up + down) * 1000)} мс<br>Дальность на полной скорости ≈ <b>${Math.round((up + down) * c.maxSpeed)}</b> пикс · задержка ${Math.round(c.delay / 16.7)} кадр.`;
+}
+$('#copyCfg').addEventListener('click', () => {
+  try { navigator.clipboard.writeText('const CONFIG = ' + JSON.stringify(freeCfg, null, 2) + ';'); } catch (e) {}
+  $('#copyCfg').textContent = 'Скопировано ✓'; setTimeout(() => $('#copyCfg').textContent = 'Скопировать CONFIG', 1400);
+});
+
+/* ---------- отрисовка ---------- */
+const cv = $('#cv'), ctx = cv.getContext('2d');
+let W = 0, H = 0, S = 1, camX = 0, DPR = 1;
+function resize() { DPR = Math.min(2, devicePixelRatio || 1); W = cv.clientWidth; H = cv.clientHeight; cv.width = W * DPR; cv.height = H * DPR; S = H / 600; }
+addEventListener('resize', resize); resize();
+const RIDGE = []; for (let i = 0; i <= 80; i++) RIDGE.push(230 + Math.sin(i * 0.9) * 40 + Math.sin(i * 2.3) * 22 + (i % 7 === 3 ? -60 : 0));
+function draw() {
+  ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+  const sky = ctx.createLinearGradient(0, 0, 0, H); sky.addColorStop(0, '#24224f'); sky.addColorStop(0.6, '#6a5c9e'); sky.addColorStop(1, '#e9a98b');
+  ctx.fillStyle = sky; ctx.fillRect(0, 0, W, H);
+  const vw = W / S; ctx.save(); ctx.scale(S, S);
+  // сетка лаборатории
+  ctx.strokeStyle = 'rgba(255,255,255,.06)'; ctx.lineWidth = 1;
+  for (let x = -(camX * 0.3) % 60; x < vw; x += 60) { ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, 600); ctx.stroke(); }
+  for (let y = 0; y < 600; y += 60) { ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(vw, y); ctx.stroke(); }
+  ctx.fillStyle = '#4a3f7a'; ctx.beginPath(); ctx.moveTo(0, 600);
+  for (let i = 0; i <= 80; i++) { const x = i * 120 - (camX * 0.15) % 120 - 120; ctx.lineTo(x, RIDGE[(i + Math.floor(camX * 0.15 / 120)) % 81] + 40); }
+  ctx.lineTo(vw + 200, 600); ctx.fill();
+  ctx.translate(-camX, 0);
+  // линейка высоты у старта
+  ctx.fillStyle = 'rgba(255,255,255,.35)'; ctx.font = '600 12px Golos Text, sans-serif';
+  for (let h = 0; h <= 200; h += 50) { ctx.fillRect(10, G - h, h % 100 ? 8 : 14, 2); if (h) ctx.fillText(h, 28, G - h + 4); }
+  for (const s of SOLIDS) {
+    const [x, y, w, h, kind] = s;
+    if (x > camX + vw + 20 || x + w < camX - 20) continue;
+    if (kind === 'wood') { ctx.fillStyle = '#8a5a2b'; ctx.fillRect(x, y, w, h); ctx.fillStyle = '#b07a3e'; ctx.fillRect(x, y, w, 6); }
+    else if (kind === 'stone') { ctx.fillStyle = '#6d6476'; ctx.fillRect(x, y, w, h); ctx.fillStyle = '#857c90'; for (let i = 0; i < w; i += 46) ctx.fillRect(x + i + 4, y + 8 + (i / 46 % 2) * 50, 38, 40); ctx.fillStyle = '#4a4352'; ctx.fillRect(x, y + h - 8, w, 8); }
+    else { ctx.fillStyle = '#3b3560'; ctx.fillRect(x, y, w, h); ctx.fillStyle = '#4b4478'; for (let i = 0; i < w; i += 40) ctx.fillRect(x + i + 6, y + 30 + (i / 40 % 2) * 26, 24, 14); ctx.fillStyle = '#ffcf3a'; ctx.fillRect(x, y, w, 6); }
+  }
+  for (const t of TRIS) { ctx.fillStyle = '#ff4757'; ctx.strokeStyle = '#6b0f19'; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(...t[0]); ctx.lineTo(...t[1]); ctx.lineTo(...t[2]); ctx.closePath(); ctx.fill(); ctx.stroke(); }
+  // портал круга
+  ctx.fillStyle = 'rgba(61,224,200,.25)'; ctx.fillRect(LAP_X, G - 110, 40, 110); ctx.strokeStyle = '#3de0c8'; ctx.lineWidth = 3; ctx.strokeRect(LAP_X, G - 110, 40, 110);
+  if (P && (state === 'play' || state === 'free')) {
+    const col = state === 'free' ? COL.F : COL[side];
+    ctx.globalAlpha = deadT > 0 ? 0.35 : 1;
+    ctx.fillStyle = 'rgba(0,0,0,.25)'; ctx.fillRect(P.x, P.y + 4, HW, HH - 4);
+    ctx.fillStyle = col; ctx.fillRect(P.x, P.y, HW, HH - 6);
+    const ex = P.x + HW / 2 + P.face * 6;
+    ctx.fillStyle = '#fff'; ctx.fillRect(ex - 8, P.y + 9, 7, 9); ctx.fillRect(ex + 2, P.y + 9, 7, 9);
+    ctx.fillStyle = '#10101a'; ctx.fillRect(ex - 6 + P.face * 2, P.y + 12, 3, 5); ctx.fillRect(ex + 4 + P.face * 2, P.y + 12, 3, 5);
+    ctx.fillStyle = '#10101a'; ctx.font = '800 13px Unbounded, sans-serif'; ctx.textAlign = 'center';
+    ctx.fillText(state === 'free' ? '★' : side, P.x + HW / 2, P.y - 6); ctx.textAlign = 'left';
+    ctx.globalAlpha = 1;
+  }
+  ctx.restore();
+  if (deadT > 0) { ctx.fillStyle = `rgba(255,60,80,${deadT * 0.6})`; ctx.fillRect(0, 0, W, H); }
+}
+
+let last = performance.now(), acc = 0;
+function frame(now) {
+  const dt = Math.min(0.05, (now - last) / 1000); last = now;
+  const pd = pollPad();
+  const raw = {
+    left: !!(keys.ArrowLeft || keys.KeyA || pd.left || touchIn.left),
+    right: !!(keys.ArrowRight || keys.KeyD || pd.right || touchIn.right),
+    jump: !!(keys.Space || keys.ArrowUp || keys.KeyW || keys.KeyZ || pd.jump || touchIn.jump),
+  };
+  if ((state === 'play' || state === 'free') && !panelOpen) {
+    acc += dt;
+    while (acc >= 1 / 120) { step(1 / 120, raw); acc -= 1 / 120; }
+    if (P) camX += ((P.x - (W / S) * 0.35) - camX) * Math.min(1, dt * 8);
+    camX = Math.max(0, camX);
+  } else { acc = 0; if (state === 'intro') camX = (camX + dt * 40) % 1600; }
+  draw(); requestAnimationFrame(frame);
+}
+function showOnly(id) { for (const s of document.querySelectorAll('.screen')) s.hidden = s.id !== id; }
+function begin() { audio(); makeRounds(); startRound(0); }
+$('#startBtn').addEventListener('click', begin);
+ctrlText(); setHint(); buildKnobs(); spawn(CHECKS[0]);
+requestAnimationFrame(frame);
+setTimeout(() => $('#startBtn').focus(), 100);
+</script>
