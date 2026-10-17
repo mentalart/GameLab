@@ -350,7 +350,7 @@ function drawWowBuild() {
   } }, r.game ? '↻ Собрать заново' : '⚙ Собрать с ИИ');
   box.append(el('div', { class: 'row' }, buildBtn,
     el('button', { class: 'btn ghost small', type: 'button', onclick: () => { if (confirm('Взять запасную игру урока вместо сборки ИИ? Её секрет — ускорение волны.')) wowAct('/api/teacher/wow/fallback', {}, true); } }, 'Запасная игра'),
-    el('span', { class: 'muted small' }, r.demo ? 'Демо-режим: соберётся запасная игра урока с названием по картам.' : 'Полная 3D-игра пишется 5–15 минут. Пока ИИ пишет, класс играет в донора.')), prog);
+    el('span', { class: 'muted small' }, r.demo ? 'Демо-режим: соберётся запасная игра урока с названием по картам.' : 'Полная 3D-игра пишется 5–20 минут. Пока ИИ пишет, класс играет в донора.')), prog);
   if (r.game) {
     const g = r.game;
     box.append(el('div', { class: 'row small' }, el('b', {}, `«${g.title}» v${g.version}`), el('span', { class: 'muted' }, g.fallback ? 'запасная игра' : `модель ${g.model}${g.attempts > 1 ? ', попыток ' + g.attempts : ''}`),

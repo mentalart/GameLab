@@ -22,7 +22,7 @@ function loadConfig() {
     console.log(`Создан ${path.relative(process.cwd(), CONFIG_FILE)}. Пароль учителя: ${example.teacherPassword}`);
   }
   configCache = JSON.parse(fs.readFileSync(CONFIG_FILE, 'utf8'));
-  configCache.ai = Object.assign({ baseUrl: 'https://api.provod.ai/v1', apiKey: '', codeModel: '', textModel: '', stream: true, timeoutSec: 240, maxSec: 900, temperature: 0.4 }, configCache.ai || {});
+  configCache.ai = Object.assign({ baseUrl: 'https://api.provod.ai/v1', apiKey: '', codeModel: '', textModel: '', stream: true, timeoutSec: 240, maxSec: 1200, temperature: 0.4 }, configCache.ai || {});
   configCache.limits = Object.assign({ aiCallsPerStudentPerLesson: 40, rublesPerLesson: 0 }, configCache.limits || {});
   configCache.models = configCache.models || [];
   return configCache;
@@ -51,7 +51,7 @@ async function chat({ model, messages, onProgress, temperature }) {
   let why = '', timer = null;
   const abort = w => { why = w; ctrl.abort(); };
   const idle = () => { clearTimeout(timer); timer = setTimeout(() => abort('idle'), (c.timeoutSec || 240) * 1000); };
-  const hard = setTimeout(() => abort('max'), (c.maxSec || 900) * 1000);
+  const hard = setTimeout(() => abort('max'), (c.maxSec || 1200) * 1000);
   if (c.stream) idle();
   const t0 = Date.now();
   try {
@@ -98,7 +98,7 @@ async function chat({ model, messages, onProgress, temperature }) {
     const outT = usage ? usage.completion_tokens : Math.round(text.length / 3);
     return { text, ms: Date.now() - t0, tokensIn: inT, tokensOut: outT, estimated: !usage };
   } catch (e) {
-    if (e.name === 'AbortError') throw new Error(why === 'max' ? `Модель писала ответ дольше ${c.maxSec || 900} с` : `Модель молчала дольше ${c.timeoutSec || 240} с`);
+    if (e.name === 'AbortError') throw new Error(why === 'max' ? `Модель писала ответ дольше ${c.maxSec || 1200} с` : `Модель молчала дольше ${c.timeoutSec || 240} с`);
     throw e;
   } finally { clearTimeout(timer); clearTimeout(hard); }
 }
