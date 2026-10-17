@@ -371,10 +371,11 @@ function drawWowSummary() {
   if (!s.rows.length) { box.append(el('p', { class: 'muted' }, 'Пока никто не сыграл в игру класса.')); host.append(box); return; }
   box.append(el('div', { class: 'compare' },
     el('div', {}, el('div', { class: 'eyebrow' }, 'С секретом'), el('b', {}, `средний лучший счёт ${s.onAvg}`), el('div', { class: 'small muted' }, `секрет сработал ${s.hits} раз за все партии класса`)),
-    el('div', {}, el('div', { class: 'eyebrow' }, 'Без секрета'), el('b', {}, `средний лучший счёт ${s.offAvg}`), el('div', { class: 'small muted' }, `угадали секрет: ${s.correct} из ${s.guessed}, попались в ловушку карт: ${s.trap}`))),
+    el('div', {}, el('div', { class: 'eyebrow' }, 'Без секрета'), el('b', {}, `средний лучший счёт ${s.offAvg}`), el('div', { class: 'small muted' }, `угадали секрет: ${s.correct} из ${s.guessed}, попались в ловушку карт: ${s.trap}` + (s.voted ? ` · слепой тест: почувствовали секрет ${s.felt} из ${s.voted}` : '')))),
   el('div', { class: 'tablewrap' }, el('table', {},
-    el('thead', {}, el('tr', {}, ['Ник', 'С секретом: партий / лучший', 'Сработал', 'Без секрета: партий / лучший', 'Догадка'].map(h => el('th', {}, h)))),
+    el('thead', {}, el('tr', {}, ['Ник', 'С секретом: партий / лучший', 'Сработал', 'Без секрета: партий / лучший', 'Слепой тест', 'Догадка'].map(h => el('th', {}, h)))),
     el('tbody', {}, s.rows.map(x => el('tr', {}, el('td', {}, el('b', {}, x.nick)), el('td', {}, `${x.onRounds} / ${x.onBest}`), el('td', {}, String(x.hits)), el('td', {}, `${x.offRounds} / ${x.offBest}`),
+      el('td', {}, x.vote ? el('span', { class: 'tag ' + (x.felt ? 'ok' : '') }, x.felt ? 'почувствовал' : x.vote === 'same' ? 'разницы нет' : 'мимо') : '—'),
       el('td', {}, x.guess ? [x.guess + ' ', el('span', { class: 'tag ' + (x.correct ? 'ok' : x.trap ? 'dice' : '') }, x.correct ? 'угадал' : x.trap ? 'ловушка' : 'мимо')] : '—')))))));
   host.append(box);
 }

@@ -388,3 +388,6 @@ td.warn{color:var(--warm);font-weight:700}
 .warn-text{color:var(--warm)}
 .tag.release{color:#1a1200;background:var(--warm);border-color:var(--warm)}
 #answers td.ans{max-width:260px;white-space:pre-wrap;vertical-align:top}
+.ab-tabs .opt b{font-size:18px}
+.marks{position:relative;height:18px;border-radius:9px;background:var(--bg2);border:1px solid var(--line)}
+.marks i{position:absolute;top:2px;bottom:2px;width:3px;margin-left:-1px;border-radius:2px;background:var(--violet);box-shadow:0 0 6px var(--violet)}

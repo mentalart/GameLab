@@ -440,7 +440,7 @@ function huntOptions(cls, les, w) {
 }
 const wowSteps = les => {
   const all = les.checkpoints.flatMap(c => c.steps);
-  return { on: all.find(x => x.type === 'play' && x.shared && !x.secretOff), off: all.find(x => x.type === 'play' && x.shared && x.secretOff), hunt: all.find(x => x.type === 'secret' && !x.hunt) };
+  return { on: all.find(x => x.type === 'play' && x.shared && !x.secretOff), off: all.find(x => x.type === 'play' && x.shared && x.secretOff), ab: all.find(x => x.type === 'abtest'), hunt: all.find(x => x.type === 'secret' && !x.hunt) };
 };
 // сводка для учителя: рекорды с секретом и без, сколько раз сработал секрет, кто угадал
 function wowSummary(cls, les) {
@@ -448,11 +448,14 @@ function wowSummary(cls, les) {
   const rows = store.students(cls.code).map(s => {
     const st = (s.lessons || {})[les.id] || { answers: {} };
     const A = step => (step && st.answers[step.id] && st.answers[step.id].value) || {};
-    const on = A(S.on), off = A(S.off), g = A(S.hunt);
-    return { nick: s.nick, onRounds: on.rounds || 0, onBest: on.best || 0, hits: on.secret || 0, offRounds: off.rounds || 0, offBest: off.best || 0, guess: g.guess || null, correct: !!g.correct, trap: !!g.trap };
+    // слепой тест А/Б: «с секретом» — копия, где он работал; иначе — партии шагов play с секретом и без
+    const ab = A(S.ab), on = ab.A ? ab[ab.side] : A(S.on), off = ab.A ? ab[ab.side === 'A' ? 'B' : 'A'] : A(S.off), g = A(S.hunt);
+    return { nick: s.nick, onRounds: on.rounds || 0, onBest: on.best || 0, hits: on.secret || 0, offRounds: off.rounds || 0, offBest: off.best || 0, guess: g.guess || null, correct: !!g.correct, trap: !!g.trap,
+      vote: ab.vote || null, felt: !!ab.vote && ab.vote === ab.side };
   }).filter(r => r.onRounds || r.offRounds || r.guess);
   const avg = (list, k) => { const x = list.filter(r => r[k.replace('Best', 'Rounds')]); return x.length ? Math.round(x.reduce((n, r) => n + r[k], 0) / x.length) : 0; };
-  return { rows, onAvg: avg(rows, 'onBest'), offAvg: avg(rows, 'offBest'), hits: rows.reduce((n, r) => n + r.hits, 0), guessed: rows.filter(r => r.guess).length, correct: rows.filter(r => r.correct).length, trap: rows.filter(r => r.trap).length };
+  return { rows, onAvg: avg(rows, 'onBest'), offAvg: avg(rows, 'offBest'), hits: rows.reduce((n, r) => n + r.hits, 0), guessed: rows.filter(r => r.guess).length, correct: rows.filter(r => r.correct).length, trap: rows.filter(r => r.trap).length,
+    voted: rows.filter(r => r.vote).length, felt: rows.filter(r => r.felt).length };
 }
 function needWow(ctx) {
   needTeacher(ctx);

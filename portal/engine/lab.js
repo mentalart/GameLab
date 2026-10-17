@@ -171,7 +171,7 @@
   let sps = null, parts = [], popups = [], warns = [], pulses = [], whites = [], follow = null;
   let shakeAmp = 0, flashA = 0, hitstopT = 0, camShakeOff = null, matCache = {};
   const cfg = {}, DEFAULTS = {}, META = {};
-  const tele = { presses: {}, hold: {}, hurts: 0, custom: {}, stats: {} };
+  const tele = { presses: {}, hold: {}, hurts: 0, custom: {}, stats: {}, marks: {} };
   const session = { rounds: 0, restarts: 0 };
   let classRecord = null;
 
@@ -247,7 +247,13 @@
 
     // интерфейс и телеметрия
     hud(key, text) { if (text == null) delete hudLines[key]; else hudLines[key] = String(text); },
-    count(name, n = 1) { tele.custom[name] = (tele.custom[name] || 0) + n; }, // имя с «_» — скрытый счётчик: уходит порталу, на экран конца партии не попадает
+    // имя с «_» — скрытый счётчик: уходит порталу, на экран конца партии не попадает; его моменты (секунда партии) копятся в marks для раскрытия секрета
+    count(name, n = 1) {
+      tele.custom[name] = (tele.custom[name] || 0) + n;
+      if (name[0] !== '_') return;
+      const m = tele.marks[name] = tele.marks[name] || [], t = Math.round(lab.t * 10) / 10;
+      if (m.length < 300 && !(m.length && t - m[m.length - 1] < 0.25)) m.push(t);
+    },
     stat(name, value) { tele.stats[name] = value; },
   };
   let hudLines = {};
@@ -508,7 +514,7 @@
   /* ---------------- телеметрия ---------------- */
   function resetTele() {
     for (const k of BTN) { tele.presses[k] = 0; tele.hold[k] = 0; }
-    tele.hurts = 0; tele.custom = {}; tele.stats = {};
+    tele.hurts = 0; tele.custom = {}; tele.stats = {}; tele.marks = {};
   }
   function tickTele(dt) {
     for (const k of BTN) {
@@ -528,7 +534,7 @@
     return out;
   }
   function teleData() {
-    return { time: Math.round(lab.t * 10) / 10, presses: { ...tele.presses }, hold: Object.fromEntries(BTN.map(k => [k, Math.round(tele.hold[k] * 10) / 10])), hurts: tele.hurts, custom: { ...tele.custom }, stats: { ...tele.stats } };
+    return { time: Math.round(lab.t * 10) / 10, presses: { ...tele.presses }, hold: Object.fromEntries(BTN.map(k => [k, Math.round(tele.hold[k] * 10) / 10])), hurts: tele.hurts, custom: { ...tele.custom }, stats: { ...tele.stats }, marks: JSON.parse(JSON.stringify(tele.marks)) };
   }
 
   /* ---------------- ошибки ---------------- */

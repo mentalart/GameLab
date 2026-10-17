@@ -318,14 +318,23 @@ async function wowStart(teacher, student, mode, shot) {
 /* ---------- чекпоинт «Секрет»: та же игра без секрета, «Найди секрет», квиз с карточками игры класса ---------- */
 async function secretHunt(teacher, student, mode, shot) {
   await student.click('.cp >> text=Секрет');
-  await student.click('#step-secret-play .veil button');
-  const sf = await gameFrame(student, '/play/', 0);
-  const knob = mode === 'mock' ? 'secret' : 'speedup';
-  await sf.waitForFunction(k => window.__lab.cfg[k] === 0, knob, { timeout: 5000 }).catch(() => {});
-  const off = await sf.evaluate(k => window.__lab.cfg[k], knob);
-  check('Шаг выключил секрет в игре класса (setCfg)', off === 0, `${knob} = ${off}`);
-  await playRound(sf, { score: 20 });
-  await student.waitForSelector('#step-secret-play.done');
+  // слепой тест: две копии игры класса, в одной ручка секрета выключена; в копии с секретом он срабатывает 5 раз
+  const knob = mode === 'mock' ? 'secret' : 'speedup', seen = {};
+  for (const k of ['A', 'B']) {
+    await student.click(`#step-secret-ab .ab-${k}`);
+    await student.click('#step-secret-ab .veil button');
+    const f = await gameFrame(student, '/play/', 0);
+    await sleep(600); // setCfg приходит после ready
+    seen[k] = await f.evaluate(kn => window.__lab.cfg[kn], knob);
+    await f.evaluate(() => window.__lab.confirm());
+    await sleep(300);
+    await f.evaluate(on => { if (on) { window.__lab.lab.t = 4; window.__lab.lab.count('_secret', 5); window.__lab.lab.t = 9; window.__lab.lab.count('_secret'); } window.__lab.lab.score = on ? 70 : 20; window.__lab.end('lose', 'Проверка'); }, seen[k] === 1);
+    await sleep(400);
+  }
+  const side = seen.A === 1 ? 'A' : 'B';
+  check('Слепой тест: в одной копии секрет есть, в другой выключен', (seen.A === 1) !== (seen.B === 1) && [seen.A, seen.B].includes(0), `А: ${knob} = ${seen.A}, Б: ${knob} = ${seen.B}`);
+  await student.click(`#step-secret-ab .opt >> text=В игре ${side === 'A' ? 'А' : 'Б'}`);
+  await student.waitForSelector('#step-secret-ab.done');
   await student.waitForSelector('#step-secret-hunt .opt');
   const options = await student.locator('#step-secret-hunt .opt').allTextContents();
   const twist = (await teacher.textContent('#wowCards [data-card=twist] .wc-text')).trim(); // вкладка учителя скрыта, но карты в ней остались
@@ -338,6 +347,7 @@ async function secretHunt(teacher, student, mode, shot) {
   const reveal = (await student.textContent('#step-secret-hunt')).replace(/\s+/g, ' ');
   if (mode === 'mock') check('Ловушка распознана, секрет раскрыт: «ярость», счётчик из партий', /Ловушка/.test(reveal) && /Под конец игра злится/.test(reveal) && /сработал 6 раз/.test(reveal), reveal.slice(0, 160));
   else check('Секрет угадан и раскрыт', /Угадал/.test(reveal) && /Нисикадо/.test(reveal), reveal.slice(0, 120));
+  check('Раскрытие: слепой тест угадан, моменты секрета на полоске партии', /секрет был именно там/.test(reveal) && await student.locator('#step-secret-hunt .marks i').count() >= 2, `отметок: ${await student.locator('#step-secret-hunt .marks i').count()}`);
   await shot(student, '2a-secret', true);
   await student.click('#step-secret-feel .opt >> nth=0');
   await student.click('#step-secret-feel >> text=Ответить');
@@ -378,7 +388,7 @@ async function secretHunt(teacher, student, mode, shot) {
   await teacher.click('.tabs >> text=Вау-старт');
   await teacher.waitForSelector('#wowSummary td .tag', { timeout: 10000 }); // ждём свежую сводку с догадкой: старая осталась во вкладке с прошлого раза
   const sum = (await teacher.textContent('#wowSummary')).replace(/\s+/g, ' ');
-  check('Учитель видит сводку секрета: партии, срабатывания, догадки', /сработал 6 раз/.test(sum) && (mode === 'mock' ? /ловушка/.test(sum) : /угадал/.test(sum)), sum.slice(0, 160));
+  check('Учитель видит сводку секрета: партии, срабатывания, догадки, слепой тест', /сработал 6 раз/.test(sum) && /почувствовали секрет 1 из 1/.test(sum) && (mode === 'mock' ? /ловушка/.test(sum) : /угадал/.test(sum)), sum.slice(0, 200));
   await shot(teacher, '2b-wow-summary');
   await teacher.click('.tabs >> text=Урок');
 }
