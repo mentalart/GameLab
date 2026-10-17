@@ -21,9 +21,10 @@ async function loadClasses() {
 const lessonOf = id => T.lessons.find(l => l.id === id);
 const moduleLessons = m => T.lessons.filter(l => l.module === m);
 function drawClassSel() {
+  // классы — строки списка, а не <select>: у раскрытого <select> клавиша Del до страницы не доходит
   const sel = $('#classSel'); sel.innerHTML = '';
-  if (!T.classes.length) sel.append(el('option', { value: '' }, 'Классов пока нет — создайте ниже'));
-  T.classes.forEach(c => sel.append(el('option', { value: c.code, selected: c.code === T.code ? true : null }, `${c.name} · ${c.code}`)));
+  if (!T.classes.length) sel.append(el('div', { class: 'muted small' }, 'Классов пока нет — создайте ниже'));
+  T.classes.forEach(c => sel.append(el('button', { type: 'button', class: 'classrow' + (c.code === T.code ? ' on' : ''), role: 'option', 'aria-selected': String(c.code === T.code), 'data-code': c.code, onclick: () => pickClass(c.code) }, `${c.name} · ${c.code}`)));
   const cls = T.classes.find(c => c.code === T.code), cur = cls && lessonOf(cls.lesson);
   if (T.module == null) T.module = cur ? cur.module : 1;
   drawModuleSel();
@@ -516,21 +517,29 @@ document.querySelectorAll('.tabs button').forEach(b => b.addEventListener('click
   if (b.dataset.tab === 'ai') drawAI();
   if (b.dataset.tab === 'notes') drawNotes();
 }));
-$('#classSel').addEventListener('change', e => { selectClass(e.target.value); if (!$('#tab-wow').hidden) drawWow(true); });
-// удаление класса: мышь над списком классов (или фокус на нём) и клавиша Del — без отдельной кнопки
-let classHover = false;
-$('#classSel').addEventListener('mouseenter', () => { classHover = true; });
-$('#classSel').addEventListener('mouseleave', () => { classHover = false; });
+function pickClass(code) {
+  if (code === T.code) return;
+  T.code = code; drawClassSel(); selectClass(code);
+  if (!$('#tab-wow').hidden) drawWow(true);
+}
+// удаление класса: мышь над строкой класса (или фокус на ней) и клавиша Del — без отдельной кнопки
+let hoverCode = null;
+$('#classSel').addEventListener('mouseover', e => { const r = e.target.closest('.classrow'); hoverCode = r ? r.dataset.code : null; });
+$('#classSel').addEventListener('mouseleave', () => { hoverCode = null; });
 document.addEventListener('keydown', async e => {
-  if (e.key !== 'Delete' || !T.code) return;
-  if (!classHover && document.activeElement !== $('#classSel')) return;
-  const c = T.classes.find(x => x.code === T.code);
-  if (!c || !confirm(`Удалить класс «${c.name}» (${c.code})? Ученики больше не войдут по этому коду. Папка класса переедет в data/deleted.`)) return;
+  if (e.key !== 'Delete') return;
+  const f = document.activeElement, focused = f && f.classList.contains('classrow') ? f.dataset.code : null;
+  const code = hoverCode || focused;
+  const c = code && T.classes.find(x => x.code === code);
+  if (!c) return;
+  e.preventDefault();
+  if (!confirm(`Удалить класс «${c.name}» (${c.code})? Ученики больше не войдут по этому коду. Папка класса переедет в data/deleted.`)) return;
   try {
     await api('/api/teacher/class/delete', { code: c.code });
-    await loadClasses();
-    T.code = T.classes[0] ? T.classes[0].code : null; T.lastLesson = null;
-    drawClassSel(); await selectClass(T.code);
+    await loadClasses(); hoverCode = null;
+    const wasCurrent = c.code === T.code;
+    if (wasCurrent) { T.code = T.classes[0] ? T.classes[0].code : null; T.lastLesson = null; }
+    drawClassSel(); if (wasCurrent) await selectClass(T.code);
     toast(`Класс «${c.name}» удалён`, 'ok');
   } catch (err) { toast(err.message, 'err'); }
 });

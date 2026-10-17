@@ -82,16 +82,16 @@ async function run(browser, base, mode) {
   // лишний класс удаляется клавишей Del, пока мышь над списком классов
   await teacher.fill('#newName', 'Лишний ' + mode);
   await teacher.click('#newClass button');
-  await teacher.waitForFunction(name => { const o = document.querySelector('#classSel').selectedOptions[0]; return o && o.textContent.startsWith(name); }, 'Лишний ' + mode);
+  await teacher.waitForFunction(name => { const o = document.querySelector('#classSel .classrow.on'); return o && o.textContent.startsWith(name); }, 'Лишний ' + mode);
   check('Меню модулей: модуль 1 и урок 1', await teacher.$eval('#moduleSel', s => s.value) === '1' && await teacher.$eval('#lessonSel', s => s.value) === 'urok-01');
-  await teacher.hover('#classSel');
+  await teacher.hover('#classSel .classrow.on');
   await teacher.keyboard.press('Delete');
-  await teacher.waitForFunction(name => ![...document.querySelectorAll('#classSel option')].some(o => o.textContent.startsWith(name)), 'Лишний ' + mode);
+  await teacher.waitForFunction(name => ![...document.querySelectorAll('#classSel .classrow')].some(o => o.textContent.startsWith(name)), 'Лишний ' + mode);
   check('Класс удалён клавишей Del', true);
   await teacher.fill('#newName', 'Проверка ' + mode);
   await teacher.click('#newClass button');
   // ждём именно новый класс: до создания панель показывает класс прошлого прогона
-  await teacher.waitForFunction(name => { const o = document.querySelector('#classSel').selectedOptions[0]; return o && o.textContent.startsWith(name) && /^[A-Z0-9]{5}$/.test(document.querySelector('#classCode').textContent) && o.textContent.endsWith(document.querySelector('#classCode').textContent); }, 'Проверка ' + mode);
+  await teacher.waitForFunction(name => { const o = document.querySelector('#classSel .classrow.on'); return o && o.textContent.startsWith(name) && /^[A-Z0-9]{5}$/.test(document.querySelector('#classCode').textContent) && o.textContent.endsWith(document.querySelector('#classCode').textContent); }, 'Проверка ' + mode);
   const code = await teacher.textContent('#classCode');
   check('Учитель создал класс', /^[A-Z0-9]{5}$/.test(code), code);
   await teacher.click('text=Открыть: Вау-старт →');
