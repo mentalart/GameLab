@@ -77,6 +77,7 @@
   }
   let rng = Math.random;
   let fixedSeed = params.has('seed') ? (Number(params.get('seed')) >>> 0) : null;
+  let overAt = 0; // когда показан экран конца партии
   let ghost = null, challengeOn = false; // вызов «побей мой мир»: призрак соперника и есть ли кнопка вызова под игрой
 
   /* ---------------- ввод ---------------- */
@@ -127,7 +128,7 @@
       if (b.some(Boolean) || Math.hypot(ax, ay) > 0.4) any = true;
       if (n === 0) {
         const down = i => b[i] && !padPrevMenu[i];
-        if (down(0) && state !== 'play') confirm();
+        if (down(0) && state === 'menu') confirm(); // конец партии кнопкой A не закрывается: ею только что играли — закрывает Start
         if (down(9)) { if (state === 'play') setPause(!paused); else confirm(); }
         if (down(8)) togglePanel();
         padPrevMenu = b;
@@ -634,7 +635,7 @@
       ? (two ? 'Геймпад 1 — игрок 1, геймпад 2 — игрок 2. Клавиатура тоже работает.' : 'Геймпад подключён: удары отдаются вибрацией. Клавиатура тоже работает.')
       : (two ? 'Игрок 1 — левая половина клавиатуры, игрок 2 — стрелки. Есть геймпады? Нажми на них любую кнопку.' : 'Есть геймпад? Нажми на нём любую кнопку.');
     $('#startBtn').textContent = padMode ? 'Играть · A' : 'Играть · пробел';
-    $('#againBtn').textContent = padMode ? 'Ещё раз · A' : 'Ещё раз · пробел';
+    $('#againBtn').textContent = padMode ? 'Ещё раз · Start' : 'Ещё раз · пробел';
     $('#resumeBtn').textContent = padMode ? 'Продолжить · Start' : 'Продолжить · P';
     $('#knobsBtn').textContent = padMode ? 'Ручки · Select' : 'Ручки · Tab';
   }
@@ -711,6 +712,8 @@
     showScreen(null); canvas.focus({ preventScroll: true });
     post({ type: 'start', round: lab.round, seed: lab.seed });
   }
+  // клавиатура и тач: экран конца партии не закрывается в первые 0,8 с — пробел и кнопки на экране только что были игровыми
+  const overFresh = () => state === 'over' && performance.now() - overAt < 800;
   function confirm() {
     audio();
     if (state === 'menu') beginPlay();
@@ -724,7 +727,7 @@
   }
   function end(kind, text) {
     if (state !== 'play') return;
-    state = 'over';
+    state = 'over'; overAt = performance.now();
     const score = Math.round(lab.score);
     const isBest = score > lab.best;
     if (isBest) { lab.best = score; store.set(bestKey(), String(score)); }
@@ -784,7 +787,7 @@
     if (tgt && (tgt.tagName === 'TEXTAREA' || (tgt.type === 'range' && /^(Arrow|Home|End|Page)/.test(code)))) return;
     const t = keyTarget(code);
     if (t) { e.preventDefault(); kb[t[0]][t[1]] = true; if (!e.repeat) kbTap[t[0]][t[1]] = true; }
-    if ((code === 'Space' || code === 'Enter') && !e.repeat && state !== 'play') { e.preventDefault(); confirm(); }
+    if ((code === 'Space' || code === 'Enter') && !e.repeat && state !== 'play') { e.preventDefault(); if (!overFresh()) confirm(); }
     else if ((code === 'Space' || code === 'Enter') && !e.repeat && paused) { e.preventDefault(); confirm(); }
     if (code === 'KeyP' || code === 'Escape') { if (state === 'play') setPause(!paused); }
     if (code === 'KeyM') { muted = !muted; store.set('lab3d:muted', muted ? '1' : '0'); updateMuteBtn(); }
@@ -812,7 +815,7 @@
     $('#touch').innerHTML = mk(L) + mk(R);
     document.querySelectorAll('.tbtn').forEach(b => {
       const k = b.dataset.k;
-      b.addEventListener('pointerdown', e => { e.preventDefault(); audio(); b.classList.add('on'); if (state !== 'play') { confirm(); return; } tch[k] = true; });
+      b.addEventListener('pointerdown', e => { e.preventDefault(); audio(); b.classList.add('on'); if (state !== 'play') { if (!overFresh()) confirm(); return; } tch[k] = true; });
       const up = () => { b.classList.remove('on'); tch[k] = false; };
       b.addEventListener('pointerup', up); b.addEventListener('pointercancel', up); b.addEventListener('pointerleave', up);
     });

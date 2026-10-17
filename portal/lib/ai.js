@@ -259,7 +259,7 @@ function newGameMessage(plan) {
 // model — другая модель для сравнения на том же замысле (иначе — модель из панели учителя). В ответе — время и рубли всех попыток.
 async function program(kind, firstUser, who, onProgress, model) {
   model = model || models().code;
-  const system = systemPrompt({ lesson: who && who.lesson }); // второй образец — ремейк урока (sample в сценарии)
+  const system = systemPrompt({ lesson: who && who.lesson, model }); // второй образец — ремейк урока (sample в сценарии); Claude — со стандартом геймдизайна
   let messages = [{ role: 'system', content: system }, { role: 'user', content: firstUser }];
   const attempts = [];
   const total = () => ({ ms: attempts.reduce((n, e) => n + (e.ms || 0), 0), rub: attempts.some(e => e.rub != null) ? Math.round(attempts.reduce((n, e) => n + (e.rub || 0), 0) * 100) / 100 : null });
