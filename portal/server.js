@@ -160,7 +160,7 @@ route('GET', '/api/me', (ctx) => {
   const { w, cls, les, s, st } = needStudent(ctx);
   s.seen = store.now(); store.saveStudent(w.class, s);
   const g = st.gameId ? store.getGame(st.gameId) : null;
-  return { nick: w.nick, class: { code: cls.code, name: cls.name, opened: cls.opened, authorMode: cls.authorMode }, lesson: les, answers: st.answers, game: g, demo: ai.demo(), aiCalls: st.aiCalls, aiLimit: ai.loadConfig().limits.aiCallsPerStudentPerLesson };
+  return { nick: w.nick, class: { code: cls.code, name: cls.name, opened: cls.opened, authorMode: cls.authorMode }, lesson: les, answers: st.answers, game: g, feedback: st.feedback || null, demo: ai.demo(), aiCalls: st.aiCalls, aiLimit: ai.loadConfig().limits.aiCallsPerStudentPerLesson };
 });
 
 route('POST', '/api/answer', (ctx) => {
@@ -183,21 +183,164 @@ route('POST', '/api/note', (ctx) => {
   return { ok: true };
 });
 
-// рекорды: ключ игры в пределах класса
+// рекорды: ключ игры в пределах класса. Партия в игре ученика (ключ game:<id>) ещё и пишет телеметрию для плейтеста автора,
+// партия по вызову (challenge) попадает и в таблицу вызова.
 route('POST', '/api/score', (ctx) => {
   const { w } = needStudent(ctx);
+  const key = String(ctx.body.game).slice(0, 80);
   const score = Math.round(Number(ctx.body.score) || 0);
-  const all = store.addScore(w.class + ':' + String(ctx.body.game).slice(0, 80), w.nick, score);
-  return records(all, w.nick);
+  const all = store.addScore(w.class + ':' + key, w.nick, score);
+  const out = records(all, w.nick);
+  const g = classGame(w, (/^game:([\w-]+)$/.exec(key) || [])[1]);
+  if (g) {
+    out.authorBest = all[g.nick] ? all[g.nick].score : 0;
+    store.addPlay(g.id, { type: 'over', nick: w.nick, version: Number(ctx.body.version) || g.current, score, seed: seedOf(ctx.body.seed), tele: cleanTele(ctx.body.tele) });
+    if (w.nick !== g.nick) broadcast(w.class, 'arcade', { game: g.id, author: g.nick });
+  }
+  const ch = ctx.body.challenge && store.getChallenge(w.class, ctx.body.challenge);
+  if (ch) out.challenge = records(store.addScore(w.class + ':challenge:' + ch.code, w.nick, score), w.nick);
+  return out;
 });
 route('GET', '/api/records', (ctx) => {
   const { w } = needStudent(ctx);
-  return records(store.scores(w.class + ':' + String(ctx.url.searchParams.get('game')).slice(0, 80)), w.nick);
+  const out = records(store.scores(w.class + ':' + String(ctx.url.searchParams.get('game')).slice(0, 80)), w.nick);
+  const ch = store.getChallenge(w.class, ctx.url.searchParams.get('challenge'));
+  if (ch) out.challenge = records(store.scores(w.class + ':challenge:' + ch.code), w.nick);
+  return out;
 });
 function records(all, nick) {
   const list = Object.entries(all).map(([n, v]) => ({ nick: n, score: v.score })).sort((a, b) => b.score - a.score);
   return { record: list[0] || null, mine: all[nick] ? all[nick].score : 0, top: list.slice(0, 10) };
 }
+
+/* ---------- аркада класса, вызовы, плейтест (срез 2) ---------- */
+const BTN_NAMES = { left: '← влево', right: '→ вправо', up: '↑ вверх', down: '↓ вниз', a: 'A — главная кнопка', b: 'B — вторая кнопка' };
+const seedOf = v => (v == null || v === '' || !Number.isFinite(Number(v)) ? null : Number(v) >>> 0);
+function cleanTele(t) {
+  t = t && typeof t === 'object' ? t : {};
+  const nums = (o, keys) => Object.fromEntries(Object.entries(o && typeof o === 'object' ? o : {}).filter(([k, v]) => (!keys || keys.includes(k)) && Number.isFinite(Number(v))).slice(0, 12).map(([k, v]) => [String(k).slice(0, 40), Math.round(Number(v) * 10) / 10]));
+  const btn = Object.keys(BTN_NAMES);
+  return { time: Math.max(0, Math.round((Number(t.time) || 0) * 10) / 10), hold: nums(t.hold, btn), presses: nums(t.presses, btn), custom: nums(t.custom) };
+}
+function classGame(w, id) { const g = id && store.getGame(id); return g && g.class === w.class && g.current ? g : null; }
+// все собранные игры класса: по одной на ученика и урок
+function classGames(code) {
+  const out = [];
+  for (const s of store.students(code)) for (const st of Object.values(s.lessons || {})) {
+    const g = st.gameId && store.getGame(st.gameId);
+    if (g && g.current) out.push(g);
+  }
+  return out;
+}
+// карточка игры в аркаде: название, автор, донор, «Что решил я», версия, рекорд класса, рекорд автора
+function gameCard(code, g, viewer) {
+  const les = lesson(g.lesson);
+  let dec = g.decisions;
+  if (!dec && les) { const s = store.getStudent(code, g.nick); dec = s ? buildPlan(les, store.lessonState(s, les.id)).decisions : {}; }
+  const all = store.scores(code + ':game:' + g.id), rec = records(all, viewer);
+  return {
+    id: g.id, title: g.title || 'Моя игра', nick: g.nick, donor: g.donor || (les ? les.donor : ''),
+    lesson: les ? { id: les.id, number: les.number, title: les.title } : null,
+    decisions: dec || {}, version: g.current, versions: g.versions.length,
+    record: rec.record, top: rec.top.slice(0, 5), authorBest: all[g.nick] ? all[g.nick].score : 0, myBest: rec.mine,
+    plays: store.plays(g.id).filter(p => p.type === 'over' && p.nick !== g.nick).length,
+    hidden: !!g.hidden, mine: g.nick === viewer,
+  };
+}
+// игра соседа по кругу: следующий по алфавиту автор после after (по умолчанию — после меня); игры этого урока — первыми
+function neighbour(cards, me, after, lessonId) {
+  const pool = cards.filter(c => !c.hidden && c.nick !== me);
+  const same = pool.filter(c => c.lesson && c.lesson.id === lessonId);
+  const list = (same.length ? same : pool).sort((a, b) => a.nick.localeCompare(b.nick, 'ru'));
+  return list.find(c => c.nick.localeCompare(after || me, 'ru') > 0) || list[0] || null;
+}
+// «открытие плейтеста» для автора: только партии чужих игроков
+function discovery(g) {
+  const plays = store.plays(g.id).filter(p => p.nick !== g.nick);
+  const overs = plays.filter(p => p.type === 'over');
+  const hold = {}, presses = {}, custom = {};
+  let time = 0;
+  const add = (to, o) => { for (const [k, v] of Object.entries(o || {})) to[k] = (to[k] || 0) + (Number(v) || 0); };
+  for (const p of overs) { const t = p.tele || {}; time += Number(t.time) || 0; add(hold, t.hold); add(presses, t.presses); add(custom, t.custom); }
+  const holds = Object.entries(hold).filter(([k, v]) => BTN_NAMES[k] && v > 0)
+    .map(([k, v]) => ({ key: k, name: BTN_NAMES[k], share: time ? Math.min(1, Math.round(100 * v / time) / 100) : 0 })).sort((a, b) => b.share - a.share);
+  const last = {};
+  for (const p of plays) if (p.type === 'card') last[p.nick] = Object.assign({ nick: p.nick, at: p.at }, p.card);
+  const cards = Object.values(last);
+  const emotions = {};
+  cards.forEach(c => (c.emotions || []).forEach(e => { emotions[e] = (emotions[e] || 0) + 1; }));
+  return {
+    rounds: overs.length, players: new Set(overs.map(p => p.nick)).size, again: plays.filter(p => p.type === 'again').length,
+    time: Math.round(time), best: overs.reduce((n, p) => Math.max(n, p.score || 0), 0),
+    holds, dominant: holds[0] || null,
+    presses: { a: Math.round(presses.a || 0), b: Math.round(presses.b || 0) },
+    custom: Object.entries(custom).sort((a, b) => b[1] - a[1]).slice(0, 4).map(([k, v]) => ({ name: k, value: Math.round(v * 10) / 10 })),
+    cards, emotions,
+  };
+}
+const cleanField = f => ({ text: String((f && typeof f === 'object' ? f.text : f) || '').trim().slice(0, 400), dice: !!(f && f.dice) });
+
+route('GET', '/api/arcade', (ctx) => {
+  const { w, cls, les } = needStudent(ctx);
+  const cards = classGames(w.class).map(g => gameCard(w.class, g, w.nick));
+  const mine = cards.filter(c => c.mine).sort((a, b) => ((a.lesson || {}).number || 0) - ((b.lesson || {}).number || 0))
+    .map(c => Object.assign(c, { discovery: discovery(store.getGame(c.id)) }));
+  return {
+    nick: w.nick, class: { code: cls.code, name: cls.name }, lesson: { id: les.id, number: les.number, title: les.title },
+    games: cards.filter(c => !c.hidden), mine,
+    neighbour: neighbour(cards, w.nick, ctx.url.searchParams.get('after'), les.id),
+  };
+});
+route('POST', '/api/arcade/hide', (ctx) => {
+  const { w } = needStudent(ctx);
+  const g = classGame(w, ctx.body.game);
+  if (!g || g.nick !== w.nick) throw Object.assign(new Error('Скрыть можно только свою игру'), { status: 403 });
+  g.hidden = !!ctx.body.hidden; store.saveGame(g);
+  broadcast(w.class, 'arcade', { game: g.id, author: g.nick });
+  return { hidden: g.hidden };
+});
+route('POST', '/api/play/again', (ctx) => {
+  const { w } = needStudent(ctx);
+  const g = classGame(w, ctx.body.game);
+  if (g) store.addPlay(g.id, { type: 'again', nick: w.nick });
+  return { ok: true };
+});
+route('POST', '/api/challenge', (ctx) => {
+  const { w } = needStudent(ctx);
+  const g = classGame(w, ctx.body.game);
+  const version = Number(ctx.body.version) || (g && g.current);
+  const seed = seedOf(ctx.body.seed);
+  if (!g || !g.versions[version - 1]) throw Object.assign(new Error('Нет такой игры'), { status: 404 });
+  if (seed == null) throw Object.assign(new Error('Нет зерна партии — сыграй партию до конца'), { status: 400 });
+  const score = Math.round(Number(ctx.body.score) || 0);
+  const ch = store.createChallenge(w.class, { game: g.id, version, seed, score, nick: w.nick, title: g.title });
+  store.addScore(w.class + ':challenge:' + ch.code, w.nick, score);
+  return { code: ch.code, url: '/arcade?ch=' + ch.code, seed, version };
+});
+route('GET', '/api/challenge', (ctx) => {
+  const { w } = needStudent(ctx);
+  const ch = store.getChallenge(w.class, ctx.url.searchParams.get('code'));
+  const g = ch && classGame(w, ch.game);
+  if (!g) throw Object.assign(new Error('Нет такого вызова в твоём классе. Проверь код.'), { status: 404 });
+  return { challenge: ch, game: gameCard(w.class, g, w.nick), records: records(store.scores(w.class + ':challenge:' + ch.code), w.nick) };
+});
+route('POST', '/api/playtest', (ctx) => {
+  const { w } = needStudent(ctx);
+  const g = classGame(w, ctx.body.game);
+  if (!g) throw Object.assign(new Error('Нет такой игры'), { status: 404 });
+  if (g.nick === w.nick) throw Object.assign(new Error('Плейтест пишут на чужую игру'), { status: 400 });
+  const c = ctx.body.card || {};
+  const card = { emotions: (Array.isArray(c.emotions) ? c.emotions : []).slice(0, 6).map(e => String(e).slice(0, 40)), like: cleanField(c.like), want: cleanField(c.want), whatif: cleanField(c.whatif) };
+  store.addPlay(g.id, { type: 'card', nick: w.nick, card });
+  broadcast(w.class, 'arcade', { game: g.id, author: g.nick });
+  return { ok: true };
+});
+// моя игра урока глазами класса: открытие плейтеста и отзыв учителя
+route('GET', '/api/playtest/mine', (ctx) => {
+  const { w, st } = needStudent(ctx);
+  const g = st.gameId && store.getGame(st.gameId);
+  return { game: g && g.current ? gameCard(w.class, g, w.nick) : null, discovery: g && g.current ? discovery(g) : null, feedback: st.feedback || null };
+});
 
 /* ---------- ИИ ---------- */
 function aiGuard(ctx) {
@@ -238,6 +381,7 @@ function ensureGame(c) {
 function addVersion(gameId, r, info) {
   const g = store.getGame(gameId);
   const n = store.addVersion(g, r.code, Object.assign({ model: r.model, attempts: r.attempts, warnings: r.warnings, demo: !!r.demo }, info));
+  broadcast(g.class, 'arcade', { game: gameId, author: g.nick }); // новая версия — сразу в аркаде класса
   return { gameId, version: n, game: store.getGame(gameId) };
 }
 
@@ -248,7 +392,8 @@ route('POST', '/api/ai/build', (ctx) => {
   const g = ensureGame(c);
   const job = startJob(c.w.token, 'build', async (progress) => {
     const r = await ai.build(plan, c.whoAI, progress);
-    const g2 = store.getGame(g.id); g2.title = plan.title; store.saveGame(g2);
+    // название, донор и три решения — подпись игры в аркаде класса
+    const g2 = store.getGame(g.id); g2.title = plan.title; g2.donor = c.les.donor; g2.decisions = plan.decisions; store.saveGame(g2);
     return addVersion(g.id, r, { kind: 'сборка' });
   });
   return { job: job.id };
@@ -338,7 +483,9 @@ route('GET', '/api/teacher/overview', (ctx) => {
       nick: s.nick, seen: s.seen, where: s.where || null,
       done: Object.values(st.answers || {}).filter(a => a.done).length,
       dice: plan ? plan.diceCount : 0, fields: plan ? plan.fieldCount : 0, aiCalls: st.aiCalls || 0,
-      game: g ? { id: g.id, title: g.title, versions: g.versions.length, current: g.current, error: last && last.error ? last.error.message : null, model: last && last.model } : null,
+      game: g ? { id: g.id, title: g.title, versions: g.versions.length, current: g.current, error: last && last.error ? last.error.message : null, model: last && last.model, hidden: !!g.hidden } : null,
+      plays: g ? store.plays(g.id).filter(p => p.type === 'over' && p.nick !== g.nick).length : 0,
+      feedback: !!st.feedback,
     };
   });
   return { class: cls, lesson: les, students };
@@ -349,7 +496,27 @@ route('GET', '/api/teacher/student', (ctx) => {
   const cls = store.getClass(code), s = cls && store.getStudent(code, nick);
   if (!s) throw Object.assign(new Error('Нет ученика'), { status: 404 });
   const les = lesson(cls.lesson), st = store.lessonState(s, les.id);
-  return { nick, answers: st.answers, plan: ai.planText(buildPlan(les, st)), game: st.gameId ? store.getGame(st.gameId) : null };
+  const g = st.gameId ? store.getGame(st.gameId) : null;
+  return { nick, answers: st.answers, plan: ai.planText(buildPlan(les, st)), game: g, discovery: g && g.current ? discovery(g) : null, feedback: st.feedback || null };
+});
+// отзыв учителя: одно понятие геймдизайна + один вопрос (с кубиком из колод урока)
+route('POST', '/api/teacher/feedback', (ctx) => {
+  needTeacher(ctx);
+  const cls = store.getClass(ctx.body.code), s = cls && store.getStudent(cls.code, ctx.body.nick);
+  if (!s) throw Object.assign(new Error('Нет ученика'), { status: 404 });
+  const concept = cleanField(ctx.body.concept), question = cleanField(ctx.body.question);
+  if (!concept.text || !question.text) throw Object.assign(new Error('Нужны понятие и вопрос'), { status: 400 });
+  const st = store.lessonState(s, cls.lesson);
+  st.feedback = { concept, question, at: store.now() };
+  store.saveStudent(cls.code, s);
+  broadcast(cls.code, 'feedback', { nick: s.nick });
+  return { feedback: st.feedback };
+});
+route('GET', '/api/teacher/arcade', (ctx) => {
+  needTeacher(ctx);
+  const cls = store.getClass(ctx.url.searchParams.get('code'));
+  if (!cls) throw Object.assign(new Error('Нет класса'), { status: 404 });
+  return { games: classGames(cls.code).map(g => Object.assign(gameCard(cls.code, g, null), { discovery: discovery(g) })) };
 });
 route('GET', '/api/teacher/settings', (ctx) => {
   needTeacher(ctx);
@@ -398,10 +565,14 @@ async function handle(req, res) {
     }
   }
   const m = /^\/play\/([\w-]+)\/(\d+)$/.exec(p);
-  if (m) return playPage(res, m[1], Number(m[2]));
+  if (m) { // ?seed= — вызов «побей мой мир»: оболочка читает зерно из адреса и строит тот же мир
+    const seed = url.searchParams.get('seed');
+    if (seed != null && !/^\d{1,10}$/.test(seed)) return send(res, 400, 'Зерно — число', 'text/plain; charset=utf-8');
+    return playPage(res, m[1], Number(m[2]));
+  }
   if (p.startsWith('/engine/') || p.startsWith('/games/')) return staticUnder(PORTAL, p, res, CORS);
   if (p === '/' ) return serveFile(res, path.join(PUBLIC, 'index.html'));
-  if (p === '/student' || p === '/teacher') return serveFile(res, path.join(PUBLIC, p.slice(1) + '.html'));
+  if (p === '/student' || p === '/teacher' || p === '/arcade') return serveFile(res, path.join(PUBLIC, p.slice(1) + '.html'));
   return staticUnder(PUBLIC, p, res);
 }
 

@@ -1,6 +1,6 @@
-// Панель учителя: классы, чекпоинты, ученики, настройки ИИ, журнал генераций, заметки автора.
+// Панель учителя: классы, чекпоинты, ученики и отзыв учителя, аркада класса, настройки ИИ, журнал генераций, заметки автора.
 'use strict';
-const { el, api, toast, copy, fmtTime } = Lab;
+const { el, api, toast, copy, fmtTime, fieldEditor, valText } = Lab;
 const $ = s => document.querySelector(s);
 const T = { classes: [], lessons: [], code: null, overview: null, timer: null };
 
@@ -72,13 +72,15 @@ function drawLesson() {
   else {
     const stepTitle = id => { for (const c of cps) for (const s of c.steps) if (s.id === id) return `${c.title} → ${s.title}`; return '—'; };
     host.append(el('div', { class: 'tablewrap' }, el('table', {},
-      el('thead', {}, el('tr', {}, ['Ник', 'Где сейчас', 'Шагов готово', 'Своими словами', 'Игра', 'Запросов к ИИ', 'Был'].map(h => el('th', {}, h)))),
+      el('thead', {}, el('tr', {}, ['Ник', 'Где сейчас', 'Шагов готово', 'Своими словами', 'Игра', 'Плейтест', 'Отзыв учителя', 'Запросов к ИИ', 'Был'].map(h => el('th', {}, h)))),
       el('tbody', {}, o.students.map(s => el('tr', { class: 'click', onclick: () => openStudent(s.nick) },
         el('td', {}, el('b', {}, s.nick)),
         el('td', {}, stepTitle(s.where)),
         el('td', {}, String(s.done)),
         el('td', {}, s.fields ? `${s.fields - s.dice} из ${s.fields}` : '—', s.dice >= 3 ? el('span', { class: 'tag dice', style: 'margin-left:6px' }, `кубик: ${s.dice}`) : null),
-        el('td', {}, s.game ? [`v${s.game.current} из ${s.game.versions}`, s.game.error ? el('span', { class: 'tag err', style: 'margin-left:6px', title: s.game.error }, 'ошибка') : null] : '—'),
+        el('td', {}, s.game ? [`v${s.game.current} из ${s.game.versions}`, s.game.error ? el('span', { class: 'tag err', style: 'margin-left:6px', title: s.game.error }, 'ошибка') : null, s.game.hidden ? el('span', { class: 'tag', style: 'margin-left:6px' }, 'скрыта') : null] : '—'),
+        el('td', {}, s.game ? `партий чужих: ${s.plays}` : '—'),
+        el('td', {}, s.feedback ? el('span', { class: 'tag ok' }, '✓ есть') : s.game ? el('span', { class: 'tag' }, 'написать →') : '—'),
         el('td', {}, String(s.aiCalls)),
         el('td', { class: 'muted' }, fmtTime(s.seen))))))));
   }
@@ -102,8 +104,49 @@ async function openStudent(nick) {
         v.n === r.game.current ? el('span', { class: 'tag ok' }, 'текущая') : null,
         v.error ? el('span', { class: 'tag err', title: v.error.message }, 'ошибка: ' + v.error.message) : null))));
     } else body.append(el('p', { class: 'muted' }, 'Игра ещё не собрана.'));
+    if (r.discovery) body.append(el('h3', {}, 'Плейтест: игра глазами класса'), Games.discovery(r.discovery));
+    body.append(feedbackEditor(nick, r.feedback));
     $('#studentDlg').showModal();
   } catch (e) { toast(e.message, 'err'); }
+}
+
+// отзыв учителя: одно понятие геймдизайна + один вопрос, кубики — из колод урока (lesson.feedback)
+function feedbackEditor(nick, fb) {
+  const decks = T.overview.lesson.feedback || {};
+  const v = { concept: (fb && fb.concept) || { text: '' }, question: (fb && fb.question) || { text: '' } };
+  const save = el('button', { class: 'btn', type: 'button' }, fb ? 'Обновить отзыв' : 'Отправить отзыв ученику');
+  const state = el('span', { class: 'muted small' }, fb ? 'Ученик уже видит отзыв в шаге плейтеста.' : 'Ученик увидит отзыв сразу, в шаге плейтеста.');
+  save.addEventListener('click', async () => {
+    if (!valText(v.concept) || !valText(v.question)) { toast('Нужны понятие и вопрос'); return; }
+    save.disabled = true;
+    try { await api('/api/teacher/feedback', { code: T.code, nick, concept: v.concept, question: v.question }); toast('Отзыв отправлен', 'ok'); state.textContent = 'Отправлено: ученик видит отзыв.'; save.textContent = 'Обновить отзыв'; refresh(); }
+    catch (e) { toast(e.message, 'err'); }
+    save.disabled = false;
+  });
+  return el('div', { class: 'card stack fbedit' }, el('h3', {}, 'Отзыв учителя: одно понятие + один вопрос'),
+    fieldEditor({ id: 'concept', label: 'Понятие геймдизайна', hint: 'Одно понятие, которое видно в игре ученика', deck: decks.concepts }, v.concept, nv => { v.concept = nv; }, { idPrefix: 'fb-' }),
+    fieldEditor({ id: 'question', label: 'Вопрос автору', hint: 'Один вопрос, на который автор ответит следующей версией', deck: decks.questions }, v.question, nv => { v.question = nv; }, { idPrefix: 'fb-' }),
+    el('div', { class: 'row' }, save, state));
+}
+
+/* ---------- вкладка «Аркада» ---------- */
+async function drawArcade() {
+  const host = $('#tab-arcade'); host.innerHTML = '';
+  if (!T.code) return;
+  let r;
+  try { r = await api('/api/teacher/arcade?code=' + T.code); } catch (e) { toast(e.message, 'err'); return; }
+  host.append(el('p', { class: 'muted' }, `Игр в аркаде класса: ${r.games.filter(g => !g.hidden).length}` + (r.games.some(g => g.hidden) ? `, скрыто авторами: ${r.games.filter(g => g.hidden).length}` : '') + `. Ученики открывают аркаду по адресу ${location.origin}/arcade.`));
+  if (!r.games.length) { host.append(el('p', { class: 'muted' }, 'Пока никто не собрал игру.')); return; }
+  const grid = el('div', { class: 'agrid' });
+  r.games.forEach(g => {
+    const d = g.discovery;
+    grid.append(Games.card(g, {
+      extra: el('div', { class: 'small muted' }, `Партий чужих: ${d.rounds}, «ещё раз»: ${d.again}, отзывов: ${d.cards.length}` + (d.dominant ? `. Дольше всего держали ${d.dominant.name} — ${Math.round(d.dominant.share * 100)}%` : '')),
+      actions: [el('a', { class: 'btn small', href: `/play/${g.id}/${g.version}`, target: '_blank', rel: 'noopener' }, '▶ Открыть'),
+        el('button', { class: 'btn ghost small', type: 'button', onclick: () => openStudent(g.nick) }, 'Ученик и отзыв')],
+    }));
+  });
+  host.append(grid);
 }
 
 /* ---------- вкладка «ИИ и расходы» ---------- */
@@ -166,7 +209,8 @@ async function drawNotes() {
 /* ---------- события ---------- */
 document.querySelectorAll('.tabs button').forEach(b => b.addEventListener('click', () => {
   document.querySelectorAll('.tabs button').forEach(x => x.classList.toggle('on', x === b));
-  ['lesson', 'ai', 'notes'].forEach(t => { $('#tab-' + t).hidden = t !== b.dataset.tab; });
+  ['lesson', 'arcade', 'ai', 'notes'].forEach(t => { $('#tab-' + t).hidden = t !== b.dataset.tab; });
+  if (b.dataset.tab === 'arcade') drawArcade();
   if (b.dataset.tab === 'ai') drawAI();
   if (b.dataset.tab === 'notes') drawNotes();
 }));

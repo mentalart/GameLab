@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="ru" data-role="student">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Аркада класса · Лаборатория игр</title>
+<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+<header class="top">
+  <div class="logo"><i></i> Лаборатория игр · аркада</div>
+  <div class="muted small" id="className"></div>
+  <div class="who"><a class="btn ghost small" href="/student">← К уроку</a><span id="nick"></span><button class="btn ghost small" id="logout" type="button">Выйти</button></div>
+</header>
+<main class="apage">
+  <section class="stage card stack" id="stage" hidden></section>
+  <section class="stack">
+    <div class="row">
+      <div class="grow stack" style="gap:4px">
+        <div class="eyebrow">Аркада класса</div>
+        <h1>Игры одноклассников</h1>
+        <p class="muted">Играй, бей рекорды авторов и бросай вызов «побей мой мир».</p>
+      </div>
+      <form class="chform row" id="chForm" autocomplete="off">
+        <label class="lbl" for="chCode" style="margin:0">Код вызова</label>
+        <input type="text" id="chCode" maxlength="8" placeholder="K7M2QX">
+        <button class="btn warm" type="submit">⚔ Принять вызов</button>
+      </form>
+    </div>
+    <div class="agrid" id="games"><p class="muted">Загрузка аркады…</p></div>
+  </section>
+  <section class="stack">
+    <div class="stack" style="gap:4px">
+      <div class="eyebrow">Личная аркада</div>
+      <h2>Мои игры</h2>
+      <p class="muted small">Все твои игры по урокам. Скрытая игра не видна одноклассникам, но остаётся у тебя.</p>
+    </div>
+    <div class="stack" id="mine"></div>
+  </section>
+</main>
+<script src="/common.js"></script>
+<script src="/games.js"></script>
+<script src="/arcade.js"></script>
+</body>
+</html>

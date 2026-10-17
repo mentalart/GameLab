@@ -1,8 +1,9 @@
-// Страница ученика: урок по чекпоинтам и типовые шаги (play, choice, text, sort, factory, decisions, igra, producer, build, aicheck, workshop).
+// Страница ученика: урок по чекпоинтам и типовые шаги (play, choice, text, sort, factory, decisions, igra, producer, build, aicheck, workshop, arcade, playtest).
+// Рамка игры, карточки аркады и открытие плейтеста — в games.js, поле с кубиком — в common.js.
 'use strict';
-const { el, api, toast, roll, beep, copy } = Lab;
+const { el, api, toast, roll, beep, copy, valText, fieldEditor } = Lab;
 const $ = s => document.querySelector(s);
-const S = { me: null, lesson: null, answers: {}, game: null, opened: [], cpId: null, frames: [], demo: false };
+const S = { me: null, lesson: null, answers: {}, game: null, opened: [], cpId: null, hooks: [], demo: false };
 
 /* =================== загрузка и синхронизация =================== */
 async function boot() {
@@ -37,6 +38,14 @@ function listen() {
     }
     renderSide();
     if (!isOpen(cpById(S.cpId))) renderMain();
+  });
+  // аркада класса: соседи собрали игру, сыграли в мою, оставили плейтест — шаги arcade и playtest обновляются сами
+  es.addEventListener('arcade', e => { const d = JSON.parse(e.data); S.hooks.forEach(h => h('arcade', d)); });
+  es.addEventListener('feedback', e => {
+    const d = JSON.parse(e.data);
+    if (d.nick !== S.me.nick) return;
+    api('/api/playtest/mine').then(r => { S.me.feedback = r.feedback; S.hooks.forEach(h => h('feedback', r)); }).catch(() => {});
+    beep('good'); toast('Учитель оставил тебе отзыв — он в шаге плейтеста', 'ok');
   });
 }
 const cpById = id => S.lesson.checkpoints.find(c => c.id === id);
@@ -74,9 +83,9 @@ function renderSide() {
   });
   side.append(el('p', { class: 'muted small', style: 'margin:12px 4px 0' }, S.lesson.lens));
 }
-function stopFrames() { S.frames.forEach(f => f.destroy()); S.frames = []; }
+function stopFrames() { Games.stopAll(); }
 function renderMain() {
-  stopFrames();
+  stopFrames(); S.hooks = [];
   const main = $('#main'); main.innerHTML = '';
   const cp = cpById(S.cpId);
   if (!isOpen(cp)) {
@@ -110,90 +119,9 @@ function stepCard(step, i, cp) {
   return card;
 }
 
-/* =================== поля с кубиком =================== */
-function valText(v) { return v && typeof v === 'object' ? v.text || '' : v || ''; }
-function fieldTag(v) {
-  if (!valText(v)) return null;
-  if (v.dice) return el('span', { class: 'tag dice', title: 'Вариант кубика, автор его не менял' }, '[кубик]');
-  if (v.auto) return el('span', { class: 'tag auto' }, 'черновик Фабрики');
-  return el('span', { class: 'tag own' }, 'свои слова');
-}
-function fieldEditor(f, value, onChange, opts = {}) {
-  let v = Object.assign({ text: '', dice: false }, typeof value === 'object' ? value : { text: value || '' });
-  const tagHost = el('span');
-  const setTag = () => { tagHost.innerHTML = ''; const t = fieldTag(v); if (t) tagHost.append(t); };
-  const ta = el(opts.single ? 'input' : 'textarea', { type: opts.single ? 'text' : null, rows: opts.rows || 2, id: 'f-' + (opts.idPrefix || '') + f.id, placeholder: f.placeholder || 'Своими словами или брось кубик' });
-  ta.value = v.text;
-  ta.addEventListener('input', () => { v = { text: ta.value, dice: false }; setTag(); onChange(v); });
-  const kids = [ta];
-  if (f.deck && f.deck.length) {
-    const d = el('button', { type: 'button', class: 'dicebtn', title: 'Кубик: случайный вариант', 'aria-label': 'Бросить кубик для поля «' + f.label + '»' }, '🎲');
-    d.addEventListener('click', () => {
-      d.classList.remove('roll'); void d.offsetWidth; d.classList.add('roll'); beep('dice');
-      v = { text: roll(f.deck, v.text), dice: true }; ta.value = v.text; setTag(); onChange(v);
-    });
-    kids.push(d);
-  }
-  setTag();
-  return el('div', { class: 'field' },
-    el('div', { class: 'head' }, f.letter ? el('span', { class: 'letter' }, f.letter) : null, el('label', { class: 'lbl', for: ta.id, style: 'margin:0' }, f.label), tagHost),
-    f.hint ? el('div', { class: 'hint' }, f.hint) : null,
-    el('div', { class: 'box' }, kids));
-}
 function ownCounter(values) {
   const filled = values.filter(v => valText(v)), own = filled.filter(v => !v.dice);
   return el('div', { class: 'counter' }, 'Своими словами: ', el('b', {}, String(own.length)), ` из ${filled.length || 0}`);
-}
-
-/* =================== рамка игры =================== */
-// Игра идёт в изолированной рамке. Одновременно работает только одна рамка: запуск новой ставит остальные на паузу.
-function gameFrame({ src, key, cfg, label, onReady, onOver, onError, autostart }) {
-  const box = el('div', { class: 'gamebox' });
-  const veil = el('div', { class: 'veil' });
-  let iframe = null, timer = null, ready = false;
-  const post = m => { try { iframe && iframe.contentWindow.postMessage(Object.assign({ target: 'lab-game' }, m), '*'); } catch (e) { /* рамка закрыта */ } };
-  async function sendRecords() { try { const r = await api('/api/records?game=' + encodeURIComponent(key())); post({ type: 'records', record: r.record, best: r.mine }); } catch (e) { /* без рекордов */ } }
-  function onMsg(e) {
-    if (!iframe || e.source !== iframe.contentWindow) return;
-    const m = e.data || {};
-    if (m.source !== 'lab-game') return;
-    if (m.type === 'ready') { ready = true; clearTimeout(timer); sendRecords(); if (cfg) post({ type: 'setCfg', cfg }); if (onReady) onReady(m.meta || {}); }
-    if (m.type === 'over') { api('/api/score', { game: key(), score: m.score }).then(r => post({ type: 'records', record: r.record, best: r.mine })).catch(() => {}); if (onOver) onOver(m); }
-    if (m.type === 'error') { clearTimeout(timer); if (onError) onError(m); }
-  }
-  addEventListener('message', onMsg);
-  function showVeil(content) { veil.innerHTML = ''; veil.append(content); veil.hidden = false; }
-  const h = {
-    box,
-    start() {
-      S.frames.forEach(f => { if (f !== h) f.stop(); });
-      h.stop(true);
-      ready = false;
-      iframe = el('iframe', { sandbox: 'allow-scripts allow-pointer-lock', allow: 'gamepad; fullscreen; autoplay', title: label || 'Игра', src: src() });
-      box.prepend(iframe);
-      veil.hidden = true;
-      timer = setTimeout(() => { if (!ready && onError) onError({ phase: 'загрузка', message: 'игра не запустилась за 25 секунд' }); }, 25000);
-      iframe.addEventListener('load', () => { try { iframe.focus(); } catch (e) { /* фокус по клику */ } });
-    },
-    stop(silent) {
-      clearTimeout(timer);
-      if (iframe) { iframe.remove(); iframe = null; }
-      if (!silent) showVeil(el('button', { class: 'btn', type: 'button', onclick: () => h.start() }, '▶ ' + (label || 'Играть')));
-    },
-    message(content) { if (iframe) { iframe.remove(); iframe = null; } clearTimeout(timer); showVeil(content); },
-    destroy() { removeEventListener('message', onMsg); h.stop(true); },
-    fullscreen() { if (box.requestFullscreen) box.requestFullscreen().catch(() => {}); },
-  };
-  box.append(veil);
-  S.frames.push(h);
-  if (autostart) h.start(); else h.stop();
-  return h;
-}
-function frameBar(h, extra) {
-  return el('div', { class: 'gamebar' },
-    el('span', {}, 'Кликни по игре, чтобы управлять. Tab — ручки, R — заново.'),
-    el('span', { class: 'grow' }), extra || null,
-    el('button', { class: 'btn ghost small', type: 'button', onclick: () => h.fullscreen() }, '⛶ На весь экран'));
 }
 
 /* =================== типы шагов =================== */
@@ -208,12 +136,12 @@ STEPS.play = ctx => {
   let v = Object.assign({ rounds: 0, best: 0 }, ctx.value);
   const status = el('b', {});
   const show = () => { status.textContent = `Партий: ${v.rounds} · лучший счёт: ${v.best}` + (st.minRounds && v.rounds < st.minRounds ? ` · нужно партий: ${st.minRounds}` : ''); };
-  const h = gameFrame({
+  const h = Games.frame({
     src: () => '/engine/game.html?game=../' + st.game, key: () => 'remake:' + st.id, cfg: st.cfg, label: 'Играть',
     onOver: m => { v = { rounds: v.rounds + 1, best: Math.max(v.best, m.score || 0) }; show(); ctx.save(v, ctx.done || v.rounds >= (st.minRounds || 1)); },
   });
   show();
-  return el('div', { class: 'stack' }, h.box, frameBar(h, status),
+  return el('div', { class: 'stack' }, h.box, Games.bar(h, status),
     el('div', {}, el('button', { class: 'btn ghost small', type: 'button', onclick: () => ctx.save(v, true) }, 'Готово, дальше')));
 };
 
@@ -468,8 +396,8 @@ function ownGame({ onOver, autostart } = {}) {
   const versions = el('div', { class: 'versions' });
   let fixTries = 0;
   const g = () => S.game;
-  const h = gameFrame({
-    src: () => `/play/${g().id}/${g().current}`, key: () => 'game:' + g().id, label: 'Играть в свою игру', autostart,
+  const h = Games.frame({
+    src: () => `/play/${g().id}/${g().current}`, key: () => 'game:' + g().id, info: () => ({ version: g().current }), label: 'Играть в свою игру', autostart,
     onReady: () => { status.textContent = `Версия ${g().current} запущена.`; fixTries = 0; },
     onOver: m => { if (onOver) onOver(m); },
     onError: async err => {
@@ -499,7 +427,7 @@ function ownGame({ onOver, autostart } = {}) {
     }, `v${v.n} · ${v.kind || ''}`)));
   }
   drawVersions();
-  return { h, el: el('div', { class: 'stack' }, h.box, frameBar(h), el('div', { class: 'row' }, el('span', { class: 'small muted' }, 'Версии:'), versions), status), drawVersions };
+  return { h, el: el('div', { class: 'stack' }, h.box, Games.bar(h), el('div', { class: 'row' }, el('span', { class: 'small muted' }, 'Версии:'), versions), status), drawVersions };
 }
 
 STEPS.build = ctx => {
@@ -580,7 +508,7 @@ STEPS.workshop = ctx => {
       try {
         const r = await Lab.job('/api/ai/change', { request: text }, j => { p.textContent = `Программист вносит правку… ${j.seconds} с` + (j.chars ? ` · ${j.chars.toLocaleString('ru-RU')} символов` : ''); });
         S.game = r.game; v.requests = v.requests.concat({ text, dice: !!req.dice, version: r.version }); ctx.save(v, true, true);
-        toast(S.demo ? 'Демо-режим: правка записана, но игра не изменилась' : `Готово: версия ${r.version}`, 'ok'); draw(); S.frames[S.frames.length - 1].start();
+        toast(S.demo ? 'Демо-режим: правка записана, но игра не изменилась' : `Готово: версия ${r.version}`, 'ok'); draw(); Games.frames[Games.frames.length - 1].start();
       } catch (e) { toast(e.message, 'err', 8000); send.disabled = false; prog.innerHTML = ''; }
     });
     host.append(og.el,
@@ -589,6 +517,132 @@ STEPS.workshop = ctx => {
     if (v.requests.length) host.append(el('details', {}, el('summary', {}, `Мои правки (${v.requests.length})`), el('ol', {}, v.requests.map(r => el('li', {}, `${r.text}${r.dice ? ' [кубик]' : ''} → v${r.version}`)))));
   }
   draw();
+  return host;
+};
+
+/* ---------- играем вместе: игра соседа и плейтест ---------- */
+// arcade: игра одноклассника по кругу или на выбор, рекорд автора и свой, вызов «побей мой мир»
+STEPS.arcade = ctx => {
+  const st = ctx.step;
+  let v = Object.assign({ game: null, rounds: 0, best: 0, beat: false, played: 0 }, ctx.value);
+  const host = el('div', { class: 'stack' });
+  let data = null, waiting = false, cur = null;
+  const pick = game => { v = Object.assign(v, { game: game.id, author: game.nick, title: game.title, rounds: 0, best: 0, beat: false }); ctx.save(v); S.hooks.forEach(fn => fn('picked', game)); };
+  async function load(after) {
+    try { data = await api('/api/arcade' + (after ? '?after=' + encodeURIComponent(after) : '')); } catch (e) { host.innerHTML = ''; host.append(el('p', { class: 'err' }, e.message)); return; }
+    const game = (!after && v.game && data.games.find(g => g.id === v.game && !g.mine)) || data.neighbour;
+    if (game && game.id !== v.game) pick(game);
+    draw(game);
+  }
+  function draw(game) {
+    if (cur) { cur.destroy(); cur = null; }
+    host.innerHTML = '';
+    waiting = !game;
+    if (!game) {
+      host.append(el('div', { class: 'locked-msg card' }, el('h3', {}, 'Ждём игру соседа'),
+        el('p', { style: 'margin-top:6px' }, 'Пока никто из одноклассников не собрал игру. Как только сосед соберёт свою, она появится здесь сама.'),
+        el('div', { style: 'margin-top:12px' }, el('button', { class: 'btn ghost small', type: 'button', onclick: () => load() }, '↻ Проверить'))));
+      return;
+    }
+    const scoreHost = el('div'), chHost = el('div'), cardHost = el('div');
+    const showScores = () => { scoreHost.innerHTML = ''; scoreHost.append(Games.scores(game)); cardHost.innerHTML = ''; cardHost.append(Games.card(game, { compact: true })); };
+    const status = el('b', {});
+    const showStatus = () => { status.textContent = `Партий: ${v.rounds} · лучший счёт: ${v.best}` + (v.beat ? ' · рекорд автора побит!' : ''); };
+    const h = cur = Games.frame({
+      src: () => `/play/${game.id}/${game.version}`, key: () => 'game:' + game.id, info: () => ({ version: game.version }), label: 'Играть в игру соседа',
+      onOver: m => {
+        v.rounds++; v.played = (v.played || 0) + 1; v.best = Math.max(v.best, m.score || 0);
+        ctx.save(v, ctx.done || v.played >= (st.minRounds || 1)); showStatus();
+        chHost.innerHTML = ''; chHost.append(Games.challenge(game, m));
+      },
+      onScore: (m, r) => {
+        game.authorBest = r.authorBest || 0; game.myBest = r.mine; game.record = r.record; showScores();
+        if (m.score > game.authorBest && !v.beat) { v.beat = true; ctx.save(v); showStatus(); beep('done'); toast(`Рекорд автора побит: ${m.score} против ${game.authorBest}! Брось ему вызов.`, 'ok'); }
+      },
+      onError: err => h.message(el('div', { class: 'stack', style: 'align-items:center' }, el('b', {}, 'Игра соседа упала: ' + (err.message || 'ошибка')),
+        el('p', { class: 'muted small' }, 'Скажи автору — пусть починит в Мастерской. А пока возьми следующую игру по кругу.'))),
+    });
+    const picker = el('div', { class: 'agrid', hidden: true });
+    data.games.filter(g => !g.mine).forEach(g => picker.append(Games.card(g, { compact: true, actions: [el('button', { class: 'btn small', type: 'button', onclick: () => {
+      pick(g); draw(g); host.scrollIntoView({ behavior: 'smooth' });
+    } }, g.id === game.id ? 'Играешь сейчас' : '▶ Эту')] })));
+    showScores(); showStatus();
+    host.append(cardHost, scoreHost, h.box, Games.bar(h, status), chHost,
+      el('div', { class: 'row' },
+        el('button', { class: 'btn ghost small', type: 'button', onclick: () => load(game.nick) }, '↻ Следующая игра по кругу'),
+        el('button', { class: 'btn ghost small', type: 'button', onclick: () => { picker.hidden = !picker.hidden; } }, `Выбрать из аркады (${data.games.filter(g => !g.mine).length})`),
+        el('a', { class: 'btn ghost small', href: '/arcade', target: '_blank', rel: 'noopener' }, '🕹 Вся аркада ↗'),
+        el('span', { class: 'grow' }),
+        el('button', { class: 'btn small', type: 'button', onclick: () => { if (!v.played) { toast('Сначала сыграй хотя бы одну партию'); return; } ctx.save(v, true); } }, 'Готово, дальше')),
+      picker);
+  }
+  S.hooks.push(kind => { if (kind === 'arcade' && waiting) load(); });
+  host.append(el('p', { class: 'muted' }, 'Ищем игру соседа…'));
+  load();
+  return host;
+};
+
+// playtest: тап-карточка отзыва на игру соседа + открытие плейтеста моей игры и отзыв учителя
+STEPS.playtest = ctx => {
+  const st = ctx.step;
+  const emotions = st.emotions || ['😄 Весело', '😬 Напряжённо', '🤩 Вау', '🤔 Непонятно', '😤 Обидно', '😴 Скучно'];
+  const decks = st.decks || {};
+  let v = Object.assign({ game: null, emotions: [], like: { text: '' }, want: { text: '' }, whatif: { text: '' }, sent: false }, ctx.value);
+  const host = el('div', { class: 'stack' });
+  const mineHost = el('div', { class: 'stack' });
+  function drawCard() {
+    const about = ans(st.about).value || {};
+    const box = el('div', { class: 'stack ptform' });
+    if (!about.game) { box.append(el('p', { class: 'muted' }, 'Сначала сыграй в игру соседа в шаге выше — отзыв пишут на игру, в которую сыграл.')); return box; }
+    if (v.game !== about.game) v = Object.assign(v, { game: about.game, title: about.title, author: about.author, sent: false });
+    box.append(el('h3', {}, `Отзыв на «${about.title || 'игру соседа'}»`), el('p', { class: 'muted small' }, `Автор: ${about.author || '—'}. Отзыв конкретный и доброжелательный: что нравится, чего хочется, а что если…`));
+    const grid = el('div', { class: 'emos', role: 'group', 'aria-label': 'Что ты чувствовал' });
+    emotions.forEach(e => {
+      const b = el('button', { type: 'button', class: 'emo' + (v.emotions.includes(e) ? ' on' : ''), 'aria-pressed': String(v.emotions.includes(e)) }, e);
+      b.addEventListener('click', () => {
+        if (v.emotions.includes(e)) v.emotions = v.emotions.filter(x => x !== e);
+        else { if (v.emotions.length >= 2) { toast('Не больше двух эмоций'); return; } v.emotions = v.emotions.concat(e); }
+        b.classList.toggle('on', v.emotions.includes(e)); b.setAttribute('aria-pressed', String(v.emotions.includes(e))); beep('tick'); ctx.save(v);
+      });
+      grid.append(b);
+    });
+    box.append(el('div', { class: 'eyebrow' }, 'Что ты чувствовал? Одна-две кнопки'), grid);
+    [['like', 'Нравится', 'Что было лучше всего?'], ['want', 'Хочется', 'Чего не хватило?'], ['whatif', 'А что если', 'Одна смелая идея для версии 2']].forEach(([k, label, hint]) =>
+      box.append(fieldEditor({ id: k, label, hint, deck: decks[k] }, v[k], nv => { v[k] = nv; ctx.save(v); }, { idPrefix: st.id })));
+    const send = el('button', { class: 'btn', type: 'button' }, v.sent ? 'Отправить заново' : 'Отправить автору');
+    send.addEventListener('click', async () => {
+      if (!v.emotions.length) { toast('Нажми хотя бы одну эмоцию'); return; }
+      const missing = [['like', 'Нравится'], ['want', 'Хочется'], ['whatif', 'А что если']].filter(([k]) => !valText(v[k]));
+      if (missing.length) { toast('Заполни: ' + missing.map(m => m[1]).join(', ')); return; }
+      send.disabled = true;
+      try { await api('/api/playtest', { game: v.game, card: { emotions: v.emotions, like: v.like, want: v.want, whatif: v.whatif } }); v.sent = true; ctx.save(v, true, true); toast('Отзыв ушёл автору', 'ok'); send.textContent = 'Отправить заново'; }
+      catch (e) { toast(e.message, 'err'); }
+      send.disabled = false;
+    });
+    box.append(el('div', { class: 'row' }, send, v.sent ? el('span', { class: 'tag ok' }, 'отправлено') : null));
+    return box;
+  }
+  async function drawMine() {
+    let r;
+    try { r = await api('/api/playtest/mine'); } catch (e) { mineHost.innerHTML = ''; mineHost.append(el('p', { class: 'err' }, e.message)); return; }
+    S.me.feedback = r.feedback;
+    mineHost.innerHTML = '';
+    mineHost.append(el('div', { class: 'row' }, el('h3', { class: 'grow' }, r.game ? `Твоя игра «${r.game.title}» глазами класса` : 'Твоя игра глазами класса'),
+      el('button', { class: 'btn ghost small', type: 'button', onclick: drawMine }, '↻ Обновить')));
+    if (!r.game) mineHost.append(el('p', { class: 'muted' }, 'Ты ещё не собрал игру — открытие плейтеста появится, когда в неё сыграют соседи.'));
+    else mineHost.append(Games.discovery(r.discovery));
+    mineHost.append(Games.feedback(r.feedback));
+  }
+  const cardHost = el('div');
+  const redrawCard = () => { cardHost.innerHTML = ''; cardHost.append(drawCard()); };
+  S.hooks.push((kind, d) => {
+    if (kind === 'picked') redrawCard();
+    if (kind === 'feedback' || (kind === 'arcade' && d.author === S.me.nick)) drawMine();
+  });
+  redrawCard();
+  host.append(cardHost, el('hr', { class: 'sep' }), mineHost);
+  mineHost.append(el('p', { class: 'muted small' }, 'Загружаем открытие плейтеста…'));
+  drawMine();
   return host;
 };
 
@@ -607,6 +661,9 @@ function stepSummary(step) {
     case 'build': return S.game ? `«${S.game.title || ''}», версий ${S.game.versions.length}, текущая v${S.game.current}, модель ${(S.game.versions[S.game.current - 1] || {}).model || '—'}, партий ${v.rounds || 0}` : 'игра не собрана';
     case 'aicheck': return `догадка: ${v.text || '—'}` + (v.notes ? '\nрешения программиста: ' + (v.notes.join('; ') || 'нет записей') : '');
     case 'workshop': return (v.requests || []).map(r => `${r.text}${r.dice ? ' [кубик]' : ''} → v${r.version}`).join('\n') || 'правок не было';
+    case 'arcade': return v.game ? `игра «${v.title || ''}» (автор ${v.author || '—'}), партий ${v.rounds || 0}, лучший счёт ${v.best || 0}${v.beat ? ', рекорд автора побит' : ''}` : 'не играл';
+    case 'playtest': return (v.sent ? `отзыв на «${v.title || ''}»: ${(v.emotions || []).join(' ')}; нравится: ${f(v.like)}; хочется: ${f(v.want)}; а что если: ${f(v.whatif)}` : 'отзыв не отправлен') +
+      (S.me.feedback ? `\nотзыв учителя: понятие — ${valText(S.me.feedback.concept)}; вопрос — ${valText(S.me.feedback.question)}` : '');
     default: return JSON.stringify(v);
   }
 }

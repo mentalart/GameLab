@@ -695,7 +695,9 @@
     if (typeof G.overNote === 'function') safe(() => { const n = G.overNote(lab); (Array.isArray(n) ? n : [n]).filter(Boolean).forEach(x => notes.push(String(x))); }, 'overNote');
     notes.push(...teleNotes());
     $('#overNotes').innerHTML = notes.map(n => `<div>${esc(n)}</div>`).join('');
-    $('#overSeed').textContent = `Зерно партии: ${lab.seed}. Тот же мир для друга: ссылка с ?seed=${lab.seed}`;
+    $('#overSeed').textContent = window.parent !== window
+      ? `Зерно партии: ${lab.seed}. Тот же мир для друга — кнопка «Вызов: побей мой мир» под игрой.`
+      : `Зерно партии: ${lab.seed}. Тот же мир для друга: ссылка с ?seed=${lab.seed}`;
     showRecord();
     showScreen('overScreen');
     disarm();

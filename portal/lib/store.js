@@ -124,6 +124,22 @@ const store = {
     return all;
   },
 
+  // ---------- партии чужих игроков: телеметрия, «ещё раз», карточки плейтеста ----------
+  addPlay(gameId, entry) { appendLine(path.join(this.gameDir(gameId), 'plays.jsonl'), Object.assign({ at: now() }, entry)); },
+  plays(gameId) { return /^[\w-]{6,20}$/.test(gameId || '') ? readLines(path.join(this.gameDir(gameId), 'plays.jsonl')) : []; },
+
+  // ---------- вызовы «побей мой мир»: игра + версия + зерно ----------
+  challenges(code) { return readJSON(path.join(classDir(code), 'challenges.json'), {}); },
+  createChallenge(code, info) {
+    const all = this.challenges(code);
+    let ch;
+    do { ch = newCode() + newCode().slice(0, 1); } while (all[ch]);
+    all[ch] = Object.assign({ code: ch, at: now() }, info);
+    writeJSON(path.join(classDir(code), 'challenges.json'), all);
+    return all[ch];
+  },
+  getChallenge(code, ch) { return this.challenges(code)[String(ch || '').trim().toUpperCase()] || null; },
+
   // ---------- заметки автора и журнал генераций ----------
   addNote(note) { appendLine(path.join(DATA, 'notes.jsonl'), Object.assign({ at: now() }, note)); },
   notes() { return readLines(path.join(DATA, 'notes.jsonl')); },

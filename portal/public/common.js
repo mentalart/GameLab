@@ -1,4 +1,4 @@
-// Общие помощники страниц портала: запросы к серверу, уведомления, кубик, звук, копирование.
+// Общие помощники страниц портала: запросы к серверу, уведомления, кубик и поле с кубиком, звук, копирование.
 'use strict';
 const Lab = (() => {
   // у ученика и учителя разные ключи: в одном браузере можно держать обе вкладки
@@ -74,6 +74,36 @@ const Lab = (() => {
       ta.remove();
     }
   }
+  // поле с кубиком: свои слова или вариант из колоды; нетронутый вариант помечается [кубик]
+  function valText(v) { return v && typeof v === 'object' ? v.text || '' : v || ''; }
+  function fieldTag(v) {
+    if (!valText(v)) return null;
+    if (v.dice) return el('span', { class: 'tag dice', title: 'Вариант кубика, автор его не менял' }, '[кубик]');
+    if (v.auto) return el('span', { class: 'tag auto' }, 'черновик Фабрики');
+    return el('span', { class: 'tag own' }, 'свои слова');
+  }
+  function fieldEditor(f, value, onChange, opts = {}) {
+    let v = Object.assign({ text: '', dice: false }, typeof value === 'object' ? value : { text: value || '' });
+    const tagHost = el('span');
+    const setTag = () => { tagHost.innerHTML = ''; const t = fieldTag(v); if (t) tagHost.append(t); };
+    const ta = el(opts.single ? 'input' : 'textarea', { type: opts.single ? 'text' : null, rows: opts.rows || 2, id: 'f-' + (opts.idPrefix || '') + f.id, placeholder: f.placeholder || 'Своими словами или брось кубик' });
+    ta.value = v.text;
+    ta.addEventListener('input', () => { v = { text: ta.value, dice: false }; setTag(); onChange(v); });
+    const kids = [ta];
+    if (f.deck && f.deck.length) {
+      const d = el('button', { type: 'button', class: 'dicebtn', title: 'Кубик: случайный вариант', 'aria-label': 'Бросить кубик для поля «' + f.label + '»' }, '🎲');
+      d.addEventListener('click', () => {
+        d.classList.remove('roll'); void d.offsetWidth; d.classList.add('roll'); beep('dice');
+        v = { text: roll(f.deck, v.text), dice: true }; ta.value = v.text; setTag(); onChange(v);
+      });
+      kids.push(d);
+    }
+    setTag();
+    return el('div', { class: 'field' },
+      el('div', { class: 'head' }, f.letter ? el('span', { class: 'letter' }, f.letter) : null, el('label', { class: 'lbl', for: ta.id, style: 'margin:0' }, f.label), tagHost),
+      f.hint ? el('div', { class: 'hint' }, f.hint) : null,
+      el('div', { class: 'box' }, kids));
+  }
   const fmtTime = iso => { if (!iso) return '—'; const s = Math.round((Date.now() - new Date(iso)) / 1000); return s < 60 ? s + ' с назад' : s < 3600 ? Math.round(s / 60) + ' мин назад' : new Date(iso).toLocaleString('ru-RU'); };
-  return { token, api, job, el, toast, roll, beep, copy, fmtTime };
+  return { token, api, job, el, toast, roll, beep, copy, fmtTime, valText, fieldTag, fieldEditor };
 })();

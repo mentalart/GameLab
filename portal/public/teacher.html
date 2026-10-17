@@ -35,10 +35,12 @@
   <main class="tmain">
     <div class="tabs" role="tablist">
       <button type="button" class="on" data-tab="lesson">Урок</button>
+      <button type="button" data-tab="arcade">Аркада</button>
       <button type="button" data-tab="ai">ИИ и расходы</button>
       <button type="button" data-tab="notes">Заметки автора</button>
     </div>
     <section id="tab-lesson" class="stack"></section>
+    <section id="tab-arcade" class="stack" hidden></section>
     <section id="tab-ai" class="stack" hidden></section>
     <section id="tab-notes" class="stack" hidden></section>
   </main>
@@ -50,6 +52,7 @@
   </div>
 </dialog>
 <script src="/common.js"></script>
+<script src="/games.js"></script>
 <script src="/teacher.js"></script>
 </body>
 </html>

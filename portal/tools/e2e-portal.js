@@ -1,6 +1,8 @@
 #!/usr/bin/env node
 // Сквозная проверка портала в браузере: учитель и ученик проходят урок 1 целиком.
 // Два прогона: с подставным ИИ (mock-ai.js: продюсер, сборка с ошибкой → автопочинка, правка) и в демо-режиме без ключа.
+// В прогоне с ИИ — «Играем вместе»: второй ученик собирает игру, оба играют в игры друг друга, бьют рекорд автора,
+// бросают вызов на зерне, оставляют плейтест; учитель пишет отзыв; аркада класса и личная аркада, скрытие игры.
 // Данные и настройки — во временной папке, настоящий portal/config.json и portal/data/ не трогаются.
 // Запуск: node portal/tools/e2e-portal.js [--headed]   Снимки — в portal/.check/portal-*.png
 'use strict';
@@ -39,11 +41,20 @@ async function gameFrame(page, urlPart, n = 0) {
   }
   throw new Error('Не дождался рамки игры ' + urlPart);
 }
-async function playRound(frame) {
-  await frame.evaluate(() => window.__lab.confirm());
-  await sleep(300);
-  await frame.evaluate(() => window.__lab.end('lose', 'Проверка'));
+// партия: старт, по желанию — зажатая клавиша (телеметрия), конец с заданным счётом
+async function playRound(frame, { score = 0, hold = null, page = null, restart = false } = {}) {
+  await frame.evaluate(r => (r ? window.__lab.restart() : window.__lab.confirm()), restart);
+  if (hold && page) {
+    await frame.locator('#cv').focus();
+    await page.keyboard.down(hold); await sleep(900); await page.keyboard.up(hold);
+  } else await sleep(300);
+  await frame.evaluate(s => { window.__lab.lab.score = s; window.__lab.end('lose', 'Проверка'); }, score);
 }
+const watch = (p, errors) => {
+  p.on('pageerror', e => errors.push(e.message));
+  p.on('dialog', d => d.accept());
+  p.on('console', m => { if (m.type() === 'error' && !/Failed to load resource|^\[lab3d\]/.test(m.text())) errors.push(m.text()); }); // ошибки игр [lab3d] ловит автопочинка
+};
 
 async function run(browser, base, mode) {
   console.log(`\n▶ Прогон: ${mode === 'mock' ? 'подставной ИИ' : 'демо-режим без ключа'}`);
@@ -52,12 +63,8 @@ async function run(browser, base, mode) {
   const sctx = await browser.newContext({ viewport: { width: 1280, height: 900 } });
   const teacher = await tctx.newPage(), student = await sctx.newPage();
   failShots = async () => { await student.screenshot({ path: path.join(OUT, `portal-${mode}-x-student.png`), fullPage: true }).catch(() => {}); await teacher.screenshot({ path: path.join(OUT, `portal-${mode}-x-teacher.png`) }).catch(() => {}); };
-  for (const p of [teacher, student]) {
-    p.on('pageerror', e => errors.push(e.message));
-    p.on('dialog', d => d.accept());
-    p.on('console', m => { if (m.type() === 'error' && !/Failed to load resource|^\[lab3d\]/.test(m.text())) errors.push(m.text()); }); // ошибки игр [lab3d] ловит автопочинка
-  }
-  const shot = async (p, name) => p.screenshot({ path: path.join(OUT, `portal-${mode}-${name}.png`), fullPage: false });
+  for (const p of [teacher, student]) watch(p, errors);
+  const shot = async (p, name, fullPage = false) => p.screenshot({ path: path.join(OUT, `portal-${mode}-${name}.png`), fullPage });
 
   // учитель: вход, класс, первый чекпоинт
   await teacher.goto(base + '/');
@@ -66,7 +73,8 @@ async function run(browser, base, mode) {
   await teacher.waitForURL('**/teacher');
   await teacher.fill('#newName', 'Проверка ' + mode);
   await teacher.click('#newClass button');
-  await teacher.waitForFunction(() => /^[A-Z0-9]{5}$/.test(document.querySelector('#classCode').textContent));
+  // ждём именно новый класс: до создания панель показывает класс прошлого прогона
+  await teacher.waitForFunction(name => { const o = document.querySelector('#classSel').selectedOptions[0]; return o && o.textContent.startsWith(name) && /^[A-Z0-9]{5}$/.test(document.querySelector('#classCode').textContent) && o.textContent.endsWith(document.querySelector('#classCode').textContent); }, 'Проверка ' + mode);
   const code = await teacher.textContent('#classCode');
   check('Учитель создал класс', /^[A-Z0-9]{5}$/.test(code), code);
   await teacher.click('text=Открыть: Донор →');
@@ -177,11 +185,20 @@ async function run(browser, base, mode) {
   await student.click('#step-masterskaya >> text=Отправить программисту');
   await student.waitForFunction(n => document.querySelectorAll('#step-masterskaya .ver').length > n, before, { timeout: 30000 });
   check('Правка дала новую версию', true, await student.textContent('#step-masterskaya .versions'));
-  await student.click('#step-masterskaya .ver >> nth=0');
+  // откат одним кликом: в демо — к v1, с ИИ — к починенной v2 (v1 нарочно падает, а в эту версию будут играть соседи)
+  const back = mode === 'mock' ? 2 : 1;
+  await student.click(`#step-masterskaya .ver >> nth=${back - 1}`);
   await sleep(500);
   const cur = await student.textContent('#step-masterskaya .ver.cur');
-  check('Откат к версии 1 одним кликом', /v1/.test(cur), cur);
+  check(`Откат к версии ${back} одним кликом`, new RegExp('v' + back).test(cur), cur);
   await shot(student, '6-workshop');
+
+  if (mode === 'mock') await together(browser, base, code, teacher, student, errors, shot);
+  else {
+    await student.click('.cp >> text=Играем вместе');
+    await student.waitForSelector('#step-sosed >> text=Ждём игру соседа');
+    check('Без игр соседей шаг arcade ждёт и не падает', true);
+  }
 
   // открытие и заметка автора
   await student.click('.cp >> text=Открытие');
@@ -216,6 +233,137 @@ async function run(browser, base, mode) {
 
   check('Без ошибок JavaScript на страницах портала', !errors.length, errors.slice(0, 3).join(' | '));
   await tctx.close(); await sctx.close();
+}
+
+/* ---------- «Играем вместе»: второй ученик, игры друг друга, вызов, плейтест, отзыв, аркада ---------- */
+async function together(browser, base, code, teacher, student, errors, shot) {
+  const nctx = await browser.newContext({ viewport: { width: 1280, height: 900 } });
+  const nb = await nctx.newPage();
+  watch(nb, errors);
+  // вторая ученица собирает свою игру: Фабрика и решения кубиками, ИГРА, сборка без продюсера
+  await nb.goto(base + '/?code=' + code);
+  await nb.fill('#nick', 'Соседка');
+  await nb.click('#studentForm button[type=submit]');
+  await nb.waitForURL('**/student');
+  await nb.click('.cp >> text=Фабрика');
+  await nb.click('#step-fabrika >> text=🎲 Кубик для пустых полей');
+  await nb.fill('#f-fabrikatitle', 'Тучи над Фиштом');
+  await nb.click('#step-fabrika >> text=Замысел готов');
+  for (let i = 0; i < 3; i++) await nb.click(`#step-resheniya .dicebtn >> nth=${i}`);
+  await nb.click('#step-resheniya >> text=Решения приняты');
+  await nb.click('.cp >> text=Промпт ИГРА');
+  await nb.click('#step-igra >> text=Промпт готов');
+  await nb.click('.cp >> text=Сборка');
+  await nb.click('#step-sborka >> text=⚙ Собрать игру');
+  let nown = await gameFrame(nb, '/play/', 0);
+  await nown.evaluate(() => window.__lab.confirm());
+  await nb.waitForFunction(() => document.querySelectorAll('#step-sborka .ver').length >= 2, null, { timeout: 30000 });
+  nown = await gameFrame(nb, '/play/', 0);
+  await playRound(nown, { score: 40 });
+  await nb.waitForSelector('#step-sborka.done', { timeout: 10000 });
+  check('Второй ученик собрал игру и поставил рекорд автора (40)', true);
+
+  // Тестер: игра соседа по кругу, рекорд автора побит, «ещё раз», вызов на зерне
+  await student.click('.cp >> text=Играем вместе');
+  await student.waitForSelector('#step-sosed .acard', { timeout: 15000 });
+  const nbTitle = await student.textContent('#step-sosed .acard h3');
+  check('Шаг arcade дал игру соседа по кругу', nbTitle.includes('Тучи над Фиштом'), nbTitle);
+  const nbCard = (await student.textContent('#step-sosed .acard')).replace(/\s+/g, ' ');
+  check('Карточка соседа: автор, донор и «Что решил я»', /Соседка/.test(nbCard) && /Space Invaders/.test(nbCard) && await student.locator('#step-sosed .acard').first().locator('.decided li').count() === 3, nbCard.slice(0, 160));
+  check('Видно рекорд автора', (await student.textContent('#step-sosed .scores')).includes('40'), (await student.textContent('#step-sosed .scores')).replace(/\s+/g, ' '));
+  await student.click('#step-sosed .veil button');
+  let sf = await gameFrame(student, '/play/', 0);
+  await playRound(sf, { score: 120, hold: 'ArrowRight', page: student });
+  await student.waitForSelector('#step-sosed .gamebar >> text=рекорд автора побит', { timeout: 10000 });
+  check('Рекорд автора побит, шаг arcade засчитан', await student.locator('#step-sosed.done').count() === 1);
+  await playRound(sf, { score: 80, hold: 'ArrowRight', page: student, restart: true });
+  const seed = await sf.evaluate(() => window.__lab.lab.seed);
+  await student.click('#step-sosed >> text=⚔ Вызов: побей мой мир');
+  await student.waitForSelector('#step-sosed .chcode');
+  const chCode = (await student.textContent('#step-sosed .chcode')).trim();
+  check('Вызов «побей мой мир» выдал код', /^[A-Z0-9]{6}$/.test(chCode), chCode + ', зерно ' + seed);
+  await shot(student, '9-arcade-step', true);
+
+  // плейтест тап-карточкой
+  await student.click('#step-pleytest .emo >> nth=1');
+  await student.click('#step-pleytest .dicebtn >> nth=0');
+  await student.fill('#f-pleytestwant', 'Хочется видеть, откуда летят тучи');
+  await student.click('#step-pleytest .dicebtn >> nth=2');
+  await student.click('#step-pleytest >> text=Отправить автору');
+  await student.waitForSelector('#step-pleytest.done');
+  check('Плейтест-карточка отправлена автору', true);
+  await student.click('#step-dom-strategiya >> text=Понятно');
+  await student.locator('#step-pleytest').scrollIntoViewIfNeeded();
+  await shot(student, '10-playtest', true);
+
+  // Соседка: играет в игру Тестера, пишет плейтест и видит открытие плейтеста своей игры
+  await nb.click('.cp >> text=Играем вместе');
+  await nb.waitForSelector('#step-sosed .acard', { timeout: 15000 });
+  check('Сосед получил игру Тестера', (await nb.textContent('#step-sosed .acard h3')).includes('Пасека под огнём'));
+  await nb.click('#step-sosed .veil button');
+  const tf = await gameFrame(nb, '/play/', 0);
+  await playRound(tf, { score: 30 });
+  await nb.waitForSelector('#step-sosed.done', { timeout: 10000 });
+  await nb.click('#step-pleytest .emo >> nth=0');
+  for (let i = 0; i < 3; i++) await nb.click(`#step-pleytest .dicebtn >> nth=${i}`);
+  await nb.click('#step-pleytest >> text=Отправить автору');
+  await nb.waitForSelector('#step-pleytest.done');
+  await nb.click('#step-pleytest >> text=↻ Обновить');
+  await nb.waitForSelector('#step-pleytest .discovery .barrow', { timeout: 10000 });
+  const disc = (await nb.textContent('#step-pleytest .discovery')).replace(/\s+/g, ' ');
+  check('Открытие плейтеста: партии чужих игроков и «ещё раз»', /2\s*партий сыграли чужие/.test(disc) && /1\s*раз нажали «ещё раз»/.test(disc), disc.slice(0, 90));
+  check('Открытие плейтеста: доминирующая кнопка — «→»', /держали → вправо/.test(disc), (disc.match(/держали[^.]*/) || [''])[0]);
+  check('Автор видит карточку плейтеста соседа', disc.includes('Хочется видеть, откуда летят тучи'));
+
+  // учитель: отзыв «одно понятие + один вопрос», ученик видит его на шаге без перезагрузки
+  await teacher.click('.tabs >> text=Урок');
+  await teacher.click('tr.click >> text=Соседка');
+  await teacher.waitForSelector('#studentDlg[open] .fbedit');
+  check('Учитель видит плейтест игры ученика', /партий сыграли чужие/.test(await teacher.textContent('#studentDlg')));
+  await teacher.click('#studentDlg .fbedit .dicebtn >> nth=0');
+  await teacher.fill('#f-fb-question', 'Какой кнопке в твоей игре нужна цена?');
+  await teacher.click('#studentDlg >> text=Отправить отзыв ученику');
+  await nb.waitForSelector('#step-pleytest .feedback >> text=Какой кнопке', { timeout: 10000 });
+  check('Ученик видит отзыв учителя на шаге (живое обновление)', /Понятие:/.test(await nb.textContent('#step-pleytest .feedback')));
+  await shot(teacher, '11-feedback');
+  await teacher.click('#studentDlg >> text=Закрыть');
+  await nb.locator('#step-pleytest .discovery').scrollIntoViewIfNeeded();
+  await shot(nb, '12-discovery', true);
+
+  // аркада класса: обе игры, вызов по коду в том же мире
+  await nb.goto(base + '/arcade');
+  await nb.waitForSelector('#games .acard >> nth=1');
+  check('Аркада класса: обе игры с подписью «Что решил я»', await nb.locator('#games .acard').count() === 2 && await nb.locator('#games .decided').count() === 2);
+  check('Личная аркада: моя игра по урокам', (await nb.textContent('#mine')).includes('Урок 1') && await nb.locator('#mine .acard').count() === 1);
+  await shot(nb, '13-arcade', true);
+  await nb.fill('#chCode', chCode.toLowerCase());
+  await nb.click('#chForm button');
+  await nb.waitForSelector('#stage iframe');
+  const cf = await gameFrame(nb, 'seed=', 0);
+  const cseed = await cf.evaluate(() => window.__lab.lab.seed);
+  check('Вызов открыл тот же мир: /play/…?seed= передал зерно в оболочку', cseed === seed, `зерно ${cseed}`);
+  await playRound(cf, { score: 200 });
+  await nb.waitForSelector('#stage >> text=Таблица вызова', { timeout: 10000 });
+  check('Таблица вызова: результат принявшего вызов', /Соседка — 200/.test(await nb.textContent('#stage')));
+  await shot(nb, '14-challenge');
+
+  // автор скрывает игру — у соседа её больше нет в аркаде
+  await nb.click('#mine >> text=🙈 Скрыть из аркады');
+  await nb.waitForSelector('#mine >> text=👁 Вернуть в аркаду');
+  const sa = await student.context().newPage();
+  watch(sa, errors);
+  await sa.goto(base + '/arcade');
+  await sa.waitForSelector('#games .acard');
+  check('Скрытая игра пропала из аркады класса', !(await sa.textContent('#games')).includes('Тучи над Фиштом') && (await sa.textContent('#games')).includes('Пасека под огнём'));
+  await sa.close();
+
+  // вкладка учителя «Аркада»
+  await teacher.click('.tabs >> text=Аркада');
+  await teacher.waitForSelector('#tab-arcade .acard >> nth=1');
+  check('Учитель видит аркаду класса, скрытую игру — с пометкой', (await teacher.textContent('#tab-arcade')).includes('скрыта автором'));
+  await shot(teacher, '15-teacher-arcade');
+  await teacher.click('.tabs >> text=Урок');
+  await nctx.close();
 }
 
 (async () => {

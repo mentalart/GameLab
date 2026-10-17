@@ -42,7 +42,9 @@ $('#studentForm').addEventListener('submit', async e => {
   e.preventDefault(); $('#sErr').textContent = '';
   try {
     const r = await Lab.api('/api/login', { role: 'student', code: $('#code').value, nick: $('#nick').value });
-    Lab.token.set(r.token, 'student'); location.href = '/student';
+    Lab.token.set(r.token, 'student');
+    const next = q.get('next') || '';
+    location.href = /^\/arcade(\?[\w=&-]*)?$/.test(next) ? next : '/student'; // вход по ссылке вызова ведёт обратно в аркаду
   } catch (err) { $('#sErr').textContent = err.message; }
 });
 $('#teacherForm').addEventListener('submit', async e => {
