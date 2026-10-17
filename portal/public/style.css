@@ -416,3 +416,14 @@ dialog.chdlg{width:min(1100px,calc(100% - 32px));max-height:calc(100vh - 32px);o
 .pj-day .pj-dtop div b{margin-left:auto;font-variant-numeric:tabular-nums;color:var(--warm)}
 .pj-day .pj-dtop div:first-child{font-size:34px;outline:2px solid var(--warm)}
 .pj-day .pj-dtop div::before{counter-increment:pl;content:counter(pl) '.';color:var(--muted);min-width:1.6em}
+/* связка карт вау-старта и правка продюсера «было → стало» */
+.linkbox{display:flex;flex-direction:column;gap:8px;margin-top:10px;padding:12px 14px;border-radius:var(--r);border:1px dashed var(--violet);background:#17142b}
+.linkbox.ok{border-style:solid;border-color:var(--accent);background:#0f1f18}
+.linkbox .link-phrase{font-size:18px;font-weight:700;line-height:1.35}
+.linkbox .link-rows{display:flex;flex-direction:column;gap:4px;font-size:14px}
+.pj-demo .linkbox .link-phrase{font-size:26px}
+.pj-demo .linkbox .link-rows{font-size:18px}
+.fixbox .fixrow{display:flex;flex-direction:column;gap:2px;padding:8px 10px;border-radius:10px;background:var(--bg2)}
+.fixbox .was{color:var(--muted);text-decoration:line-through;font-size:13px}
+.fixbox .now{color:var(--text)}
+.fixbox .now::before{content:'→ ';color:var(--accent);font-weight:700}

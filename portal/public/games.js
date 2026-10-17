@@ -1,5 +1,5 @@
 // Общие помощники игр для страниц ученика, аркады и учителя: рамка-песочница, карточка игры аркады,
-// вызов «побей мой мир» (кнопка, игра по вызову с призраком, доска вызовов), открытие плейтеста и отзыв учителя.
+// вызов «побей мой мир» (кнопка, игра по вызову с призраком, доска вызовов), связка карт вау-старта, открытие плейтеста и отзыв учителя.
 'use strict';
 const Games = (() => {
   const { el, api, toast, copy, beep, valText } = Lab;
@@ -249,6 +249,35 @@ const Games = (() => {
     if (d.kind === 'day') { beep('done'); toast(`Учитель дал мир дня: «${d.title}». Весь класс играет один мир — кнопка на доске вызовов.`, 'ok', 7000); }
   }
 
+  /* ---------- вау-старт: связка карт от ИИ (панель учителя и проектор) ---------- */
+  // геймдизайнер сводит четыре карты в одну игру: фраза, главный цикл, поворот × действие, смешной момент.
+  // Учитель принимает связку или просит другую; принятая уходит программисту вместе с картами. onChange — перерисовать вкладку.
+  function linkBox({ link, ready, editable, code, onChange }) {
+    const box = el('div', { class: 'linkbox' + (link && link.accepted ? ' ok' : '') });
+    if (!ready || (!link && !editable)) { box.hidden = true; return box; }
+    const ask = async btn => {
+      btn.disabled = true;
+      try { await Lab.job('/api/teacher/wow/link', { code }, j => { btn.textContent = `🧠 Геймдизайнер сводит карты… ${j.seconds} с`; }); beep('good'); } catch (e) { toast(e.message, 'err'); }
+      onChange();
+    };
+    const act = async accepted => { try { await api('/api/teacher/wow/link/accept', { code, accepted }); if (accepted) beep('done'); } catch (e) { toast(e.message, 'err'); } onChange(); };
+    const askBtn = label => { const b = el('button', { class: 'btn' + (link ? ' ghost' : ''), type: 'button' }, label); b.addEventListener('click', () => ask(b)); return b; };
+    if (!link) {
+      box.append(el('div', { class: 'row' }, el('div', { class: 'grow stack', style: 'gap:2px' }, el('b', {}, '🧠 Связка: как четыре карты становятся одной игрой'),
+        el('span', { class: 'muted small' }, 'Геймдизайнер за несколько секунд сведёт карты: фраза игры, главный цикл, поворот × действие, смешной момент. Принятая связка уйдёт программисту.')),
+      askBtn('🧠 Связка от ИИ')));
+      return box;
+    }
+    box.append(el('div', { class: 'row' }, el('div', { class: 'eyebrow grow' }, 'Связка геймдизайнера'),
+      link.accepted ? el('span', { class: 'tag ok' }, '✓ принята — уйдёт в сборку') : editable ? el('span', { class: 'tag' }, 'ждёт решения учителя') : null),
+    el('p', { class: 'link-phrase' }, link.phrase),
+    el('div', { class: 'link-rows' }, [['Главный цикл', link.loop], ['Поворот × действие', link.twist], ['Смешной момент', link.funny]].filter(x => x[1])
+      .map(([k, v]) => el('div', {}, el('b', {}, k + ': '), v))));
+    if (editable) box.append(el('div', { class: 'row' }, link.accepted ? el('button', { class: 'btn ghost small', type: 'button', onclick: () => act(false) }, 'Снять принятие')
+      : el('button', { class: 'btn warm', type: 'button', onclick: () => act(true) }, '✓ Принять связку'), askBtn('↻ Другая связка')));
+    return box;
+  }
+
   /* ---------- открытие плейтеста и отзыв учителя ---------- */
   const pct = x => Math.round((x || 0) * 100) + '%';
   function discovery(d, { who = 'Игроки' } = {}) {
@@ -284,5 +313,5 @@ const Games = (() => {
       el('div', {}, el('b', {}, 'Вопрос: '), valText(fb.question)));
   }
 
-  return { frames, frame, teacherFrame, bar, stopAll, card, scores, challenge, challengeStage, openChallenge, board, challengeEvent, discovery, feedback };
+  return { frames, frame, teacherFrame, bar, stopAll, card, scores, challenge, challengeStage, openChallenge, board, challengeEvent, linkBox, discovery, feedback };
 })();

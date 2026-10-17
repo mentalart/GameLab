@@ -528,6 +528,7 @@ function publicWow(cls, les) {
     formula: les.wow.formula,
     cards: les.wow.cards.map(c => ({ id: c.id, label: c.label, text: w.cards[c.id] || null, voters: w.votes[c.id] || [] })),
     status: w.given ? 'given' : w.status,
+    link: acceptedLink(w) ? { phrase: w.link.phrase, loop: w.link.loop, twist: w.link.twist, funny: w.link.funny } : null,
     game: g && g.current ? { id: g.id, version: g.current, title: g.title, knob: w.knob } : null,
   };
 }
@@ -631,6 +632,7 @@ route('POST', '/api/teacher/wow/draw', (ctx) => {
   if (!list.length) throw Object.assign(new Error('Нет такой карты'), { status: 400 });
   const seen = ((cls.wowSeen = cls.wowSeen || {})[les.id] = cls.wowSeen[les.id] || {});
   for (const c of list) { w.cards[c.id] = drawFresh(seen, c.id, c.deck, w.cards[c.id]); w.votes[c.id] = []; }
+  w.link = null; // новые карты — связка устарела
   if (!w.given && w.status !== 'building') w.status = 'cards';
   store.saveClass(cls); wowChanged(cls, les);
   return { wow: w };
@@ -641,6 +643,31 @@ route('POST', '/api/teacher/wow/secret', (ctx) => { // без id — кубик,
   else { w.secret = randFrom(aiSecrets(les).map(x => x.id), w.secret); w.secretBy = 'кубик'; }
   store.saveClass(cls);
   return { secret: secretOf(les, w.secret), secretBy: w.secretBy };
+});
+// связка от ИИ: геймдизайнер сводит четыре карты в одну игру; принятая связка уходит программисту вместе с картами
+const cardsKey = w => JSON.stringify(w.cards);
+const acceptedLink = w => (w.link && w.link.accepted && w.link.cards === cardsKey(w) ? w.link : null);
+route('POST', '/api/teacher/wow/link', (ctx) => {
+  const { cls, les, w } = needWow(ctx);
+  const missing = les.wow.cards.filter(c => !w.cards[c.id]);
+  if (missing.length) throw Object.assign(new Error('Сначала вытяните карты: ' + missing.map(c => c.label).join(', ')), { status: 400 });
+  const key = cardsKey(w), prev = w.link;
+  const job = startJob(ctx.who.token, 'link', async () => {
+    const link = await ai.wowLink(w.cards, prev, { class: cls.code, nick: 'учитель', lesson: les.id });
+    const c2 = store.getClass(cls.code), w2 = wowState(c2, les);
+    if (cardsKey(w2) !== key) throw Object.assign(new Error('Пока ИИ сводил карты, их перетянули — попросите связку ещё раз'), { status: 409 });
+    w2.link = Object.assign(link, { cards: key, accepted: false, at: store.now() });
+    store.saveClass(c2); wowChanged(c2, les);
+    return w2.link;
+  });
+  return { job: job.id };
+});
+route('POST', '/api/teacher/wow/link/accept', (ctx) => {
+  const { cls, les, w } = needWow(ctx);
+  if (!w.link) throw Object.assign(new Error('Связки ещё нет'), { status: 400 });
+  w.link.accepted = !!ctx.body.accepted;
+  store.saveClass(cls); wowChanged(cls, les);
+  return { link: w.link };
 });
 // общая игра: новая версия той же игры класса; пока учитель проверяет сборку, ученики ждут
 function wowGame(cls, les, w) {
@@ -670,7 +697,7 @@ route('POST', '/api/teacher/wow/build', (ctx) => {
   const whoAI = { class: cls.code, nick: 'учитель', lesson: les.id };
   const job = startJob(ctx.who.token, 'wow', async (progress) => {
     try {
-      const r = await ai.buildShared({ cards: w.cards, secret: sec.prompt, title: wowTitle(les, w), fallback: fb }, whoAI, progress);
+      const r = await ai.buildShared({ cards: w.cards, secret: sec.prompt, link: acceptedLink(w), title: wowTitle(les, w), fallback: fb }, whoAI, progress);
       return wowVersion(cls.code, r, secretId);
     } catch (e) {
       const c2 = store.getClass(cls.code), w2 = wowState(c2, les); w2.status = w2.gameId ? 'preview' : 'cards'; store.saveClass(c2); wowChanged(c2, les);
@@ -722,6 +749,17 @@ route('POST', '/api/ai/producer', (ctx) => {
     saveStudentField(c.w.class, c.w.nick, c.les.id, st => { st.answers[c.les.plan.producer] = { value: { result, choices: {} }, done: false, at: store.now() }; });
     return result;
   });
+  return { job: job.id };
+});
+
+// «Пусть поправит продюсер»: по своему разбору продюсер переписывает поля ИГРА; принять правку или нет — решает ученик (шаг igra)
+route('POST', '/api/ai/producer-fix', (ctx) => {
+  const pre = needStudent(ctx);
+  const review = (pre.st.answers[pre.les.plan.producer] || {}).value;
+  if (!review || !review.result) throw Object.assign(new Error('Сначала отдай замысел продюсеру'), { status: 400 });
+  const c = aiGuard(ctx);
+  const plan = buildPlan(c.les, c.st);
+  const job = startJob(c.w.token, 'producer-fix', async () => Object.assign(await ai.producerFix(plan, review, c.les, c.whoAI), { before: plan.igra }));
   return { job: job.id };
 });
 

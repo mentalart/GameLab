@@ -278,14 +278,14 @@ async function refreshWow() {
 function drawWow(prev) {
   const r = P.w, host = $('#pj-demo'), w = r.wow, decks = Object.fromEntries((P.o.lesson.wow.cards || []).map(c => [c.id, c.deck || []]));
   const ready = r.cards.every(c => w.cards[c.id]), busy = w.status === 'building' || !!P.job;
-  const key = JSON.stringify([w.cards, w.votes, w.status, w.given, r.game && r.game.id + '/' + r.game.version, !!P.job, P.o.students.length, P.o.students.filter(s => s.online).length]);
+  const key = JSON.stringify([w.cards, w.votes, w.status, w.given, w.link, r.game && r.game.id + '/' + r.game.version, !!P.job, P.o.students.length, P.o.students.filter(s => s.online).length]);
   if (key === P.wKey) return;
   P.wKey = key;
   if (!host.querySelector('#pjWowCards')) {
     host.innerHTML = '';
     host.append(el('div', { class: 'pj-dhead' }, el('div', { class: 'grow' }, el('div', { class: 'eyebrow' }, 'Вау-старт · колода безумных идей'),
       el('div', { class: 'formula pj-formula' }, ...r.formula.split(' × ').flatMap((x, i) => i ? ['×', el('span', {}, x)] : [el('span', {}, x)])))),
-    el('div', { id: 'pjWowCards' }), el('div', { id: 'pjWowCtrl', class: 'row' }), el('div', { id: 'pjWowGame', class: 'stack' }));
+    el('div', { id: 'pjWowCards' }), el('div', { id: 'pjWowLink' }), el('div', { id: 'pjWowCtrl', class: 'row' }), el('div', { id: 'pjWowGame', class: 'stack' }));
   }
   const ch = $('#pjWowCards'); ch.innerHTML = '';
   ch.append(el('div', { class: 'pj-cards four' }, r.cards.map(c => {
@@ -296,6 +296,9 @@ function drawWow(prev) {
       votes ? el('div', { class: 'tag dice pj-votes' }, `перетянуть: ${votes}`) : null,
       !w.given && !busy ? el('button', { class: 'dicebtn', type: 'button', title: text ? 'Перетянуть карту' : 'Тянуть карту', 'aria-label': (text ? 'Перетянуть' : 'Тянуть') + ' карту «' + c.label + '»', onclick: () => wowDraw(c.id) }, '🎲') : null);
   })));
+  const lh = $('#pjWowLink'); lh.innerHTML = '';
+  const link = w.link && w.link.cards === JSON.stringify(w.cards) ? w.link : null;
+  lh.append(Games.linkBox({ link, ready, editable: !w.given && !busy, code: P.code, onChange: () => { P.wKey = null; refreshWow(); } }));
   const total = P.o.students.length, onl = P.o.students.filter(s => s.online).length;
   const ctrl = $('#pjWowCtrl'); ctrl.innerHTML = '';
   ctrl.append(...[

@@ -389,7 +389,8 @@ STEPS.cards = ctx => {
       prev[c.id] = c.text;
     });
     if (flipped) beep('dice');
-    host.append(row, el('p', { class: 'wow-status', 'aria-live': 'polite' }, wowStatusText(W)));
+    host.append(row, W.link ? Games.linkBox({ link: Object.assign({ accepted: true }, W.link), ready: true, editable: false }) : null,
+      el('p', { class: 'wow-status', 'aria-live': 'polite' }, wowStatusText(W)));
     if (W.status === 'given' && !ctx.done) ctx.save({ cards: W.cards.map(c => `${c.label}: ${c.text}`) }, true);
   }
   async function vote(card) {
@@ -1055,8 +1056,11 @@ STEPS.igra = ctx => {
     } }, 'Промпт готов')));
 };
 
+// producer: разбор замысла (находки, развилки кнопками). «Пусть поправит продюсер» — он сам переписывает поля ИГРА по своему разбору,
+// ученик видит «было → стало» и решает, принять ли правку.
 STEPS.producer = ctx => {
   const host = el('div', { class: 'stack' });
+  let fix = null; // предложенная правка продюсера: { igra, changes, before }
   function draw() {
     host.innerHTML = '';
     const v = ctx.value;
@@ -1079,9 +1083,43 @@ STEPS.producer = ctx => {
     }
     if (!r.findings.length && !r.forks.length) host.append(el('p', {}, 'Продюсер не нашёл проблем. Можно собирать!'));
     if (r.raw) host.append(el('details', {}, el('summary', {}, 'Ответ продюсера целиком'), el('pre', { class: 'plan' }, r.raw)));
+    if (fix) host.append(fixPreview());
+    else if (v.fixed) host.append(el('p', { class: 'concept' }, '✓ Продюсер поправил промпт ИГРА, ты принял правку. Можно спросить продюсера ещё раз или собирать игру.'));
+    const fixBtn = el('button', { class: 'btn' + (r.findings.length || r.forks.length ? ' warm' : ' ghost'), type: 'button', onclick: () => askFix(fixBtn) }, '🪄 Пусть поправит продюсер');
     host.append(el('div', { class: 'row' }, runBtn,
+      fix ? null : fixBtn,
       el('button', { class: 'btn ghost', type: 'button', onclick: () => document.getElementById('step-' + S.lesson.plan.igra).scrollIntoView({ behavior: 'smooth' }) }, '✎ Поправить промпт ИГРА'),
       !r.forks.length ? el('button', { class: 'btn', type: 'button', onclick: () => ctx.save(v, true) }, 'Дальше') : null));
+  }
+  const igraStep = () => lessonSteps().find(x => x.id === S.lesson.plan.igra);
+  function fixPreview() {
+    const st = igraStep(), letters = Object.fromEntries((st ? st.fields : []).map(f => [f.id, f]));
+    return el('div', { class: 'card stack fixbox' },
+      el('h3', {}, '🪄 Продюсер переписал промпт ИГРА — было → стало'),
+      fix.changes.length ? el('ul', { class: 'small' }, fix.changes.map(c => el('li', {}, c))) : null,
+      ...['i', 'g', 'r', 'a'].map(k => el('div', { class: 'fixrow' + (fix.before[k] === fix.igra[k] ? ' same' : '') },
+        el('b', {}, `${(letters[k] || {}).letter || k.toUpperCase()} — ${(letters[k] || {}).label || ''}`),
+        fix.before[k] === fix.igra[k] ? el('div', { class: 'small muted' }, 'без изменений: ' + fix.igra[k])
+          : [el('div', { class: 'was' }, fix.before[k] || '—'), el('div', { class: 'now' }, fix.igra[k])])),
+      el('div', { class: 'row' },
+        el('button', { class: 'btn', type: 'button', onclick: acceptFix }, '✓ Принять правку'),
+        el('button', { class: 'btn ghost', type: 'button', onclick: () => { fix = null; draw(); } }, 'Оставить как было'),
+        el('span', { class: 'muted small' }, 'Решаешь ты: принятые поля можно потом поправить своими словами в шаге ИГРА.')));
+  }
+  async function askFix(btn) {
+    btn.disabled = true;
+    try { fix = await Lab.job('/api/ai/producer-fix', {}, j => { btn.textContent = `🪄 Продюсер правит промпт… ${j.seconds} с`; }); beep('good'); } catch (e) { toast(e.message, 'err'); }
+    draw();
+  }
+  function acceptFix() {
+    const id = S.lesson.plan.igra, iv = Object.assign({ fields: {} }, ans(id).value), fields = Object.assign({}, iv.fields);
+    for (const k of ['i', 'g', 'r', 'a']) if (fix.igra[k] && fix.igra[k] !== fix.before[k]) fields[k] = { text: fix.igra[k], producer: true };
+    save(id, Object.assign({}, iv, { fields }), true, true);
+    fix = null;
+    ctx.save(Object.assign({}, ctx.value, { fixed: true }), true, true);
+    toast('Промпт ИГРА поправлен продюсером', 'ok');
+    renderMain(); // шаг ИГРА показывает новые поля
+    const card = document.getElementById('step-' + S.lesson.plan.producer); if (card) card.scrollIntoView({ block: 'center' });
   }
   async function run() {
     if (!(ans(S.lesson.plan.igra) || {}).done) { toast('Сначала нажми «Промпт готов» в шаге ИГРА'); return; }

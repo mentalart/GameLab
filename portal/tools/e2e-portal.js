@@ -163,10 +163,19 @@ async function run(browser, base, mode) {
   await student.click('#step-igra >> text=Промпт готов');
   await student.click('#step-prodyuser >> text=Отдать замысел продюсеру');
   await student.waitForSelector('#step-prodyuser .fork .opt', { timeout: 30000 });
+  const forkPick = (await student.textContent('#step-prodyuser .fork .opt >> nth=0')).trim();
   await student.click('#step-prodyuser .fork .opt >> nth=0');
   await student.waitForSelector('#step-prodyuser.done');
   check('Продюсер ответил, развилка выбрана', true);
-  await shot(student, '4-producer');
+  // «Пусть поправит продюсер»: по своему разбору продюсер переписывает поля ИГРА, ученик видит «было → стало» и принимает
+  await student.click('#step-prodyuser >> text=🪄 Пусть поправит продюсер');
+  await student.waitForSelector('#step-prodyuser .fixbox', { timeout: 30000 });
+  check('Продюсер переписал промпт ИГРА: было → стало', await student.locator('#step-prodyuser .fixbox .now').count() >= 1, (await student.textContent('#step-prodyuser .fixbox')).replace(/\s+/g, ' ').slice(0, 120));
+  await shot(student, '4-producer', true);
+  await student.click('#step-prodyuser >> text=✓ Принять правку');
+  await student.waitForSelector('#step-prodyuser >> text=Продюсер поправил промпт ИГРА');
+  const fixedG = await student.inputValue('#f-igrag'), fixedR = await student.inputValue('#f-igrar');
+  check('Правка продюсера легла в поля ИГРА', mode === 'mock' ? /крестовина и A/.test(fixedG) : fixedR.includes(forkPick), (mode === 'mock' ? fixedG : fixedR).slice(0, 90));
 
   // сборка
   await student.click('.cp >> text=Сборка');
@@ -295,12 +304,22 @@ async function wowStart(teacher, student, mode, shot) {
   await teacher.waitForSelector('#wowSecret >> text=выбор учителя', { timeout: 10000 });
   check('Учитель тайно заменил секрет', (await teacher.textContent('#wowSecret')).includes('Под конец игра злится'));
   await teacher.click('#wowSecret >> text=Скрыть');
+  // связка от ИИ: геймдизайнер сводит четыре карты в одну игру, учитель принимает — связку видят ученики, она уходит в сборку
+  await teacher.click('#wowLink >> text=🧠 Связка от ИИ');
+  await teacher.waitForSelector('#wowLink .link-phrase', { timeout: 30000 });
+  const phrase = (await teacher.textContent('#wowLink .link-phrase')).trim();
+  check('Связка от ИИ свела четыре карты: фраза игры', phrase.length > 20, phrase.slice(0, 90));
+  await teacher.click('#wowLink >> text=✓ Принять связку');
+  await teacher.waitForSelector('#wowLink >> text=принята — уйдёт в сборку', { timeout: 10000 });
+  await student.waitForSelector('#step-vau-karty .linkbox .link-phrase', { timeout: 10000 });
+  check('Принятую связку видит ученик под картами', (await student.textContent('#step-vau-karty .linkbox .link-phrase')).trim() === phrase);
   await shot(teacher, '1a-wow-cards');
   // сборка: ученики видят, что ИИ собирает игру; учитель проверяет и раздаёт
   await teacher.click('#wowBuild >> text=⚙ Собрать с ИИ');
   await teacher.waitForSelector('#wowBuild >> text=📣 Раздать классу', { timeout: 60000 });
   const info = (await teacher.textContent('#wowBuild')).replace(/\s+/g, ' ');
   if (mode === 'mock') check('ИИ собрал игру класса с ручкой secret и скрытым счётчиком', !/нет ручки secret|не считается/.test(info) && !/запасная игра «/.test(info), info.slice(0, 120));
+  if (mode === 'mock') check('Принятая связка ушла программисту вместе с картами', /Связка геймдизайнера — класс принял её/.test(mock.last.wowUser || '') && (mock.last.wowUser || '').includes(phrase));
   else check('Без ключа собралась запасная игра урока', /запасная игра/.test(info), info.slice(0, 120));
   await teacher.click('#wowBuild .veil button');
   await gameFrame(teacher, '/play/', 0);
@@ -429,6 +448,7 @@ async function projectorWow(pj, teacher, shot) {
   check('Проектор: те же четыре карты, что у учителя', cards.join('|') === inPanel.join('|'), cards.join(' | '));
   await pj.waitForSelector('#pjWowGame iframe, #pjWowGame .veil', { timeout: 15000 });
   const text = await pj.textContent('#pj-demo');
+  check('Проектор: принятая связка на экране', await pj.locator('#pjWowLink .link-phrase').count() === 1);
   check('Проектор: игра класса роздана, секрета на экране нет', /Игра у всех/.test(text) && !lesson1.wow.secrets.some(x => text.includes(x.title)));
   await shot(pj, 'p2-wow');
   // туда и обратно по вкладкам: на проекторе по-прежнему одна рамка игры класса

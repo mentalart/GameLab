@@ -216,6 +216,92 @@ function parseProducer(text) {
     forks: (j.forks || []).slice(0, 3).map(f => ({ question: String(f.question || ''), options: (f.options || []).slice(0, 3).map(String) })).filter(f => f.question && f.options.length >= 2),
   };
 }
+// правка промпта ИГРА продюсером: его разбор (находки, развилки и выбор автора) → четыре поля ИГРА заново и что изменено.
+// Ученик видит «было → стало» и сам решает, принять ли правку.
+function promptSection(file, start, end) {
+  const t = fs.readFileSync(path.join(PORTAL, 'ai', file), 'utf8');
+  const a = t.indexOf(start), b = t.indexOf(end);
+  if (a < 0 || b < a) throw new Error(`В ${file} нет меток ${start} … ${end}`);
+  return t.slice(a + start.length, b).trim();
+}
+const lessonLine = lesson => `${lesson.title} (донор: ${lesson.donor})${lesson.producer && lesson.producer.focus ? '. Особо проверь: ' + lesson.producer.focus : ''}`;
+function reviewText(result, choices) {
+  return [
+    'Твои находки:', ...(result.findings.length ? result.findings.map(f => `- [${f.kind}] ${f.text}`) : ['- находок нет']),
+    'Развилки и выбор автора:', ...(result.forks.length ? result.forks.map((f, i) => `- ${f.question} → ${(choices || {})[i] || 'автор не выбрал (варианты: ' + f.options.join(' / ') + ')'}`) : ['- развилок нет']),
+  ].join('\n');
+}
+const cleanText = (v, n = 600) => String(v == null ? '' : v).trim().slice(0, n);
+function parseFix(text) {
+  const a = text.indexOf('{'), b = text.lastIndexOf('}');
+  const j = JSON.parse(text.slice(a, b + 1)), g = j.igra || {};
+  const igra = { i: cleanText(g.i), g: cleanText(g.g), r: cleanText(g.r), a: cleanText(g.a) };
+  if (!igra.i || !igra.g || !igra.r || !igra.a) throw new Error('продюсер вернул не все поля ИГРА');
+  return { igra, changes: (Array.isArray(j.changes) ? j.changes : []).slice(0, 8).map(x => cleanText(x, 300)).filter(Boolean) };
+}
+async function producerFix(plan, review, lesson, who) {
+  if (demo()) return demoProducerFix(plan, review, who);
+  const model = models().text;
+  const t0 = Date.now();
+  try {
+    const { text, entry } = await call('правка продюсера', who, model, [
+      { role: 'system', content: promptSection('producer-prompt.md', '<!-- fix:start -->', '<!-- fix:end -->').split('{{УРОК}}').join(lessonLine(lesson)) },
+      { role: 'user', content: 'Замысел ученика:\n' + planText(plan) + '\n\n' + reviewText(review.result, review.choices) + '\n\nПерепиши промпт ИГРА.' },
+    ]);
+    let r;
+    try { r = parseFix(text); entry.ok = true; } catch (e) { entry.ok = false; entry.error = 'правка продюсера: ' + e.message; log(entry); throw new Error('Продюсер ответил не по форме — попробуй ещё раз'); }
+    log(entry);
+    return r;
+  } catch (e) { if (!/не по форме/.test(e.message)) log(Object.assign({ kind: 'правка продюсера', model, ms: Date.now() - t0, ok: false, error: e.message }, meta(who))); throw e; }
+}
+// демо: решения развилок дописываются в правила, кнопки — в глагол, если их не было
+function demoProducerFix(plan, review, who) {
+  const igra = Object.assign({}, plan.igra), changes = [];
+  const picked = review.result.forks.map((f, i) => [f, (review.choices || {})[i] || f.options[0]]);
+  if (picked.length) { igra.r = `${igra.r} ${picked.map(([f, c]) => `${f.question.replace(/\?$/, '')}: ${c}.`).join(' ')}`.trim(); changes.push('Вписал в правила решения развилок' + (picked.some(([, c], i) => !(review.choices || {})[i]) ? ' (где ты не выбрал, взял первый вариант)' : '') + '.'); }
+  if (!/кнопк|пробел|стрелк|\bA\b|\bB\b|←|→|клавиш/i.test(igra.g)) { igra.g = `${igra.g} Стрелки — двигаться, пробел — главное действие (на геймпаде крестовина и A).`.trim(); changes.push('Назвал кнопки для каждого действия.'); }
+  if (!changes.length) changes.push('Демо-режим: продюсер без модели правит только развилки и кнопки — здесь править нечего.');
+  log(Object.assign({ kind: 'правка продюсера', model: 'демо', ms: 0, ok: true, demo: true }, meta(who)));
+  return { igra, changes, demo: true };
+}
+
+/* ---------------- связка карт вау-старта: геймдизайнер сводит четыре карты в одну игру ---------------- */
+function parseLink(text) {
+  const a = text.indexOf('{'), b = text.lastIndexOf('}');
+  const j = JSON.parse(text.slice(a, b + 1));
+  const link = { phrase: cleanText(j.phrase, 400), loop: cleanText(j.loop, 400), twist: cleanText(j.twist, 400), funny: cleanText(j.funny, 300) };
+  if (!link.phrase || !link.loop) throw new Error('нет фразы игры');
+  return link;
+}
+async function wowLink(cards, prev, who) {
+  if (demo()) return demoLink(cards, who);
+  const model = models().text;
+  const t0 = Date.now();
+  const user = ['Карты:', `- Герой: ${cards.hero}`, `- Действие: ${cards.action}`, `- Место: ${cards.place}`, `- Поворот: ${cards.twist}`,
+    prev ? `\nУчитель попросил другую связку. Прошлая была: «${prev.phrase}» — найди другое чтение карт.` : ''].filter(Boolean).join('\n');
+  try {
+    const { text, entry } = await call('связка карт', who, model, [
+      { role: 'system', content: promptSection('link-prompt.md', '<!-- prompt:start -->', '<!-- prompt:end -->') },
+      { role: 'user', content: user },
+    ]);
+    let link;
+    try { link = parseLink(text); entry.ok = true; } catch (e) { entry.ok = false; entry.error = 'связка: ' + e.message; log(entry); throw new Error('Геймдизайнер ответил не по форме — попросите другую связку'); }
+    log(entry);
+    return Object.assign(link, { model });
+  } catch (e) { if (!/не по форме/.test(e.message)) log(Object.assign({ kind: 'связка карт', model, ms: Date.now() - t0, ok: false, error: e.message }, meta(who))); throw e; }
+}
+function demoLink(cards, who) {
+  log(Object.assign({ kind: 'связка карт', model: 'демо', ms: 0, ok: true, demo: true }, meta(who)));
+  return {
+    phrase: `Ты — ${cards.hero}. Главное действие: ${cards.action}. Место: «${cards.place}». Поворот: ${cards.twist}. Цель — продержаться и набрать рекорд класса.`,
+    loop: `Каждые несколько секунд: ${cards.action} — и сразу видно, попал ли ты; промах стоит времени.`,
+    twist: `Поворот «${cards.twist}» меняет то, как работает главное действие: им можно и помешать себе, и выиграть.`,
+    funny: 'Демо-режим: без ключа ИИ связка собрана по шаблону из карт.', model: 'демо', demo: true,
+  };
+}
+const linkText = link => (link ? ['Связка геймдизайнера — класс принял её до сборки, строй игру по ней:', `- Фраза игры: ${link.phrase}`, `- Главный цикл: ${link.loop}`, `- Поворот × действие: ${link.twist}`, `- Главный смешной момент: ${link.funny}`].join('\n')
+  : 'Связки геймдизайнера нет: найди чтение карт сам — одну понятную, напряжённую и смешную игру.');
+
 async function producer(plan, lesson, who) {
   if (demo()) return demoProducer(plan, who, lesson);
   const model = models().text;
@@ -305,7 +391,7 @@ async function fix(code, error, who, onProgress, model) {
 async function buildShared(wow, who, onProgress) {
   if (demo()) return demoShared(wow, who);
   const r = await program('общая игра', fill(userTemplate('wow'), {
-    'герой': wow.cards.hero, 'действие': wow.cards.action, 'место': wow.cards.place, 'поворот': wow.cards.twist, 'секрет': wow.secret,
+    'герой': wow.cards.hero, 'действие': wow.cards.action, 'место': wow.cards.place, 'поворот': wow.cards.twist, 'секрет': wow.secret, 'связка': linkText(wow.link),
   }), who, onProgress);
   if (!/\bsecret\s*:\s*\{/.test(r.code)) r.warnings = r.warnings.concat('нет ручки secret');
   if (!/_secret/.test(r.code)) r.warnings = r.warnings.concat('секрет не считается в телеметрии');
@@ -332,4 +418,4 @@ function demoGame(plan, who, kind) {
   return { code, model: 'демо', attempts: 1, warnings: [], demo: true, ms: 0, rub: null };
 }
 
-module.exports = { loadConfig, reloadConfig, demo, models, limits, listModels, producer, build, buildShared, demoShared, change, fix, planText, extractCode, syntaxError };
+module.exports = { loadConfig, reloadConfig, demo, models, limits, listModels, producer, producerFix, wowLink, build, buildShared, demoShared, change, fix, planText, extractCode, syntaxError };

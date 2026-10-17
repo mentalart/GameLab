@@ -291,11 +291,12 @@ async function drawWow(full) {
       el('div', { class: 'grow stack', style: 'gap:2px' }, el('div', { class: 'eyebrow' }, 'Чекпоинт 1 · колода безумных идей'), el('h2', {}, r.formula)),
       el('button', { class: 'btn', type: 'button', onclick: () => wowAct('/api/teacher/wow/draw', { card: 'all' }) }, '🎲 Тянуть все карты')),
       el('p', { class: 'muted small' }, 'Карты появляются у учеников сразу. Ученики голосуют «перетянуть» — число голосов видно под картой. Вкладку можно показывать на проекторе: секрет скрыт.'),
-      el('div', { id: 'wowCards' }), el('div', { id: 'wowSecret' }), el('div', { id: 'wowBuild' }), el('div', { id: 'wowSummary' }));
+      el('div', { id: 'wowCards' }), el('div', { id: 'wowLink' }), el('div', { id: 'wowSecret' }), el('div', { id: 'wowBuild' }), el('div', { id: 'wowSummary' }));
     W.gameKey = null;
   }
   const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
   if (full || !prev || !same(prev.wow.cards, r.wow.cards) || !same(prev.wow.votes, r.wow.votes) || prev.wow.status !== r.wow.status) drawWowCards();
+  if (full || !prev || !same(prev.wow.cards, r.wow.cards) || !same(prev.wow.link, r.wow.link) || prev.wow.status !== r.wow.status) drawWowLink();
   if (full || !prev || !same(prev.secret, r.secret) || prev.wow.secretBy !== r.wow.secretBy || !same(prev.built, r.built)) drawWowSecret();
   const key = (r.game ? r.game.id + '/' + r.game.version : '') + '|' + r.wow.status + '|' + r.wow.given + '|' + r.cards.every(c => r.wow.cards[c.id]);
   if (full || key !== W.gameKey) { W.gameKey = key; drawWowBuild(); }
@@ -312,6 +313,12 @@ function drawWowCards() {
         votes ? el('span', { class: 'tag dice', title: (r.wow.votes[c.id] || []).join(', ') }, `перетянуть: ${votes}`) : null)));
   });
   host.append(row);
+}
+function drawWowLink() {
+  const r = W.data, host = $('#wowLink'); host.innerHTML = '';
+  const ready = r.cards.every(c => r.wow.cards[c.id]);
+  const fresh = r.wow.link && r.wow.link.cards === JSON.stringify(r.wow.cards) ? r.wow.link : null;
+  host.append(Games.linkBox({ link: fresh, ready, editable: !r.wow.given && r.wow.status !== 'building', code: T.code, onChange: () => drawWow() }));
 }
 function drawWowSecret() {
   const r = W.data, host = $('#wowSecret'); host.innerHTML = '';
