@@ -201,6 +201,7 @@ async function run(browser, base, mode) {
     await own.evaluate(() => window.__lab.confirm());
     await student.waitForFunction(() => [...document.querySelectorAll('#step-sborka .ver')].length >= 2, null, { timeout: 30000 });
     check('Упавшую игру программист починил сам (v2)', true, await student.textContent('#step-sborka .versions'));
+    check('Починку программист прислал кусками «найти → заменить»', mock.last.fixPatch === true);
     own = await gameFrame(student, '/play/', 0);
   }
   await shot(student, '5-build');
@@ -221,6 +222,7 @@ async function run(browser, base, mode) {
   await student.click('#step-masterskaya >> text=Отправить программисту');
   await student.waitForFunction(n => document.querySelectorAll('#step-masterskaya .ver').length > n, before, { timeout: 30000 });
   check('Правка кнопкой и своими словами дала новую версию', true, await student.textContent('#step-masterskaya .versions'));
+  if (mode === 'mock') check('Куски правки дважды не легли — программист прислал игру целиком', mock.last.changeTries.join(',') === 'куски,куски,целиком', mock.last.changeTries.join(','));
   // урок 1: одна правка на ученика — кнопка отправки исчезает, сервер вторую не берёт
   await student.waitForSelector('#step-masterskaya >> text=Правка урока использована');
   const again = await student.evaluate(() => Lab.api('/api/ai/change', { request: 'Ещё одна правка' }).then(() => 'принял', e => e.status + ' ' + e.message));

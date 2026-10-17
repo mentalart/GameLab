@@ -14,7 +14,7 @@ const BROKEN = SAMPLE.replace('  update(lab, dt) {', '  update(lab, dt) {\n    i
 
 // last.system — последний системный промпт программиста (e2e проверяет, какой образец урока ушёл модели);
 // last.marked — модели, чей системный промпт пришёл с меткой кэша cache_control
-const last = { marked: new Set() };
+const last = { marked: new Set(), changeTries: [] };
 const flat = c => typeof c === 'string' ? c : (c || []).map(p => p.text || '').join('');
 function answer(messages, model) {
   const sys = flat((messages.find(m => m.role === 'system') || {}).content);
@@ -44,11 +44,19 @@ function answer(messages, model) {
       .replace(/\n.*Секрет выключен: волна не ускорялась.*\n/, '\n');
     return '```js\n' + shared.replace(/title: '[^']*'/, 'title: ' + JSON.stringify(hero.trim() + ' против волны')) + '```';
   }
-  if (/Игра упала/.test(user)) { // чиним присланный код: убираем подставную ошибку
+  const patchAsked = /Формат ответа для этой правки другой/.test(user);
+  if (/Игра упала/.test(user)) { // чиним присланный код: убираем подставную ошибку (кусками, если просят куски)
     const code = (/```js\n([\s\S]*?)```/.exec(user) || [])[1] || SAMPLE;
+    const bad = code.split('\n').find(l => l.includes('подставная ошибка'));
+    if (patchAsked && bad) { last.fixPatch = true; return 'Нашёл: обращение к несуществующему объекту.\n<<<<<<< НАЙТИ\n' + bad + '\n=======\n>>>>>>> ЗАМЕНИТЬ\n'; }
     return 'Нашёл: обращение к несуществующему объекту. Исправил.\n```js\n' + code.split('\n').filter(l => !l.includes('подставная ошибка')).join('\n') + '```';
   }
   if (model === 'mock-alt') return 'Готово.\n```js\n' + named(SAMPLE).replace("  donor: 'Space Invaders',", "  donor: 'Space Invaders',\n  notes: ['Другая модель: собрал без ошибок'],") + '```';
+  const first = flat((messages.find(m => m.role === 'user') || {}).content);
+  if (/просит одно изменение/.test(first)) { // правка ученика: куски нарочно не ложатся — проверяем откат на игру целиком
+    last.changeTries.push(/Формат ответа для этой правки другой/.test(first) ? 'куски' : 'целиком');
+    if (last.changeTries[last.changeTries.length - 1] === 'куски') return '<<<<<<< НАЙТИ\nтакой строки в игре нет\n=======\nconst x = 1;\n>>>>>>> ЗАМЕНИТЬ\n';
+  }
   if (/просит одно изменение/.test(user)) return '```js\n' + SAMPLE.replace("  donor: 'Space Invaders',", "  donor: 'Space Invaders',\n  notes: ['Правка ученика выполнена (подставной ИИ)'],") + '```';
   return '```js\n' + named(BROKEN).replace("  donor: 'Space Invaders',", "  donor: 'Space Invaders',\n  notes: ['Решил сам: добавил золотую тарелку-бонус', 'Решил сам: стога-укрытия из сена'],") + '```';
 }

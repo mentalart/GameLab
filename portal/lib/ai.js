@@ -369,8 +369,8 @@ function applyPatches(code, text) {
   }
   return { code, count, failed };
 }
-async function patchProgram(kind, code, firstUser, who, onProgress, popts) {
-  const model = models().code;
+async function patchProgram(kind, code, firstUser, who, onProgress, popts, model) {
+  model = model || models().code;
   const system = systemPrompt(Object.assign({ lesson: who && who.lesson, model }, popts));
   let messages = [{ role: 'system', content: system }, { role: 'user', content: firstUser }];
   const attempts = [];
@@ -392,7 +392,19 @@ async function patchProgram(kind, code, firstUser, who, onProgress, popts) {
     if (onProgress) onProgress(0, 'повтор правки');
     messages = messages.concat([{ role: 'assistant', content: res.text }, { role: 'user', content: `Правка не применилась: ${problem}. Пришли все куски заново к исходному коду из первого сообщения: в «НАЙТИ» — дословная копия строк, которая встречается в коде один раз.` }]);
   }
-  throw new Error('Программист дважды прислал правку, которая не легла в код — попробуйте ещё раз');
+  throw Object.assign(new Error('Программист дважды прислал правку, которая не легла в код — попробуйте ещё раз'), { patch: true, attempts: attempts.length, ms: attempts.reduce((n, e) => n + (e.ms || 0), 0), rub: attempts.reduce((n, e) => n + (e.rub || 0), 0) });
+}
+// правка кусками; если куски дважды не легли — та же просьба, но «верни игру целиком» (дороже, зато правка не теряется)
+const WHOLE = 'Верни игру целиком.';
+async function patchOrWhole(kind, code, tpl, map, who, onProgress, popts, model) {
+  try {
+    return await patchProgram(kind, code, fill(tpl, Object.assign({}, map, { 'формат': userTemplate('patch') })), who, onProgress, popts, model);
+  } catch (e) {
+    if (!e.patch) throw e;
+    if (onProgress) onProgress(0, 'игра целиком');
+    const r = await program(kind + ': целиком', fill(tpl, Object.assign({}, map, { 'формат': WHOLE })), who, onProgress, model, popts);
+    return Object.assign(r, { attempts: r.attempts + e.attempts, ms: r.ms + e.ms, rub: r.rub == null ? null : Math.round((r.rub + e.rub) * 100) / 100, whole: true });
+  }
 }
 
 // Программист: один вызов модели + проверка синтаксиса. При синтаксической ошибке — до 2 починок сразу на сервере.
@@ -418,7 +430,7 @@ async function program(kind, firstUser, who, onProgress, model, popts) {
     if (!err) return Object.assign({ code, model, attempts: attempts.length, warnings: lint(code) }, total());
     if (onProgress) onProgress(0, 'синтаксис');
     messages = [{ role: 'system', content: system }, { role: 'user', content: fill(userTemplate('fix'), {
-      'фаза: загрузка | start | update | отрисовка': 'загрузка (синтаксис)', 'текст ошибки': err.message, 'номер': err.line || '?', 'код': code || res.text,
+      'фаза: загрузка | start | update | отрисовка': 'загрузка (синтаксис)', 'текст ошибки': err.message, 'номер': err.line || '?', 'код': code || res.text, 'формат': WHOLE,
     }) }];
   }
   throw new Error('Программист трижды вернул код с ошибкой синтаксиса');
@@ -433,14 +445,14 @@ async function build(plan, who, onProgress, opts = {}) {
 }
 async function change(code, request, who, onProgress) {
   if (demo()) { log(Object.assign({ kind: 'правка', model: 'демо', ms: 0, ok: true, demo: true }, meta(who))); return { code, model: 'демо', attempts: 1, warnings: [], demo: true }; }
-  return program('правка', fill(userTemplate('change'), { 'код': code.trim(), 'просьба': request }), who, onProgress);
+  return patchOrWhole('правка', code, userTemplate('change'), { 'код': code.trim(), 'просьба': request }, who, onProgress);
 }
 // model — чинит та же модель, что собирала (важно для честного сравнения моделей)
 async function fix(code, error, who, onProgress, model) {
   if (demo()) { log(Object.assign({ kind: 'починка', model: 'демо', ms: 0, ok: false, demo: true }, meta(who))); throw new Error('Демо-режим: без ключа программист не чинит ошибки'); }
-  return program('починка', fill(userTemplate('fix'), {
+  return patchOrWhole('починка', code, userTemplate('fix'), {
     'фаза: загрузка | start | update | отрисовка': error.phase || 'update', 'текст ошибки': error.message || '?', 'номер': error.line || '?', 'код': code.trim(),
-  }), who, onProgress, model);
+  }, who, onProgress, null, model);
 }
 
 // Общая игра урока (вау-старт): своя игра только из четырёх карт колоды безумных идей (без донора урока) + секретная механика из колоды секретов урока.
@@ -462,9 +474,9 @@ function playtestRounds(report) {
     + (x.offscreen != null ? `, герой за кадром ${x.offscreen}% времени` : '') + (x.flat ? `, дольше всего без очков — ${x.flat} с` : '') + (x.over ? `, конец партии: «${x.endText}»` : ', дожил до конца') + (x.error ? `, ошибка: ${x.error}` : '')).join('\n');
 }
 async function playtestFix(code, report, wow, who, onProgress) {
-  const r = await patchProgram('правка по плейтесту', code, fill(userTemplate('playtest'), {
+  const r = await patchOrWhole('правка по плейтесту', code, userTemplate('playtest'), {
     'код': code.trim(), 'связка': linkText(wow.link), 'секунд': String(report.seconds), 'партии': playtestRounds(report), 'выводы': report.findings.map(f => '- ' + f).join('\n'),
-  }), who, onProgress, { frame: wowFrame(wow) });
+  }, who, onProgress, { frame: wowFrame(wow) });
   if (!/\bsecret\s*:\s*\{/.test(r.code)) r.warnings = r.warnings.concat('нет ручки secret');
   if (!/_secret/.test(r.code)) r.warnings = r.warnings.concat('секрет не считается в телеметрии');
   return r;
