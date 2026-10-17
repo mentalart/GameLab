@@ -375,7 +375,8 @@ async function wowStart(teacher, student, mode, shot) {
     check('Правка по плейтесту — новая версия игры класса, бот проверил её снова', /v2/.test(info2) && /↩ Вернуть v1/.test(info2), info2.slice(0, 120));
   } else check('Без ключа ИИ правки по отчёту бота нет', await teacher.locator('#wowBot >> text=Пусть программист поправит по отчёту').count() === 0);
   if (await teacher.locator('#wowBuild .veil:not([hidden]) button').count()) await teacher.click('#wowBuild .veil button');
-  await gameFrame(teacher, '/play/', 0);
+  const tf = await gameFrame(teacher, '/play/', 0);
+  if (mode === 'mock') check('Правка по отчёту пришла кусками и легла в код игры', /Правка по плейтесту/.test(await tf.evaluate(() => (GAME.notes || []).join(' '))));
   await shot(teacher, '1b-wow-preview');
   check('Пока учитель проверяет игру, ученик её не видит', await student.locator('#step-vau-play iframe').count() === 0 && /собирается/.test(await student.textContent('#step-vau-play')));
   await teacher.click('#wowBuild >> text=📣 Раздать классу');
@@ -878,6 +879,7 @@ async function lessonThree(mode, teacher, student, shot) {
   await student.click('#step-sborka >> text=⚙ Собрать игру');
   let own = await gameFrame(student, '/play/', 0);
   if (mode === 'mock') {
+    check('Программисту ушли каркас от продюсера и находки продюсера', /Каркас \(выбрал продюсер\): Как у донора/.test(mock.last.newUser || '') && /Продюсер заметил в замысле[^\n]*\n- нет крючка/.test(mock.last.newUser || ''));
     check('Программисту ушёл образец урока 3', mock.last.system.includes("title: 'Ночной лабиринт'") && !mock.last.system.includes("title: 'Камни мудреца'") && mock.last.system.includes('лабиринт по клеткам с охотниками'));
     await own.evaluate(() => window.__lab.confirm());
     await student.waitForFunction(() => document.querySelectorAll('#step-sborka .ver').length >= 2, null, { timeout: 30000 });

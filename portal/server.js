@@ -87,6 +87,7 @@ function buildPlan(les, st) {
     igra: { i: fieldText(igra.i), g: fieldText(igra.g), r: fieldText(igra.r), a: fieldText(igra.a) },
     forks,
     // находки продюсера идут программисту, пока ученик не принял правку продюсера: тогда они уже в полях ИГРА
+    frame: (prod.result && prod.result.frame) || '',
     findings: prod.fixed ? [] : ((prod.result && prod.result.findings) || []).map(f => `${f.kind}: ${f.text}`).slice(0, 5),
     diceCount: all.filter(f => f && f.dice).length,
     fieldCount: all.filter(f => fieldText(f)).length,

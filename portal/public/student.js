@@ -1069,6 +1069,7 @@ STEPS.producer = ctx => {
     if (!v || !v.result) { host.append(el('div', {}, runBtn)); return; }
     const r = v.result, choices = v.choices || {};
     if (r.praise) host.append(el('p', { class: 'concept' }, r.praise));
+    if (r.frame) host.append(el('p', { class: 'small muted' }, el('b', {}, 'Каркас игры: '), r.frame, ' — по нему программист возьмёт образец.'));
     if (r.findings.length) host.append(el('h3', {}, 'Что может сломать игру'), ...r.findings.map(f => el('div', { class: 'finding' }, el('span', { class: 'tag' }, f.kind), el('span', {}, f.text))));
     if (r.forks.length) {
       host.append(el('h3', {}, 'Развилки — решаешь ты'));

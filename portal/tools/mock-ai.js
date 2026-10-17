@@ -28,15 +28,15 @@ function answer(messages, model) {
   }
   if (!/продюсер/i.test(sys)) last.system = sys;
   if (/^Игра класса\. /.test(user)) last.wowUser = user;
+  if (/^Игра ученика\. /.test(user)) last.newUser = user;
   if (/продюсер/i.test(sys)) {
-    return JSON.stringify({ praise: 'Понятная идея и честное предупреждение перед выстрелом.', findings: [{ kind: 'нет крючка', text: 'Непонятно, как соревноваться с друзьями.' }], forks: [{ question: 'Как соревноваться?', options: ['Рекорд класса', 'Вдвоём на одном экране'] }] });
+    return JSON.stringify({ praise: 'Понятная идея и честное предупреждение перед выстрелом.', findings: [{ kind: 'нет крючка', text: 'Непонятно, как соревноваться с друзьями.' }], forks: [{ question: 'Как соревноваться?', options: ['Рекорд класса', 'Вдвоём на одном экране'] }], frame: 'Как у донора, изометрия' });
   }
   const title = (/Название: (.+)/.exec(user) || [])[1];
   const named = code => title ? code.replace(/title: '[^']*'/, 'title: ' + JSON.stringify(title.trim())) : code;
   if (/Бот-плейтестер сыграл/.test(user)) { // правка игры класса по отчёту бота: присланный код с заметкой о правке
     last.playtestUser = user;
-    const code = (/```js\n([\s\S]*?)```/.exec(user) || [])[1] || SAMPLE;
-    return '```js\n' + code.replace(/\n  players: /, "\n  notes: ['Правка по плейтесту (подставной ИИ): бездействие теперь наказано'],\n  players: ") + '```';
+    return "Правлю два места.\n<<<<<<< НАЙТИ\n  players: 1,\n=======\n  notes: ['Правка по плейтесту (подставной ИИ): бездействие теперь наказано'],\n  players: 1,\n>>>>>>> ЗАМЕНИТЬ\n";
   }
   if (/^Игра класса\. /.test(user)) { // общая игра урока: секрет образца переименован в ручку secret
     const hero = (/Герой: (.+)/.exec(user) || [])[1] || 'Герой';

@@ -217,6 +217,7 @@ function parseProducer(text) {
     praise: String(j.praise || ''),
     findings: (j.findings || []).slice(0, 5).map(f => ({ kind: String(f.kind || 'находка'), text: String(f.text || '') })).filter(f => f.text),
     forks: (j.forks || []).slice(0, 3).map(f => ({ question: String(f.question || ''), options: (f.options || []).slice(0, 3).map(String) })).filter(f => f.question && f.options.length >= 2),
+    frame: String(j.frame || '').trim().slice(0, 120), // каркас игры ученика: по нему Claude получает образец того же каркаса
   };
 }
 // правка промпта ИГРА продюсером: его разбор (находки, развилки и выбор автора) → четыре поля ИГРА заново и что изменено.
@@ -346,12 +347,52 @@ function demoProducer(plan, who, lesson) {
 function newGameMessage(plan) {
   return fill(userTemplate('new'), {
     'донор': plan.donor, 'твист': plan.twist, 'мир': plan.world, 'уровень': plan.level,
-    'название': plan.title, 'детали': plan.details.length ? 'Детали замысла:\n' + plan.details.join('\n') : '',
+    'название': plan.title, 'каркас': plan.frame || 'как у донора урока', 'детали': plan.details.length ? 'Детали замысла:\n' + plan.details.join('\n') : '',
     'находки': plan.findings && plan.findings.length ? plan.findings.map(f => '- ' + f).join('\n') : 'замечаний нет',
     'чувство': plan.decisions.feeling, 'честность': plan.decisions.honesty, 'выбор': plan.decisions.choice,
     'идея': plan.igra.i, 'глагол': plan.igra.g, 'правила': plan.igra.r, 'атмосфера': plan.igra.a,
     'развилки': plan.forks.length ? plan.forks.map(f => `- ${f.question} → ${f.answer}`).join('\n') : 'развилок не было',
   });
+}
+
+// Правка кусками (решение автора 17.10.2026): модель присылает только заменяемые куски, портал вставляет их в код сам —
+// ответ в разы короче всей игры. Кусок: «<<<<<<< НАЙТИ / дословные строки / ======= / новые строки / >>>>>>> ЗАМЕНИТЬ».
+const PATCH_RE = /<<<<<<< НАЙТИ\r?\n([\s\S]*?)\r?\n=======\r?\n([\s\S]*?)\r?\n?>>>>>>> ЗАМЕНИТЬ/g;
+function applyPatches(code, text) {
+  const failed = []; let count = 0, m;
+  PATCH_RE.lastIndex = 0;
+  while ((m = PATCH_RE.exec(text))) {
+    count++;
+    const find = m[1], repl = m[2], i = find ? code.indexOf(find) : -1;
+    if (i < 0 || code.indexOf(find, i + 1) >= 0) { failed.push(`«${(find.trim().split('\n')[0] || '').slice(0, 100)}» — ${i < 0 ? 'нет в коде' : 'встречается не один раз'}`); continue; }
+    code = code.slice(0, i) + repl + code.slice(i + find.length);
+  }
+  return { code, count, failed };
+}
+async function patchProgram(kind, code, firstUser, who, onProgress, popts) {
+  const model = models().code;
+  const system = systemPrompt(Object.assign({ lesson: who && who.lesson, model }, popts));
+  let messages = [{ role: 'system', content: system }, { role: 'user', content: firstUser }];
+  const attempts = [];
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const t0 = Date.now();
+    let res;
+    try { res = await call(attempt ? kind + ': повтор' : kind, who, model, messages, onProgress); } catch (e) {
+      log(Object.assign({ kind, model, ms: Date.now() - t0, ok: false, error: e.message }, meta(who)));
+      throw e;
+    }
+    const p = applyPatches(code, res.text);
+    let problem = !p.count ? 'в ответе нет ни одного куска «<<<<<<< НАЙТИ … >>>>>>> ЗАМЕНИТЬ»' : p.failed.length ? 'эти куски не легли: ' + p.failed.join('; ') : '';
+    const err = problem ? null : syntaxError(p.code);
+    if (err) problem = `после правки ошибка синтаксиса: ${err.message}${err.line ? ' (строка ' + err.line + ')' : ''}`;
+    res.entry.ok = !problem; if (problem) res.entry.error = problem;
+    res.entry.patches = p.count;
+    attempts.push(log(res.entry));
+    if (!problem) return { code: p.code, model, attempts: attempts.length, patches: p.count, warnings: lint(p.code), ms: attempts.reduce((n, e) => n + (e.ms || 0), 0), rub: attempts.some(e => e.rub != null) ? Math.round(attempts.reduce((n, e) => n + (e.rub || 0), 0) * 100) / 100 : null };
+    if (onProgress) onProgress(0, 'повтор правки');
+    messages = messages.concat([{ role: 'assistant', content: res.text }, { role: 'user', content: `Правка не применилась: ${problem}. Пришли все куски заново к исходному коду из первого сообщения: в «НАЙТИ» — дословная копия строк, которая встречается в коде один раз.` }]);
+  }
+  throw new Error('Программист дважды прислал правку, которая не легла в код — попробуйте ещё раз');
 }
 
 // Программист: один вызов модели + проверка синтаксиса. При синтаксической ошибке — до 2 починок сразу на сервере.
@@ -383,10 +424,12 @@ async function program(kind, firstUser, who, onProgress, model, popts) {
   throw new Error('Программист трижды вернул код с ошибкой синтаксиса');
 }
 
+// каркас игры ученика выбирает продюсер; «как у донора» или без продюсера — образец-донор урока
+const studentFrame = plan => (plan.frame && !/донор/i.test(plan.frame) ? { frame: plan.frame } : undefined);
 // opts.model и opts.kind — для сравнения моделей: тот же замысел, другая модель, запись «сравнение» в журнале
 async function build(plan, who, onProgress, opts = {}) {
   if (demo()) return demoGame(plan, who, opts.kind);
-  return program(opts.kind || 'сборка', newGameMessage(plan), who, onProgress, opts.model);
+  return program(opts.kind || 'сборка', newGameMessage(plan), who, onProgress, opts.model, studentFrame(plan));
 }
 async function change(code, request, who, onProgress) {
   if (demo()) { log(Object.assign({ kind: 'правка', model: 'демо', ms: 0, ok: true, demo: true }, meta(who))); return { code, model: 'демо', attempts: 1, warnings: [], demo: true }; }
@@ -419,9 +462,9 @@ function playtestRounds(report) {
     + (x.offscreen != null ? `, герой за кадром ${x.offscreen}% времени` : '') + (x.flat ? `, дольше всего без очков — ${x.flat} с` : '') + (x.over ? `, конец партии: «${x.endText}»` : ', дожил до конца') + (x.error ? `, ошибка: ${x.error}` : '')).join('\n');
 }
 async function playtestFix(code, report, wow, who, onProgress) {
-  const r = await program('правка по плейтесту', fill(userTemplate('playtest'), {
+  const r = await patchProgram('правка по плейтесту', code, fill(userTemplate('playtest'), {
     'код': code.trim(), 'связка': linkText(wow.link), 'секунд': String(report.seconds), 'партии': playtestRounds(report), 'выводы': report.findings.map(f => '- ' + f).join('\n'),
-  }), who, onProgress, null, { frame: wowFrame(wow) });
+  }), who, onProgress, { frame: wowFrame(wow) });
   if (!/\bsecret\s*:\s*\{/.test(r.code)) r.warnings = r.warnings.concat('нет ручки secret');
   if (!/_secret/.test(r.code)) r.warnings = r.warnings.concat('секрет не считается в телеметрии');
   return r;
@@ -447,4 +490,4 @@ function demoGame(plan, who, kind) {
   return { code, model: 'демо', attempts: 1, warnings: [], demo: true, ms: 0, rub: null };
 }
 
-module.exports = { LINK_FIELDS, playtestFix, loadConfig, reloadConfig, demo, models, limits, listModels, producer, producerFix, wowLink, build, buildShared, demoShared, change, fix, planText, extractCode, syntaxError };
+module.exports = { LINK_FIELDS, playtestFix, applyPatches, loadConfig, reloadConfig, demo, models, limits, listModels, producer, producerFix, wowLink, build, buildShared, demoShared, change, fix, planText, extractCode, syntaxError };
