@@ -33,6 +33,8 @@ function models() {
   const c = loadConfig(), s = store.settings();
   return { code: s.codeModel || c.ai.codeModel, text: s.textModel || c.ai.textModel };
 }
+// лимиты: config.json, поверх — то, что учитель поменял в панели (data/settings.json)
+function limits() { return Object.assign({}, loadConfig().limits, store.settings().limits || {}); }
 function price(model) { return loadConfig().models.find(m => m.id === model) || {}; }
 function rubles(model, inT, outT) {
   const p = price(model);
@@ -124,10 +126,12 @@ const fill = (tpl, map) => Object.entries(map).reduce((s, [k, v]) => s.split('['
 
 /* ---------------- журнал ---------------- */
 function log(entry) { store.logGen(entry); return entry; }
+// кто и для какой игры: build — id сборки, по нему отчёт связывает сборку, починки синтаксиса и сборки без игры
+const meta = who => ({ class: who.class, nick: who.nick, lesson: who.lesson, game: who.game || undefined, build: who.build || undefined });
 
 async function call(kind, who, model, messages, onProgress) {
   const r = await chat({ model, messages, onProgress });
-  const entry = { kind, model, ms: r.ms, tokensIn: r.tokensIn, tokensOut: r.tokensOut, estimated: r.estimated, rub: rubles(model, r.tokensIn, r.tokensOut), class: who.class, nick: who.nick, lesson: who.lesson };
+  const entry = Object.assign({ kind, model, ms: r.ms, tokensIn: r.tokensIn, tokensOut: r.tokensOut, estimated: r.estimated, rub: rubles(model, r.tokensIn, r.tokensOut) }, meta(who));
   return { text: r.text, entry };
 }
 
@@ -167,7 +171,7 @@ async function producer(plan, lesson, who) {
     try { result = parseProducer(text); entry.ok = true; } catch (e) { entry.ok = false; entry.error = 'продюсер вернул не JSON'; result = { praise: '', findings: [], forks: [], raw: text.slice(0, 1500) }; }
     log(entry);
     return result;
-  } catch (e) { log({ kind: 'продюсер', model, ms: Date.now() - t0, ok: false, error: e.message, class: who.class, nick: who.nick, lesson: who.lesson }); throw e; }
+  } catch (e) { log(Object.assign({ kind: 'продюсер', model, ms: Date.now() - t0, ok: false, error: e.message }, meta(who))); throw e; }
 }
 function demoProducer(plan, who) {
   const findings = [], forks = [];
@@ -176,7 +180,7 @@ function demoProducer(plan, who) {
   if (!/кнопк|пробел|стрелк|\bA\b|\bB\b|←|→|клавиш/i.test(plan.igra.g)) findings.push({ kind: 'без кнопки', text: 'В «Глаголе и кнопках» не видно, какой кнопкой игрок действует. Назови кнопку для каждого действия.' });
   if (!/рекорд|вдвоём|второй игрок|вызов|зерн|соревн/i.test(all)) forks.push({ question: 'Как с этой игрой соревноваться?', options: ['Рекорд класса: побей рекорд автора', 'Вдвоём на одном экране', 'Вызов на зерне: у всех одна и та же волна'] });
   forks.push({ question: 'Как растёт напряжение к концу волны?', options: ['Волна ускоряется с каждым сбитым, как в доноре', 'Чем меньше врагов, тем чаще они стреляют', 'Каждая новая волна начинается ниже'] });
-  log({ kind: 'продюсер', model: 'демо', ms: 0, ok: true, demo: true, class: who.class, nick: who.nick, lesson: who.lesson });
+  log(Object.assign({ kind: 'продюсер', model: 'демо', ms: 0, ok: true, demo: true }, meta(who)));
   return { praise: 'Демо-режим: продюсер без модели проверяет только кнопки, кубики и крючок.', findings, forks };
 }
 
@@ -192,23 +196,25 @@ function newGameMessage(plan) {
 }
 
 // Программист: один вызов модели + проверка синтаксиса. При синтаксической ошибке — до 2 починок сразу на сервере.
-async function program(kind, firstUser, who, onProgress) {
-  const model = models().code;
+// model — другая модель для сравнения на том же замысле (иначе — модель из панели учителя). В ответе — время и рубли всех попыток.
+async function program(kind, firstUser, who, onProgress, model) {
+  model = model || models().code;
   const system = systemPrompt();
   let messages = [{ role: 'system', content: system }, { role: 'user', content: firstUser }];
   const attempts = [];
+  const total = () => ({ ms: attempts.reduce((n, e) => n + (e.ms || 0), 0), rub: attempts.some(e => e.rub != null) ? Math.round(attempts.reduce((n, e) => n + (e.rub || 0), 0) * 100) / 100 : null });
   for (let attempt = 0; attempt < 3; attempt++) {
     const t0 = Date.now();
     let res;
     try { res = await call(attempt ? 'починка синтаксиса' : kind, who, model, messages, onProgress); } catch (e) {
-      log({ kind: attempt ? 'починка синтаксиса' : kind, model, ms: Date.now() - t0, ok: false, error: e.message, class: who.class, nick: who.nick, lesson: who.lesson });
+      log(Object.assign({ kind: attempt ? 'починка синтаксиса' : kind, model, ms: Date.now() - t0, ok: false, error: e.message }, meta(who)));
       throw e;
     }
     let code, err;
     try { code = extractCode(res.text); err = syntaxError(code); } catch (e) { err = { message: e.message, line: null }; }
     res.entry.ok = !err; if (err) res.entry.error = err.message;
     attempts.push(log(res.entry));
-    if (!err) return { code, model, attempts: attempts.length, warnings: lint(code) };
+    if (!err) return Object.assign({ code, model, attempts: attempts.length, warnings: lint(code) }, total());
     if (onProgress) onProgress(0, 'синтаксис');
     messages = [{ role: 'system', content: system }, { role: 'user', content: fill(userTemplate('fix'), {
       'фаза: загрузка | start | update | отрисовка': 'загрузка (синтаксис)', 'текст ошибки': err.message, 'номер': err.line || '?', 'код': code || res.text,
@@ -217,30 +223,32 @@ async function program(kind, firstUser, who, onProgress) {
   throw new Error('Программист трижды вернул код с ошибкой синтаксиса');
 }
 
-async function build(plan, who, onProgress) {
-  if (demo()) return demoGame(plan, who);
-  return program('сборка', newGameMessage(plan), who, onProgress);
+// opts.model и opts.kind — для сравнения моделей: тот же замысел, другая модель, запись «сравнение» в журнале
+async function build(plan, who, onProgress, opts = {}) {
+  if (demo()) return demoGame(plan, who, opts.kind);
+  return program(opts.kind || 'сборка', newGameMessage(plan), who, onProgress, opts.model);
 }
 async function change(code, request, who, onProgress) {
-  if (demo()) { log({ kind: 'правка', model: 'демо', ms: 0, ok: true, demo: true, class: who.class, nick: who.nick, lesson: who.lesson }); return { code, model: 'демо', attempts: 1, warnings: [], demo: true }; }
+  if (demo()) { log(Object.assign({ kind: 'правка', model: 'демо', ms: 0, ok: true, demo: true }, meta(who))); return { code, model: 'демо', attempts: 1, warnings: [], demo: true }; }
   return program('правка', fill(userTemplate('change'), { 'код': code.trim(), 'просьба': request }), who, onProgress);
 }
-async function fix(code, error, who, onProgress) {
-  if (demo()) { log({ kind: 'починка', model: 'демо', ms: 0, ok: false, demo: true, class: who.class, nick: who.nick, lesson: who.lesson }); throw new Error('Демо-режим: без ключа программист не чинит ошибки'); }
+// model — чинит та же модель, что собирала (важно для честного сравнения моделей)
+async function fix(code, error, who, onProgress, model) {
+  if (demo()) { log(Object.assign({ kind: 'починка', model: 'демо', ms: 0, ok: false, demo: true }, meta(who))); throw new Error('Демо-режим: без ключа программист не чинит ошибки'); }
   return program('починка', fill(userTemplate('fix'), {
     'фаза: загрузка | start | update | отрисовка': error.phase || 'update', 'текст ошибки': error.message || '?', 'номер': error.line || '?', 'код': code.trim(),
-  }), who, onProgress);
+  }), who, onProgress, model);
 }
 
 // Демо: вместо модели — образец урока с названием и решениями ученика.
-function demoGame(plan, who) {
+function demoGame(plan, who, kind) {
   let code = fs.readFileSync(path.join(PORTAL, 'games', 'tarelki-nad-aulom.js'), 'utf8');
   const q = s => JSON.stringify(String(s || ''));
   code = code.replace(/title: '[^']*'/, 'title: ' + q(plan.title || 'Моя игра'))
     .replace(/subtitle: '[^']*'/, 'subtitle: ' + q('Демо-режим: вместо Qwen — образец урока с твоим названием. ' + (plan.igra.i || '')))
     .replace(/decisions: \[[\s\S]*?\],\n/, 'decisions: ' + JSON.stringify([`Чувство: ${plan.decisions.feeling}`, `Честность: ${plan.decisions.honesty}`, `Выбор: ${plan.decisions.choice}`]) + ',\n  notes: ["Демо-режим: игру не писала модель, это образец урока"],\n');
-  log({ kind: 'сборка', model: 'демо', ms: 0, ok: true, demo: true, class: who.class, nick: who.nick, lesson: who.lesson });
-  return { code, model: 'демо', attempts: 1, warnings: [], demo: true };
+  log(Object.assign({ kind: kind || 'сборка', model: 'демо', ms: 0, ok: true, demo: true }, meta(who)));
+  return { code, model: 'демо', attempts: 1, warnings: [], demo: true, ms: 0, rub: null };
 }
 
-module.exports = { loadConfig, reloadConfig, demo, models, listModels, producer, build, change, fix, planText, extractCode, syntaxError };
+module.exports = { loadConfig, reloadConfig, demo, models, limits, listModels, producer, build, change, fix, planText, extractCode, syntaxError };

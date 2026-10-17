@@ -1,4 +1,4 @@
-// Страница ученика: урок по чекпоинтам и типовые шаги (play, choice, text, sort, factory, decisions, igra, producer, build, aicheck, workshop, arcade, playtest).
+// Страница ученика: урок по чекпоинтам и типовые шаги (play, teacher-demo, choice, text, sort, rounds, factory, decisions, igra, producer, build, aicheck, workshop, arcade, playtest).
 // Рамка игры, карточки аркады и открытие плейтеста — в games.js, поле с кубиком — в common.js.
 'use strict';
 const { el, api, toast, roll, beep, copy, valText, fieldEditor } = Lab;
@@ -27,10 +27,10 @@ function listen() {
     const d = JSON.parse(e.data);
     if (d.lesson !== S.lesson.id) { location.reload(); return; }
     const before = S.opened;
+    const wasLocked = !isOpen(cpById(S.cpId)); // до обновления: ученик ждал на закрытом чекпоинте, и учитель открыл именно его
     S.opened = d.opened;
     $('#noteBtn').hidden = !d.authorMode;
     const fresh = S.lesson.checkpoints.filter(cp => d.opened.includes(cp.id) && !before.includes(cp.id));
-    const wasLocked = !isOpen(cpById(S.cpId));
     if (fresh.length) {
       beep('tick');
       toast(`Учитель открыл: ${fresh.map(c => c.title).join(', ')}`, 'ok');
@@ -46,6 +46,13 @@ function listen() {
     if (d.nick !== S.me.nick) return;
     api('/api/playtest/mine').then(r => { S.me.feedback = r.feedback; S.hooks.forEach(h => h('feedback', r)); }).catch(() => {});
     beep('good'); toast('Учитель оставил тебе отзыв — он в шаге плейтеста', 'ok');
+  });
+  // вау-старт учителя: карты, сборка, игра открылась — шаг teacher-demo обновляется сам
+  es.addEventListener('demo', e => { const d = JSON.parse(e.data); S.hooks.forEach(h => h('demo', d)); });
+  es.addEventListener('limits', e => {
+    const d = JSON.parse(e.data);
+    if (d.nick !== S.me.nick) return;
+    S.me.aiLimit = d.limit; beep('good'); toast(`Учитель добавил тебе запросов к ИИ: теперь ${d.calls} из ${d.limit}`, 'ok');
   });
 }
 const cpById = id => S.lesson.checkpoints.find(c => c.id === id);
@@ -143,6 +150,73 @@ STEPS.play = ctx => {
   show();
   return el('div', { class: 'stack' }, h.box, Games.bar(h, status),
     el('div', {}, el('button', { class: 'btn ghost small', type: 'button', onclick: () => ctx.save(v, true) }, 'Готово, дальше')));
+};
+
+// teacher-demo: вау-старт учителя. Пока учитель тянет карты и собирает игру — «смотри на проектор» и карты вживую,
+// потом игра учителя в рамке (открывает учитель или таймер шага). Рекорды — общая таблица класса по этой игре.
+const DEMO_CARD_NAMES = [['hero', 'Герой'], ['place', 'Место'], ['twist', 'Поворот']];
+const mmss = sec => { sec = Math.max(0, Math.round(sec)); return String(Math.floor(sec / 60)).padStart(2, '0') + ':' + String(sec % 60).padStart(2, '0'); };
+STEPS['teacher-demo'] = ctx => {
+  const st = ctx.step;
+  let v = Object.assign({ rounds: 0, best: 0 }, ctx.value);
+  const host = el('div', { class: 'stack' });
+  let d = null, skew = 0, tick = null, shownGame = null, h = null;
+  const status = el('b', {});
+  const showStatus = () => { status.textContent = `Партий: ${v.rounds} · лучший счёт: ${v.best}`; };
+  function cards() {
+    return el('div', { class: 'demo-cards' }, DEMO_CARD_NAMES.map(([k, label]) => el('div', { class: 'dcard' + (d.cards[k] ? ' on' : '') },
+      el('div', { class: 'eyebrow' }, label), el('b', {}, d.cards[k] || '?'))));
+  }
+  function draw() {
+    clearInterval(tick);
+    if (h) { h.destroy(); h = null; }
+    host.innerHTML = '';
+    if (!d) { host.append(el('p', { class: 'muted' }, 'Смотрим, что на проекторе…')); return; }
+    const formula = el('div', { class: 'formula' }, el('span', {}, S.lesson.donor), '×', el('span', {}, d.cards.twist ? 'поворот' : 'поворот?'), '×', el('span', {}, d.cards.place ? 'мир' : 'мир?'));
+    if (!d.visible || !d.game) {
+      shownGame = null;
+      const line = el('p', { class: 'muted', 'aria-live': 'polite' });
+      const upd = () => {
+        const left = d.deadline ? (Date.parse(d.deadline) - Date.now() - skew) / 1000 : null;
+        line.textContent = d.state === 'building' ? `ИИ пишет игру при всех… ${mmss((Date.now() + skew - Date.parse(d.buildStartedAt)) / 1000)}` :
+          d.state === 'error' ? 'У ИИ не получилось с первого раза — учитель пробует ещё раз.' :
+          d.ready ? 'Игра готова! Учитель проверяет её на проекторе.' :
+          !d.startedAt ? 'Учитель вот-вот начнёт тянуть карты.' : 'Учитель тянет карты колоды безумных идей.';
+        if (left != null && left > 0 && d.state !== 'error') line.textContent += ` Игра откроется у всех через ${mmss(left)}.`;
+      };
+      upd(); tick = setInterval(upd, 1000);
+      host.append(el('div', { class: 'projector-wait' }, el('div', { class: 'big' }, '📽'), el('h3', {}, 'Смотри на проектор'),
+        d.title ? el('div', { class: 'eyebrow' }, '«' + d.title + '»') : null, formula, cards(), line));
+      return;
+    }
+    shownGame = d.game.id + ':' + d.game.current;
+    const game = d.game;
+    h = Games.frame({
+      src: () => `/play/${game.id}/${game.current}`, key: () => 'demo:' + game.id, label: 'Играть в игру класса', autostart: false,
+      onOver: m => { v = { rounds: v.rounds + 1, best: Math.max(v.best, m.score || 0) }; showStatus(); ctx.save(v, ctx.done || v.rounds >= (st.minRounds || 1)); },
+      onError: err => h.message(el('div', { class: 'stack', style: 'align-items:center' }, el('b', {}, 'Игра упала: ' + (err.message || 'ошибка')), el('p', { class: 'muted small' }, 'Учитель починит её на проекторе — она обновится сама.'))),
+    });
+    showStatus();
+    host.append(el('div', { class: 'donor-card' }, el('div', { class: 'ico' }, '🎲'), el('div', { class: 'stack', style: 'gap:6px' },
+      el('div', { class: 'eyebrow' }, 'Игра класса за пять минут'), el('h3', {}, game.title || d.title), formula, cards())),
+    h.box, Games.bar(h, status),
+    el('p', { class: 'concept' }, 'Это формула курса: ', el('b', {}, 'Донор × Твист × Мир'), '. Сегодня ты соберёшь по ней свою игру — и решать будешь ты, а не карты.'),
+    el('div', {}, el('button', { class: 'btn ghost small', type: 'button', onclick: () => ctx.save(v, true) }, 'Готово, дальше')));
+  }
+  async function load() {
+    try { const r = await api('/api/demo'); skew = Date.parse(r.now) - Date.now(); d = r; } catch (e) { host.innerHTML = ''; host.append(el('p', { class: 'err' }, e.message)); return; }
+    draw();
+  }
+  S.hooks.push((kind, nd) => {
+    if (kind !== 'demo') return;
+    skew = Date.parse(nd.now) - Date.now();
+    const same = d && nd.visible && d.visible && nd.game && shownGame === nd.game.id + ':' + nd.game.current;
+    d = nd;
+    if (!same) { if (nd.visible && nd.game && !shownGame) { beep('done'); toast('Игра класса открыта — играй!', 'ok'); } draw(); }
+  });
+  host.append(el('p', { class: 'muted' }, 'Смотрим, что на проекторе…'));
+  load();
+  return host;
 };
 
 STEPS.choice = ctx => {
@@ -252,6 +326,108 @@ STEPS.sort = ctx => {
     if (!active) return;
     const k = { Digit1: 0, Numpad1: 0, ArrowLeft: 0, Digit2: 1, Numpad2: 1, ArrowDown: 1, Digit3: 2, Numpad3: 2, ArrowRight: 2 }[e.code];
     if (k != null) { e.preventDefault(); answer(k); }
+  });
+  intro();
+  return box;
+};
+
+// rounds: квиз-раунды «Игра или не игра?» — карточка и два ответа ◀ ▶ (клавиши ← → и A D, геймпад, тап, свайп),
+// таймер, серия, звук, разбор после каждой карты (дальше — пробел, Enter или кнопка A), итог с «Скопировать результат».
+STEPS.rounds = ctx => {
+  const st = ctx.step;
+  const L = st.left || { label: 'Игра' }, R = st.right || { label: 'Не игра' };
+  const box = el('div', { class: 'rounds', tabindex: '0', 'aria-label': 'Квиз-раунды' });
+  let order = [], i = 0, score = 0, streak = 0, bestStreak = 0, correct = 0, mistakes = [], left = 0, raf = 0, phase = 'intro', padPrev = {}, answeredAt = 0;
+  const hud = el('div', { class: 'hud' }), timer = el('div', { class: 'timer' }, el('i')), card = el('div', { class: 'rcard' }), why = el('div', { class: 'why', 'aria-live': 'polite' });
+  const btnL = el('button', { type: 'button', class: 'rbtn left', onclick: () => press('left') }, el('span', { class: 'arr' }, '◀'), el('b', {}, L.label), el('kbd', {}, '← или A'));
+  const btnR = el('button', { type: 'button', class: 'rbtn right', onclick: () => press('right') }, el('b', {}, R.label), el('span', { class: 'arr' }, '▶'), el('kbd', {}, '→ или D'));
+  const nextBtn = el('button', { type: 'button', class: 'btn', hidden: true, onclick: () => press('next') }, 'Дальше ▶');
+  const answers = el('div', { class: 'rbtns' }, btnL, btnR);
+  function intro() {
+    phase = 'intro'; cancelAnimationFrame(raf);
+    box.innerHTML = '';
+    const prev = ctx.value;
+    box.append(el('div', { class: 'stack', style: 'align-items:center;text-align:center;margin:auto' },
+      el('div', { class: 'rvs' }, el('span', {}, '◀ ' + L.label), el('i', {}, 'или'), el('span', {}, R.label + ' ▶')),
+      el('h3', {}, `${st.items.length} карточек · ${st.seconds} секунд на каждую`),
+      el('p', { class: 'muted' }, 'Серия правильных ответов умножает очки. После каждой карточки — разбор. Геймпад: крестовина или стик ◀ ▶, A — дальше. На телефоне можно смахнуть карточку.'),
+      prev && prev.total ? el('p', {}, `Твой результат: ${prev.correct} из ${prev.total}, очки ${prev.score}`) : null,
+      el('button', { class: 'btn', type: 'button', onclick: begin }, prev && prev.total ? 'Сыграть ещё раз' : '▶ Начать')));
+  }
+  function begin() {
+    order = st.items.map((x, k) => k).sort(() => Math.random() - 0.5);
+    i = 0; score = 0; streak = 0; bestStreak = 0; correct = 0; mistakes = [];
+    box.innerHTML = ''; box.append(hud, timer, card, why, answers, el('div', { class: 'row', style: 'justify-content:center' }, nextBtn)); box.focus();
+    show();
+    let last = performance.now();
+    const loop = t => {
+      if (phase === 'intro' || phase === 'end') return;
+      const dt = (t - last) / 1000; last = t;
+      if (phase === 'ask') { left -= dt; if (left <= 0) answer(null); }
+      timer.firstChild.style.width = Math.max(0, 100 * left / st.seconds) + '%';
+      pollPad();
+      raf = requestAnimationFrame(loop);
+    };
+    raf = requestAnimationFrame(loop);
+  }
+  function show() {
+    if (i >= order.length) return finish();
+    const it = st.items[order[i]];
+    phase = 'ask'; left = st.seconds;
+    card.className = 'rcard'; card.style.transform = ''; card.textContent = it.text; why.textContent = '';
+    nextBtn.hidden = true; answers.classList.remove('locked'); box.focus({ preventScroll: true });
+    hud.innerHTML = ''; hud.append(el('span', {}, `${i + 1} / ${order.length}`), el('span', { class: 'streak' }, streak > 1 ? `серия ×${streak}` : ''), el('span', {}, `очки ${score}`));
+  }
+  function answer(side) {
+    if (phase !== 'ask') return;
+    phase = 'why'; answeredAt = performance.now();
+    const it = st.items[order[i]], ok = side === it.side;
+    if (ok) { streak++; bestStreak = Math.max(bestStreak, streak); correct++; score += 100 * Math.min(streak, 5) + Math.round(Math.max(0, left) * 10); beep('good'); }
+    else { streak = 0; mistakes.push(`${it.text} → ${(it.side === 'left' ? L : R).label}`); beep('bad'); }
+    card.classList.add(ok ? 'good' : 'bad', side === 'left' ? 'out-left' : side === 'right' ? 'out-right' : 'out-none');
+    answers.classList.add('locked'); box.focus({ preventScroll: true }); // фокус с кнопки ответа — чтобы пробел «Дальше» не нажал её ещё раз
+    why.innerHTML = '';
+    why.append(el('b', {}, ok ? 'Верно! ' : side == null ? 'Время вышло. ' : `Это «${(it.side === 'left' ? L : R).label.toLowerCase()}». `), it.why || '');
+    hud.querySelector('.streak').textContent = streak > 1 ? `серия ×${streak}` : '';
+    hud.lastChild.textContent = `очки ${score}`;
+    nextBtn.hidden = false; nextBtn.textContent = i + 1 >= order.length ? 'Итог ▶' : 'Дальше ▶';
+  }
+  function press(what) {
+    if (phase === 'ask' && (what === 'left' || what === 'right')) answer(what);
+    else if (phase === 'why' && what === 'next') { i++; show(); } // стрелки разбор не пролистывают: его надо успеть прочитать
+  }
+  function pollPad() {
+    let pads = []; try { pads = [...navigator.getGamepads()].filter(Boolean); } catch (e) { return; }
+    const gp = pads[0]; if (!gp) return;
+    const b = k => !!(gp.buttons[k] && gp.buttons[k].pressed), ax = gp.axes[0] || 0;
+    const now = { left: b(14) || b(4) || ax < -0.6, right: b(15) || b(5) || ax > 0.6, next: b(0) };
+    for (const k of Object.keys(now)) { if (now[k] && !padPrev[k]) press(k); padPrev[k] = now[k]; }
+  }
+  // свайп карточки: потянул влево или вправо дальше 80 пикселей — ответ
+  let drag = null;
+  card.addEventListener('pointerdown', e => { if (phase !== 'ask') return; drag = { x: e.clientX }; card.setPointerCapture(e.pointerId); });
+  card.addEventListener('pointermove', e => { if (!drag) return; const dx = e.clientX - drag.x; card.style.transform = `translateX(${dx}px) rotate(${dx / 18}deg)`; });
+  const drop = e => { if (!drag) return; const dx = e.clientX - drag.x; drag = null; card.style.transform = ''; if (Math.abs(dx) > 80) answer(dx < 0 ? 'left' : 'right'); };
+  card.addEventListener('click', () => { if (phase === 'why' && performance.now() - answeredAt > 400) press('next'); }); // не тот же клик, что ответил свайпом
+  card.addEventListener('pointerup', drop); card.addEventListener('pointercancel', () => { drag = null; card.style.transform = ''; });
+  function finish() {
+    phase = 'end'; cancelAnimationFrame(raf);
+    const v = { score, correct, total: order.length, bestStreak, mistakes };
+    ctx.save(v, true);
+    box.innerHTML = '';
+    const result = `Квиз «${st.title}»: ${correct} из ${order.length}, ${score} очков, серия ${bestStreak}.` + (mistakes.length ? ' Ошибки: ' + mistakes.join('; ') : '');
+    box.append(el('div', { class: 'stack', style: 'align-items:center;text-align:center;margin:auto' },
+      el('div', { class: 'eyebrow' }, 'Итог'), el('h2', {}, `${correct} из ${order.length} · ${score} очков`),
+      el('p', { class: 'muted' }, `Лучшая серия: ${bestStreak}`),
+      mistakes.length ? el('div', { class: 'small', style: 'text-align:left' }, el('b', {}, 'Ошибки:'), el('ul', {}, mistakes.map(m => el('li', {}, m)))) : el('p', {}, 'Без ошибок!'),
+      el('div', { class: 'row', style: 'justify-content:center' },
+        el('button', { class: 'btn', type: 'button', onclick: begin }, 'Ещё раз'),
+        el('button', { class: 'btn ghost', type: 'button', onclick: () => copy(result) }, '⧉ Скопировать результат'))));
+  }
+  box.addEventListener('keydown', e => {
+    if (phase === 'intro' || phase === 'end') return;
+    const k = { ArrowLeft: 'left', KeyA: 'left', ArrowRight: 'right', KeyD: 'right', Space: 'next', Enter: 'next', NumpadEnter: 'next' }[e.code];
+    if (k) { e.preventDefault(); press(k); }
   });
   intro();
   return box;
@@ -398,7 +574,7 @@ function ownGame({ onOver, autostart } = {}) {
   const g = () => S.game;
   const h = Games.frame({
     src: () => `/play/${g().id}/${g().current}`, key: () => 'game:' + g().id, info: () => ({ version: g().current }), label: 'Играть в свою игру', autostart,
-    onReady: () => { status.textContent = `Версия ${g().current} запущена.`; fixTries = 0; },
+    onReady: () => { status.textContent = `Версия ${g().current} запущена.`; fixTries = 0; api('/api/game/ran', { version: g().current }).catch(() => {}); },
     onOver: m => { if (onOver) onOver(m); },
     onError: async err => {
       const n = g().current;
@@ -651,7 +827,8 @@ function stepSummary(step) {
   const a = ans(step.id), v = a.value || {};
   const f = x => valText(x) + (x && x.dice ? ' [кубик]' : '');
   switch (step.type) {
-    case 'play': return `партий ${v.rounds || 0}, лучший счёт ${v.best || 0}`;
+    case 'play': case 'teacher-demo': return `партий ${v.rounds || 0}, лучший счёт ${v.best || 0}`;
+    case 'rounds': return v.total ? `верно ${v.correct} из ${v.total}, очки ${v.score}, серия ${v.bestStreak}` + ((v.mistakes || []).length ? '; ошибки: ' + v.mistakes.join('; ') : '') : 'не пройден';
     case 'choice': return [(v.selected || []).join('; '), valText(v.own) ? 'свои слова: ' + f(v.own) : ''].filter(Boolean).join(' · ') || '—';
     case 'sort': return v.total ? `верно ${v.correct} из ${v.total}, очки ${v.score}, серия ${v.bestStreak}` + ((v.mistakes || []).length ? '; ошибки: ' + v.mistakes.join('; ') : '') : 'не пройден';
     case 'text': return a.done ? 'прочитано' : 'не прочитано';

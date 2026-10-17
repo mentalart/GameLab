@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="ru" data-role="teacher">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Проектор · Лаборатория игр</title>
+<link rel="stylesheet" href="/style.css">
+</head>
+<body class="pj-body">
+<header class="top">
+  <div class="logo"><i></i> Лаборатория игр</div>
+  <div class="muted small" id="pjClass"></div>
+  <div class="tabs pj-tabs" role="tablist">
+    <button type="button" class="on" data-tab="lesson">Урок</button>
+    <button type="button" data-tab="demo" id="demoTab" hidden>Вау-старт</button>
+  </div>
+  <div class="who"><button class="btn ghost small" id="pjFull" type="button">⛶ Во весь экран</button></div>
+</header>
+<main class="pj">
+  <section id="pj-lesson" class="pj-lesson"></section>
+  <section id="pj-demo" class="pj-demo" hidden></section>
+</main>
+<script src="/common.js"></script>
+<script src="/games.js"></script>
+<script src="/projector.js"></script>
+</body>
+</html>

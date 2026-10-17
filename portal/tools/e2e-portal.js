@@ -3,6 +3,9 @@
 // Два прогона: с подставным ИИ (mock-ai.js: продюсер, сборка с ошибкой → автопочинка, правка) и в демо-режиме без ключа.
 // В прогоне с ИИ — «Играем вместе»: второй ученик собирает игру, оба играют в игры друг друга, бьют рекорд автора,
 // бросают вызов на зерне, оставляют плейтест; учитель пишет отзыв; аркада класса и личная аркада, скрытие игры.
+// Срез 3: проектор (код, таймер, кто закончил шаг), вау-старт teacher-demo (карты, сборка при всех, автопочинка, «открыть всем»),
+// фильтр «застряли», лимиты и «+10 запросов», сравнение моделей, отчёт журнала генераций и CSV, статусы заметок и Markdown;
+// в демо-прогоне — квиз-раунды rounds на уроке-проверке из fixtures/lessons.
 // Данные и настройки — во временной папке, настоящий portal/config.json и portal/data/ не трогаются.
 // Запуск: node portal/tools/e2e-portal.js [--headed]   Снимки — в portal/.check/portal-*.png
 'use strict';
@@ -13,6 +16,7 @@ const path = require('path');
 const TMP = fs.mkdtempSync(path.join(os.tmpdir(), 'lab-e2e-'));
 process.env.LAB_DATA = path.join(TMP, 'data');
 process.env.LAB_CONFIG = path.join(TMP, 'config.json');
+process.env.LAB_LESSONS = path.join(__dirname, 'fixtures', 'lessons'); // урок-проверка шага rounds
 const OUT = path.resolve(__dirname, '..', '.check');
 fs.mkdirSync(OUT, { recursive: true });
 
@@ -21,6 +25,8 @@ const mock = require('./mock-ai');
 const ai = require('../lib/ai');
 const portal = require('../server');
 const lesson1 = require('../lessons/urok-01');
+const lesson90 = require('./fixtures/lessons/urok-90');
+const store = require('../lib/store');
 
 const PASSWORD = 'e2e-пароль';
 const results = [];
@@ -29,7 +35,7 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
 let failShots = async () => {};
 
 function writeConfig(aiPart) {
-  fs.writeFileSync(process.env.LAB_CONFIG, JSON.stringify({ port: 0, teacherPassword: PASSWORD, ai: aiPart, models: [{ id: 'mock-code', label: 'Подставной программист', rubPer1MIn: 100, rubPer1MOut: 400 }, { id: 'mock-text', label: 'Подставной продюсер', rubPer1MIn: 10, rubPer1MOut: 40 }], limits: { aiCallsPerStudentPerLesson: 40, rublesPerLesson: 0 } }, null, 2));
+  fs.writeFileSync(process.env.LAB_CONFIG, JSON.stringify({ port: 0, teacherPassword: PASSWORD, ai: aiPart, models: [{ id: 'mock-code', label: 'Подставной программист', rubPer1MIn: 100, rubPer1MOut: 400 }, { id: 'mock-text', label: 'Подставной продюсер', rubPer1MIn: 10, rubPer1MOut: 40 }, { id: 'mock-alt', label: 'Подставная вторая модель', rubPer1MIn: 50, rubPer1MOut: 200 }], limits: { aiCallsPerStudentPerLesson: 40, rublesPerLesson: 0 } }, null, 2));
   ai.reloadConfig();
 }
 
@@ -98,9 +104,12 @@ async function run(browser, base, mode) {
   await student.click('#step-donor-hook >> text=Ответить');
   await student.waitForSelector('#step-donor-hook.done');
 
+  // вау-старт на проекторе
+  const pj = await wowStart(base, code, mode, teacher, student, errors, shot);
+
   // учитель открывает все чекпоинты — ученик получает их без перезагрузки
   await teacher.click('text=Открыть все');
-  await student.waitForSelector('.cp.open >> nth=6', { timeout: 10000 });
+  await student.waitForSelector('.cp.open >> nth=8', { timeout: 10000 });
   check('Чекпоинты открылись у ученика без перезагрузки (SSE)', true);
 
   // секрет
@@ -220,19 +229,164 @@ async function run(browser, base, mode) {
   const plan = await teacher.textContent('#studentDlg pre.plan');
   check('Учитель видит замысел ученика', plan.includes('Пасека под огнём'));
   await shot(teacher, '7-teacher');
+  if (mode === 'mock') await compareModels(teacher, shot);
   await teacher.click('#studentDlg >> text=Закрыть');
+  await liveLesson(code, mode, teacher, pj, shot);
   await teacher.click('.tabs >> text=Заметки автора');
   await teacher.waitForSelector('#tab-notes .card');
   check('Заметка автора дошла до учителя', (await teacher.textContent('#tab-notes')).includes('Проверка: заметка автора'));
+  const inWork = mode === 'mock' ? 1 : 2; // данные общие на оба прогона: заметка первого прогона уже «в работе»
+  await teacher.click('#tab-notes .note .chipbtn.st-work');
+  await teacher.waitForFunction(n => document.querySelector('#tab-notes .filters').textContent.includes('В работе · ' + n), inWork, { timeout: 5000 }).catch(() => {});
+  check('Статус заметки «в работе», фильтр считает', new RegExp('В работе · ' + inWork).test(await teacher.textContent('#tab-notes .filters')));
+  const md = await teacher.evaluate(async () => (await fetch(document.querySelector('#notesMd').href)).text());
+  check('Заметки выгружаются в Markdown по статусам', /^# Заметки автора курса/.test(md) && new RegExp('## В работе \\(' + inWork + '\\)').test(md) && md.includes('Проверка: заметка автора'), md.split('\n').slice(0, 5).join(' | '));
+  await shot(teacher, '8-notes');
   await teacher.click('.tabs >> text=ИИ и расходы');
   await teacher.waitForSelector('#tab-ai h3');
   const aiTab = await teacher.textContent('#tab-ai');
-  if (mode === 'mock') check('Журнал генераций считает вызовы и рубли', /Вызовов модели: [1-9]/.test(aiTab) && /mock-code/.test(aiTab), (aiTab.match(/Вызовов модели: [^.]*/) || [''])[0]);
-  else check('Демо-режим виден учителю', /демо-режим/i.test(aiTab));
-  await shot(teacher, '8-ai');
+  if (mode === 'mock') {
+    check('Журнал генераций считает вызовы и рубли', /Вызовов модели: [1-9]/.test(aiTab) && /mock-code/.test(aiTab), (aiTab.match(/Вызовов модели: [^.]*/) || [''])[0]);
+    await teacher.waitForSelector('#report');
+    const rows = await teacher.$$eval('#report tbody tr', trs => trs.map(tr => [...tr.cells].map(td => td.textContent.trim())));
+    const byM = Object.fromEntries(rows.map(r => [r[0], r]));
+    // mock-code: три сборки (две ученические и вау-старт), каждая упала в рамке и починена; mock-alt — сравнение, заработало сразу
+    check('Отчёт: mock-code — 3 игры, 0% с первой попытки, все работают после починки', byM['mock-code'] && byM['mock-code'][1] === '3' && byM['mock-code'][2] === '0%' && byM['mock-code'][3] === '100%', JSON.stringify(byM['mock-code']));
+    check('Отчёт: mock-alt — 100% с первой попытки, рубли на игру', byM['mock-alt'] && byM['mock-alt'][2] === '100%' && byM['mock-alt'][6] !== '—', JSON.stringify(byM['mock-alt']));
+    check('Отчёт: сравнение моделей на одном замысле', /«Пасека под огнём» · Тестер/.test(aiTab) && /mock-alt: ✓ с первой попытки/.test(aiTab));
+    const [bom, csvText] = await teacher.evaluate(async () => { const b = new Uint8Array(await (await fetch(document.querySelector('#csvGames').href)).arrayBuffer()); return [[...b.slice(0, 3)].join(','), new TextDecoder().decode(b)]; });
+    const lines = csvText.trim().split(/\r?\n/);
+    check('CSV по играм: заголовок, строка на игру, «;» и BOM', bom === '239,187,191' && /^Дата;Класс;Ученик/.test(lines[0]) && lines.length === 5 && lines.some(l => l.includes('mock-alt') && l.includes(';да;')), lines.length + ' строк');
+    const calls = await teacher.evaluate(async () => (await fetch(document.querySelector('#csvCalls').href)).text());
+    check('CSV всех вызовов модели', /Токены вход/.test(calls) && calls.trim().split(/\r?\n/).length > 6);
+  } else check('Демо-режим виден учителю', /демо-режим/i.test(aiTab));
+  await shot(teacher, '8-ai', true);
+  if (mode === 'demo') await roundsQuiz(teacher, student, shot);
+  await pj.close();
 
   check('Без ошибок JavaScript на страницах портала', !errors.length, errors.slice(0, 3).join(' | '));
   await tctx.close(); await sctx.close();
+}
+
+/* ---------- вау-старт: проектор, карты колоды безумных идей, сборка при всех, игра у всех ---------- */
+async function wowStart(base, code, mode, teacher, student, errors, shot) {
+  await teacher.click('text=Открыть: Вау-старт →');
+  const pj = await teacher.context().newPage();
+  watch(pj, errors);
+  await pj.setViewportSize({ width: 1600, height: 900 });
+  await pj.goto(base + '/projector?code=' + code);
+  await pj.waitForSelector('#pjCode');
+  check('Проектор: крупно код класса', (await pj.textContent('#pjCode')).trim() === code);
+  await pj.waitForFunction(() => /^\d\d:\d\d$/.test(document.querySelector('#pjTimer').textContent), null, { timeout: 5000 });
+  const t = await pj.textContent('#pjTimer');
+  check('Проектор: открытый чекпоинт и таймер по minutes урока', /Вау-старт/.test(await pj.textContent('.pj-cp h1')) && /^(10:00|09:5\d)$/.test(t), t);
+  await shot(pj, 'p1-projector');
+  // ученик: «смотри на проектор»
+  await student.click('.cp >> text=Вау-старт');
+  await student.waitForSelector('#step-vau-demo .projector-wait');
+  // учитель тянет три карты пробелом на проекторе
+  await pj.click('#demoTab');
+  await pj.waitForSelector('.pj-card');
+  for (let i = 0; i < 3; i++) { await pj.keyboard.press('Space'); await sleep(350); }
+  await pj.waitForFunction(() => document.querySelectorAll('.pj-card.on').length === 3, null, { timeout: 8000 });
+  await sleep(1000); // барабан карт докрутился
+  const cards = await pj.$$eval('.pj-card .cv', bs => bs.map(b => b.textContent.trim()));
+  check('Проектор: три карты вытянуты (герой, место, поворот)', cards.every(c => c && c !== '?'), cards.join(' | '));
+  await student.waitForFunction(c => [...document.querySelectorAll('#step-vau-demo .dcard b')].map(b => b.textContent.trim()).join('|') === c.join('|'), cards, { timeout: 10000 });
+  check('Ученик видит карты вживую, без перезагрузки', true);
+  await shot(pj, 'p2-cards');
+  await pj.click('#pjBuild');
+  let pf = await gameFrame(pj, '/play/', 0);
+  if (mode === 'mock') { // первая сборка подставного ИИ падает: проектор чинит сам
+    await pf.evaluate(() => window.__lab.confirm());
+    await pj.waitForFunction(() => /Починил: версия 2/.test(document.querySelector('#pjGame').textContent), null, { timeout: 30000 });
+    pf = await gameFrame(pj, '/play/', 0);
+    check('Вау-старт: игра собрана при всех, упавшую ИИ починил сам', true);
+  } else check('Вау-старт: игра собрана при всех (демо)', true);
+  check('Пока учитель не открыл — у ученика «смотри на проектор»', await student.locator('#step-vau-demo .projector-wait').count() === 1);
+  await pj.click('#pjOpenAll');
+  await student.waitForSelector('#step-vau-demo .gamebox .veil button', { timeout: 10000 });
+  await pj.waitForFunction(() => /открыта у всех/.test(document.querySelector('#pjGame').textContent), null, { timeout: 5000 }).catch(() => {});
+  check('«Открыть всем»: игра учителя у ученика в рамке', /открыта у всех/.test(await pj.textContent('#pjGame')));
+  await shot(pj, 'p3-wow-game');
+  await pj.click('.pj-tabs >> text=Урок'); // рамка на проекторе останавливается
+  await student.click('#step-vau-demo .veil button');
+  const df = await gameFrame(student, '/play/', 0);
+  await playRound(df, { score: 50 });
+  await student.waitForSelector('#step-vau-demo.done', { timeout: 10000 });
+  check('Ученик сыграл в игру класса, шаг teacher-demo готов', true);
+  await shot(student, '1b-wow');
+  return pj;
+}
+
+/* ---------- живой урок у учителя: проектор, «застряли», лимиты ---------- */
+async function liveLesson(code, mode, teacher, pj, shot) {
+  // проектор: таймер нового чекпоинта и сколько закончили шаги
+  await sleep(2300);
+  const pjText = await pj.textContent('.pj-cp');
+  check('Проектор: после «Открыть все» таймер у первого нового чекпоинта, видно, кто закончил шаги', /Секрет/.test(await pj.textContent('.pj-cp h1')) && /[1-9] из [12]/.test(pjText), pjText.replace(/\s+/g, ' ').slice(0, 120));
+  await shot(pj, 'p4-progress');
+  // «застрял»: нет движения 5+ минут (двигаем время прямо в данных ученика)
+  const s = store.getStudent(code, 'Тестер');
+  s.moved = new Date(Date.now() - 9 * 60e3).toISOString(); store.saveStudent(code, s);
+  await teacher.waitForSelector('[data-filter=stuck].hot', { timeout: 10000 });
+  await teacher.click('[data-filter=stuck]');
+  await teacher.waitForSelector('#students tr.stuck[data-nick="Тестер"]');
+  check('Фильтр «застряли»: ученик без движения 9 минут', /застрял: 9 мин/.test(await teacher.textContent('#students')) && (mode !== 'mock' || !(await teacher.textContent('#students')).includes('Соседка')));
+  await shot(teacher, '7b-stuck');
+  await teacher.click('[data-filter=all]');
+  // лимиты: расход урока и «+10 запросов» ученику
+  const spendText = await teacher.textContent('.spend');
+  check('Расход ИИ урока виден в панели', /ИИ на этом уроке: [\d,]+ ₽/.test(spendText), spendText.replace(/\s+/g, ' ').slice(0, 80));
+  await teacher.click('#students tr[data-nick="Тестер"] >> text=+10');
+  await teacher.waitForFunction(() => /из 50/.test(document.querySelector('#students tr[data-nick="Тестер"]').textContent), null, { timeout: 8000 });
+  check('Учитель добавил ученику 10 запросов: лимит 50', true);
+}
+
+/* ---------- сравнение моделей на одном замысле (в карточке ученика) ---------- */
+async function compareModels(teacher, shot) {
+  await teacher.fill('#cmpCustom', 'mock-alt');
+  await teacher.click('#studentDlg >> text=⚖ Пересобрать другой моделью');
+  await teacher.waitForSelector('#studentDlg .compare .seg .opt >> nth=1', { timeout: 30000 });
+  await teacher.click('#studentDlg .compare .seg .opt >> nth=1');
+  const cf = await gameFrame(teacher, '/play/', 0);
+  check('Сравнение: другая модель пересобрала замысел, версия B запускается', await cf.evaluate(() => window.__lab.ready));
+  await sleep(600);
+  await shot(teacher, '7a-compare');
+  await teacher.click('#studentDlg .compare .seg .opt >> nth=0');
+  const of = await gameFrame(teacher, '/play/', 0);
+  check('Сравнение: версия A — игра ученика в той же рамке', await of.evaluate(() => window.__lab.ready) && /Ученик/.test(await teacher.textContent('#studentDlg .compare .seg .opt.on')));
+}
+
+/* ---------- квиз-раунды «Игра или не игра?» (урок-проверка) ---------- */
+async function roundsQuiz(teacher, student, shot) {
+  await teacher.click('.tabs >> text=Урок');
+  await teacher.selectOption('#lessonSel', 'urok-90');
+  await teacher.waitForSelector('text=Открыть: Игра или не игра? →', { timeout: 10000 });
+  await teacher.click('text=Открыть: Игра или не игра? →');
+  await student.waitForSelector('#step-igra-ili-net >> text=▶ Начать', { timeout: 15000 });
+  const quiz = lesson90.checkpoints[0].steps[0];
+  await student.click('#step-igra-ili-net >> text=▶ Начать');
+  let wrong = null;
+  for (let i = 0; i < quiz.items.length; i++) {
+    const text = (await student.textContent('#step-igra-ili-net .rcard')).trim();
+    const it = quiz.items.find(x => x.text === text);
+    if (i === 0) { // свайп карточки мышью
+      const b = await student.locator('#step-igra-ili-net .rcard').boundingBox();
+      await student.mouse.move(b.x + b.width / 2, b.y + b.height / 2); await student.mouse.down();
+      await student.mouse.move(b.x + b.width / 2 + (it.side === 'left' ? -160 : 160), b.y + b.height / 2, { steps: 6 }); await student.mouse.up();
+    } else if (i === 1) { wrong = it; await student.click(`#step-igra-ili-net .rbtn.${it.side === 'left' ? 'right' : 'left'}`); } // нарочно ошибаемся кнопкой
+    else await student.keyboard.press(it.side === 'left' ? 'ArrowLeft' : 'KeyD');
+    await student.waitForSelector('#step-igra-ili-net .rcard.good, #step-igra-ili-net .rcard.bad');
+    if (i === 1) check('Раунды: после ошибки — разбор с объяснением', (await student.textContent('#step-igra-ili-net .why')).includes(it.why));
+    if (i === 2) await shot(student, '16-rounds');
+    await student.keyboard.press('Space');
+  }
+  await student.waitForSelector('#step-igra-ili-net.done');
+  const res = await student.textContent('#step-igra-ili-net h2 >> nth=1');
+  check('Квиз «Игра или не игра?»: свайп, кнопки, клавиши, итог', /11 из 12/.test(res) && (await student.textContent('#step-igra-ili-net')).includes(wrong.text), res);
+  check('Итог раундов: «Скопировать результат»', await student.locator('#step-igra-ili-net >> text=⧉ Скопировать результат').count() === 1);
+  await shot(student, '17-rounds-result');
 }
 
 /* ---------- «Играем вместе»: второй ученик, игры друг друга, вызов, плейтест, отзыв, аркада ---------- */

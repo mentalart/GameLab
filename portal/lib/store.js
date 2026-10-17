@@ -109,6 +109,11 @@ const store = {
     this.saveGame(g);
     return n;
   },
+  games() { // все игры портала: для отчёта журнала генераций
+    let list = [];
+    try { list = fs.readdirSync(path.join(DATA, 'games')); } catch (e) { /* игр нет */ }
+    return list.map(g => this.getGame(g)).filter(Boolean);
+  },
   versionCode(gameId, n) {
     try { return fs.readFileSync(path.join(this.gameDir(gameId), `v${Number(n)}.js`), 'utf8'); } catch (e) { return null; }
   },
@@ -140,9 +145,18 @@ const store = {
   },
   getChallenge(code, ch) { return this.challenges(code)[String(ch || '').trim().toUpperCase()] || null; },
 
-  // ---------- заметки автора и журнал генераций ----------
-  addNote(note) { appendLine(path.join(DATA, 'notes.jsonl'), Object.assign({ at: now() }, note)); },
-  notes() { return readLines(path.join(DATA, 'notes.jsonl')); },
+  // ---------- вау-старт: игра учителя на проекторе, своя на каждый урок класса ----------
+  getDemo(code, lesson) { return readJSON(path.join(classDir(code), 'demo-' + safeName(lesson) + '.json'), null); },
+  saveDemo(code, lesson, d) { writeJSON(path.join(classDir(code), 'demo-' + safeName(lesson) + '.json'), d); return d; },
+  dropDemo(code, lesson) { try { fs.unlinkSync(path.join(classDir(code), 'demo-' + safeName(lesson) + '.json')); } catch (e) { /* не было */ } },
+
+  // ---------- заметки автора (статус — отдельно: новая / в работе / сделано) и журнал генераций ----------
+  addNote(note) { appendLine(path.join(DATA, 'notes.jsonl'), Object.assign({ id: id(10), at: now() }, note)); },
+  notes() { // у заметок до среза 3 нет id — ключ из времени и текста
+    return readLines(path.join(DATA, 'notes.jsonl')).map(n => Object.assign(n, { id: n.id || 'n' + crypto.createHash('sha1').update(n.at + n.text).digest('hex').slice(0, 10) }));
+  },
+  noteStatus() { return readJSON(path.join(DATA, 'notes-status.json'), {}); },
+  setNoteStatus(noteId, status) { const all = this.noteStatus(); all[noteId] = status; writeJSON(path.join(DATA, 'notes-status.json'), all); return all; },
   logGen(entry) { appendLine(path.join(DATA, 'genlog.jsonl'), Object.assign({ at: now() }, entry)); },
   genlog() { return readLines(path.join(DATA, 'genlog.jsonl')); },
 };

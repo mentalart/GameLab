@@ -8,7 +8,8 @@ const Games = (() => {
   /* ---------- рамка игры ---------- */
   // Игра идёт в изолированной рамке (sandbox без allow-same-origin). Одновременно работает только одна рамка: запуск новой ставит остальные на паузу.
   // key — ключ таблицы рекордов в классе (game:<id> — игра ученика, её партии идут в плейтест автора); info() — версия и код вызова для сервера.
-  function frame({ src, key, info, cfg, label, onReady, onOver, onScore, onAgain, onError, autostart }) {
+  // score: false — партии не записываются (рамки учителя на проекторе и в карточке ученика).
+  function frame({ src, key, info, cfg, label, onReady, onOver, onScore, onAgain, onError, autostart, score = true }) {
     const box = el('div', { class: 'gamebox' });
     const veil = el('div', { class: 'veil' });
     let iframe = null, timer = null, ready = false;
@@ -23,16 +24,16 @@ const Games = (() => {
       if (!iframe || e.source !== iframe.contentWindow) return;
       const m = e.data || {};
       if (m.source !== 'lab-game') return;
-      if (m.type === 'ready') { ready = true; clearTimeout(timer); sendRecords(); if (cfg) post({ type: 'setCfg', cfg }); if (onReady) onReady(m.meta || {}); }
-      if (m.type === 'over') {
+      if (m.type === 'ready') { ready = true; clearTimeout(timer); if (score) sendRecords(); if (cfg) post({ type: 'setCfg', cfg }); if (onReady) onReady(m.meta || {}); }
+      if (m.type === 'over' && score) {
         api('/api/score', Object.assign({ game: key(), score: m.score, seed: m.seed, tele: m.tele }, extra()))
           .then(r => { postRecords(r); if (onScore) onScore(m, r); }).catch(() => {});
-        if (onOver) onOver(m);
       }
-      if (m.type === 'again') {
+      if (m.type === 'over' && onOver) onOver(m);
+      if (m.type === 'again' && score) {
         if (/^game:/.test(key())) api('/api/play/again', { game: key().slice(5) }).catch(() => {});
-        if (onAgain) onAgain(m);
       }
+      if (m.type === 'again' && onAgain) onAgain(m);
       if (m.type === 'error') { clearTimeout(timer); if (onError) onError(m); }
     }
     addEventListener('message', onMsg);
@@ -70,6 +71,40 @@ const Games = (() => {
       el('button', { class: 'btn ghost small', type: 'button', onclick: () => h.fullscreen() }, '⛶ На весь экран'));
   }
   function stopAll() { frames.slice().forEach(f => f.destroy()); }
+
+  /* ---------- рамка игры учителя: вау-старт на проекторе и сравнение моделей ---------- */
+  // get() — игра { id, current, versions }, set(g) — новая версия после починки. Упала — программист чинит сам (до 2 попыток),
+  // запуск отмечается для отчёта «с первой попытки». demo() — портал без ключа: тогда не чиним.
+  function teacherFrame({ get, set, label, autostart, demo, onOver }) {
+    let tries = 0, fixing = false;
+    const status = el('div', { class: 'small muted', 'aria-live': 'polite' });
+    const g = () => get();
+    const h = frame({
+      src: () => `/play/${g().id}/${g().current}`, key: () => 'teacher:' + g().id, score: false, label, autostart, onOver,
+      onReady: () => { status.textContent = `Версия ${g().current} запущена.`; api('/api/teacher/game/ran', { game: g().id, version: g().current }).catch(() => {}); },
+      onError: async err => {
+        const n = g().current;
+        if (tries >= 2 || (demo && demo())) {
+          api('/api/teacher/game/fix', { game: g().id, version: n, error: err, report: true }).catch(() => {});
+          h.message(el('div', { class: 'stack', style: 'align-items:center' }, el('b', {}, 'Игра упала: ' + (err.message || 'ошибка')),
+            el('p', { class: 'muted small' }, demo && demo() ? 'В демо-режиме программист не чинит ошибки.' : 'Программист не смог починить за 2 попытки.'),
+            el('button', { class: 'btn ghost small', type: 'button', onclick: () => { tries = 0; h.start(); } }, '↻ Попробовать ещё раз')));
+          return;
+        }
+        tries++;
+        const p = el('p', {}, `Игра упала: ${err.message || 'ошибка'}. Программист чинит — попытка ${tries} из 2…`);
+        h.message(el('div', { class: 'progress' }, el('div', { class: 'spinner' }), p));
+        fixing = true;
+        try {
+          const r = await Lab.job('/api/teacher/game/fix', { game: g().id, version: n, error: { phase: err.phase, message: err.message, line: err.line } }, j => { p.textContent = `Программист чинит «${err.message}» — попытка ${tries} из 2… ${j.seconds} с`; });
+          set(r.game); status.textContent = `Починил: версия ${r.version}.`; h.start();
+        } catch (e) { h.message(el('p', {}, 'Починка не удалась: ' + e.message)); }
+        fixing = false;
+      },
+    });
+    // fixing — идёт починка: снаружи рамку не пересоздавать, новую версию она запустит сама
+    return { h, status, get fixing() { return fixing; }, reset() { tries = 0; } };
+  }
 
   /* ---------- карточка игры аркады ---------- */
   const hue = id => [...String(id)].reduce((n, c) => (n * 31 + c.charCodeAt(0)) % 360, 7);
@@ -167,5 +202,5 @@ const Games = (() => {
       el('div', {}, el('b', {}, 'Вопрос: '), valText(fb.question)));
   }
 
-  return { frames, frame, bar, stopAll, card, scores, challenge, discovery, feedback };
+  return { frames, frame, teacherFrame, bar, stopAll, card, scores, challenge, discovery, feedback };
 })();

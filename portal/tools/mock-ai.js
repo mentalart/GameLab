@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 // Подставной OpenAI-совместимый ИИ для проверки портала без ключа и без денег.
 // Продюсер отвечает JSON с развилкой. Первая сборка — игра, которая падает через секунду (проверка автопочинки),
-// починка и правка возвращают рабочий образец урока. Поддерживает потоковый ответ (stream).
+// починка и правка возвращают рабочий образец урока. Модель mock-alt собирает рабочую игру сразу — для сравнения моделей
+// и отчёта журнала генераций. Поддерживает потоковый ответ (stream).
 // Запуск: node portal/tools/mock-ai.js [порт]  →  в config.json: "baseUrl": "http://localhost:порт/v1", "apiKey": "mock"
 'use strict';
 const http = require('http');
@@ -11,7 +12,7 @@ const path = require('path');
 const SAMPLE = fs.readFileSync(path.join(__dirname, '..', 'games', 'tarelki-nad-aulom.js'), 'utf8');
 const BROKEN = SAMPLE.replace('  update(lab, dt) {', '  update(lab, dt) {\n    if (lab.t > 1.2) lab.state.nothing.position.x = 1; // подставная ошибка для проверки автопочинки');
 
-function answer(messages) {
+function answer(messages, model) {
   const sys = (messages.find(m => m.role === 'system') || {}).content || '';
   const user = (messages.filter(m => m.role === 'user').pop() || {}).content || '';
   if (/продюсер/i.test(sys)) {
@@ -23,6 +24,7 @@ function answer(messages) {
     const code = (/```js\n([\s\S]*?)```/.exec(user) || [])[1] || SAMPLE;
     return 'Нашёл: обращение к несуществующему объекту. Исправил.\n```js\n' + code.split('\n').filter(l => !l.includes('подставная ошибка')).join('\n') + '```';
   }
+  if (model === 'mock-alt') return 'Готово.\n```js\n' + named(SAMPLE).replace("  donor: 'Space Invaders',", "  donor: 'Space Invaders',\n  notes: ['Другая модель: собрал без ошибок'],") + '```';
   if (/просит одно изменение/.test(user)) return '```js\n' + SAMPLE.replace("  donor: 'Space Invaders',", "  donor: 'Space Invaders',\n  notes: ['Правка ученика выполнена (подставной ИИ)'],") + '```';
   return '```js\n' + named(BROKEN).replace("  donor: 'Space Invaders',", "  donor: 'Space Invaders',\n  notes: ['Решил сам: добавил золотую тарелку-бонус', 'Решил сам: стога-укрытия из сена'],") + '```';
 }
@@ -35,7 +37,7 @@ function start(port = 0) {
       if (req.url.endsWith('/models')) { res.writeHead(200, { 'Content-Type': 'application/json' }); return res.end(JSON.stringify({ data: [{ id: 'mock-code' }, { id: 'mock-text' }] })); }
       if (!req.url.endsWith('/chat/completions')) { res.writeHead(404); return res.end(); }
       const j = JSON.parse(body || '{}');
-      const text = answer(j.messages || []);
+      const text = answer(j.messages || [], j.model);
       const usage = { prompt_tokens: Math.round(JSON.stringify(j.messages).length / 3), completion_tokens: Math.round(text.length / 3) };
       if (j.stream) {
         res.writeHead(200, { 'Content-Type': 'text/event-stream' });
