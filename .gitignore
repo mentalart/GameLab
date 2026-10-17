@@ -1,6 +1,9 @@
-# Локальные данные платформы: ключ API, пароль учителя, ответы учеников
-laboratoriya-igr/config.json
-laboratoriya-igr/data/
+# Секреты и данные класса: ключ API, пароль учителя, ответы учеников, прохождения.
+# В репозиторий они не попадают никогда.
+**/config.json
+**/data/
+.env
+.env.*
 node_modules/
 .DS_Store
 Thumbs.db
