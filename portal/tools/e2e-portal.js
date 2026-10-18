@@ -1461,7 +1461,8 @@ async function lessonFive(mode, teacher, student, shot) {
   check('Донор урока 5: обби с камерой сбоку и прыжком со спрятанной механикой', await gf.evaluate(() => window.__lab.cfg.secret === 1 && window.__lab.cfg.coyote > 0 && GAME.LEVEL.length > 10));
   await gf.evaluate(() => window.__lab.confirm());
   await gf.locator('#cv').focus();
-  await student.keyboard.down('ArrowRight'); await sleep(700); await student.keyboard.press('Space'); await sleep(700); await student.keyboard.up('ArrowRight');
+  const t0 = await gf.evaluate(() => window.__lab.lab.t), byClock = dt => gf.waitForFunction(t => window.__lab.lab.t > t, t0 + dt, { timeout: 30000 }); // по часам игры: без видеокарты секунда игры длиннее настоящей
+  await student.keyboard.down('ArrowRight'); await byClock(0.5); await student.keyboard.press('Space'); await byClock(1); await student.keyboard.up('ArrowRight');
   const run = await gf.evaluate(() => { const st = window.__lab.lab.state; return { x: st.hero.x, jumps: st.jumps }; });
   check('Тур бежит и прыгает с клавиатуры', run.x > 1.8 && run.jumps >= 1, `x ${run.x.toFixed(1)}, прыжков ${run.jumps}`);
   await gf.evaluate(() => { window.__lab.lab.score = 900; window.__lab.end('lose', 'Проверка'); });
@@ -1510,11 +1511,11 @@ async function lessonFive(mode, teacher, student, shot) {
 
   // слепой турнир: одна ручка в загадке, ответ — после нескольких секунд игры
   const blind = step5('slepoy-turnir');
+  check('Слепой турнир: ответ закрыт, пока не поиграл', await student.locator('#step-slepoy-turnir .opts .opt.dim').count() === blind.choices); // до запуска загадки: потом закрыт всего секунду
   await student.click('#step-slepoy-turnir .veil button');
   gf = await gameFrame(student, 'tur-nad-hadzhohom', 0);
   await gf.waitForFunction(() => window.__lab.cfg.coyote === 0, null, { timeout: 5000 }).catch(() => {});
   check('Слепой турнир: в загадке повёрнута одна ручка', await gf.evaluate(() => window.__lab.cfg.coyote === 0 && window.__lab.cfg.buffer === 0.12));
-  check('Слепой турнир: ответ закрыт, пока не поиграл', await student.locator('#step-slepoy-turnir .opts .opt.dim').count() === blind.choices);
   await student.click('#step-slepoy-turnir .seg .opt >> nth=1');
   await sleep(600); // старая рамка загадки уходит из списка рамок страницы
   gf = await gameFrame(student, 'tur-nad-hadzhohom', 0);
