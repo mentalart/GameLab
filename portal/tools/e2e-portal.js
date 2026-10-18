@@ -254,6 +254,7 @@ async function run(browser, base, mode) {
   // разбор прототипа: кривая партии (партия 6 секунд — счёт по секундам из оболочки) и своеволие ИИ, находки на доске
   await student.click('#step-razbor .veil button');
   own = await gameFrame(student, '/play/', 0);
+  await student.locator('#step-razbor iframe').scrollIntoViewIfNeeded(); // рамка за краем экрана кадров не рисует — время партии стоит
   await own.evaluate(() => window.__lab.confirm());
   // ждём время партии, а не настоящее: без видеокарты кадров мало, и за 6 настоящих секунд в игре проходит 2–3
   const atT = t => own.waitForFunction(x => window.__lab.lab.t >= x, t, { timeout: 30000, polling: 100 });
@@ -264,7 +265,7 @@ async function run(browser, base, mode) {
   check('Разбор: кривая партии нарисована по счёту из оболочки', await student.locator('#step-razbor svg.curve polyline.now').count() === 1);
   await student.locator('#step-razbor svg.curve').scrollIntoViewIfNeeded(); // щелчок мышью — по экрану: кривая под рамкой игры может быть ниже края
   const box = await student.locator('#step-razbor svg.curve').boundingBox();
-  await student.mouse.click(box.x + box.width * 0.6, box.y + box.height / 2);
+  await student.locator('#step-razbor svg.curve').click({ position: { x: box.width * 0.6, y: box.height / 2 } });
   await student.click('#step-razbor .toolpanel .chipbtn >> nth=4');
   await student.click('#step-razbor [data-curve="no"]');
   await student.click('#step-razbor [data-offer] >> nth=0');

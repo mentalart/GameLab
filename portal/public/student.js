@@ -103,6 +103,7 @@ function save(stepId, value, done, now) {
   const plan = S.lesson.plan || {};
   if (stepId === plan.factory || stepId === plan.decisions) S.hooks.forEach(h => h('plan', stepId));
   if (done) S.hooks.forEach(h => h('answered', stepId)); // шаг закрыт: лупа ждёт ответа «Найди секрет»
+  if (done != null) S.hooks.forEach(h => h('answer', stepId)); // шаг закрыт или открыт: зависимые шаги (правка с findingsFrom) перерисовываются
 }
 // перед сборкой: все ответы, которые ещё ждут отправки, уходят на сервер — замысел собирается из них
 function flushSaves() {
@@ -2051,7 +2052,7 @@ STEPS.verify = ctx => {
       const ver = cur() || {};
       head.textContent = `Сейчас версия ${ver.n}` + (ver.request ? ` — правка: «${ver.request}»` : ver.kind ? ` · ${ver.kind}` : '') + '.';
       const mine = v.log.filter(x => x.version === ver.n).pop();
-      if (!ver.from && ver.kind !== 'правка') { ask.append(el('p', { class: 'small muted' }, 'Эта версия не из правки. Сделай правку в шаге выше и вернись сюда.')); return; }
+      if (ver.kind !== 'правка') { ask.append(el('p', { class: 'small muted' }, 'Эта версия не из правки. Сделай правку в шаге выше и вернись сюда.')); return; }
       if (played !== ver.n && !mine) { ask.append(el('p', { class: 'concept' }, 'Сыграй партию в новую версию — потом ответь, стало ли ближе к чувству.')); return; }
       const seg = el('div', { class: 'seg', role: 'radiogroup', 'aria-label': 'Ближе к задуманному чувству?' }, VERD.map(([k, label]) => el('button', { type: 'button', class: 'opt' + (mine && mine.verdict === k ? ' on' : ''), 'data-verdict': k, onclick: () => {
         v.log = v.log.filter(x => x.version !== ver.n).concat({ version: ver.n, verdict: k, request: ver.request || '' }).slice(-20);
