@@ -96,6 +96,17 @@ function drawLesson() {
   const total = o.students.length;
   const studentsAt = id => o.students.filter(s => s.where && cps.find(c => c.id === id).steps.some(st => st.id === s.where)).length;
   const finished = c => o.students.filter(s => c.steps.every(st => s.doneSteps.includes(st.id))).length;
+  // сценарий учителя (teacher в сценарии урока): у текущего чекпоинта — раскрыт, у остальных — по клику
+  const curCp = (o.class.timer && cps.find(c => c.id === o.class.timer.cp && opened.includes(c.id))) || cps.filter(c => opened.includes(c.id)).pop() || cps[0];
+  const script = c => {
+    if (!c.teacher) return null;
+    const t = c.teacher, rows = [['Скажите', t.say], ['Спросите класс', t.ask], ['Смотрите', t.watch], ['Дальше, когда', t.next]].filter(r => r[1]);
+    const d = el('details', { class: 'tscript', open: c.id === curCp.id ? true : null }, el('summary', {}, '📋 Сценарий учителя'),
+      el('dl', {}, rows.flatMap(([k, v]) => [el('dt', {}, k), el('dd', {}, v)])));
+    d.addEventListener('toggle', () => { T.scriptOpen = T.scriptOpen || {}; T.scriptOpen[c.id] = d.open; });
+    if (T.scriptOpen && c.id in T.scriptOpen) d.open = T.scriptOpen[c.id];
+    return d;
+  };
   host.append(el('div', { class: 'stack', style: 'gap:6px' }, cps.map((c, i) => {
     const on = opened.includes(c.id);
     const sw = el('div', { class: 'switch' + (on ? ' on' : ''), role: 'switch', tabindex: '0', 'aria-checked': String(on), 'aria-label': 'Открыть чекпоинт ' + c.title });
@@ -103,7 +114,7 @@ function drawLesson() {
     sw.addEventListener('click', toggle); sw.addEventListener('keydown', e => { if (e.key === ' ' || e.key === 'Enter') { e.preventDefault(); toggle(); } });
     const timed = o.class.timer && o.class.timer.cp === c.id;
     return el('div', { class: 'cprow' + (on ? ' open' : '') + (timed ? ' timed' : '') }, sw,
-      el('div', { class: 'grow' }, el('b', {}, `${i + 1}. ${c.title}`), el('div', { class: 'small muted' }, `${c.minutes} мин · ${c.steps.map(s => s.title).join(' · ')}`)),
+      el('div', { class: 'grow' }, el('b', {}, `${i + 1}. ${c.title}`), el('div', { class: 'small muted' }, `${c.minutes} мин · ${c.steps.map(s => s.title).join(' · ')}`), script(c)),
       timed ? el('span', { class: 'tag timer-tag', 'data-timer': '1' }, '⏱') : on ? el('button', { class: 'btn ghost small', type: 'button', title: 'Запустить таймер этого чекпоинта', onclick: () => timer('restart', c.id) }, '⏱ таймер') : null,
       on && total ? el('span', { class: 'tag' + (finished(c) === total ? ' ok' : '') }, `закончили: ${finished(c)} из ${total}`) : null,
       el('span', { class: 'tag' }, `здесь: ${studentsAt(c.id)}`));
@@ -201,7 +212,7 @@ async function openStudent(nick) {
       body.append(compareBox(nick, r));
     } else body.append(el('p', { class: 'muted' }, 'Игра ещё не собрана.'));
     if (r.discovery) body.append(el('h3', {}, 'Плейтест: игра глазами класса'), Games.discovery(r.discovery));
-    body.append(feedbackEditor(nick, r.feedback));
+    body.append(feedbackEditor(nick, r.feedback, !!(r.game && r.game.current)));
     if (!$('#studentDlg').open) $('#studentDlg').showModal();
   } catch (e) { toast(e.message, 'err'); }
 }
@@ -256,8 +267,9 @@ function compareBox(nick, r) {
   return box;
 }
 
-// отзыв учителя: одно понятие геймдизайна + один вопрос, кубики — из колод урока (lesson.feedback)
-function feedbackEditor(nick, fb) {
+// отзыв учителя: одно понятие геймдизайна + один вопрос, кубики — из колод урока (lesson.feedback).
+// «🪄 Черновик» — портал предлагает понятие и вопрос по телеметрии соседей и их карточкам; учитель правит и отправляет сам
+function feedbackEditor(nick, fb, hasGame) {
   const decks = T.overview.lesson.feedback || {};
   const v = { concept: (fb && fb.concept) || { text: '' }, question: (fb && fb.question) || { text: '' } };
   const save = el('button', { class: 'btn', type: 'button' }, fb ? 'Обновить отзыв' : 'Отправить отзыв ученику');
@@ -269,10 +281,25 @@ function feedbackEditor(nick, fb) {
     catch (e) { toast(e.message, 'err'); }
     save.disabled = false;
   });
-  return el('div', { class: 'card stack fbedit' }, el('h3', {}, 'Отзыв учителя: одно понятие + один вопрос'),
-    fieldEditor({ id: 'concept', label: 'Понятие геймдизайна', hint: 'Одно понятие, которое видно в игре ученика', deck: decks.concepts }, v.concept, nv => { v.concept = nv; }, { idPrefix: 'fb-' }),
-    fieldEditor({ id: 'question', label: 'Вопрос автору', hint: 'Один вопрос, на который автор ответит следующей версией', deck: decks.questions }, v.question, nv => { v.question = nv; }, { idPrefix: 'fb-' }),
-    el('div', { class: 'row' }, save, state));
+  const fields = el('div', { class: 'stack' }), why = el('p', { class: 'small muted', 'aria-live': 'polite' });
+  const drawFields = () => {
+    fields.innerHTML = '';
+    fields.append(fieldEditor({ id: 'concept', label: 'Понятие геймдизайна', hint: 'Одно понятие, которое видно в игре ученика', deck: decks.concepts }, v.concept, nv => { v.concept = nv; }, { idPrefix: 'fb-' }),
+      fieldEditor({ id: 'question', label: 'Вопрос автору', hint: 'Один вопрос, на который автор ответит следующей версией', deck: decks.questions }, v.question, nv => { v.question = nv; }, { idPrefix: 'fb-' }));
+  };
+  const draft = el('button', { class: 'btn ghost', type: 'button', disabled: hasGame ? null : true, title: hasGame ? 'Понятие и вопрос по телеметрии и карточкам соседей' : 'У ученика ещё нет игры' }, '🪄 Черновик');
+  draft.addEventListener('click', async () => {
+    draft.disabled = true; why.textContent = 'Портал читает телеметрию и карточки соседей…';
+    try {
+      const r = await Lab.job('/api/teacher/feedback/draft', { code: T.code, nick }, j => { why.textContent = `Портал читает телеметрию и карточки соседей… ${j.seconds} с`; });
+      v.concept = { text: r.concept }; v.question = { text: r.question }; drawFields();
+      why.textContent = `Черновик (${r.model === 'правила' ? 'по правилам телеметрии' : 'модель ' + r.model}): ${r.why || ''} Поправьте и отправьте.`;
+    } catch (e) { why.textContent = ''; toast(e.message, 'err'); }
+    draft.disabled = false;
+  });
+  drawFields();
+  return el('div', { class: 'card stack fbedit' }, el('div', { class: 'row' }, el('h3', { class: 'grow' }, 'Отзыв учителя: одно понятие + один вопрос'), draft), why,
+    fields, el('div', { class: 'row' }, save, state));
 }
 
 /* ---------- вкладка «Вау-старт» ---------- */
@@ -327,13 +354,19 @@ function drawWowSecret() {
     el('button', { class: 'btn ghost small', type: 'button', onclick: () => { W.showSecret = !W.showSecret; drawWowSecret(); } }, W.showSecret ? 'Скрыть' : 'Показать')));
   if (W.showSecret) {
     const sel = el('select', { id: 'wowSecretSel', 'aria-label': 'Выбрать секрет' });
-    r.secrets.forEach(x => sel.append(el('option', { value: x.id, selected: x.id === r.secret.id ? true : null }, `${x.title} (${x.effect})`)));
+    r.secrets.forEach(x => sel.append(el('option', { value: x.id, selected: x.id === r.secret.id ? true : null }, `${x.title} (${x.effect})${x.sound ? ' · 🎧 слышно только в наушниках' : ''}`)));
     sel.addEventListener('change', () => wowAct('/api/teacher/wow/secret', { id: sel.value }));
     box.append(el('div', {}, el('span', { class: 'tag ' + (r.wow.secretBy === 'кубик' ? 'dice' : 'own') }, r.wow.secretBy === 'кубик' ? '[кубик]' : 'выбор учителя'), ' ', el('b', {}, r.secret.title)),
       el('div', { class: 'row' }, el('div', { class: 'grow' }, sel), el('button', { class: 'btn ghost small', type: 'button', onclick: () => wowAct('/api/teacher/wow/secret', {}) }, '🎲 Другой секрет')),
+      r.secret.sound && !r.headphones ? el('p', { class: 'small', style: 'color:var(--warm)' }, '🎧 Этот секрет слышно только в наушниках, а в классе их нет — класс его не почувствует.') : null,
       r.built && r.built.id !== r.secret.id ? el('p', { class: 'small', style: 'color:var(--warm)' }, `В собранной игре сейчас другой секрет: «${r.built.title}». Пересоберите игру, чтобы заложить новый.`) : null,
       r.demo ? el('p', { class: 'small muted' }, 'Демо-режим: без ключа ИИ собирается запасная игра урока, у неё свой секрет — ускорение волны.') : null);
   }
+  // наушники: без них секреты со звуком не выпадают кубиком и не попадают в карту секрета Фабрики
+  const hp = el('input', { type: 'checkbox', id: 'wowHeadphones', checked: r.headphones ? true : null });
+  hp.addEventListener('change', () => wowAct('/api/teacher/wow/headphones', { on: hp.checked }, true));
+  box.append(el('label', { class: 'row small', for: 'wowHeadphones', style: 'gap:8px;cursor:pointer' }, hp,
+    el('span', {}, '🎧 В классе наушники — можно секреты со звуком (иначе кубик их не тянет, и в Фабрике их нет)')));
   host.append(box);
 }
 function drawWowBuild() {
@@ -374,7 +407,9 @@ function drawWowBuild() {
         if (W.botFor !== g.id + '/' + g.version) return;
         W.botFor = null;
         if (m.error) { botLine.textContent = '🤖 Бот не смог сыграть: ' + m.error; return; }
-        try { await api('/api/teacher/wow/playtest', { code: T.code, version: g.version, report: m.report }); } catch (e) { toast(e.message, 'err'); }
+        let res = null;
+        try { res = await api('/api/teacher/wow/playtest', { code: T.code, version: g.version, report: m.report }); } catch (e) { toast(e.message, 'err'); }
+        if (res && res.autoFix && !W.busy) { autoFixSecret(); return; }
         drawWow(true);
       },
       onError: err => { W.botFor = null; W.preview.message(el('div', { class: 'stack', style: 'align-items:center' }, el('b', {}, 'Игра упала: ' + (err.message || 'ошибка')), el('p', { class: 'muted small' }, 'Соберите заново или возьмите запасную игру.'))); } });
@@ -405,6 +440,17 @@ function drawWowBuild() {
         el('a', { class: 'btn ghost small', href: `/play/${g.id}/${g.version}`, target: '_blank', rel: 'noopener' }, '⛶ Открыть на проектор ↗')));
   }
   host.append(box);
+}
+// секрет игры класса за три партии бота ни разу не сработал: бот сам отправляет программисту правку по отчёту (один раз на игру)
+async function autoFixSecret() {
+  W.busy = true;
+  const line = $('#wowBot') && $('#wowBot').querySelector('[aria-live]');
+  toast('🤖 Бот: секрет ни разу не сработал — отправляю программисту на исправление', 'err', 8000);
+  try {
+    await Lab.job('/api/teacher/wow/playtest-fix', { code: T.code, auto: true }, j => { if (line) line.textContent = `🛠 Секрет молчит: программист правит игру по отчёту бота… ${j.seconds} с`; });
+    toast('Программист поправил секрет — бот проверит игру снова', 'ok');
+  } catch (e) { toast(e.message, 'err', 8000); }
+  W.busy = false; drawWow(true);
 }
 function drawWowSummary() {
   const r = W.data, s = r.summary, host = $('#wowSummary'); host.innerHTML = '';

@@ -16,7 +16,8 @@ function answerText(step, a, game) {
     case 'abtest': return v.A ? `секрет в игре ${v.side === 'A' ? 'А' : 'Б'}; голос: ${v.vote ? (v.vote === 'same' ? 'разницы нет' : 'напряжённее ' + (v.vote === 'A' ? 'А' : 'Б')) : 'нет'}${v.vote && v.vote === v.side ? ' — почувствовал' : ''}; партий А ${v.A.rounds}, Б ${v.B.rounds}` : '';
     case 'secret': return v.guess ? `догадка: ${v.guess} — ${v.correct ? 'угадал' : v.trap ? 'ловушка: это было на картах' : 'не угадал'}` : '';
     case 'rounds': case 'sort': return v.total ? quizLine(v) : '';
-    case 'blindpair': return v.vote ? `«${v.title}» (автор ${v.author}): хочется вернуться — ${v.vote === 'same' ? 'разницы нет' : v.juicy ? 'в сочную' : 'в сухую'}` : '';
+    case 'blindpair': return v.vote ? (step.mode === 'secret' ? `«${v.title}» (автор ${v.author}): напряжённее — ${v.vote === 'same' ? 'разницы нет' : v.felt ? 'с секретом, почувствовал' : 'без секрета'}`
+      : `«${v.title}» (автор ${v.author}): хочется вернуться — ${v.vote === 'same' ? 'разницы нет' : v.juicy ? 'в сочную' : 'в сухую'}`) : '';
     case 'listen': return v.total ? quizLine(v) : '';
     case 'vote': return v.votes ? 'голоса отданы, сыграно игр: ' + Object.keys(v.played || {}).length : '';
     case 'sequencer': return v.line ? `мелодия: ${v.line}` : '';
@@ -28,6 +29,7 @@ function answerText(step, a, game) {
     case 'decisions': case 'igra': return step.fields.filter(x => val((v.fields || {})[x.id])).map(x => `${x.letter ? x.letter + ' — ' : ''}${x.label}: ${dice(v.fields[x.id])}`).join('\n');
     case 'producer': return v.result ? (v.result.forks || []).map((x, i) => `${x.question} → ${(v.choices || {})[i] || 'не выбрано'}`).join('\n') || 'прочитал' : '';
     case 'build': return game ? `«${game.title || ''}», версий ${game.versions.length}, текущая v${game.current}` + (v.rounds ? `, партий ${v.rounds}` : '') : '';
+    case 'ownplay': return v.rounds ? `партий ${v.rounds}` + (val(v.answer) ? `; ${step.question || 'ответ'}: ${dice(v.answer)}` : '') : '';
     case 'aicheck': return val(v.text) ? `догадка: ${val(v.text)}` : '';
     case 'workshop': return (v.requests || []).map(r => `${r.text}${r.dice ? ' [кубик]' : ''} → v${r.version}`).join('\n');
     case 'arcade': return v.game ? `«${v.title || ''}» (автор ${v.author || '—'}), партий ${v.rounds || 0}, лучший счёт ${v.best || 0}${v.beat ? ', рекорд автора побит' : ''}` : '';

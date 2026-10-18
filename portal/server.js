@@ -32,8 +32,15 @@ function lessons() {
 // ученику — урок без колоды секретов: какой секрет в игре класса, он узнаёт только после своей догадки
 // и без ответа шага «Найди секрет» с hunt в сценарии: правильный вариант, ловушка и раскрытие приходят после догадки
 const publicHunt = h => ({ question: h.question, options: h.options, compare: h.compare, after: h.after });
-function studentLesson(les) {
-  const out = Object.assign({}, les, { checkpoints: les.checkpoints.map(cp => Object.assign({}, cp, { steps: cp.steps.map(s => (s.hunt ? Object.assign({}, s, { hunt: publicHunt(s.hunt) }) : s)) })) });
+// Поле Фабрики с secrets: true — карта секрета своей игры: колода — названия секретов урока (без fallbackOnly, со звуком — только при наушниках).
+// Сценарий учителя у чекпоинта (teacher) ученику не нужен.
+function studentLesson(les, cls) {
+  const step = s => {
+    if (s.hunt) return Object.assign({}, s, { hunt: publicHunt(s.hunt) });
+    if (s.type === 'factory' && les.wow && s.fields.some(f => f.secrets)) return Object.assign({}, s, { fields: s.fields.map(f => (f.secrets ? Object.assign({}, f, { deck: diceSecrets(cls, les).map(x => x.title) }) : f)) });
+    return s;
+  };
+  const out = Object.assign({}, les, { checkpoints: les.checkpoints.map(cp => { const c = Object.assign({}, cp, { steps: cp.steps.map(step) }); delete c.teacher; return c; }) });
   if (les.wow) out.wow = { formula: les.wow.formula, cards: les.wow.cards.map(c => ({ id: c.id, label: c.label })) };
   return out;
 }
@@ -65,23 +72,26 @@ const fieldText = f => (f && typeof f === 'object' ? f.text : f) || '';
 function buildPlan(les, st) {
   const A = id => (st.answers[id] || {}).value || {};
   const P = les.plan;
-  if (!P || !stepOf(les, P.factory)) return { title: 'Моя игра', donor: les.donor || '', twist: '', world: '', level: '', details: [], decisions: { feeling: '', honesty: '', choice: '' }, igra: { i: '', g: '', r: '', a: '' }, forks: [], diceCount: 0, fieldCount: 0 };
+  if (!P || !stepOf(les, P.factory)) return { title: 'Моя игра', donor: les.donor || '', twist: '', world: '', level: '', details: [], decisions: { feeling: '', honesty: '', choice: '' }, igra: { i: '', g: '', r: '', a: '' }, forks: [], secret: null, diceCount: 0, fieldCount: 0 };
   const fac = A(P.factory), facFields = fac.fields || {};
   const facStep = stepOf(les, P.factory).step;
   const level = (facStep.levels || []).find(l => l.id === fac.level) || (facStep.levels || [])[0] || { label: 'Базовый', hint: '' };
   // донор на выбор (шаг factory с donors): в замысел идёт выбранная классика, а не донор урока
   const chosen = facStep.donors ? (facStep.donors.find(d => d.id === fac.donor) || facStep.donors[0]) : null;
-  const details = facStep.fields.filter(f => !['title', 'twist', 'world'].includes(f.id) && fieldText(facFields[f.id]))
+  const details = facStep.fields.filter(f => !['title', 'twist', 'world', 'secret'].includes(f.id) && fieldText(facFields[f.id]))
     .map(f => `${f.label}: ${fieldText(facFields[f.id])}`);
   const dec = (A(P.decisions).fields) || {}, igra = (A(P.igra).fields) || {};
   const prod = A(P.producer);
   const forks = ((prod.result && prod.result.forks) || []).map((f, i) => ({ question: f.question, answer: (prod.choices || {})[i] })).filter(f => f.answer);
   const all = [facFields, dec, igra].flatMap(o => Object.values(o));
+  // карта секрета (поле secret Фабрики): секрет из колоды урока — его задание программисту, свои слова — как есть
+  const secText = fieldText(facFields.secret), secDef = secText && les.wow ? les.wow.secrets.find(x => x.title === secText) : null;
   return {
     title: fieldText(facFields.title) || 'Моя игра',
     donor: chosen ? `${chosen.title} — ${chosen.text} ${chosen.rules || ''}`.trim() : `${les.donor} — ${facStep.donorCard ? facStep.donorCard.text : ''}`,
     donorTitle: chosen ? chosen.title : les.donor,
     twist: fieldText(facFields.twist), world: fieldText(facFields.world),
+    secret: secText ? { title: secText, prompt: secDef ? secDef.prompt : secText } : null,
     level: `${level.label} (${level.hint})`, details,
     decisions: { feeling: fieldText(dec.feeling), honesty: fieldText(dec.honesty), choice: fieldText(dec.choice) },
     igra: { i: fieldText(igra.i), g: fieldText(igra.g), r: fieldText(igra.r), a: fieldText(igra.a) },
@@ -92,6 +102,53 @@ function buildPlan(les, st) {
     diceCount: all.filter(f => f && f.dice).length,
     fieldCount: all.filter(f => fieldText(f)).length,
   };
+}
+
+// «Собрать в любой момент» (урок 1): пустые поля Фабрики и решений дописывает кубик, пустые буквы ИГРА — черновик из Фабрики
+// (как prefill у ученика). Дописанное сохраняется в ответах с пометкой [кубик] / «черновик Фабрики» и возвращается ученику.
+const fillTpl = (tpl, vars) => tpl.replace(/\{(\w+)\}/g, (_, k) => vars[k] || '…');
+function fillGaps(les, st, cls) {
+  const P = les.plan, filled = {};
+  let count = 0;
+  if (!P || !stepOf(les, P.factory)) return { filled, count };
+  const ans = id => (st.answers[id] = Object.assign({ value: {}, done: false }, st.answers[id]));
+  const pick = deck => deck[crypto.randomInt(deck.length)];
+  const fac = stepOf(les, P.factory).step, fa = ans(P.factory);
+  fa.value = Object.assign({ level: fac.levels[0].id }, fa.value, { fields: Object.assign({}, (fa.value || {}).fields) });
+  const donor = fac.donors ? (fac.donors.find(d => d.id === fa.value.donor) || fac.donors[0]) : null;
+  if (donor && !fa.value.donor) fa.value.donor = donor.id;
+  const fillFields = (a, fields, deckOf) => {
+    let n = 0;
+    for (const f of fields) {
+      if (fieldText(a.value.fields[f.id])) continue;
+      const deck = deckOf(f);
+      if (deck && deck.length) { a.value.fields[f.id] = { text: pick(deck), dice: true }; n++; }
+    }
+    return n;
+  };
+  const nf = fillFields(fa, fac.fields.filter(f => !f.levels || f.levels.includes(fa.value.level)),
+    f => (donor && donor.decks && donor.decks[f.id]) || (f.secrets && les.wow ? diceSecrets(cls, les).map(x => x.title) : f.deck));
+  if (nf) { fa.at = store.now(); filled[P.factory] = fa; count += nf; }
+  const decStep = stepOf(les, P.decisions);
+  if (decStep) {
+    const da = ans(P.decisions);
+    da.value = Object.assign({}, da.value, { fields: Object.assign({}, (da.value || {}).fields) });
+    const nd = fillFields(da, decStep.step.fields, f => f.deck);
+    if (nd) { da.at = store.now(); filled[P.decisions] = da; count += nd; }
+  }
+  const igStep = stepOf(les, P.igra);
+  if (igStep) {
+    const vars = {};
+    for (const id of [P.factory, P.decisions]) for (const [k, f] of Object.entries(((st.answers[id] || {}).value || {}).fields || {})) vars[k] = fieldText(f);
+    if (donor) Object.assign(vars, { donor: donor.title, donorRules: donor.rules || '', donorKeys: donor.keys || '' });
+    if (P.melody) vars.melody = ((st.answers[P.melody] || {}).value || {}).line || '';
+    const ia = ans(P.igra);
+    ia.value = Object.assign({}, ia.value, { fields: Object.assign({}, (ia.value || {}).fields) });
+    let ni = 0;
+    for (const f of igStep.step.fields) if (f.prefill && !fieldText(ia.value.fields[f.id])) { ia.value.fields[f.id] = { text: fillTpl(f.prefill, vars), auto: true }; ni++; }
+    if (ni) { ia.at = store.now(); filled[P.igra] = ia; count += ni; }
+  }
+  return { filled, count };
 }
 
 // все поля «свои слова или кубик» во всех ответах урока: сколько заполнено и сколько оставлено кубику
@@ -195,7 +252,7 @@ route('GET', '/api/me', (ctx) => {
   const { w, cls, les, s, st } = needStudent(ctx);
   s.seen = store.now(); store.saveStudent(w.class, s);
   const g = st.gameId ? store.getGame(st.gameId) : null;
-  return { nick: w.nick, class: { code: cls.code, name: cls.name, opened: cls.opened, authorMode: cls.authorMode }, lesson: studentLesson(les), answers: st.answers, game: g, wow: les.wow ? publicWow(cls, les) : null, feedback: st.feedback || null, demo: ai.demo(), aiCalls: st.aiCalls, aiLimit: aiLimit(st) };
+  return { nick: w.nick, class: { code: cls.code, name: cls.name, opened: cls.opened, authorMode: cls.authorMode }, lesson: studentLesson(les, cls), answers: st.answers, game: g, wow: les.wow ? publicWow(cls, les) : null, feedback: st.feedback || null, demo: ai.demo(), aiCalls: st.aiCalls, aiLimit: aiLimit(st) };
 });
 
 route('POST', '/api/answer', (ctx) => {
@@ -289,7 +346,7 @@ function gameCard(code, g, viewer) {
     release: g.release ? { version: g.release.version, at: g.release.at, note: g.release.note.text, lesson: g.release.lesson } : null,
     record: rec.record, top: rec.top.slice(0, 5), authorBest: all[g.nick] ? all[g.nick].score : 0, myBest: rec.mine,
     plays: store.plays(g.id).filter(p => p.type === 'over' && p.nick !== g.nick).length,
-    hidden: !!g.hidden, mine: g.nick === viewer,
+    hidden: !!g.hidden, mine: g.nick === viewer, knob: g.knob || null,
   };
 }
 // игра соседа по кругу: следующий по алфавиту автор после after (по умолчанию — после меня); игры этого урока — первыми
@@ -492,9 +549,10 @@ route('POST', '/api/teacher/day', (ctx) => {
   return { day: dayPublic(cls) };
 });
 route('POST', '/api/teacher/day/end', (ctx) => {
-  const { cls } = needDayClass(ctx);
+  const { cls, les } = needDayClass(ctx);
   const last = dayPublic(cls);
-  cls.day = null; store.saveClass(cls);
+  cls.day = null; if (last) cls.lastDay = Object.assign({ lesson: les.id }, last); // итог мира дня — на стену финала
+  store.saveClass(cls);
   broadcast(cls.code, 'challenge', { kind: 'dayEnd' });
   return { last };
 });
@@ -513,8 +571,20 @@ route('POST', '/api/playtest', (ctx) => {
 route('GET', '/api/playtest/mine', (ctx) => {
   const { w, st } = needStudent(ctx);
   const g = st.gameId && store.getGame(st.gameId);
-  return { game: g && g.current ? gameCard(w.class, g, w.nick) : null, discovery: g && g.current ? discovery(g) : null, feedback: st.feedback || null };
+  return { game: g && g.current ? gameCard(w.class, g, w.nick) : null, discovery: g && g.current ? discovery(g) : null, feedback: st.feedback || null, blind: g ? blindSecret(w.class, g) : null };
 });
+// слепая пара с секретом (шаг blindpair, mode: 'secret'): сколько соседей проголосовали за мою игру и сколько почувствовали секрет
+function blindSecret(code, g) {
+  const les = lesson(g.lesson);
+  const steps = les ? les.checkpoints.flatMap(c => c.steps).filter(x => x.type === 'blindpair' && x.mode === 'secret') : [];
+  let voted = 0, felt = 0;
+  if (steps.length) for (const s of store.students(code)) {
+    if (s.nick === g.nick) continue;
+    const ans = (((s.lessons || {})[les.id] || {}).answers) || {};
+    for (const x of steps) { const v = (ans[x.id] || {}).value || {}; if (v.game === g.id && v.vote) { voted++; if (v.felt) felt++; } }
+  }
+  return { voted, felt };
+}
 
 /* ---------- вау-старт: карты безумных идей, секрет, общая игра урока ---------- */
 // Состояние живёт в классе (cls.wow) для текущего урока. Секрет и его раскрытие ученики получают только после своей догадки.
@@ -534,12 +604,14 @@ const hashOf = t => [...String(t)].reduce((n, c) => (n * 31 + c.charCodeAt(0)) >
 function wowState(cls, les) {
   if (!les.wow) return null;
   if (!cls.wow || cls.wow.lesson !== les.id) {
-    cls.wow = { lesson: les.id, cards: {}, votes: {}, secret: randFrom(aiSecrets(les).map(x => x.id)), secretBy: 'кубик', status: 'cards', gameId: null, given: false };
+    cls.wow = { lesson: les.id, cards: {}, votes: {}, secret: randFrom(diceSecrets(cls, les).map(x => x.id)), secretBy: 'кубик', status: 'cards', gameId: null, given: false };
     store.saveClass(cls);
   }
   return cls.wow;
 }
 const aiSecrets = les => les.wow.secrets.filter(x => !x.fallbackOnly); // секреты для игры ИИ; fallbackOnly — только у запасной игры
+// секреты для кубика и карты секрета в Фабрике: со звуком (sound) — только если учитель отметил, что в классе наушники
+const diceSecrets = (cls, les) => { const all = aiSecrets(les), ok = all.filter(x => !x.sound || (cls && cls.headphones)); return ok.length ? ok : all; };
 const secretOf = (les, id) => les.wow.secrets.find(x => x.id === id) || les.wow.secrets[0];
 const builtSecret = (les, w) => secretOf(les, w.builtSecret || w.secret); // секрет, который лежит в собранной игре
 function publicWow(cls, les) {
@@ -610,8 +682,9 @@ route('GET', '/api/wow/hunt', (ctx) => {
   if (hs) return { options: hs.hunt.options, answer: (st.answers[hs.id] && st.answers[hs.id].value) || null };
   const w = wowState(cls, les);
   if (!w || !w.gameId) return { options: [] };
-  const S = wowSteps(les);
-  return { options: huntOptions(cls, les, w).options, answer: (S.hunt && st.answers[S.hunt.id] && st.answers[S.hunt.id].value) || null };
+  const S = wowSteps(les), sum = wowSummary(cls, les);
+  // сколько в классе почувствовали секрет вслепую (слепой тест А/Б) — в раскрытии секрета
+  return { options: huntOptions(cls, les, w).options, answer: (S.hunt && st.answers[S.hunt.id] && st.answers[S.hunt.id].value) || null, felt: { felt: sum.felt, voted: sum.voted } };
 });
 route('POST', '/api/wow/guess', (ctx) => {
   const { w: who, cls, les, s, st } = needStudent(ctx);
@@ -643,7 +716,7 @@ route('GET', '/api/teacher/wow', (ctx) => {
   const g = w.gameId ? store.getGame(w.gameId) : null, v = g && g.versions[g.current - 1];
   return {
     wow: w, demo: ai.demo(), formula: les.wow.formula, cards: les.wow.cards.map(c => ({ id: c.id, label: c.label })),
-    secrets: aiSecrets(les).map(x => ({ id: x.id, title: x.title, effect: x.effect })), secret: secretOf(les, w.secret), built: w.gameId ? builtSecret(les, w) : null,
+    secrets: aiSecrets(les).map(x => ({ id: x.id, title: x.title, effect: x.effect, sound: !!x.sound })), secret: secretOf(les, w.secret), headphones: !!cls.headphones, built: w.gameId ? builtSecret(les, w) : null,
     game: g && v ? { id: g.id, version: g.current, title: g.title, model: v.model, warnings: v.warnings || [], fallback: !!v.fallback, attempts: v.attempts, kind: v.kind,
       playtest: v.playtest || null, from: v.from || null, before: v.from && g.versions[v.from - 1] ? g.versions[v.from - 1].playtest || null : null } : null,
     summary: wowSummary(cls, les),
@@ -663,9 +736,18 @@ route('POST', '/api/teacher/wow/draw', (ctx) => {
 route('POST', '/api/teacher/wow/secret', (ctx) => { // без id — кубик, с id — тайный выбор учителя
   const { cls, les, w } = needWow(ctx);
   if (ctx.body.id) { if (!aiSecrets(les).some(x => x.id === ctx.body.id)) throw Object.assign(new Error('Нет такого секрета'), { status: 400 }); w.secret = ctx.body.id; w.secretBy = 'учитель'; }
-  else { w.secret = randFrom(aiSecrets(les).map(x => x.id), w.secret); w.secretBy = 'кубик'; }
+  else { w.secret = randFrom(diceSecrets(cls, les).map(x => x.id), w.secret); w.secretBy = 'кубик'; }
   store.saveClass(cls);
   return { secret: secretOf(les, w.secret), secretBy: w.secretBy };
+});
+// наушники в классе: без них секреты со звуком (sound) не выпадают кубиком и не попадают в карту секрета Фабрики.
+// Сняли отметку, а кубик уже выбрал звуковой секрет — кубик перебрасывается; выбор учителя остаётся.
+route('POST', '/api/teacher/wow/headphones', (ctx) => {
+  const { cls, les, w } = needWow(ctx);
+  cls.headphones = !!ctx.body.on;
+  if (!cls.headphones && secretOf(les, w.secret).sound && w.secretBy === 'кубик') w.secret = randFrom(diceSecrets(cls, les).map(x => x.id), w.secret);
+  store.saveClass(cls);
+  return { headphones: cls.headphones, secret: secretOf(les, w.secret) };
 });
 // связка от ИИ: геймдизайнер сводит четыре карты в одну игру; принятая связка уходит программисту вместе с картами
 const cardsKey = w => JSON.stringify(w.cards);
@@ -731,16 +813,25 @@ function cleanReport(r) {
     strategy: x.strategy, seconds: Math.round(num(x.seconds, 600) * 10) / 10, over: !!x.over, endText: cleanStr(x.endText, 120), score: Math.round(num(x.score, 1e9)), hurts: Math.round(num(x.hurts, 999)),
     hurtsAt: (Array.isArray(x.hurtsAt) ? x.hurtsAt : []).slice(0, 10).map(t => Math.round(num(t, 600) * 10) / 10), offscreen: x.offscreen == null ? null : Math.round(num(x.offscreen, 100)),
     flat: Math.round(num(x.flat, 600)), presses: { a: Math.round(num(x.presses && x.presses.a)), b: Math.round(num(x.presses && x.presses.b)) }, error: x.error ? cleanStr(x.error, 300) : null,
+    secret: Math.round(num(x.custom && x.custom._secret) * 10) / 10, // сколько раз сработал секрет (скрытый счётчик _secret)
   }));
   return { at: store.now(), seconds: Math.round(num(r.seconds, 600)), seed: Math.round(num(r.seed, 4294967295)), hero: !!r.hero, results,
     findings: (Array.isArray(r.findings) ? r.findings : []).slice(0, 12).map(f => cleanStr(f, 400)).filter(Boolean) };
 }
+// Бот проверяет и секрет (разбор геймдизайнера 17.10.2026): если за три партии счётчик _secret ни разу не сработал, класс не почувствует
+// разницу копий А и Б. Тогда в отчёте появляется находка, и панель учителя сама отправляет программисту правку по отчёту — один раз на игру.
+const SECRET_SILENT = 'Секрет ни разу не сработал за три партии бота: скрытый счётчик _secret молчит, и класс не почувствует разницу копий А и Б. Сделай секрет заметным уже в первой минуте партии при secret: 1 и вызывай lab.count(\'_secret\') каждый раз, когда он срабатывает.';
 route('POST', '/api/teacher/wow/playtest', (ctx) => {
   const { w } = needWow(ctx);
   const g = w.gameId && store.getGame(w.gameId), n = Number(ctx.body.version), v = g && g.versions[n - 1];
   if (!v) throw Object.assign(new Error('Нет такой версии игры класса'), { status: 400 });
-  v.playtest = cleanReport(ctx.body.report); store.saveGame(g);
-  return { playtest: v.playtest };
+  v.playtest = cleanReport(ctx.body.report);
+  const silent = w.knob === 'secret' && v.playtest.results.length > 0 && v.playtest.results.every(x => !x.secret && !x.error);
+  if (silent) { v.playtest.secretSilent = true; v.playtest.findings.unshift(SECRET_SILENT); }
+  store.saveGame(g);
+  // автоправка — только если в этой игре ещё не было автоправки по секрету и ИИ доступен
+  const autoFix = silent && !ai.demo() && !w.given && !g.versions.some(x => x.autoFix);
+  return { playtest: v.playtest, autoFix };
 });
 route('POST', '/api/teacher/wow/playtest-fix', (ctx) => {
   const { cls, les, w } = needWow(ctx);
@@ -756,7 +847,7 @@ route('POST', '/api/teacher/wow/playtest-fix', (ctx) => {
   const job = startJob(ctx.who.token, 'wow', async (progress) => {
     try {
       const r = await ai.playtestFix(code, report, { cards: w.cards, link: acceptedLink(w) }, whoAI, progress);
-      return wowVersion(cls.code, Object.assign(r, { knob: w.knob }), secretId, { kind: 'правка по плейтесту', from: n });
+      return wowVersion(cls.code, Object.assign(r, { knob: w.knob }), secretId, { kind: 'правка по плейтесту', from: n, autoFix: !!ctx.body.auto });
     } catch (e) {
       const c2 = store.getClass(cls.code), w2 = wowState(c2, les); w2.status = 'preview'; store.saveClass(c2); wowChanged(c2, les);
       throw e;
@@ -869,6 +960,8 @@ function addVersion(gameId, r, info) {
 
 route('POST', '/api/ai/build', (ctx) => {
   const c = aiGuard(ctx);
+  const gaps = fillGaps(c.les, c.st, c.cls);
+  if (gaps.count) store.saveStudent(c.w.class, c.s);
   const plan = buildPlan(c.les, c.st);
   if (!plan.igra.i && !plan.igra.r) throw Object.assign(new Error('Сначала заполни промпт ИГРА'), { status: 400 });
   const g = ensureGame(c);
@@ -876,14 +969,18 @@ route('POST', '/api/ai/build', (ctx) => {
   const job = startJob(c.w.token, 'build', async (progress) => {
     const r = await ai.build(plan, Object.assign({}, c.whoAI, { game: g.id, build }), progress);
     // название, донор и три решения — подпись игры в аркаде класса; замысел — для сравнения моделей на том же замысле
-    const g2 = store.getGame(g.id); g2.title = plan.title; g2.donor = plan.donorTitle || c.les.donor; g2.decisions = plan.decisions; g2.plan = plan; store.saveGame(g2);
-    return addVersion(g.id, r, { kind: 'сборка', build });
+    const g2 = store.getGame(g.id); g2.title = plan.title; g2.donor = plan.donorTitle || c.les.donor; g2.decisions = plan.decisions; g2.plan = plan;
+    // ручка секрета своей игры (карта секрета): по ней слепая пара выключает секрет; в демо — секрет запасной игры урока
+    g2.knob = !plan.secret ? null : r.demo ? ((c.les.wow && c.les.wow.fallback && c.les.wow.fallback.knob) || null) : /\bsecret\s*:\s*\{/.test(r.code) ? 'secret' : null;
+    store.saveGame(g2);
+    return Object.assign(addVersion(g.id, r, { kind: 'сборка', build }), { filled: gaps.filled, filledCount: gaps.count });
   });
   return { job: job.id };
 });
 
-// лимит правок ученика на уроке — поле limit шага workshop в сценарии (урок 1 — одна правка); считаются удачные правки
-function changeLimit(les) { const st = les.checkpoints.flatMap(cp => cp.steps).find(s => s.type === 'workshop'); return (st && st.limit) || 0; }
+// лимит правок ученика на уроке — сумма полей limit шагов workshop в сценарии (урок 1 — правка 1 и правка 2 по отзывам соседей);
+// шаг без limit — правок без счёта; считаются удачные правки
+function changeLimit(les) { const list = les.checkpoints.flatMap(cp => cp.steps).filter(s => s.type === 'workshop'); return list.length && list.every(s => s.limit) ? list.reduce((n, s) => n + s.limit, 0) : 0; }
 route('POST', '/api/ai/change', (ctx) => {
   const pre = needStudent(ctx);
   const request = String(ctx.body.request || '').trim().slice(0, 1200);
@@ -1026,6 +1123,62 @@ route('GET', '/api/teacher/overview', (ctx) => {
   const votes = Object.fromEntries(les.checkpoints.flatMap(c => c.steps).filter(x => x.type === 'vote').map(x => [x.id, voteTally(cls.code, les, x)])); // выставка джема
   return { class: cls, lesson: les, students, stepsDone, votes, spend: spend(cls.code, les.id), limits: ai.limits(), stuckSec: STUCK_SEC, now: new Date().toISOString() };
 });
+// живые ответы класса для проектора (вкладка «Ответы класса»): шаги выбора полосками без имён, слепой тест А/Б и слепая пара с секретом —
+// сколько почувствовали секрет. Считаются только отправленные ответы (шаг готов).
+const valOf = v => (v && typeof v === 'object' ? v.text || '' : v || '');
+route('GET', '/api/teacher/poll', (ctx) => {
+  needTeacher(ctx);
+  const cls = store.getClass(ctx.url.searchParams.get('code'));
+  if (!cls) throw Object.assign(new Error('Нет класса'), { status: 404 });
+  const les = lesson(cls.lesson);
+  const all = store.students(cls.code).map(s => (((s.lessons || {})[les.id] || {}).answers) || {});
+  const done = id => all.map(a => a[id]).filter(a => a && a.done).map(a => a.value || {});
+  const steps = [];
+  for (const cp of les.checkpoints) for (const x of cp.steps) {
+    if (x.type === 'choice' && x.options && x.options.length) {
+      const list = done(x.id), own = list.map(v => valOf(v.own).trim()).filter(Boolean);
+      steps.push({ cp: cp.id, id: x.id, title: x.title, kind: 'choice', n: list.length,
+        bars: x.options.map(o => ({ label: o, n: list.filter(v => (v.selected || []).includes(o)).length })).concat(own.length ? [{ label: 'Свои слова', n: own.length }] : []),
+        own: own.slice(-6) });
+    } else if (x.type === 'abtest' || (x.type === 'blindpair' && x.mode === 'secret')) {
+      const list = done(x.id).filter(v => v.vote), felt = x.type === 'abtest' ? list.filter(v => v.vote === v.side).length : list.filter(v => v.felt).length, same = list.filter(v => v.vote === 'same').length;
+      steps.push({ cp: cp.id, id: x.id, title: x.title, kind: 'secret', n: list.length,
+        bars: [{ label: 'Почувствовали секрет', n: felt }, { label: 'Выбрали копию без секрета', n: list.length - felt - same }, { label: 'Разницы нет', n: same }] });
+    }
+  }
+  return { steps };
+});
+// финал урока на проекторе: стена игр этого урока с рекордами, игра класса, мир дня и провал дня
+route('GET', '/api/teacher/final', (ctx) => {
+  needTeacher(ctx);
+  const cls = store.getClass(ctx.url.searchParams.get('code'));
+  if (!cls) throw Object.assign(new Error('Нет класса'), { status: 404 });
+  const les = lesson(cls.lesson);
+  const score = c => (c.record ? c.record.score : 0);
+  const games = classGames(cls.code).filter(g => g.lesson === les.id).map(g => gameCard(cls.code, g, null)).sort((a, b) => score(b) - score(a));
+  const w = les.wow && cls.wow && cls.wow.lesson === les.id ? cls.wow : null, wg = w && w.gameId && store.getGame(w.gameId);
+  const fail = cls.fail && cls.fail.lesson === les.id ? cls.fail : null, fg = fail && store.getGame(fail.game);
+  return {
+    lesson: { id: les.id, number: les.number, title: les.title },
+    games, classGame: wg && wg.current ? gameCard(cls.code, wg, null) : null,
+    day: dayPublic(cls) || (cls.lastDay && cls.lastDay.lesson === les.id ? cls.lastDay : null),
+    fail: fg ? Object.assign({}, fail, { title: fg.title, nick: fg.nick, versions: fg.versions.map(v => ({ n: v.n, kind: v.kind || '', error: v.error ? v.error.message : null })) }) : null,
+  };
+});
+// провал дня: учитель выбирает игру урока (и версию) с самым смешным багом; game: null — убрать
+route('POST', '/api/teacher/fail', (ctx) => {
+  needTeacher(ctx);
+  const cls = store.getClass(ctx.body.code);
+  if (!cls) throw Object.assign(new Error('Нет класса'), { status: 404 });
+  if (!ctx.body.game) { cls.fail = null; store.saveClass(cls); return { fail: null }; }
+  const g = store.getGame(ctx.body.game);
+  if (!g || g.class !== cls.code) throw Object.assign(new Error('Нет такой игры'), { status: 404 });
+  const n = Number(ctx.body.version) || g.current;
+  if (!g.versions[n - 1]) throw Object.assign(new Error('Нет такой версии'), { status: 400 });
+  cls.fail = { lesson: cls.lesson, game: g.id, version: n, note: String(ctx.body.note || '').replace(/\s+/g, ' ').trim().slice(0, 200), at: store.now() };
+  store.saveClass(cls);
+  return { fail: cls.fail };
+});
 // ответы класса по уроку: таблица «ученик × шаг», разбор квизов по карточкам; выгрузка CSV — на странице учителя
 route('GET', '/api/teacher/answers', (ctx) => {
   needTeacher(ctx);
@@ -1071,6 +1224,20 @@ route('POST', '/api/teacher/feedback', (ctx) => {
   store.saveStudent(cls.code, s);
   broadcast(cls.code, 'feedback', { nick: s.nick });
   return { feedback: st.feedback };
+});
+// черновик отзыва: понятие и вопрос по телеметрии соседей, их карточкам и замыслу ученика (текстовая модель, без ключа — правила)
+route('POST', '/api/teacher/feedback/draft', (ctx) => {
+  needTeacher(ctx);
+  const cls = store.getClass(ctx.body.code), s = cls && store.getStudent(cls.code, ctx.body.nick);
+  if (!s) throw Object.assign(new Error('Нет ученика'), { status: 404 });
+  const les = lesson(cls.lesson), st = store.lessonState(s, les.id);
+  const g = st.gameId && store.getGame(st.gameId);
+  if (!g || !g.current) throw Object.assign(new Error('У ученика ещё нет игры'), { status: 400 });
+  const plan = buildPlan(les, st), fb = les.feedback || {};
+  const input = { lesson: les.title, title: g.title, feeling: plan.decisions.feeling, secret: plan.secret ? plan.secret.title : '', discovery: discovery(g), blind: blindSecret(cls.code, g),
+    concepts: fb.concepts || [], questions: fb.questions || [] };
+  const job = startJob(ctx.who.token, 'draft', () => ai.feedbackDraft(input, { class: cls.code, nick: 'учитель', lesson: les.id }));
+  return { job: job.id };
 });
 route('GET', '/api/teacher/arcade', (ctx) => {
   needTeacher(ctx);

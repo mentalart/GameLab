@@ -318,7 +318,8 @@ const Games = (() => {
       const b = BOT[x.strategy] || ['', x.strategy, ''];
       return el('div', { class: 'botrow', 'data-bot': x.strategy }, el('span', { class: 'bi' }, b[0]), el('b', {}, b[1]), el('span', { class: 'muted small' }, b[2]),
         el('span', { class: 'grow' }), el('span', {}, `${Math.round(x.seconds)} с`), el('span', {}, `очки ${x.score}`), el('span', {}, `урон ${x.hurts}`),
-        x.offscreen != null ? el('span', { class: x.offscreen >= 15 ? 'tag err' : 'muted small' }, `за кадром ${x.offscreen}%`) : null);
+        x.offscreen != null ? el('span', { class: x.offscreen >= 15 ? 'tag err' : 'muted small' }, `за кадром ${x.offscreen}%`) : null,
+        report.secretSilent != null || x.secret ? el('span', { class: x.secret ? 'muted small' : 'tag err', title: 'Сколько раз сработал секрет игры (скрытый счётчик _secret)' }, `секрет: ${x.secret || 0}`) : null);
     })));
     if (report.findings.length) box.append(el('ul', { class: 'botfind' }, report.findings.map(f => el('li', {}, f))));
     return box;
@@ -335,7 +336,7 @@ const Games = (() => {
       const strong = d.dominant.share >= 0.5;
       box.append(el('p', { class: 'concept' }, el('b', {}, 'Открытие плейтеста. '),
         `${who} дольше всего держали ${d.dominant.name}: ${pct(d.dominant.share)} времени партии. `,
-        strong ? 'Похоже на доминирующую стратегию: одна кнопка решает почти всё. Дай ей цену или противовес.' : 'Явной доминирующей стратегии нет: игроки пробовали разное.'));
+        strong ? 'Одна кнопка решает почти всё: выбора у игрока нет, и задуманное чувство может не получиться. Дай этой кнопке цену или противовес.' : 'Одной главной кнопки нет: игроки пробовали разное.'));
       box.append(el('div', { class: 'bars' }, d.holds.slice(0, 4).map(hd => el('div', { class: 'barrow' },
         el('span', { class: 'bl' }, hd.name), el('span', { class: 'bt' }, el('i', { style: `width:${Math.max(2, Math.round(hd.share * 100))}%` })), el('b', {}, pct(hd.share))))));
     } else if (d.rounds) box.append(el('p', { class: 'muted small' }, 'Кнопки почти не держали: партии были короткими.'));

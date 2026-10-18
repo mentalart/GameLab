@@ -55,6 +55,7 @@ const results = [];
 const check = (what, ok, detail = '') => { results.push({ what, ok: !!ok, detail }); console.log(`  ${ok ? '✓' : '✗'} ${what}${detail ? ' — ' + detail : ''}`); };
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 let failShots = async () => {};
+let predicted = ''; // ответ «Что почувствует игрок?» на вау-старте: его напоминает шаг «Совпало?»
 
 function writeConfig(aiPart) {
   fs.writeFileSync(process.env.LAB_CONFIG, JSON.stringify({ port: 0, teacherPassword: PASSWORD, ai: aiPart, models: [{ id: 'mock-code', label: 'Подставной программист', rubPer1MIn: 100, rubPer1MOut: 400, rubPer1MCacheRead: 10, rubPer1MCacheWrite: 125, cache: true }, { id: 'mock-text', label: 'Подставной продюсер', rubPer1MIn: 10, rubPer1MOut: 40 }, { id: 'mock-alt', label: 'Подставная вторая модель', rubPer1MIn: 50, rubPer1MOut: 200 }], limits: { aiCallsPerStudentPerLesson: 40, rublesPerLesson: 0 } }, null, 2));
@@ -142,6 +143,11 @@ async function run(browser, base, mode) {
   await student.click('#step-donor-hook .opt >> nth=0');
   await student.click('#step-donor-hook >> text=Ответить');
   await student.waitForSelector('#step-donor-hook.done');
+  // «Что почувствует игрок?» до игры класса: ответ вернётся в шаге «Совпало?» и на проектор
+  predicted = (await student.textContent('#step-vau-predict .opt >> nth=1')).trim();
+  await student.click('#step-vau-predict .opt >> nth=1');
+  await student.click('#step-vau-predict >> text=Ответить');
+  await student.waitForSelector('#step-vau-predict.done');
 
   // проектор: код класса и таймер открытого чекпоинта; вау-старт — карты при классе, общая игра с секретом
   const pj = await openProjector(base, code, teacher, errors, shot);
@@ -155,27 +161,37 @@ async function run(browser, base, mode) {
   check('Чекпоинты открылись у ученика без перезагрузки (SSE)', true);
 
   await secretHunt(teacher, student, mode, shot);
+  await projectorPoll(pj, shot);
 
-  // Фабрика и решения
+  // Фабрика и решения: карты вместо своих слов, свои слова — только «Чувство»
   await student.click('.cp >> text=Фабрика');
+  check('Урок 1: один уровень задания, остальные — цель версии 2', await student.locator('#step-fabrika >> text=Откроется после первой сборки — цель версии 2').count() === 2);
+  check('«Что цепляет?» с донора — подсказка над полями Фабрики', /Тебя зацепило в доноре/.test(await student.textContent('#step-fabrika .hookbox')));
   await student.click('#step-fabrika >> text=🎲 Кубик для пустых полей');
   await student.fill('#f-fabrikatitle', 'Пасека под огнём');
+  const secretCard = (await student.textContent('#step-fabrika .field:has(#f-fabrikasecret) .cardopt >> nth=0')).trim();
+  await student.click('#step-fabrika .field:has(#f-fabrikasecret) .cardopt >> nth=0');
   await student.click('#step-fabrika >> text=Замысел готов');
   await student.waitForSelector('#step-fabrika.done');
-  const diceTags = await student.locator('#step-fabrika .tag.dice').count();
-  check('Кубик заполнил поля и пометил их [кубик]', diceTags >= 4, `пометок: ${diceTags}`);
+  const diceTags = await student.locator('#step-fabrika .tag.dice').count(), cardTags = await student.locator('#step-fabrika .tag.card').count();
+  check('Кубик заполнил поля [кубик], карта секрета взята картой', diceTags >= 4 && cardTags === 1 && (await student.inputValue('#f-fabrikasecret')) === secretCard, `кубик: ${diceTags}, карт: ${cardTags}, секрет: ${secretCard}`);
+  await student.click('#step-resheniya .field:has(#f-resheniyafeeling) .dicebtn');
+  check('Кубик «Чувства» даёт пример и не пишет за ученика', (await student.inputValue('#f-resheniyafeeling')) === '' && /^Например: .+ А у тебя\?$/.test((await student.textContent('#step-resheniya .hint.example')).trim()));
   await student.fill('#f-resheniyafeeling', 'Страшно, когда шершни уже у ульев');
-  await student.click('#step-resheniya .dicebtn >> nth=1');
-  await student.click('#step-resheniya .dicebtn >> nth=2');
+  await student.click('#step-resheniya .field:has(#f-resheniyahonesty) .cardopt >> nth=0');
+  await student.click('#step-resheniya .field:has(#f-resheniyachoice) .dicebtn');
   await student.click('#step-resheniya >> text=Решения приняты');
   await student.waitForSelector('#step-resheniya.done');
   await shot(student, '3-fabrika');
 
-  // ИГРА и продюсер
-  await student.click('.cp >> text=Промпт ИГРА');
+  // ИГРА — готовый промпт, правка по желанию; продюсер
+  const preview = (await student.textContent('#step-igra .preview-igra')).replace(/\s+/g, ' ');
+  check('ИГРА: готовый промпт «Вот что получит программист», полей правки нет', /Вот что получит программист/.test(preview) && preview.includes('Пасека под огнём') && await student.locator('#f-igrai').count() === 0, preview.slice(0, 90));
+  await student.click('#step-igra button:has-text("✎ Поправить")');
   const prefill = await student.inputValue('#f-igrai');
-  check('Черновик ИГРА собран из Фабрики', prefill.includes('Пасека под огнём'), prefill.slice(0, 60));
-  await student.click('#step-igra >> text=Промпт готов');
+  check('По «✎ Поправить» — черновик ИГРА из Фабрики в полях', prefill.includes('Пасека под огнём'), prefill.slice(0, 60));
+  await student.click('#step-igra button:text-is("Готово")');
+  await student.waitForSelector('#step-igra.done');
   await student.click('#step-prodyuser >> text=Отдать замысел продюсеру');
   await student.waitForSelector('#step-prodyuser .fork .opt', { timeout: 30000 });
   const forkPick = (await student.textContent('#step-prodyuser .fork .opt >> nth=0')).trim();
@@ -189,12 +205,12 @@ async function run(browser, base, mode) {
   await shot(student, '4-producer', true);
   await student.click('#step-prodyuser >> text=✓ Принять правку');
   await student.waitForSelector('#step-prodyuser >> text=Продюсер поправил промпт ИГРА');
-  const fixedG = await student.inputValue('#f-igrag'), fixedR = await student.inputValue('#f-igrar');
-  check('Правка продюсера легла в поля ИГРА', mode === 'mock' ? /крестовина и A/.test(fixedG) : fixedR.includes(forkPick), (mode === 'mock' ? fixedG : fixedR).slice(0, 90));
+  const fixedP = (await student.textContent('#step-igra .preview-igra')).replace(/\s+/g, ' ');
+  check('Правка продюсера легла в промпт ИГРА', mode === 'mock' ? /крестовина и A/.test(fixedP) : fixedP.includes(forkPick), fixedP.slice(0, 120));
 
-  // сборка
-  await student.click('.cp >> text=Сборка');
-  await student.click('#step-sborka >> text=⚙ Собрать игру');
+  // сборка: в демо — кнопкой «⚙ Собрать сейчас» из Фабрики, с ИИ — кнопкой шага сборки
+  if (mode === 'mock') await student.click('#step-sborka >> text=⚙ Собрать игру');
+  else await student.click('#step-fabrika >> text=⚙ Собрать сейчас');
   let own = await gameFrame(student, '/play/', 0);
   check('Игра собрана и запустилась в изолированной рамке', await own.evaluate(() => window.__lab.ready));
   if (mode === 'mock') {
@@ -205,12 +221,20 @@ async function run(browser, base, mode) {
     own = await gameFrame(student, '/play/', 0);
   }
   await shot(student, '5-build');
-  await playRound(own);
   await student.waitForSelector('#step-sborka.done', { timeout: 10000 });
-  check('Первая партия в своей игре засчитана', true);
+  check('Шаг сборки закрыт самой сборкой: партии — после перемены', mode === 'demo' || /5–10 минут/.test(await student.textContent('#step-sborka')));
 
-  // мастерская
-  await student.click('.cp >> text=Мастерская');
+  // после перемены: своя игра, ручки и вопрос о задуманном чувстве
+  await student.click('.cp >> text=Своя игра');
+  check('Над своей игрой — задуманное чувство', /Ты задумал: Страшно, когда шершни уже у ульев/.test(await student.textContent('#step-ruchki .recall')));
+  await student.click('#step-ruchki .veil button');
+  own = await gameFrame(student, '/play/', 0);
+  await playRound(own);
+  await student.click('#step-ruchki .dicebtn');
+  await student.waitForSelector('#step-ruchki.done', { timeout: 10000 });
+  check('Первая партия в своей игре и ответ про ручки засчитаны', true);
+
+  // мастерская: правка 1
   await student.fill('#aicheck-text', 'Золотая тарелка, я её не просил');
   await student.click('#step-svoevolie >> text=Показать, что программист решил сам');
   await student.waitForSelector('#step-svoevolie.done');
@@ -223,10 +247,8 @@ async function run(browser, base, mode) {
   await student.waitForFunction(n => document.querySelectorAll('#step-masterskaya .ver').length > n, before, { timeout: 30000 });
   check('Правка кнопкой и своими словами дала новую версию', true, await student.textContent('#step-masterskaya .versions'));
   if (mode === 'mock') check('Куски правки дважды не легли — программист прислал игру целиком', mock.last.changeTries.join(',') === 'куски,куски,целиком', mock.last.changeTries.join(','));
-  // урок 1: одна правка на ученика — кнопка отправки исчезает, сервер вторую не берёт
-  await student.waitForSelector('#step-masterskaya >> text=Правка урока использована');
-  const again = await student.evaluate(() => Lab.api('/api/ai/change', { request: 'Ещё одна правка' }).then(() => 'принял', e => e.status + ' ' + e.message));
-  check('Вторую правку на уроке 1 сервер не берёт', /^429 /.test(again), again);
+  // урок 1: в шаге одна правка — кнопка отправки исчезает; вторая — в «Версии 2»
+  await student.waitForSelector('#step-masterskaya >> text=Правка этого шага использована');
   // откат одним кликом: в демо — к v1, с ИИ — к починенной v2 (v1 нарочно падает, а в эту версию будут играть соседи)
   const back = mode === 'mock' ? 2 : 1;
   await student.click(`#step-masterskaya .ver >> nth=${back - 1}`);
@@ -242,13 +264,34 @@ async function run(browser, base, mode) {
     check('Без игр соседей шаг arcade ждёт и не падает', true);
   }
 
-  // открытие и заметка автора
-  await student.click('.cp >> text=Открытие');
+  // версия 2: правка 2 по карточкам соседей, сервер третью не берёт
+  await student.click('.cp >> text=Версия 2');
+  const before2 = await student.locator('#step-masterskaya-2 .ver').count();
+  if (mode === 'mock') {
+    await student.waitForSelector('#step-masterskaya-2 .cardopt', { timeout: 10000 });
+    await student.click('#step-masterskaya-2 .cardopt >> nth=0');
+    check('Правка 2: карточка соседа легла в просьбу', /\(сосед\): /.test(await student.inputValue('#f-masterskaya-2req')), await student.inputValue('#f-masterskaya-2req'));
+  } else await student.click('#step-masterskaya-2 .opt >> text=Скучно в середине');
+  await student.click('#step-masterskaya-2 >> text=Отправить программисту');
+  await student.waitForFunction(n => document.querySelectorAll('#step-masterskaya-2 .ver').length > n, before2, { timeout: 30000 });
+  await student.waitForSelector('#step-masterskaya-2 >> text=Правка этого шага использована');
+  const again = await student.evaluate(() => Lab.api('/api/ai/change', { request: 'Ещё одна правка' }).then(() => 'принял', e => e.status + ' ' + e.message));
+  check('Третью правку на уроке 1 сервер не берёт', /^429 /.test(again), again);
+  if (mode === 'mock') {
+    await student.click('#step-sosed-v2 .veil button');
+    await playRound(await gameFrame(student, '/play/', 0), { score: 15 });
+    const okV2 = await student.waitForSelector('#step-sosed-v2.done', { timeout: 10000 }).then(() => true, () => false);
+    check('Сосед в версии 2: шаг arcade с about засчитан', okV2, (await student.textContent('#step-sosed-v2 .gamebar')).replace(/\s+/g, ' '));
+  }
+
+  // финал: открытие и заметка автора, стена аркады урока на проекторе
+  await student.click('.cp >> text=Турнир и финал');
   await student.click('#step-otkrytie-den .opt >> nth=0');
   await student.click('#step-otkrytie-den >> text=Ответить');
   await student.click('#step-plan-v2 .dicebtn');
   await student.click('#step-plan-v2 >> text=Ответить');
   await student.waitForSelector('#step-plan-v2.done');
+  await projectorFinal(pj, shot);
   await student.click('#noteBtn');
   await student.fill('#noteText', 'Проверка: заметка автора с шага');
   await student.click('#noteSend');
@@ -380,25 +423,9 @@ async function wowStart(teacher, student, mode, shot) {
   const tf = await gameFrame(teacher, '/play/', 0);
   if (mode === 'mock') check('Правка по отчёту пришла кусками и легла в код игры', /Правка по плейтесту/.test(await tf.evaluate(() => (GAME.notes || []).join(' '))));
   await shot(teacher, '1b-wow-preview');
-  check('Пока учитель проверяет игру, ученик её не видит', await student.locator('#step-vau-play iframe').count() === 0 && /собирается/.test(await student.textContent('#step-vau-play')));
   await teacher.click('#wowBuild >> text=📣 Раздать классу');
   await student.waitForSelector('#step-vau-karty.done', { timeout: 10000 });
-  await student.click('#step-vau-play .veil button');
-  const sg = await gameFrame(student, '/play/', 0);
-  const knob = mode === 'mock' ? 'secret' : 'speedup';
-  check('Ученик получил игру класса', await sg.evaluate(k => window.__lab.cfg[k] === 1, knob), mode === 'mock' ? 'ручка secret = 1' : 'ручка speedup = 1');
-  for (let i = 0; i < 2; i++) {
-    await sg.evaluate(r => (r ? window.__lab.restart() : window.__lab.confirm()), i > 0);
-    await sleep(300);
-    await sg.evaluate(() => { window.__lab.lab.count('_secret', 3); window.__lab.lab.score = 50; window.__lab.end('lose', 'Проверка'); });
-  }
-  await student.waitForSelector('#step-vau-play.done', { timeout: 10000 });
-  const overText = await sg.evaluate(() => document.body.innerText);
-  check('Скрытый счётчик секрета не виден игроку на экране конца партии', !/_secret/.test(overText));
-  await student.click('#step-vau-feel .opt >> nth=1');
-  await student.click('#step-vau-feel >> text=Ответить');
-  await student.waitForSelector('#step-vau-feel.done');
-  await shot(student, '1c-wow-play', true);
+  check('Игра класса роздана: шаг карт закрыт', true);
 }
 
 /* ---------- чекпоинт «Секрет»: та же игра без секрета, «Найди секрет», квиз с карточками игры класса ---------- */
@@ -416,11 +443,18 @@ async function secretHunt(teacher, student, mode, shot) {
     await sleep(300);
     await f.evaluate(on => { if (on) { window.__lab.lab.t = 4; window.__lab.lab.count('_secret', 5); window.__lab.lab.t = 9; window.__lab.lab.count('_secret'); } window.__lab.lab.score = on ? 70 : 20; window.__lab.end('lose', 'Проверка'); }, seen[k] === 1);
     await sleep(400);
+    if (k === 'A') check('Скрытый счётчик секрета не виден игроку на экране конца партии', !/_secret/.test(await f.evaluate(() => document.body.innerText)));
   }
   const side = seen.A === 1 ? 'A' : 'B';
   check('Слепой тест: в одной копии секрет есть, в другой выключен', (seen.A === 1) !== (seen.B === 1) && [seen.A, seen.B].includes(0), `А: ${knob} = ${seen.A}, Б: ${knob} = ${seen.B}`);
   await student.click(`#step-secret-ab .opt >> text=В игре ${side === 'A' ? 'А' : 'Б'}`);
   await student.waitForSelector('#step-secret-ab.done');
+  // «Совпало?»: напоминание ответа с вау-старта
+  const recall = (await student.textContent('#step-vau-match .recall')).replace(/\s+/g, ' ');
+  check('«Совпало?» напоминает, что ученик задумал на вау-старте', recall.includes(predicted), recall);
+  await student.click('#step-vau-match .opt >> nth=0');
+  await student.click('#step-vau-match >> text=Ответить');
+  await student.waitForSelector('#step-vau-match.done');
   await student.waitForSelector('#step-secret-hunt .opt');
   const options = await student.locator('#step-secret-hunt .opt').allTextContents();
   const twist = (await teacher.textContent('#wowCards [data-card=twist] .wc-text')).trim(); // вкладка учителя скрыта, но карты в ней остались
@@ -462,7 +496,7 @@ async function secretHunt(teacher, student, mode, shot) {
   check('Квиз: результат отправлен учителю, кнопки «Скопировать» у ученика нет', await student.locator('#step-secret-quiz >> text=✓ Результат отправлен учителю').count() === 1 && await student.locator('#step-secret-quiz >> text=Скопировать').count() === 0);
   // вкладка «Ответы»: ответ квиза у учителя, разбор по карточкам, CSV
   await teacher.click('.tabs >> text=Ответы');
-  await teacher.click('#tab-answers >> text=2. Секрет');
+  await teacher.click('#tab-answers >> text=2. Игра класса и секрет');
   await teacher.waitForSelector('#answers tbody tr', { timeout: 10000 });
   const ansText = await teacher.textContent('#tab-answers');
   check('Ответы: квиз ученика у учителя и разбор по карточкам', new RegExp(`верно ${all} из ${all}`).test(ansText) && /какие карточки труднее всего/.test(ansText), (ansText.match(/верно \d+ из \d+/) || [''])[0]);
@@ -477,6 +511,38 @@ async function secretHunt(teacher, student, mode, shot) {
   check('Учитель видит сводку секрета: партии, срабатывания, догадки, слепой тест', /сработал 6 раз/.test(sum) && /почувствовали секрет 1 из 1/.test(sum) && (mode === 'mock' ? /ловушка/.test(sum) : /угадал/.test(sum)), sum.slice(0, 200));
   await shot(teacher, '2b-wow-summary');
   await teacher.click('.tabs >> text=Урок');
+}
+
+/* ---------- проектор: «Ответы класса» — голоса полосками без имён ---------- */
+async function projectorPoll(pj, shot) {
+  await pj.click('.pj-tabs >> text=Ответы класса');
+  await pj.waitForSelector('#pj-poll .pj-pollchips', { timeout: 10000 });
+  await pj.click('#pj-poll .chipbtn >> text=Что почувствует игрок?');
+  await pj.waitForSelector('#pj-poll .pj-pollcard >> text=ответили: 1', { timeout: 10000 });
+  const poll = (await pj.textContent('#pj-poll')).replace(/\s+/g, ' ');
+  check('Проектор «Ответы класса»: голоса шага полосками, без имён', poll.includes(predicted) && !/Тестер/.test(poll), poll.slice(0, 160));
+  await pj.click('#pj-poll .chipbtn >> text=копия А или копия Б');
+  await pj.waitForSelector('#pj-poll >> text=Секрет почувствовали вслепую 1 из 1', { timeout: 10000 });
+  check('Проектор: сколько почувствовали секрет игры класса вслепую', true);
+  await shot(pj, 'p3-poll');
+  await pj.click('.pj-tabs >> text=Урок');
+}
+/* ---------- проектор: «Финал» — стена аркады урока и провал дня ---------- */
+async function projectorFinal(pj, shot) {
+  await pj.click('.pj-tabs >> text=Финал');
+  await pj.waitForSelector('#pj-final .acard', { timeout: 10000 });
+  const n = await pj.locator('#pj-final .acard').count();
+  check('Финал на проекторе: стена игр урока с рекордами', n >= 1 && /Стена аркады урока/.test(await pj.textContent('#pj-final h1')), `игр: ${n}`);
+  await pj.click('#pj-final .acard button:has-text("Провал дня") >> nth=0');
+  await pj.waitForSelector('#pj-final .pj-fail h2', { timeout: 10000 });
+  await pj.fill('#pj-final .pj-fail input[type=text]', 'Пасечник улетел в небо');
+  await pj.click('#pj-final .pj-fail >> text=Сохранить');
+  await pj.waitForSelector('#pj-final .pj-fail >> text=Пасечник улетел в небо', { timeout: 10000 });
+  check('Провал дня: игра урока в рамке на весь класс, заметка учителя', await pj.locator('#pj-final .pj-fail .gamebox, #pj-final .pj-fail iframe, #pj-final .pj-fail .veil').count() >= 1);
+  await shot(pj, 'p4-final');
+  await pj.click('#pj-final .pj-fail >> text=✕ Убрать');
+  await pj.waitForSelector('#pj-final .pj-fail >> text=Самый смешной баг урока', { timeout: 10000 });
+  await pj.click('.pj-tabs >> text=Урок');
 }
 
 /* ---------- проектор: код класса и таймер открытого чекпоинта ---------- */
@@ -563,7 +629,7 @@ async function liveLesson(code, mode, teacher, pj, shot) {
   // проектор: таймер нового чекпоинта и сколько закончили шаги
   await sleep(2300);
   const pjText = await pj.textContent('.pj-cp');
-  check('Проектор: после «Открыть все» таймер у первого нового чекпоинта, видно, кто закончил шаги', /Секрет/.test(await pj.textContent('.pj-cp h1')) && /[1-9] из [12]/.test(pjText), pjText.replace(/\s+/g, ' ').slice(0, 120));
+  check('Проектор: после «Открыть все» таймер у первого нового чекпоинта, видно, кто закончил шаги', /секрет/i.test(await pj.textContent('.pj-cp h1')) && /[1-9] из [12]/.test(pjText), pjText.replace(/\s+/g, ' ').slice(0, 120));
   await shot(pj, 'p4-progress');
   // «застрял»: нет движения 5+ минут (двигаем время прямо в данных ученика)
   const s = store.getStudent(code, 'Тестер');
@@ -1645,17 +1711,14 @@ async function together(browser, base, code, teacher, student, errors, shot) {
   await nb.fill('#nick', 'Соседка');
   await nb.click('#studentForm button[type=submit]');
   await nb.waitForURL('**/student');
+  // вторая ученица: только название и «⚙ Собрать сейчас» — остальное дописывает сервер (fillGaps)
   await nb.click('.cp >> text=Фабрика');
-  await nb.click('#step-fabrika >> text=🎲 Кубик для пустых полей');
   await nb.fill('#f-fabrikatitle', 'Тучи над Фиштом');
-  await nb.click('#step-fabrika >> text=Замысел готов');
-  for (let i = 0; i < 3; i++) await nb.click(`#step-resheniya .dicebtn >> nth=${i}`);
-  await nb.click('#step-resheniya >> text=Решения приняты');
-  await nb.click('.cp >> text=Промпт ИГРА');
-  await nb.click('#step-igra >> text=Промпт готов');
-  await nb.click('.cp >> text=Сборка');
-  await nb.click('#step-sborka >> text=⚙ Собрать игру');
+  await nb.click('#step-fabrika >> text=⚙ Собрать сейчас');
   let nown = await gameFrame(nb, '/play/', 0);
+  const nbFeel = await nb.inputValue('#f-resheniyafeeling');
+  check('«Собрать сейчас»: пустые поля замысла дописал сервер и показал их ученице', nbFeel.length > 3 && await nb.locator('#step-resheniya .tag.dice').count() === 3 && (await nb.textContent('#step-igra .preview-igra')).includes('Тучи над Фиштом'), nbFeel);
+  check('Карта секрета ученицы ушла программисту', /Секретная механика — её выбрал ученик/.test(mock.last.newUser || ''));
   await nown.evaluate(() => window.__lab.confirm());
   await nb.waitForFunction(() => document.querySelectorAll('#step-sborka .ver').length >= 2, null, { timeout: 30000 });
   nown = await gameFrame(nb, '/play/', 0);
@@ -1694,7 +1757,21 @@ async function together(browser, base, code, teacher, student, errors, shot) {
   await student.click('#step-pleytest >> text=Отправить автору');
   await student.waitForSelector('#step-pleytest.done');
   check('Плейтест-карточка отправлена автору', true);
-  await student.click('#step-dom-strategiya >> text=Понятно');
+  // слепая пара с секретом: копии игры соседки с ручкой secret и без
+  const bp = {};
+  for (const k of ['A', 'B']) {
+    await student.click(`#step-slepaya .ab-${k}`);
+    await student.click('#step-slepaya .veil button');
+    const f = await gameFrame(student, '/play/', 0);
+    await f.waitForFunction(() => window.__lab.cfg.secret === 0, null, { timeout: 4000 }).catch(() => {}); // setCfg приходит после ready
+    bp[k] = await f.evaluate(() => window.__lab.cfg.secret);
+    await playRound(f, { score: 10 });
+    await sleep(400);
+  }
+  check('Слепая пара: копии соседки с секретом и без', (bp.A === 0) !== (bp.B === 0), `А: ${bp.A}, Б: ${bp.B}`);
+  await student.click(`#step-slepaya .opt >> text=В игре ${bp.A === 0 ? 'Б' : 'А'}`);
+  await student.waitForSelector('#step-slepaya.done');
+  check('Слепая пара: раскрытие «почувствовал секрет соседа»', /Ты почувствовал секрет соседа вслепую/.test(await student.textContent('#step-slepaya')));
   await student.locator('#step-pleytest').scrollIntoViewIfNeeded();
   await shot(student, '10-playtest', true);
 
@@ -1716,12 +1793,17 @@ async function together(browser, base, code, teacher, student, errors, shot) {
   check('Открытие плейтеста: партии чужих игроков и «ещё раз»', /2\s*партий сыграли чужие/.test(disc) && /1\s*раз нажали «ещё раз»/.test(disc), disc.slice(0, 90));
   check('Открытие плейтеста: доминирующая кнопка — «→»', /держали → вправо/.test(disc), (disc.match(/держали[^.]*/) || [''])[0]);
   check('Автор видит карточку плейтеста соседа', disc.includes('Хочется видеть, откуда летят тучи'));
+  check('Автор видит слепую пару: свой секрет почувствовали 1 из 1', /твой секрет почувствовали 1 из 1/.test((await nb.textContent('#step-pleytest')).replace(/\s+/g, ' ')));
 
   // учитель: отзыв «одно понятие + один вопрос», ученик видит его на шаге без перезагрузки
   await teacher.click('.tabs >> text=Урок');
   await teacher.click('tr.click >> text=Соседка');
   await teacher.waitForSelector('#studentDlg[open] .fbedit');
   check('Учитель видит плейтест игры ученика', /партий сыграли чужие/.test(await teacher.textContent('#studentDlg')));
+  // черновик отзыва: ИИ предлагает понятие и вопрос по ответам и игре ученицы, учитель правит
+  await teacher.click('#studentDlg >> text=🪄 Черновик');
+  await teacher.waitForFunction(() => /Поправьте и отправьте/.test((document.querySelector('#studentDlg .fbedit') || {}).textContent || ''), null, { timeout: 30000 });
+  check('Черновик отзыва: понятие и вопрос по игре и плейтесту ученицы', !!(await teacher.inputValue('#f-fb-concept')) && /Игра: «Тучи над Фиштом»/.test(mock.last.draftUser || '') && /Карточка соседа:/.test(mock.last.draftUser || ''), (mock.last.draftUser || '').slice(0, 120));
   await teacher.click('#studentDlg .fbedit .dicebtn >> nth=0');
   await teacher.fill('#f-fb-question', 'Какой кнопке в твоей игре нужна цена?');
   await teacher.click('#studentDlg >> text=Отправить отзыв ученику');

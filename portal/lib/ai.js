@@ -204,7 +204,7 @@ function producerSystem(lessonTitle) {
 }
 function planText(plan) {
   return [
-    `Название: ${plan.title}`, `Донор: ${plan.donor}`, `Твист: ${plan.twist}`, `Мир: ${plan.world}`, `Уровень: ${plan.level}`,
+    `Название: ${plan.title}`, `Донор: ${plan.donor}`, `Твист: ${plan.twist}`, `Мир: ${plan.world}`, plan.secret ? `Секрет (карта секрета): ${plan.secret.title}` : '', `Уровень: ${plan.level}`,
     plan.details.length ? 'Детали:\n' + plan.details.join('\n') : '',
     `Чувство: ${plan.decisions.feeling}`, `Честность: ${plan.decisions.honesty}`, `Выбор: ${plan.decisions.choice}`,
     `И — идея и чувство: ${plan.igra.i}`, `Г — глагол и кнопки: ${plan.igra.g}`, `Р — правила: ${plan.igra.r}`, `А — атмосфера: ${plan.igra.a}`,
@@ -343,9 +343,59 @@ function demoProducer(plan, who, lesson) {
   return { praise: 'Демо-режим: продюсер без модели проверяет только кнопки, кубики и крючок.', findings, forks };
 }
 
+/* ---------------- черновик отзыва учителя: одно понятие + один вопрос ---------------- */
+// По телеметрии соседей, их тап-карточкам и замыслу ученика текстовая модель выбирает понятие и вопрос (лучше из колод урока).
+// Без ключа или если модель ответила не по форме — правила по телеметрии. Учитель правит черновик и отправляет сам.
+function draftInput(d) {
+  const x = d.discovery || {};
+  return [
+    `Урок: ${d.lesson}`, `Игра: «${d.title}»`, `Ученик задумал чувство: ${d.feeling || '—'}`, d.secret ? `Его секрет: ${d.secret}` : '',
+    `Партий соседей: ${x.rounds || 0}, игроков: ${x.players || 0}, нажали «ещё раз»: ${x.again || 0}`,
+    x.dominant ? `Дольше всего держали: ${x.dominant.name} — ${Math.round(x.dominant.share * 100)}% времени партии` : '',
+    Object.keys(x.emotions || {}).length ? 'Эмоции соседей: ' + Object.entries(x.emotions).map(([e, n]) => `${e} ×${n}`).join(', ') : '',
+    ...(x.cards || []).slice(0, 6).map(c => `Карточка соседа: нравится — ${c.like && c.like.text || '—'}; хочется — ${c.want && c.want.text || '—'}; а что если — ${c.whatif && c.whatif.text || '—'}`),
+    d.blind && d.blind.voted ? `Слепая пара: секрет почувствовали ${d.blind.felt} из ${d.blind.voted}` : '',
+    'Колода понятий урока:', ...d.concepts.map(c => '- ' + c), 'Колода вопросов урока:', ...d.questions.map(q => '- ' + q),
+  ].filter(Boolean).join('\n');
+}
+function ruleDraft(d) {
+  const x = d.discovery || {}, em = x.emotions || {};
+  const find = (deck, re, fallback) => deck.find(t => re.test(t)) || fallback || deck[0] || '';
+  const C = d.concepts, Q = d.questions;
+  let concept, question, why;
+  if (x.dominant && x.dominant.share >= 0.6) { concept = find(C, /доминир/i); question = find(Q, /цена/i); why = `соседи ${Math.round(x.dominant.share * 100)}% партии держали ${x.dominant.name}`; }
+  else if (d.blind && d.blind.voted && d.blind.felt * 2 < d.blind.voted) { concept = find(C, /секрет/i); question = find(Q, /ручка|чувство/i); why = `секрет почувствовали только ${d.blind.felt} из ${d.blind.voted}`; }
+  else if (em['😴 Скучно']) { concept = find(C, /нараст/i); question = find(Q, /последней секунде|чувство/i); why = 'соседям было скучно'; }
+  else if (em['😤 Обидно']) { concept = find(C, /честност/i); question = find(Q, /опасност/i); why = 'соседям было обидно проигрывать'; }
+  else if (em['🤔 Непонятно']) { concept = find(C, /цель/i); question = find(Q, /чаще всего|задумал/i); why = 'соседям было непонятно'; }
+  else if (x.rounds && !x.again) { concept = find(C, /ещё раз|повод/i); question = find(Q, /ещё раз/i); why = 'никто не нажал «ещё раз»'; }
+  else { concept = find(C, /цикл/i); question = find(Q, /чаще всего|задумал/i); why = 'общий вопрос о главном действии'; }
+  return { concept, question, why, model: 'правила' };
+}
+async function feedbackDraft(d, who) {
+  if (demo()) return ruleDraft(d);
+  const model = models().text;
+  const t0 = Date.now();
+  try {
+    const { text, entry } = await call('черновик отзыва', who, model, [
+      { role: 'system', content: promptSection('feedback-prompt.md', '<!-- prompt:start -->', '<!-- prompt:end -->') },
+      { role: 'user', content: draftInput(d) },
+    ]);
+    try {
+      const a = text.indexOf('{'), b = text.lastIndexOf('}'), j = JSON.parse(text.slice(a, b + 1));
+      const r = { concept: cleanText(j.concept, 300), question: cleanText(j.question, 300), why: cleanText(j.why, 300), model };
+      if (!r.concept || !r.question) throw new Error('нет понятия или вопроса');
+      entry.ok = true; log(entry);
+      return r;
+    } catch (e) { entry.ok = false; entry.error = 'черновик отзыва: ' + e.message; log(entry); return ruleDraft(d); }
+  } catch (e) { log(Object.assign({ kind: 'черновик отзыва', model, ms: Date.now() - t0, ok: false, error: e.message }, meta(who))); return ruleDraft(d); }
+}
+
 /* ---------------- программист ---------------- */
+// карта секрета (урок 1): секрет своей игры в ручке secret — правила те же, что у игры класса (шаблон user:secret)
 function newGameMessage(plan) {
-  return fill(userTemplate('new'), {
+  const secret = plan.secret ? fill(userTemplate('secret'), { 'секрет': plan.secret.prompt }) + '\n\n' : '';
+  return fill(userTemplate('new').replace('[секрет своей игры]\n', secret), {
     'донор': plan.donor, 'твист': plan.twist, 'мир': plan.world, 'уровень': plan.level,
     'название': plan.title, 'каркас': plan.frame || 'как у донора урока', 'детали': plan.details.length ? 'Детали замысла:\n' + plan.details.join('\n') : '',
     'находки': plan.findings && plan.findings.length ? plan.findings.map(f => '- ' + f).join('\n') : 'замечаний нет',
@@ -441,7 +491,9 @@ const studentFrame = plan => (plan.frame && !/донор/i.test(plan.frame) ? { 
 // opts.model и opts.kind — для сравнения моделей: тот же замысел, другая модель, запись «сравнение» в журнале
 async function build(plan, who, onProgress, opts = {}) {
   if (demo()) return demoGame(plan, who, opts.kind);
-  return program(opts.kind || 'сборка', newGameMessage(plan), who, onProgress, opts.model, studentFrame(plan));
+  const r = await program(opts.kind || 'сборка', newGameMessage(plan), who, onProgress, opts.model, studentFrame(plan));
+  if (plan.secret && !/\bsecret\s*:\s*\{/.test(r.code)) r.warnings = r.warnings.concat('нет ручки secret');
+  return r;
 }
 async function change(code, request, who, onProgress) {
   if (demo()) { log(Object.assign({ kind: 'правка', model: 'демо', ms: 0, ok: true, demo: true }, meta(who))); return { code, model: 'демо', attempts: 1, warnings: [], demo: true }; }
@@ -502,4 +554,4 @@ function demoGame(plan, who, kind) {
   return { code, model: 'демо', attempts: 1, warnings: [], demo: true, ms: 0, rub: null };
 }
 
-module.exports = { LINK_FIELDS, playtestFix, applyPatches, loadConfig, reloadConfig, demo, models, limits, listModels, producer, producerFix, wowLink, build, buildShared, demoShared, change, fix, planText, extractCode, syntaxError };
+module.exports = { LINK_FIELDS, playtestFix, feedbackDraft, applyPatches, loadConfig, reloadConfig, demo, models, limits, listModels, producer, producerFix, wowLink, build, buildShared, demoShared, change, fix, planText, extractCode, syntaxError };

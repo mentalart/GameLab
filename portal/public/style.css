@@ -87,6 +87,19 @@ label.lbl{display:block;font-weight:700;margin-bottom:4px}
 .dicebtn.roll{animation:roll .45s ease}
 @keyframes roll{0%{transform:rotate(0)}50%{transform:rotate(200deg) scale(1.2)}100%{transform:rotate(360deg)}}
 .counter{font-size:13px;color:var(--muted)}
+.cardopts{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:8px}
+.cardopt{text-align:left;padding:10px 12px;border-radius:12px;border:1px solid var(--line2);background:var(--bg2);color:var(--text);font:inherit;font-size:14px;line-height:1.3;cursor:pointer;transition:transform .08s}
+.cardopt:hover{border-color:var(--accent)}
+.cardopt:active{transform:scale(.98)}
+.cardopt.on{background:#0c2418;border-color:var(--accent);box-shadow:0 0 0 1px var(--accent) inset}
+.cardopt.more{color:var(--muted);text-align:center;border-style:dashed}
+.field .hint.example{color:var(--warm)}
+.tag.card{color:var(--violet);border-color:#47407a;background:#1c1838}
+.preview-igra{display:flex;flex-direction:column;gap:10px}
+.preview-igra .pi-row{display:flex;gap:10px;align-items:flex-start}
+.hookbox{border-left:3px solid var(--warm);padding:8px 12px;background:#2a1f0c;border-radius:0 10px 10px 0}
+.recall{border-left:3px solid var(--info);padding:8px 12px;background:#0b2128;border-radius:0 10px 10px 0}
+.lvl-lock{opacity:.55}
 .counter b{color:var(--accent)}
 .letter{flex:none;width:36px;height:36px;border-radius:10px;display:grid;place-items:center;font-weight:900;font-size:18px;background:var(--panel2);border:1px solid var(--line2);color:var(--warm)}
 
@@ -460,3 +473,25 @@ dialog.chdlg{width:min(1100px,calc(100% - 32px));max-height:calc(100vh - 32px);o
 .botrow{display:flex;gap:10px;align-items:baseline;flex-wrap:wrap;font-size:14px}
 .botrow .bi{width:1.4em}
 .botfind{margin:0;padding-left:20px;display:flex;flex-direction:column;gap:4px;font-size:14px}
+
+/* проектор: ответы класса — крупные полоски без имён */
+.pj-poll{display:flex;flex-direction:column;gap:18px}
+.pj-pollchips{gap:8px;flex-wrap:wrap}
+.pj-polls{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,420px),1fr));gap:18px}
+.pj-pollcard h2{font-size:clamp(20px,2vw,28px)}
+.pj-pollcard .barrow{grid-template-columns:minmax(120px,38%) minmax(0,1fr) 56px;font-size:clamp(16px,1.6vw,22px)}
+.pj-pollcard .barrow .bt{height:20px}
+.pj-own{display:flex;flex-wrap:wrap;gap:8px}
+.pj-own .tag{font-size:clamp(14px,1.3vw,18px);white-space:normal}
+/* проектор: финал — стена аркады урока и провал дня */
+.pj-final{display:flex;flex-direction:column;gap:20px}
+.pj-finaltop{display:grid;grid-template-columns:minmax(0,.7fr) minmax(0,.7fr) minmax(0,1.6fr);gap:18px;align-items:start}
+.pj-fail{outline:2px dashed var(--warm)}
+.pj-fail .row select{max-width:220px}
+@media (max-width:900px){.pj-finaltop{grid-template-columns:1fr}}
+/* сценарий учителя у чекпоинта */
+details.tscript{margin-top:8px;border:1px solid var(--line2);border-radius:10px;padding:8px 12px;background:var(--bg2);font-size:13px}
+details.tscript summary{cursor:pointer;font-weight:700}
+details.tscript dl{display:grid;grid-template-columns:auto minmax(0,1fr);gap:6px 12px;margin:8px 0 0}
+details.tscript dt{color:var(--muted);font-weight:700}
+details.tscript dd{margin:0}
