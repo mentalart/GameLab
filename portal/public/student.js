@@ -102,6 +102,7 @@ function save(stepId, value, done, now) {
   // замысел изменился: шаг ИГРА в том же чекпоинте пересобирает черновик (событие 'plan')
   const plan = S.lesson.plan || {};
   if (stepId === plan.factory || stepId === plan.decisions) S.hooks.forEach(h => h('plan', stepId));
+  if (done) S.hooks.forEach(h => h('answered', stepId)); // шаг закрыт: лупа ждёт ответа «Найди секрет»
 }
 // перед сборкой: все ответы, которые ещё ждут отправки, уходят на сервер — замысел собирается из них
 function flushSaves() {
@@ -298,12 +299,15 @@ STEPS['teacher-demo'] = ctx => {
 
 // общая игра класса из вау-старта: появляется, когда учитель её раздаст. secretOff — партия с выключенным секретом.
 // Скрытый счётчик _secret из телеметрии показывает, сколько раз сработал секрет.
+// lupa — «Посмотри на секрет» после «Найди секрет»: копия с секретом, оболочка зажигает лупу на каждом срабатывании,
+// кнопки силы секрета 0 · 1 · 2 (2 — если ручка игры это позволяет); партии не идут в рекорды класса.
+const huntSecret = () => { const h = lessonSteps().find(x => x.type === 'secret' && !x.hunt); return h ? (ans(h.id).value || {}).secret || null : null; };
 function sharedPlay(ctx) {
   const st = ctx.step;
   const host = el('div', { class: 'stack' });
   let cur = null, shown;
   function draw() {
-    const g = S.wow && S.wow.game, key = g ? g.id + '/' + g.version : null;
+    const g = S.wow && S.wow.game, sec = st.lupa ? huntSecret() : null, key = g ? g.id + '/' + g.version + (sec ? '/lupa' : '') : null;
     if (key && key === shown) return;
     shown = key;
     if (cur) { cur.destroy(); cur = null; }
@@ -313,31 +317,48 @@ function sharedPlay(ctx) {
         el('p', { style: 'margin-top:6px' }, wowStatusText(S.wow) + ' Как только учитель раздаст игру, она появится здесь сама.')));
       return;
     }
+    if (st.lupa && !sec) {
+      host.append(el('div', { class: 'locked-msg card' }, el('h3', {}, 'Сначала найди секрет'),
+        el('p', { style: 'margin-top:6px' }, 'Лупа откроется, когда ты ответишь в шаге «Найди секрет».'),
+        el('div', {}, el('button', { class: 'btn ghost small', type: 'button', onclick: () => { shown = null; draw(); if (!huntSecret()) toast('Сначала ответь в шаге «Найди секрет»'); } }, '🔍 Открыть лупу'))));
+      return;
+    }
     let v = Object.assign({ rounds: 0, best: 0, secret: 0 }, ctx.value);
     if (v.game && v.game !== key) v = { rounds: 0, best: 0, secret: 0 }; // учитель пересобрал игру — счёт заново
     v.game = key;
     const status = el('b', {});
     const show = () => { status.textContent = `Партий: ${v.rounds} · лучший счёт: ${v.best}` + (st.minRounds && v.rounds < st.minRounds ? ` · нужно партий: ${st.minRounds}` : ''); };
+    let power = 1; // лупа: сила секрета кнопками
     cur = Games.frame({
-      src: () => `/play/${g.id}/${g.version}`, key: () => 'wow:' + g.id, cfg: st.secretOff && g.knob ? { [g.knob]: 0 } : null, label: st.secretOff ? 'Играть без секрета' : 'Играть в игру класса',
-      challenge: true,
+      src: () => `/play/${g.id}/${g.version}`, key: () => 'wow:' + g.id, cfg: st.secretOff && g.knob ? { [g.knob]: 0 } : null, label: st.lupa ? 'Играть с лупой' : st.secretOff ? 'Играть без секрета' : 'Играть в игру класса',
+      challenge: !st.lupa, score: !st.lupa, reveal: sec ? sec.title : null,
+      onReady: meta => { if (st.lupa) drawPower(meta); },
       onOver: m => {
         const hits = Number(((m.tele || {}).custom || {})._secret) || 0;
         v = Object.assign(v, { rounds: v.rounds + 1, best: Math.max(v.best, m.score || 0), secret: v.secret + hits });
         show(); ctx.save(v, ctx.done || v.rounds >= (st.minRounds || 1));
+        if (st.lupa) { lupaLine.textContent = `За эту партию лупа загорелась ${hits} раз (сила секрета ${power}).`; return; }
         chHost.innerHTML = ''; chHost.append(Games.challenge({ id: g.id, version: g.version }, m));
       },
       onError: err => cur.message(el('div', { class: 'stack', style: 'align-items:center' }, el('b', {}, 'Игра класса упала: ' + (err.message || 'ошибка')), el('p', { class: 'muted small' }, 'Скажи учителю — он пересоберёт игру или возьмёт запасную.'))),
     });
     show();
-    const chHost = el('div');
-    host.append(el('div', { class: 'donor-card' }, el('div', { class: 'ico' }, '🃏'), el('div', {},
-      el('div', { class: 'eyebrow' }, st.secretOff ? 'Игра класса · секрет выключен' : 'Игра класса'), el('h3', {}, g.title || 'Игра класса'),
-      el('p', { class: 'muted small' }, S.wow.cards.map(c => c.text).filter(Boolean).join(' · ')))),
-    cur.box, Games.bar(cur, status), chHost,
+    const chHost = el('div'), powerHost = el('div', { class: 'seg', role: 'radiogroup', 'aria-label': 'Сила секрета' }), lupaLine = el('p', { class: 'small muted', 'aria-live': 'polite' });
+    // кнопки силы секрета: ручка игры knob, «2» — только если её максимум это позволяет
+    function drawPower(meta) {
+      const c = ((meta && meta.config) || {})[g.knob] || {}, max = Number(c.max) || 1;
+      powerHost.innerHTML = '';
+      [[0, 'Секрет 0 · нет'], [1, 'Секрет 1 · как было'], [2, 'Секрет 2 · вдвое сильнее']].filter(([k]) => k <= max).forEach(([k, label]) => powerHost.append(el('button', {
+        type: 'button', class: 'opt' + (power === k ? ' on' : ''), 'aria-pressed': String(power === k),
+        onclick: () => { power = k; cur.post({ type: 'setCfg', cfg: { [g.knob]: k } }); beep('tick'); drawPower(meta); } }, label)));
+    }
+    host.append(el('div', { class: 'donor-card' }, el('div', { class: 'ico' }, st.lupa ? '🔍' : '🃏'), el('div', {},
+      el('div', { class: 'eyebrow' }, st.lupa ? 'Игра класса · секрет с лупой' : st.secretOff ? 'Игра класса · секрет выключен' : 'Игра класса'), el('h3', {}, st.lupa ? sec.title : g.title || 'Игра класса'),
+      el('p', { class: 'muted small' }, st.lupa ? sec.reveal : S.wow.cards.map(c => c.text).filter(Boolean).join(' · ')))),
+    cur.box, Games.bar(cur, status), st.lupa ? powerHost : '', st.lupa ? lupaLine : '', chHost,
     el('div', {}, el('button', { class: 'btn ghost small', type: 'button', onclick: () => { if (!v.rounds) { toast('Сначала сыграй хотя бы одну партию'); return; } ctx.save(v, true); } }, 'Готово, дальше')));
   }
-  S.hooks.push(kind => { if (kind === 'wow') draw(); });
+  S.hooks.push(kind => { if (kind === 'wow' || (st.lupa && kind === 'answered')) draw(); });
   draw();
   return host;
 }
@@ -479,10 +500,10 @@ STEPS.secret = ctx => {
           a.secret.effect ? el('span', { class: 'tag' }, a.secret.effect === 'помощник' ? 'помощник: незаметно помогает игроку' : 'нагнетатель: делает игру напряжённее') : null),
         data.felt && data.felt.voted ? el('p', { class: 'concept' }, `В классе секрет почувствовали вслепую ${data.felt.felt} из ${data.felt.voted}.`) : '',
         el('div', { class: 'compare' }, col(sk, true), col(ok, false)), marksBar(AB[sk].marks) || '',
-        el('p', { class: 'concept' }, 'Открой ручки (Tab) в игре класса и покрути ручку «Секрет» от 0 до 1. Как меняется чувство игры?'));
+        el('p', { class: 'concept' }, lessonSteps().some(x => x.lupa) ? 'Ниже — та же игра с лупой: она загорается каждый раз, когда срабатывает секрет. Поймай этот момент.' : 'Открой ручки (Tab) в игре класса и покрути ручку «Секрет». Как меняется чувство игры?'));
       return;
     }
-    const on = C ? stepById(C.on) : lessonSteps().find(x => x.type === 'play' && x.shared && !x.secretOff);
+    const on = C ? stepById(C.on) : lessonSteps().find(x => x.type === 'play' && x.shared && !x.secretOff && !x.lupa);
     const off = C ? stepById(C.off) : lessonSteps().find(x => x.type === 'play' && x.shared && x.secretOff);
     const V = step => (step && ans(step.id).value) || {};
     // строка сравнения: лучший счёт, партии и счётчики телеметрии из шага play (compare.show — их имена)
@@ -2750,7 +2771,7 @@ function stepSummary(step) {
   const a = ans(step.id), v = a.value || {};
   const f = x => valText(x) + (x && x.dice ? ' [кубик]' : '');
   switch (step.type) {
-    case 'play': return `партий ${v.rounds || 0}, лучший счёт ${v.best || 0}` + (step.shared && S.wow && S.wow.game ? ` (игра класса «${S.wow.game.title}»${step.secretOff ? ', секрет выключен' : ''})` : '');
+    case 'play': return `партий ${v.rounds || 0}, лучший счёт ${v.best || 0}` + (step.shared && S.wow && S.wow.game ? ` (игра класса «${S.wow.game.title}»${step.secretOff ? ', секрет выключен' : step.lupa ? ', с лупой' : ''})` : '');
     case 'cards': return S.wow ? S.wow.cards.map(c => `${c.label}: ${c.text || '—'}`).join('; ') : '—';
     case 'abtest': return v.A ? `секрет в игре ${v.side === 'A' ? 'А' : 'Б'}; голос: ${v.vote ? (v.vote === 'same' ? 'разницы нет' : 'напряжённее ' + (v.vote === 'A' ? 'А' : 'Б')) : 'нет'}; партий А ${v.A.rounds}, Б ${v.B.rounds}; секрет сработал ${v[v.side].secret} раз` : 'не играл';
     case 'secret': return v.secret ? `догадка: ${v.guess} — ${v.correct ? 'угадал' : v.trap ? 'ловушка: это было на картах' : 'не угадал'}; секрет: ${v.secret.title}` : 'не отвечал';

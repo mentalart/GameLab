@@ -32,7 +32,7 @@ const store = {
   get(k) { try { return localStorage.getItem(k); } catch (e) { return null; } },
   set(k, v) { try { localStorage.setItem(k, v); } catch (e) { /* хранилище недоступно (песочница) */ } },
 };
-const post = m => { if (bot && m.type !== 'playtest' && m.type !== 'playtestStep') return; try { if (window.parent !== window) window.parent.postMessage(Object.assign({ source: 'lab-game' }, m), '*'); } catch (e) { /* нет портала */ } };
+const post = m => { if (bot && m.type !== 'playtest' && m.type !== 'playtestStep' && m.type !== 'showStep') return; try { if (window.parent !== window) window.parent.postMessage(Object.assign({ source: 'lab-game' }, m), '*'); } catch (e) { /* нет портала */ } };
 const params = new URLSearchParams(location.search);
 
 /* ---------------- звук: Web Audio без файлов ---------------- */
@@ -316,6 +316,7 @@ const lab = {
   // имя с «_» — скрытый счётчик: уходит порталу, на экран конца партии не попадает; его моменты (секунда партии) копятся в marks для раскрытия секрета
   count(name, n = 1) {
     tele.custom[name] = (tele.custom[name] || 0) + n;
+    if (name === '_secret') lupaHit();
     if (name[0] !== '_') return;
     const m = tele.marks[name] = tele.marks[name] || [], t = Math.round(lab.t * 10) / 10;
     if (m.length < 300 && !(m.length && t - m[m.length - 1] < 0.25)) m.push(t);
@@ -930,8 +931,25 @@ function showRecord() {
   const txt = classRecord ? `Рекорд класса: ${classRecord.score}${classRecord.nick ? ' — ' + classRecord.nick : ''}` : '';
   ['#startRecord', '#overRecord'].forEach(s => { $(s).hidden = !txt; $(s).textContent = txt; });
 }
+// лупа секрета: портал присылает reveal с названием секрета (урок 1, шаг «Посмотри на секрет» и «Секрет рядом» на проекторе).
+// Каждый lab.count('_secret') зажигает значок и тихо щёлкает; у постоянного эффекта значок горит, пока счётчик идёт. Бот-плейтестер лупу не зажигает.
+let lupa = null;
+function setLupa(title) {
+  const box = $('#lupa');
+  lupa = title ? { title: String(title).slice(0, 80), n: 0, until: 0 } : null;
+  box.hidden = !lupa;
+  if (lupa) { box.querySelector('span').textContent = 'Секрет: ' + lupa.title; box.querySelector('b').textContent = ''; }
+}
+function lupaHit() {
+  if (!lupa || (bot && !bot.show)) return;
+  const now = performance.now(), fresh = now > lupa.until;
+  lupa.n++; lupa.until = now + 900;
+  const box = $('#lupa'); box.classList.add('on'); box.querySelector('b').textContent = '× ' + lupa.n;
+  if (fresh) tone(1480, 0.05, 'sine', 0.05);
+}
 let shownScore = 0;
 function hudTick() {
+  if (lupa && performance.now() > lupa.until) $('#lupa').classList.remove('on');
   const sc = Math.round(lab.score);
   if (sc !== shownScore) { // счёт подпрыгивает при каждом изменении
     const el = $('#hudScore'); el.textContent = String(sc);
@@ -1111,14 +1129,24 @@ function botStep(b) {
   if (lab.t >= b.nextLook) { b.nextLook = lab.t + 0.25; const v = heroOnScreen(); if (v !== null) { b.looks++; if (!v) b.off++; } }
 }
 const botWait = () => new Promise(r => setTimeout(r, 0));
-async function botRound(strategy, seconds, seed, onStep) {
-  const b = bot = { strategy, rng: mulberry32((seed ^ (strategy.length * 7919)) >>> 0), until: 0, dir: [0, 0], aT: 0, bT: 0, nextLook: 0, looks: 0, off: 0, hurtsAt: [], end: null };
+// realtime — показ на проекторе («Секрет рядом»): те же шаги BOT_DT, что в плейтесте, только в темпе настоящего времени
+async function botRound(strategy, seconds, seed, onStep, realtime) {
+  const b = bot = { strategy, rng: mulberry32((seed ^ (strategy.length * 7919)) >>> 0), until: 0, dir: [0, 0], aT: 0, bT: 0, nextLook: 0, looks: 0, off: 0, hurtsAt: [], end: null, show: !!realtime };
   fixedSeed = seed; buildRound(false); freshPreview = false;
   state = 'play'; paused = false; showScreen(null);
   let steps = 0;
-  while (state === 'play' && !errored && lab.t < seconds && steps < seconds * 90) {
+  const going = () => state === 'play' && !errored && lab.t < seconds && bot === b;
+  if (realtime) {
+    let last = performance.now(), acc = 0;
+    while (going()) {
+      await new Promise(r => requestAnimationFrame(r));
+      const now = performance.now(); acc += Math.min(0.1, (now - last) / 1000); last = now;
+      while (acc >= BOT_DT && going()) { botStep(b); acc -= BOT_DT; steps++; }
+      if (onStep) onStep(strategy, lab.t);
+    }
+  } else while (going() && steps < seconds * 90) {
     const t0 = performance.now();
-    while (state === 'play' && !errored && lab.t < seconds && performance.now() - t0 < 30) { botStep(b); steps++; }
+    while (going() && performance.now() - t0 < 30) { botStep(b); steps++; }
     if (onStep) onStep(strategy, lab.t);
     await botWait();
   }
@@ -1127,6 +1155,7 @@ async function botRound(strategy, seconds, seed, onStep) {
   return {
     strategy, seconds: Math.round(lab.t * 10) / 10, over: !!b.end, endText: b.end ? b.end.text : '', score: Math.round(lab.score), hurts: tele.hurts, hurtsAt: b.hurtsAt.slice(0, 20),
     presses: { a: tele.presses.a, b: tele.presses.b }, offscreen: b.looks ? Math.round(100 * b.off / b.looks) : null, flat, line: tele.line.slice(0, 200), custom: cu,
+    secretAt: (tele.marks._secret || []).slice(0, 300), // секунды срабатываний секрета: портал проверяет, когда он сработал впервые и как часто
     error: errored ? (($('#errBox') || {}).textContent || 'ошибка').trim().slice(0, 300) : null,
   };
 }
@@ -1154,21 +1183,45 @@ function botFindings(rs, seconds) {
   }
   return out;
 }
+// compare: { knob } — ещё одна партия новичка с ручкой knob = 0 (копия «Без секрета»): портал сравнивает её с партией новичка с секретом
 async function playtest(o = {}) {
   if (!G || bot) throw new Error(bot ? 'Плейтест уже идёт' : 'Игра ещё не загружена');
   const strategies = (o.strategies || ['idle', 'mash', 'random']).filter(s => BOT_NAMES[s]), seconds = Math.max(10, Math.min(300, Number(o.seconds) || 90));
   const seed = o.seed == null ? 12345 : Number(o.seed) >>> 0, keep = { muted, fixedSeed };
+  const knob = o.compare && o.compare.knob in cfg ? o.compare.knob : null;
   muted = true; const results = [];
+  let off = null;
   try {
     for (const st of strategies) results.push(await botRound(st, seconds, seed, (s, t) => post({ type: 'playtestStep', strategy: s, t: Math.round(t), seconds })));
+    if (knob) {
+      const was = cfg[knob]; cfg[knob] = 0;
+      try { off = await botRound('random', seconds, seed, (s, t) => post({ type: 'playtestStep', strategy: s, off: true, t: Math.round(t), seconds })); } finally { cfg[knob] = was; }
+    }
   } finally {
     bot = null; muted = keep.muted; fixedSeed = keep.fixedSeed;
     for (const h of kb.concat(kbTap)) for (const k in h) h[k] = false;
     errored = false; buildRound(true); state = 'menu'; paused = false; showScreen('startScreen');
   }
   const report = { title: G.title, seconds, seed, hero: results.some(r => r.offscreen != null), results, findings: botFindings(results, seconds), names: BOT_NAMES };
+  if (off) report.off = Object.assign(off, { knob });
   post({ type: 'playtest', report });
   return report;
+}
+// показ на проекторе: бот играет одну партию в настоящем времени, игру видно; mute — без звука (вторая копия рядом звучит сама)
+async function botShow(o = {}) {
+  if (!G || bot) throw new Error(bot ? 'Бот уже играет' : 'Игра ещё не загружена');
+  const seconds = Math.max(10, Math.min(180, Number(o.seconds) || 60)), seed = o.seed == null ? 12345 : Number(o.seed) >>> 0;
+  const strategy = BOT_NAMES[o.strategy] ? o.strategy : 'random', keep = { muted, fixedSeed };
+  if (o.mute) muted = true;
+  let r = null;
+  try { r = await botRound(strategy, seconds, seed, () => post({ type: 'showStep', t: Math.round(lab.t), seconds }), true); } finally {
+    bot = null; muted = keep.muted; fixedSeed = keep.fixedSeed;
+    for (const h of kb.concat(kbTap)) for (const k in h) h[k] = false;
+    errored = false; buildRound(true); state = 'menu'; paused = false; showScreen('startScreen');
+  }
+  const res = { seconds: r.seconds, score: r.score, hurts: r.hurts, over: r.over, secret: (r.custom || {})._secret || 0 };
+  post({ type: 'showDone', result: res });
+  return res;
 }
 
 /* ---------------- главный цикл ---------------- */
@@ -1245,6 +1298,8 @@ addEventListener('message', e => {
   if (m.type === 'pause') setPause(true);
   if (m.type === 'poster') posterWanted = true;
   if (m.type === 'playtest') playtest(m.options || {}).catch(err => post({ type: 'playtest', error: err.message }));
+  if (m.type === 'botShow') botShow(m.options || {}).catch(err => post({ type: 'showDone', error: err.message }));
+  if (m.type === 'reveal') setLupa(m.title || null);
   if (m.type === 'challengeOn') challengeOn = true;
   if (m.type === 'ghost') ghost = m.ghost && Array.isArray(m.ghost.line) ? { nick: String(m.ghost.nick || 'соперник').slice(0, 24), score: Number(m.ghost.score) || 0, line: m.ghost.line.slice(0, 600) } : null;
 });
@@ -1288,7 +1343,8 @@ async function boot() {
 window.__lab = {
   ready: false, engine: 'three', lab, tele, session, get state() { return state; }, get paused() { return paused; }, get errored() { return errored; },
   get scene() { return scene; }, cfg, DEFAULTS,
-  confirm, restart: () => restart(true), end: (k, t) => end(k || 'lose', t || 'Проверка'), togglePanel, playtest,
+  confirm, restart: () => restart(true), end: (k, t) => end(k || 'lose', t || 'Проверка'), togglePanel, playtest, botShow, setLupa,
+  get lupa() { return lupa ? { title: lupa.title, n: lupa.n, on: performance.now() <= lupa.until } : null; },
   frames: (n = 1) => new Promise(res => frameWaiters.push({ at: frameNo + n, res })),
   info() { let objects = 0, meshes = 0; if (scene) scene.traverse(o => { objects++; if (o.isMesh && o.visible) meshes++; }); return { engine: 'three', version: THREE.REVISION, shell: SHELL_VERSION, draws: lastDraws, triangles: lastTris, objects, meshes, fps: Math.round(fps) }; },
   pixels() { // сколько разных оттенков и светлых точек в кадре: пустой ли экран

@@ -106,7 +106,7 @@ function buildPlan(les, st) {
     donor: chosen ? `${chosen.title} — ${chosen.text} ${chosen.rules || ''}`.trim() : `${les.donor} — ${facStep.donorCard ? facStep.donorCard.text : ''}`,
     donorTitle: chosen ? chosen.title : les.donor,
     twist: fieldText(facFields.twist), world: fieldText(facFields.world),
-    secret: secText ? { title: secText, prompt: secDef ? secDef.prompt : secText } : null,
+    secret: secText ? { title: secText, prompt: secDef ? secDef.prompt : secText, base: secDef ? secDef.base || null : null } : null,
     level: `${level.label} (${level.hint})`, details,
     decisions: { feeling: fieldText(dec.feeling), honesty: fieldText(dec.honesty), choice: fieldText(dec.choice) },
     igra: { i: fieldText(igra.i), g: fieldText(igra.g), r: fieldText(igra.r), a: fieldText(igra.a) },
@@ -780,7 +780,7 @@ function huntOptions(cls, les, w) {
 }
 const wowSteps = les => {
   const all = les.checkpoints.flatMap(c => c.steps);
-  return { on: all.find(x => x.type === 'play' && x.shared && !x.secretOff), off: all.find(x => x.type === 'play' && x.shared && x.secretOff), ab: all.find(x => x.type === 'abtest'), hunt: all.find(x => x.type === 'secret' && !x.hunt) };
+  return { on: all.find(x => x.type === 'play' && x.shared && !x.secretOff && !x.lupa), off: all.find(x => x.type === 'play' && x.shared && x.secretOff), ab: all.find(x => x.type === 'abtest'), hunt: all.find(x => x.type === 'secret' && !x.hunt) };
 };
 // сводка для учителя: рекорды с секретом и без, сколько раз сработал секрет, кто угадал
 function wowSummary(cls, les) {
@@ -860,7 +860,7 @@ route('GET', '/api/teacher/wow', (ctx) => {
   return {
     wow: w, demo: ai.programmerDemo(les.id), chat: ai.manual(les.id), formula: les.wow.formula, cards: les.wow.cards.map(c => ({ id: c.id, label: c.label, parts: !!c.parts })),
     secrets: aiSecrets(les).map(x => ({ id: x.id, title: x.title, effect: x.effect, sound: !!x.sound })), secret: secretOf(les, w.secret), headphones: !!cls.headphones, built: w.gameId ? builtSecret(les, w) : null,
-    game: g && v ? { id: g.id, version: g.current, title: g.title, model: v.model, warnings: v.warnings || [], fallback: !!v.fallback, attempts: v.attempts, kind: v.kind,
+    game: g && v ? { id: g.id, version: g.current, knob: w.knob || 'secret', title: g.title, model: v.model, warnings: v.warnings || [], fallback: !!v.fallback, attempts: v.attempts, kind: v.kind,
       playtest: v.playtest || null, from: v.from || null, before: v.from && g.versions[v.from - 1] ? g.versions[v.from - 1].playtest || null : null } : null,
     summary: wowSummary(cls, les),
   };
@@ -952,18 +952,42 @@ const cleanStr = (v, n) => String(v == null ? '' : v).replace(/\s+/g, ' ').trim(
 function cleanReport(r) {
   r = r && typeof r === 'object' ? r : {};
   const num = (v, n = 1e6) => Math.max(0, Math.min(n, Number(v) || 0));
-  const results = (Array.isArray(r.results) ? r.results : []).filter(x => x && STRATS.includes(x.strategy)).slice(0, 3).map(x => ({
+  const clean = x => ({
     strategy: x.strategy, seconds: Math.round(num(x.seconds, 600) * 10) / 10, over: !!x.over, endText: cleanStr(x.endText, 120), score: Math.round(num(x.score, 1e9)), hurts: Math.round(num(x.hurts, 999)),
     hurtsAt: (Array.isArray(x.hurtsAt) ? x.hurtsAt : []).slice(0, 10).map(t => Math.round(num(t, 600) * 10) / 10), offscreen: x.offscreen == null ? null : Math.round(num(x.offscreen, 100)),
     flat: Math.round(num(x.flat, 600)), presses: { a: Math.round(num(x.presses && x.presses.a)), b: Math.round(num(x.presses && x.presses.b)) }, error: x.error ? cleanStr(x.error, 300) : null,
     secret: Math.round(num(x.custom && x.custom._secret) * 10) / 10, // сколько раз сработал секрет (скрытый счётчик _secret)
-  }));
-  return { at: store.now(), seconds: Math.round(num(r.seconds, 600)), seed: Math.round(num(r.seed, 4294967295)), hero: !!r.hero, results,
+    // секунды срабатываний секрета: когда он сработал впервые и сколько раз (отметки не чаще 4 в секунду)
+    secretFirst: Array.isArray(x.secretAt) && x.secretAt.length ? Math.round(num(x.secretAt[0], 600) * 10) / 10 : null,
+    secretMarks: Array.isArray(x.secretAt) ? Math.min(300, x.secretAt.length) : 0,
+  });
+  const results = (Array.isArray(r.results) ? r.results : []).filter(x => x && STRATS.includes(x.strategy)).slice(0, 3).map(clean);
+  // off — партия новичка в копии «Без секрета» (ручка секрета = 0) в том же мире: её сравнивают с партией новичка с секретом
+  const off = r.off && typeof r.off === 'object' && r.off.strategy === 'random' ? clean(r.off) : null;
+  return { at: store.now(), seconds: Math.round(num(r.seconds, 600)), seed: Math.round(num(r.seed, 4294967295)), hero: !!r.hero, results, off,
     findings: (Array.isArray(r.findings) ? r.findings : []).slice(0, 12).map(f => cleanStr(f, 400)).filter(Boolean) };
 }
 // Бот проверяет и секрет (разбор геймдизайнера 17.10.2026): если за три партии счётчик _secret ни разу не сработал, класс не почувствует
 // разницу копий А и Б. Тогда в отчёте появляется находка, и панель учителя сама отправляет программисту правку по отчёту — один раз на игру.
-const SECRET_SILENT = 'Секрет ни разу не сработал за три партии бота: скрытый счётчик _secret молчит, и класс не почувствует разницу копий А и Б. Сделай секрет заметным уже в первой минуте партии при secret: 1 и вызывай lab.count(\'_secret\') каждый раз, когда он срабатывает.';
+const SECRET_SILENT = 'Секрет ни разу не сработал за три партии бота: скрытый счётчик _secret молчит, и класс не почувствует разницу копий А и Б. Секрет должен впервые сработать до 15-й секунды партии при secret: 1; вызывай lab.count(\'_secret\') каждый раз, когда он срабатывает.';
+// Бот проверяет и силу секрета (решение автора 18.10.2026): когда сработал впервые, как часто срабатывает и различаются ли копии
+// с секретом и без у новичка — по показателям из поля bot секрета в колоде урока. Слабый секрет класс не заметит за одну партию в копию.
+const SECRET_FIRST = 15, SECRET_RATE = 4;
+const BOT_METRIC = { hurts: 'урон', seconds: 'длина партии, с', score: 'очки' };
+function secretWeak(sec, pt) {
+  const rs = pt.results.filter(x => !x.error), out = [];
+  if (!rs.length || rs.every(x => !x.secret)) return out; // молчащий секрет — находка SECRET_SILENT
+  const firsts = rs.map(x => x.secretFirst).filter(t => t != null), first = firsts.length ? Math.min(...firsts) : null;
+  if (first != null && first > SECRET_FIRST) out.push(`Секрет впервые сработал только на ${Math.round(first)}-й секунде партии бота, а нужно до ${SECRET_FIRST}-й: класс играет по одной партии в каждую копию. Сделай так, чтобы секрет срабатывал с первых секунд.`);
+  const rate = Math.max(...rs.map(x => (x.seconds >= 10 ? x.secretMarks / x.seconds * 60 : 0)));
+  if (rate < SECRET_RATE) out.push(`Секрет срабатывает ${String(Math.round(rate * 10) / 10).replace('.', ',')} раза в минуту, а нужно не меньше ${SECRET_RATE}: за партию его не заметить. Пусть он срабатывает чаще, а эффект будет крупнее.`);
+  const spec = (sec && sec.bot) || {}, on = rs.find(x => x.strategy === 'random'), off = pt.off;
+  if (spec.differs && on && off && !off.error) {
+    const diff = k => { const a = on[k] || 0, b = off[k] || 0, m = Math.max(a, b); return m ? Math.abs(a - b) / m : 0; };
+    if (!spec.differs.some(k => diff(k) >= (spec.by || 0.2))) out.push(`Копии с секретом и без почти не различаются у новичка: ${spec.differs.map(k => `${BOT_METRIC[k] || k} ${on[k]} и ${off[k]}`).join(', ')}. Нужна разница хотя бы ${Math.round((spec.by || 0.2) * 100)}%: сделай эффект секрета сильнее и убери из игры без секрета всё, что на него похоже.`);
+  }
+  return out;
+}
 route('POST', '/api/teacher/wow/playtest', (ctx) => {
   const { les, w } = needWow(ctx);
   const g = w.gameId && store.getGame(w.gameId), n = Number(ctx.body.version), v = g && g.versions[n - 1];
@@ -971,9 +995,12 @@ route('POST', '/api/teacher/wow/playtest', (ctx) => {
   v.playtest = cleanReport(ctx.body.report);
   const silent = w.knob === 'secret' && v.playtest.results.length > 0 && v.playtest.results.every(x => !x.secret && !x.error);
   if (silent) { v.playtest.secretSilent = true; v.playtest.findings.unshift(SECRET_SILENT); }
+  const weak = silent || w.knob !== 'secret' ? [] : secretWeak(builtSecret(les, w), v.playtest); // у запасной игры свой проверенный секрет
+  v.playtest.secretWeak = weak.length > 0; // панель учителя: «секрет заметный» или «секрет слабый»
+  if (weak.length) v.playtest.findings.unshift(...weak);
   store.saveGame(g);
   // автоправка — только если в этой игре ещё не было автоправки по секрету и ИИ доступен
-  const autoFix = silent && !ai.demo() && !ai.manual(les.id) && !w.given && !g.versions.some(x => x.autoFix);
+  const autoFix = (silent || weak.length > 0) && w.knob === 'secret' && !ai.demo() && !ai.manual(les.id) && !w.given && !g.versions.some(x => x.autoFix);
   return { playtest: v.playtest, autoFix };
 });
 route('POST', '/api/teacher/wow/playtest-fix', (ctx) => {
@@ -1042,7 +1069,7 @@ route('POST', '/api/teacher/wow/build', (ctx) => {
   const whoAI = { class: cls.code, nick: 'учитель', lesson: les.id };
   const job = startJob(ctx.who.token, 'wow', async (progress) => {
     try {
-      const r = await ai.buildShared({ cards: w.cards, secret: sec.prompt, link: acceptedLink(w), title: wowTitle(les, w), fallback: fb }, whoAI, progress);
+      const r = await ai.buildShared({ cards: w.cards, secret: sec.prompt, base: sec.base || null, link: acceptedLink(w), title: wowTitle(les, w), fallback: fb }, whoAI, progress);
       return wowVersion(cls.code, r, secretId);
     } catch (e) {
       const c2 = store.getClass(cls.code), w2 = wowState(c2, les);

@@ -176,6 +176,7 @@ async function run(browser, base, mode) {
   check('Чекпоинты открылись у ученика без перезагрузки (SSE)', true);
 
   await secretHunt(teacher, student, mode, shot);
+  await projectorPair(pj, mode, shot);
   await projectorPoll(pj, shot);
 
   // Фабрика и решения: карты вместо своих слов, свои слова — только «Чувство»
@@ -462,7 +463,7 @@ async function wowStart(teacher, student, mode, shot) {
   check('Секрет у учителя без слова «null»', !(await nullText(teacher)));
   await teacher.selectOption('#wowSecretSel', 'yarost');
   await teacher.waitForSelector('#wowSecret >> text=выбор учителя', { timeout: 10000 });
-  check('Учитель тайно заменил секрет', (await teacher.textContent('#wowSecret')).includes('Под конец игра злится'));
+  check('Учитель тайно заменил секрет', (await teacher.textContent('#wowSecret')).includes('Последние враги злятся'));
   await teacher.click('#wowSecret >> text=Скрыть');
   // связка от ИИ: геймдизайнер сводит карты в одну игру, учитель принимает — связку видят ученики, она уходит в сборку
   await teacher.click('#wowLink >> text=🧠 Связка от ИИ');
@@ -496,7 +497,8 @@ async function wowStart(teacher, student, mode, shot) {
   // бот-плейтестер сам прогоняет новую версию в рамке предпросмотра: три партии, отчёт сохраняется у версии
   await teacher.waitForSelector('#wowBot .botbox', { timeout: 180000 });
   const botRows = await teacher.locator('#wowBot .botrow').count(), botText = (await teacher.textContent('#wowBot')).replace(/\s+/g, ' ');
-  check('Бот-плейтестер сыграл три партии новой версии', botRows === 3 && /Пассивный.*Торопыга.*Новичок/.test(botText), botText.slice(0, 160));
+  check('Бот-плейтестер сыграл три партии новой версии и копию без секрета', botRows === 4 && /Пассивный.*Торопыга.*Новичок.*Новичок без секрета/.test(botText), botText.slice(0, 200));
+  check('Бот сравнил копии с секретом и без и оценил секрет', await teacher.locator('#wowBot [data-secret]').count() === 1, (await teacher.textContent('#wowBot [data-secret]').catch(() => '')).trim().slice(0, 120));
   if (mode === 'mock') {
     const found = await teacher.locator('#wowBot .botfind li').count();
     check('Бот нашёл, что править, и предлагает правку программисту', found > 0 && await teacher.locator('#wowBot >> text=Пусть программист поправит по отчёту').count() === 1, `находок ${found}`);
@@ -547,15 +549,42 @@ async function secretHunt(teacher, student, mode, shot) {
   const twist = (await teacher.textContent('#wowCards [data-card=twist] .wc-text')).trim(); // вкладка учителя скрыта, но карты в ней остались
   // в прогоне с ИИ ученик попадается в ловушку карт, в демо — угадывает секрет запасной игры
   const pick = mode === 'mock' ? options.find(o => o.toLowerCase() === twist.toLowerCase()) : 'Волна ускоряется, когда врагов становится меньше';
-  check('«Найди секрет»: 4 варианта, среди них ловушка с карты', options.length === 4 && options.some(o => o.toLowerCase() === twist.toLowerCase()) && (mode === 'demo' || options.includes('Под конец игра злится')), options.join(' | '));
+  check('«Найди секрет»: 4 варианта, среди них ловушка с карты', options.length === 4 && options.some(o => o.toLowerCase() === twist.toLowerCase()) && (mode === 'demo' || options.includes('Последние враги злятся')), options.join(' | '));
   await student.click(`#step-secret-hunt .opt >> text=${pick}`);
   await student.click('#step-secret-hunt >> text=Это секрет!');
   await student.waitForSelector('#step-secret-hunt.done');
   const reveal = (await student.textContent('#step-secret-hunt')).replace(/\s+/g, ' ');
-  if (mode === 'mock') check('Ловушка распознана, секрет раскрыт: «ярость», счётчик из партий', /Ловушка/.test(reveal) && /Под конец игра злится/.test(reveal) && /сработал 6 раз/.test(reveal), reveal.slice(0, 160));
+  if (mode === 'mock') check('Ловушка распознана, секрет раскрыт: «ярость», счётчик из партий', /Ловушка/.test(reveal) && /Последние враги злятся/.test(reveal) && /сработал 6 раз/.test(reveal), reveal.slice(0, 160));
   else check('Секрет угадан и раскрыт', /Угадал/.test(reveal) && /Нисикадо/.test(reveal), reveal.slice(0, 120));
   check('Раскрытие: слепой тест угадан, моменты секрета на полоске партии', /секрет был именно там/.test(reveal) && await student.locator('#step-secret-hunt .marks i').count() >= 2, `отметок: ${await student.locator('#step-secret-hunt .marks i').count()}`);
   await shot(student, '2a-secret', true);
+  // «Посмотри на секрет»: та же игра с лупой — оболочка зажигает её на каждом срабатывании, кнопки силы секрета 0 · 1 · 2
+  await student.waitForSelector('#step-secret-lupa .donor-card h3', { timeout: 10000 });
+  const lupaTitle = (await student.textContent('#step-secret-lupa .donor-card h3')).trim();
+  check('Лупа открылась после «Найди секрет» с названием секрета', mode === 'mock' ? lupaTitle === 'Последние враги злятся' : lupaTitle.length > 3, lupaTitle);
+  await student.click('#step-secret-lupa .veil button');
+  const lf = await gameFrame(student, '/play/', 0);
+  await sleep(600); // reveal приходит после ready
+  const lupa0 = await lf.evaluate(() => window.__lab.lupa);
+  check('Лупа в игре: значок с названием секрета, рекордов нет', !!lupa0 && lupa0.title === lupaTitle && lupa0.n === 0 && await student.locator('#step-secret-lupa .seg .opt').count() >= 2, JSON.stringify(lupa0));
+  // сила секрета: ручка меняется до партии (новые значения ручек перезапускают партию)
+  await student.click('#step-secret-lupa .seg .opt >> nth=0');
+  await sleep(300);
+  check('Кнопка «Секрет 0» выключила ручку секрета', await lf.evaluate(kn => window.__lab.cfg[kn], knob) === 0);
+  await student.click('#step-secret-lupa .seg .opt >> nth=1');
+  await sleep(300);
+  await lf.evaluate(() => window.__lab.confirm());
+  await sleep(300);
+  await lf.evaluate(() => { window.__lab.lab.count('_secret'); window.__lab.lab.t += 1; window.__lab.lab.count('_secret'); });
+  const lupa1 = await lf.evaluate(() => ({ l: window.__lab.lupa, on: document.querySelector('#lupa').classList.contains('on'), text: document.querySelector('#lupa').textContent }));
+  check('Срабатывание секрета зажигает лупу и считает', lupa1.l.n === 2 && lupa1.on && /× 2/.test(lupa1.text), lupa1.text);
+  await lf.evaluate(() => { window.__lab.lab.score = 10; window.__lab.end('lose', 'Проверка'); });
+  await student.waitForSelector('#step-secret-lupa.done', { timeout: 10000 });
+  const lupaDone = (await student.textContent('#step-secret-lupa')).replace(/\s+/g, ' ');
+  check('Лупа: партия засчитана, строка «лупа загорелась»', /лупа загорелась 2 раз \(сила секрета 1\)/.test(lupaDone), (lupaDone.match(/За эту партию[^.]*/) || [lupaDone.slice(-120)])[0]);
+  await student.click('#step-secret-seen .opt >> nth=0');
+  await student.click('#step-secret-seen >> text=Ответить');
+  await student.waitForSelector('#step-secret-seen.done');
   await student.click('#step-secret-feel .opt >> nth=0');
   await student.click('#step-secret-feel >> text=Ответить');
   await student.click('#step-secret-story >> text=Понятно');
@@ -617,6 +646,28 @@ async function projectorPoll(pj, shot) {
   check('Проектор: сколько почувствовали секрет игры класса вслепую', true);
   await shot(pj, 'p3-poll');
   await pj.click('.pj-tabs >> text=Урок');
+}
+/* ---------- проектор: «Секрет рядом» — две копии игры класса, бот играет обе одними нажатиями ---------- */
+async function projectorPair(pj, mode, shot) {
+  check('Вкладка «Секрет рядом» есть на проекторе урока 1', await pj.locator('.pj-tabs >> text=Секрет рядом').isVisible());
+  await pj.click('.pj-tabs >> text=Секрет рядом');
+  await pj.waitForSelector('#pjPairRun', { timeout: 10000 });
+  check('Название секрета скрыто до запуска показа', !/«/.test(await pj.textContent('#pj-pair h1')));
+  await pj.click('#pjPairRun');
+  await pj.waitForFunction(() => [...document.querySelectorAll('#pj-pair .pj-pair-side')].every(x => /Бот играет: \d+ из 60/.test(x.textContent)), null, { timeout: 40000 });
+  const sides = [];
+  for (const f of pj.frames().filter(f => f.url().includes('/play/'))) {
+    const x = await f.evaluate(() => window.__lab && window.__lab.ready ? { cfg: window.__lab.cfg, lupa: window.__lab.lupa, bot: window.__lab.lab && window.__lab.lab.t > 0 } : null).catch(() => null);
+    if (x && x.bot) sides.push(x);
+  }
+  const knob = mode === 'mock' ? 'secret' : 'speedup';
+  const off = sides.find(x => x.cfg[knob] === 0), on = sides.find(x => x.cfg[knob] !== 0);
+  check('«Секрет рядом»: бот играет обе копии, слева секрет выключен, справа лупа', sides.length === 2 && !!off && !!on && !off.lupa && !!on.lupa, JSON.stringify(sides.map(x => ({ [knob]: x.cfg[knob], lupa: x.lupa && x.lupa.title }))));
+  check('После запуска на проекторе видно название секрета', /«.+»/.test(await pj.textContent('#pj-pair h1')));
+  await shot(pj, 'p2b-pair');
+  await pj.click('.pj-tabs >> text=Урок');
+  await sleep(500);
+  check('Ушли с вкладки — копии остановлены', !(await pj.locator('#pj-pair iframe').count()));
 }
 /* ---------- проектор: «Финал» — стена аркады урока и провал дня ---------- */
 async function projectorFinal(pj, shot) {

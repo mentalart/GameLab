@@ -504,7 +504,8 @@ function drawWowBuild() {
     // бот-плейтестер: новая версия без отчёта прогоняется сразу, в рамке предпросмотра — учитель видит партии бота в ускоренном времени
     const bot = el('div', { class: 'stack', id: 'wowBot' }), botLine = el('div', { class: 'small muted', 'aria-live': 'polite' });
     const runBot = () => { W.botFor = g.id + '/' + g.version; botLine.textContent = '🤖 Бот-плейтестер запускает игру…'; if (W.preview.ready) sendBot(); else W.preview.start(); };
-    const sendBot = () => { W.preview.post({ type: 'playtest', options: { seconds: window.LAB_PLAYTEST_SECONDS || 90 } }); };
+    // compare — ещё партия новичка в копии без секрета: сервер сравнивает копии и отмечает слабый секрет
+    const sendBot = () => { W.preview.post({ type: 'playtest', options: { seconds: window.LAB_PLAYTEST_SECONDS || 90, compare: { knob: g.knob || 'secret' } } }); };
     // проверка секрета живыми партиями: в игру-страницу из чата бот не играет — секрет считают партии учителя в предпросмотре
     const selfKey = g.id + '/' + g.version;
     if (!W.self || W.self.key !== selfKey) W.self = { key: selfKey, rounds: 0, hits: 0 };
@@ -518,7 +519,7 @@ function drawWowBuild() {
     W.preview = Games.frame({ src: () => `/play/${g.id}/${g.version}`, key: () => 'wow:' + g.id, label: 'Проверить игру',
       onOver: m => { if (W.self.key !== selfKey) return; W.self.rounds++; W.self.hits += Number(((m.tele || {}).custom || {})._secret) || 0; drawSelf(); },
       onReady: () => { if (W.botFor === g.id + '/' + g.version) sendBot(); },
-      onPlaytestStep: m => { botLine.textContent = `🤖 Бот играет: ${({ idle: 'пассивный', mash: 'торопыга', random: 'новичок' })[m.strategy] || m.strategy}, ${m.t} из ${m.seconds} с`; },
+      onPlaytestStep: m => { botLine.textContent = `🤖 Бот играет: ${({ idle: 'пассивный', mash: 'торопыга', random: 'новичок' })[m.strategy] || m.strategy}${m.off ? ' без секрета' : ''}, ${m.t} из ${m.seconds} с`; },
       onPlaytest: async m => {
         if (W.botFor !== g.id + '/' + g.version) return;
         W.botFor = null;
@@ -558,13 +559,13 @@ function drawWowBuild() {
   }
   host.append(box);
 }
-// секрет игры класса за три партии бота ни разу не сработал: бот сам отправляет программисту правку по отчёту (один раз на игру)
+// секрет игры класса молчит или слабый (поздно, редко, копии почти не различаются): бот сам отправляет программисту правку по отчёту (один раз на игру)
 async function autoFixSecret() {
   W.busy = true;
   const line = $('#wowBot') && $('#wowBot').querySelector('[aria-live]');
-  toast('🤖 Бот: секрет ни разу не сработал — отправляю программисту на исправление', 'err', 8000);
+  toast('🤖 Бот: секрет не заметить за партию — отправляю программисту на исправление', 'err', 8000);
   try {
-    await Lab.job('/api/teacher/wow/playtest-fix', { code: T.code, auto: true }, j => { if (line) line.textContent = `🛠 Секрет молчит: программист правит игру по отчёту бота… ${j.seconds} с`; });
+    await Lab.job('/api/teacher/wow/playtest-fix', { code: T.code, auto: true }, j => { if (line) line.textContent = `🛠 Секрет слабый: программист правит игру по отчёту бота… ${j.seconds} с`; });
     toast('Программист поправил секрет — бот проверит игру снова', 'ok');
   } catch (e) { toast(e.message, 'err', 8000); }
   W.busy = false; drawWow(true);

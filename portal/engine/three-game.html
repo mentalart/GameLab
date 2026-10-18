@@ -21,6 +21,10 @@ html,body{height:100%;margin:0;background:#04060d;color:var(--text);font:15px/1.
 #hudGhost{font:700 14px/1.2 system-ui,sans-serif;margin-top:4px;padding:3px 8px;border-radius:8px;background:#0008;color:var(--warm)}
 #hudGhost.ahead{color:var(--accent)}
 #hudGhost.behind{color:var(--danger)}
+/* лупа секрета (урок 1, «Посмотри на секрет»): загорается на каждом срабатывании скрытого счётчика _secret */
+#lupa{position:absolute;top:10px;left:50%;transform:translateX(-50%);z-index:5;pointer-events:none;display:flex;align-items:center;gap:8px;padding:6px 14px;border-radius:999px;background:#000a;border:2px solid #ffffff33;font:700 15px/1.2 system-ui,sans-serif;color:var(--text);opacity:.45;transition:opacity .25s,transform .25s,border-color .25s}
+#lupa.on{opacity:1;transform:translateX(-50%) scale(1.12);border-color:var(--accent);color:var(--accent);box-shadow:0 0 18px var(--accent)}
+#lupa i{font-style:normal;font-size:20px}
 #popups{position:absolute;inset:0;pointer-events:none;z-index:3;overflow:hidden}
 .pop{position:absolute;transform:translate(-50%,-50%);font:800 18px system-ui,sans-serif;white-space:nowrap;text-shadow:0 2px 0 #0009,0 0 12px #0008;will-change:transform,opacity}
 #flash{position:absolute;inset:0;pointer-events:none;z-index:3;opacity:0}
@@ -74,6 +78,7 @@ textarea.copy{width:100%;box-sizing:border-box;min-height:110px;background:#0406
 <div id="stage">
   <canvas id="cv" aria-label="Игровое поле" tabindex="-1"></canvas>
   <div id="hud" aria-live="off"><div id="hudScore">0</div><div id="hudLives"></div><div id="hudExtra"></div><div id="hudBest"></div><div id="hudGhost" hidden></div></div>
+  <div id="lupa" hidden aria-live="off"><i>🔍</i><span></span><b></b></div>
   <div id="popups"></div>
   <div id="flash"></div>
   <div class="topbtns">

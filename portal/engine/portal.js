@@ -47,7 +47,7 @@
     },
     again: function () { reset(); send({ type: 'again' }); },
     count: function (name) {
-      name = String(name); counts[name] = (counts[name] || 0) + 1;
+      name = String(name); counts[name] = (counts[name] || 0) + 1; if (name === '_secret') lupaHit();
       if (name.charAt(0) === '_') { var m = tele.marks[name] = tele.marks[name] || []; if (m.length < 200) m.push(Math.round(t * 10) / 10); } // секунда партии — для полоски секрета
     },
     score: function (n) { score = Math.round(Number(n) || 0); },
@@ -113,12 +113,31 @@
     requestAnimationFrame(pad);
   })();
 
+  // лупа секрета (урок 1, «Посмотри на секрет»): портал присылает reveal с названием, каждый portal.count('_secret') зажигает значок
+  var lupa = null;
+  function lupaHit() {
+    if (!lupa) return;
+    lupa.n++; lupa.box.lastChild.textContent = ' × ' + lupa.n;
+    lupa.box.style.opacity = '1'; lupa.box.style.borderColor = '#ffe08a'; lupa.box.style.color = '#ffe08a';
+    clearTimeout(lupa.t); lupa.t = setTimeout(function () { lupa.box.style.opacity = '.45'; lupa.box.style.borderColor = '#ffffff33'; lupa.box.style.color = '#f2efe6'; }, 900);
+  }
+  function setLupa(title) {
+    if (lupa) { lupa.box.remove(); lupa = null; }
+    if (!title || !document.body) return;
+    var box = document.createElement('div');
+    box.style.cssText = 'position:fixed;top:10px;left:50%;transform:translateX(-50%);z-index:2147483646;pointer-events:none;padding:6px 14px;border-radius:999px;background:rgba(0,0,0,.65);border:2px solid #ffffff33;color:#f2efe6;font:700 15px system-ui,sans-serif;opacity:.45;transition:opacity .25s';
+    box.textContent = '🔍 Секрет: ' + String(title).slice(0, 80);
+    box.append(document.createElement('b'));
+    document.body.append(box); lupa = { box: box, n: 0, t: 0 };
+  }
   addEventListener('message', function (e) {
     var m = e.data || {};
     if (m.target !== 'lab-game') return;
+    if (m.type === 'reveal') setLupa(m.title);
     if (m.type === 'setCfg') setValues(m.cfg || {});
     if (m.type === 'records') { last = { record: m.record, best: m.best }; if (typeof onRecord === 'function') onRecord(m.record, m.best); }
     if (m.type === 'playtest') send({ type: 'playtest', error: 'игра без оболочки Лаб3D: бот-плейтестер в неё не играет' });
+    if (m.type === 'botShow') send({ type: 'showDone', error: 'игра без оболочки Лаб3D: бот в неё не играет' });
   });
   addEventListener('error', function (e) { send({ type: 'error', phase: ready ? 'update' : 'загрузка', message: String(e.message || 'ошибка'), line: e.lineno || null }); });
   addEventListener('unhandledrejection', function (e) { send({ type: 'error', phase: 'update', message: String((e.reason && e.reason.message) || e.reason || 'ошибка'), line: null }); });

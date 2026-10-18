@@ -170,16 +170,22 @@ const GAME = {
 
 | Направление | Сообщения |
 | --- | --- |
-| Игра → портал (`source: 'lab-game'`) | `ready` (`shell`, `engine: 'three'`, версия, описание игры `meta`), `start`, `again`, `over` (очки, рекорд, зерно, телеметрия `tele`, изменённые ручки `cfg`), `cfg`, `error` (фаза, текст, строка), `poster` (кадр для аркады), `playtest`, `playtestStep` |
-| Портал → игра (`target: 'lab-game'`) | `records`, `seed`, `data` (`lab.data`, раньше `setCfg`), `setCfg` (копии А и Б, эксперимент с ручкой), `pause`, `poster`, `playtest`, `challengeOn`, `ghost` (`{ nick, score, line }` — призрак соперника под счётом) |
+| Игра → портал (`source: 'lab-game'`) | `ready` (`shell`, `engine: 'three'`, версия, описание игры `meta`), `start`, `again`, `over` (очки, рекорд, зерно, телеметрия `tele`, изменённые ручки `cfg`), `cfg`, `error` (фаза, текст, строка), `poster` (кадр для аркады), `playtest`, `playtestStep`, `showStep`, `showDone` |
+| Портал → игра (`target: 'lab-game'`) | `records`, `seed`, `data` (`lab.data`, раньше `setCfg`), `setCfg` (копии А и Б, эксперимент с ручкой), `pause`, `poster`, `playtest`, `challengeOn`, `ghost` (`{ nick, score, line }` — призрак соперника под счётом), `reveal` (`{ title }` — лупа секрета), `botShow` (бот играет на проекторе) |
 
 Телеметрия `tele`: `time`, `presses`, `hold`, `hurts`, `custom` (счётчики `lab.count`), `stats`, `marks` (секунды скрытых счётчиков), `line` (счёт на каждой секунде, до 600).
 
-Для автопроверки и отладки — `window.__lab` (у обеих оболочек): `ready`, `engine`, `state`, `paused`, `errored`, `lab`, `scene`, `tele`, `session`, `cfg`, `DEFAULTS`, `confirm()`, `restart()`, `end()`, `togglePanel()`, `playtest(опции)`, `frames(n)` → Promise после n кадров, `info()` → `{ engine, version, draws, meshes, fps }`, `pixels()` → `{ colors, lit }`.
+Для автопроверки и отладки — `window.__lab` (у обеих оболочек): `ready`, `engine`, `state`, `paused`, `errored`, `lab`, `scene`, `tele`, `session`, `cfg`, `DEFAULTS`, `confirm()`, `restart()`, `end()`, `togglePanel()`, `playtest(опции)`, `botShow(опции)`, `setLupa(название)`, `lupa` (`{ title, n, on }`), `frames(n)` → Promise после n кадров, `info()` → `{ engine, version, draws, meshes, fps }`, `pixels()` → `{ colors, lit }`.
+
+**Лупа секрета** (у обеих оболочек). После «Найди секрет» портал шлёт `{ type: 'reveal', title }`. Оболочка показывает значок «🔍 Секрет: …» и зажигает его со счётом «× N» на каждом `lab.count('_secret')`; первое срабатывание — с тихим звуком. Мост HTML-игр (`portal.js`) делает то же на `portal.count('_secret')`. В ускоренных партиях бота лупа молчит.
 
 ## Бот-плейтестер
 
 `window.__lab.playtest({ seconds: 90, seed: 12345, strategies: ['idle', 'mash', 'random'] })` — бот играет партию каждой стратегией в одном мире в ускоренном времени (шаг 1/30 с, без звука, рекорда и сообщений порталу): `idle` — ничего не жмёт, `mash` — мнёт A, `random` — бегает куда попало и жмёт A и B. Отчёт `{ results, findings }`: время, очки, урон и когда он был, процент времени героя за кадром, самая долгая пауза без очков, счётчики. Выводы на русском: игра упала, герой уходит за кадр, бездействие не наказано или очки идут без игры, доминирующая стратегия «мять A», слишком сложно для новичка, первый урон раньше 6-й секунды, пустое время, нет угрозы. Портал запускает его сообщением `playtest`, из консоли — `node portal/tools/playtest.js games/игра.js`.
+
+В каждом результате есть `secretAt` — секунды срабатываний `_secret`. С `compare: { knob: 'secret' }` бот играет ещё одну партию новичком с этой ручкой в 0 и тем же зерном — она приходит в `report.off` (`playtestStep` с `off: true`). Сервер сравнивает копии: секрет слабый, если первое срабатывание позже 15-й секунды, реже 4 раз в минуту или копии почти не различаются.
+
+**Показ бота в настоящем времени** (проектор «Секрет рядом»): `{ type: 'botShow', options: { seconds: 60, seed, strategy: 'random', mute } }`. Бот играет партию в темпе настоящего времени тем же шагом 1/30 с и тем же зерном, поэтому две копии с одним зерном расходятся только из-за ручек. По ходу — `{ type: 'showStep', t, seconds }`, в конце — `{ type: 'showDone', result: { seconds, score, hurts, over, secret } }`, потом игра возвращается в меню.
 
 ## Образец
 

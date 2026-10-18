@@ -11,7 +11,9 @@ const Games = (() => {
   // score: false — партии не записываются (рамки учителя на проекторе и в карточке ученика).
   // data — данные для игры (lab.data), например мелодия из секвенсора; уходят до cfg
   // challenge — под игрой есть кнопка вызова (оболочка пишет о ней на экране конца партии), ghost — призрак соперника { nick, score, line }.
-  function frame({ src, key, info, cfg, data, label, onReady, onOver, onScore, onAgain, onError, onPlaytest, onPlaytestStep, onPoster, autostart, score = true, challenge, ghost }) {
+  // reveal — название секрета: оболочка зажигает лупу на каждом срабатывании _secret (урок 1). pair — имя пары рамок, которые идут
+  // одновременно (проектор «Секрет рядом»): запуск одной не останавливает другую. onShow — ход и итог показа бота (botShow).
+  function frame({ src, key, info, cfg, data, label, onReady, onOver, onScore, onAgain, onError, onPlaytest, onPlaytestStep, onPoster, onShow, autostart, score = true, challenge, ghost, reveal, pair }) {
     const box = el('div', { class: 'gamebox' });
     const veil = el('div', { class: 'veil' });
     let iframe = null, timer = null, ready = false;
@@ -26,7 +28,7 @@ const Games = (() => {
       if (!iframe || e.source !== iframe.contentWindow) return;
       const m = e.data || {};
       if (m.source !== 'lab-game') return;
-      if (m.type === 'ready') { ready = true; clearTimeout(timer); h.meta = m.meta || {}; h.changed = {}; if (score) sendRecords(); if (data) post({ type: 'data', data }); if (cfg) post({ type: 'setCfg', cfg }); if (challenge) post({ type: 'challengeOn' }); if (ghost) post({ type: 'ghost', ghost }); if (onReady) onReady(m.meta || {}); if (h.onCfg) h.onCfg(h.changed); }
+      if (m.type === 'ready') { ready = true; clearTimeout(timer); h.meta = m.meta || {}; h.changed = {}; if (score) sendRecords(); if (data) post({ type: 'data', data }); if (cfg) post({ type: 'setCfg', cfg }); if (reveal) post({ type: 'reveal', title: reveal }); if (challenge) post({ type: 'challengeOn' }); if (ghost) post({ type: 'ghost', ghost }); if (onReady) onReady(m.meta || {}); if (h.onCfg) h.onCfg(h.changed); }
       if (m.type === 'over' && score) {
         api('/api/score', Object.assign({ game: key(), score: m.score, seed: m.seed, tele: m.tele }, extra()))
           .then(r => { postRecords(r); if (onScore) onScore(m, r); }).catch(() => {});
@@ -42,13 +44,14 @@ const Games = (() => {
       if (m.type === 'cfg') { h.changed = m.cfg || {}; if (h.onCfg) h.onCfg(h.changed); }
       if (m.type === 'playtestStep' && onPlaytestStep) onPlaytestStep(m);
       if (m.type === 'playtest' && onPlaytest) onPlaytest(m);
+      if ((m.type === 'showStep' || m.type === 'showDone') && onShow) onShow(m);
     }
     addEventListener('message', onMsg);
     function showVeil(content) { veil.innerHTML = ''; veil.append(content); veil.hidden = false; }
     const h = {
       box,
       start() {
-        frames.forEach(f => { if (f !== h) f.stop(); });
+        frames.forEach(f => { if (f !== h && !(pair && f.pair === pair)) f.stop(); });
         h.stop(true);
         ready = false;
         iframe = el('iframe', { sandbox: 'allow-scripts allow-pointer-lock', allow: 'gamepad; fullscreen; autoplay', title: label || 'Игра', src: src() });
@@ -66,7 +69,7 @@ const Games = (() => {
       destroy() { removeEventListener('message', onMsg); h.stop(true); const i = frames.indexOf(h); if (i >= 0) frames.splice(i, 1); },
       fullscreen() { if (box.requestFullscreen) box.requestFullscreen().catch(() => {}); },
       post,
-      meta: null, changed: {}, onCfg: null,
+      meta: null, changed: {}, onCfg: null, pair: pair || null,
       get ready() { return ready; },
     };
     box.append(veil);
@@ -353,6 +356,11 @@ const Games = (() => {
         x.offscreen != null ? el('span', { class: x.offscreen >= 15 ? 'tag err' : 'muted small' }, `за кадром ${x.offscreen}%`) : null,
         report.secretSilent != null || x.secret ? el('span', { class: x.secret ? 'muted small' : 'tag err', title: 'Сколько раз сработал секрет игры (скрытый счётчик _secret)' }, `секрет: ${x.secret || 0}`) : null);
     })));
+    // копия без секрета: та же партия новичка с выключенным секретом и вывод «секрет заметный / слабый»
+    if (report.off) box.append(el('div', { class: 'botrow', 'data-bot': 'off' }, el('span', { class: 'bi' }, (BOT.random || ['🎲'])[0]), el('b', {}, 'Новичок без секрета'), el('span', { class: 'muted small' }, 'та же партия, ручка секрета 0'),
+      el('span', { class: 'grow' }), el('span', {}, `${Math.round(report.off.seconds)} с`), el('span', {}, `очки ${report.off.score}`), el('span', {}, `урон ${report.off.hurts}`)));
+    if (report.secretWeak != null) box.append(el('p', { class: 'small', 'data-secret': report.secretSilent || report.secretWeak ? 'weak' : 'ok' },
+      report.secretSilent ? '🔍 Секрет молчит: класс не почувствует разницу копий.' : report.secretWeak ? '🔍 Секрет слабый: его не заметить за одну партию.' : '🔍 Секрет заметный: срабатывает рано и часто, копии различаются.'));
     if (report.findings.length) box.append(el('ul', { class: 'botfind' }, report.findings.map(f => el('li', {}, f))));
     return box;
   }

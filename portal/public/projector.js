@@ -2,6 +2,8 @@
 // Вкладка «Вау-старт»: учитель тянет карты колоды безумных идей и при всех собирает игру с ИИ. Для урока с колодой wow (урок 1) —
 // карты, голоса «перетянуть», сборка и раздача общей игры класса; секрет на проектор не выводится. Для шага teacher-demo — его карты и таймер.
 // Вкладка «Ответы класса»: голоса шагов выбора и слепых тестов полосками без имён, в реальном времени.
+// Вкладка «Секрет рядом» (урок 1, после «Найди секрет»): две копии игры класса рядом, в одном мире; бот-новичок играет обе одними нажатиями
+// в настоящем времени — слева без секрета, справа с секретом и лупой. Копии расходятся только из-за секрета.
 // Вкладка «Мир дня»: учитель даёт всему классу один мир одной из игр урока, таблица мира растёт на проекторе.
 // Вкладка «Финал»: стена аркады урока — игры урока с рекордами, игра класса, лидер мира дня и провал дня (самый смешной баг урока).
 // Вкладка «Выставка и турнир» (урок с шагом vote): лидеры номинаций и кнопочный турнир в игре-победителе номинации step.tournament.
@@ -18,7 +20,7 @@ async function boot() {
   try { P.code = q.get('code') || localStorage.getItem('lab:teacher:class'); } catch (e) { P.code = q.get('code'); }
   if (!P.code) { $('#pj-lesson').append(el('div', { class: 'card' }, 'Сначала создайте класс в панели учителя.')); return; }
   try { P.isDemo = (await api('/api/info')).demo; } catch (e) { /* без разницы */ }
-  if (['demo', 'day', 'poll', 'final'].includes(q.get('tab'))) P.tab = q.get('tab');
+  if (['demo', 'day', 'poll', 'final', 'pair'].includes(q.get('tab'))) P.tab = q.get('tab');
   await refresh();
   setInterval(refresh, 2000);
   setInterval(tick, 250);
@@ -30,8 +32,10 @@ async function refresh() {
   $('#pjClass').textContent = `${o.class.name} · урок ${o.lesson.number}. ${o.lesson.title}`;
   P.mode = o.lesson.checkpoints.some(c => c.steps.some(s => s.type === 'teacher-demo')) ? 'demo' : o.lesson.wow ? 'wow' : null;
   $('#demoTab').hidden = !P.mode;
+  $('#pairTab').hidden = P.mode !== 'wow';
+  if (P.mode !== 'wow' && P.tab === 'pair') P.tab = 'lesson';
   if (P.lastMode !== P.mode) { // учитель сменил урок: вкладка вау-старта строится заново
-    Games.stopAll(); P.tf = null; P.frameFor = null; P.wFrame = null; P.wKey = null; P.dKey = null; P.d = null; P.w = null;
+    Games.stopAll(); P.tf = null; P.frameFor = null; P.wFrame = null; P.wKey = null; P.dKey = null; P.d = null; P.w = null; P.pair = null; $('#pj-pair').innerHTML = '';
     $('#pj-demo').innerHTML = ''; P.lastMode = P.mode;
   }
   if (!P.mode && P.tab === 'demo') P.tab = 'lesson';
@@ -44,6 +48,7 @@ async function refresh() {
   else if (P.tab === 'poll') await refreshPoll();
   else if (P.tab === 'final') await refreshFinal();
   else if (P.tab === 'cup') drawCup(vs);
+  else if (P.tab === 'pair') await refreshPair();
   else if (P.mode === 'wow') await refreshWow();
   else await refreshDemo();
 }
@@ -55,6 +60,8 @@ function showTab() {
   if (P.tab !== 'poll') P.pollKey = null;
   if (P.tab !== 'final') { P.finalKey = null; if (P.failFrame) { P.failFrame.destroy(); P.failFrame = null; } }
   $('#pj-cup').hidden = P.tab !== 'cup';
+  $('#pj-pair').hidden = P.tab !== 'pair';
+  if (P.tab !== 'pair' && P.pair) { P.pair.frames.forEach(f => f.h.destroy()); P.pair = null; $('#pj-pair').innerHTML = ''; }
   if (P.tab !== 'cup' && P.cupFrame) { P.cupFrame.destroy(); P.cupFrame = null; P.cupKey = null; $('#pj-cup').innerHTML = ''; }
   if (P.tab !== 'demo' && (P.tf || P.wFrame)) {
     Games.stopAll(); P.tf = null; P.frameFor = null; P.wFrame = null; P.wKey = null;
@@ -361,6 +368,47 @@ async function build() {
   } catch (e) { toast(e.message, 'err', 8000); }
   P.job = null;
   await refreshDemo();
+}
+
+/* ---------- «Секрет рядом»: две копии игры класса, бот играет обе в настоящем времени ---------- */
+const PAIR_SECONDS = 60, PAIR_SEED = 4242;
+async function refreshPair() {
+  let r;
+  try { r = await api('/api/teacher/wow?code=' + encodeURIComponent(P.code)); } catch (e) { toast(e.message, 'err'); return; }
+  const host = $('#pj-pair'), g = r.game, sec = r.built;
+  const gkey = g && sec ? g.id + '/' + g.version : null;
+  if (P.pair && P.pair.gkey === gkey) return; // рамки уже стоят: не сбивать показ
+  if (P.pair) { P.pair.frames.forEach(f => f.h.destroy()); P.pair = null; }
+  host.innerHTML = '';
+  if (!gkey) { host.append(el('div', { class: 'card' }, el('h2', {}, 'Секрет рядом'), el('p', { class: 'pj-sub' }, 'Сначала соберите игру класса во вкладке «Вау-старт».'))); return; }
+  const knob = g.knob || 'secret';
+  const side = (withSecret) => {
+    const res = el('p', { class: 'pj-sub', 'aria-live': 'polite' }, withSecret ? 'Лупа загорается каждый раз, когда срабатывает секрет.' : 'Та же игра с выключенным секретом.');
+    const f = { res, withSecret, done: null };
+    f.h = Games.frame({ src: () => `/play/${g.id}/${g.version}`, key: () => 'pair:' + g.id, label: withSecret ? 'С секретом' : 'Без секрета', score: false, pair: 'secret',
+      cfg: withSecret ? null : { [knob]: 0 }, reveal: withSecret ? sec.title : null,
+      onReady: () => f.h.post({ type: 'botShow', options: { seconds: PAIR_SECONDS, seed: PAIR_SEED, strategy: 'random', mute: !withSecret } }),
+      onShow: m => {
+        if (m.type === 'showStep') { res.textContent = `Бот играет: ${m.t} из ${m.seconds} с`; return; }
+        if (m.error) { res.textContent = 'Бот не смог сыграть: ' + m.error + '. Сыграйте копию сами — лупа всё равно горит.'; return; }
+        f.done = m.result; drawResult();
+      },
+      onError: err => f.h.message(el('b', {}, 'Игра упала: ' + (err.message || 'ошибка'))) });
+    f.box = el('div', { class: 'pj-pair-side', 'data-side': withSecret ? 'on' : 'off' }, el('h2', {}, withSecret ? '🔍 С секретом' : 'Без секрета'), f.h.box, res);
+    return f;
+  };
+  const off = side(false), on = side(true);
+  function line(x) { return `${x.seconds} с · очки ${x.score} · урон ${x.hurts}`; }
+  function drawResult() {
+    [off, on].forEach(f => { if (f.done) f.res.textContent = line(f.done) + (f.withSecret ? ` · секрет сработал ${f.done.secret} раз` : ''); });
+    if (off.done && on.done) beep('done');
+  }
+  const head = el('h1', { class: 'grow' }, 'Секрет рядом'); // название секрета — только после запуска: вкладку могли открыть до разгадки
+  const run = el('button', { class: 'btn warm', type: 'button', id: 'pjPairRun', onclick: () => { head.textContent = 'Секрет рядом: «' + sec.title + '»'; off.done = on.done = null; off.h.start(); on.h.start(); } }, `▶ Бот играет обе копии (${PAIR_SECONDS} с)`);
+  P.pair = { gkey, frames: [off, on] };
+  host.append(el('div', { class: 'row' }, head, run),
+    el('p', { class: 'pj-sub' }, 'Один мир, одни и те же нажатия бота-новичка. Копии расходятся только из-за секрета. Показывайте после шага «Найди секрет».'),
+    el('div', { class: 'pj-pair-grid' }, off.box, on.box));
 }
 
 /* ---------- вау-старт урока с колодой wow: карты, сборка, раздача общей игры ---------- */
