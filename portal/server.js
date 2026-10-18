@@ -218,7 +218,8 @@ function playPage(res, gameId, n) {
   if (!code) return send(res, 404, 'Нет такой версии игры', 'text/plain; charset=utf-8');
   // страница HTML из чата Qwen (урок 1, версия 2) — как есть, в той же песочнице
   if (ai.isHtml(code)) return send(res, 200, htmlGame(code), 'text/html; charset=utf-8', Object.assign({ 'Content-Security-Policy': 'sandbox allow-scripts allow-pointer-lock' }, CORS));
-  const html = fs.readFileSync(path.join(PORTAL, 'engine', 'game.html'), 'utf8')
+  const shell = /\bengine\s*:\s*['"]three['"]/.test(code) ? 'three-game.html' : 'game.html'; // игра на three.js (как доноры с образца урока) — в новой оболочке
+  const html = fs.readFileSync(path.join(PORTAL, 'engine', shell), 'utf8')
     .replace('<head>', '<head>\n<base href="/engine/">')
     .replace('<!--GAME-->', () => '<script>\n' + code.replace(/<\/script/gi, '<\\/script') + '\n</script>'); // функцией: «$&» и «$'» в коде игры — не шаблоны замены
   // CSP sandbox: даже открытая отдельной вкладкой игра не видит данных портала (своё «пустое» происхождение)
