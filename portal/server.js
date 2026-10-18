@@ -743,6 +743,9 @@ function drawFresh(seen, id, deck, cur) {
   seen[id] = used.concat(pick);
   return pick;
 }
+const cardDeck = (c, w) => (c.by && c.decks && c.decks[w.cards[c.by]]) || c.deck; // колода карты; у зависимой — колода жанра
+// жанр карты действия: имя и каркас движка (wow.genres в сценарии урока)
+const wowGenre = (les, w) => (les.wow.genres || []).find(g => g.card === w.cards.action) || null;
 const hashOf = t => [...String(t)].reduce((n, c) => (n * 31 + c.charCodeAt(0)) >>> 0, 7);
 function wowState(cls, les) {
   if (!les.wow) return null;
@@ -875,7 +878,12 @@ route('POST', '/api/teacher/wow/draw', (ctx) => {
   const list = ctx.body.card === 'all' ? les.wow.cards : les.wow.cards.filter(c => c.id === ctx.body.card);
   if (!list.length) throw Object.assign(new Error('Нет такой карты'), { status: 400 });
   const seen = ((cls.wowSeen = cls.wowSeen || {})[les.id] = cls.wowSeen[les.id] || {});
-  for (const c of list) { w.cards[c.id] = drawFresh(seen, c.id, c.deck, w.cards[c.id]); w.votes[c.id] = []; }
+  // угроза и поворот (by: 'action') тянутся из колоды жанра на карте действия: без действия сначала тянется оно,
+  // а новое действие перетягивает уже лежащие угрозу и поворот под свой жанр
+  const todo = new Set(list.map(c => c.id));
+  for (const c of les.wow.cards) if (todo.has(c.id) && c.by && !w.cards[c.by]) todo.add(c.by);
+  for (const c of les.wow.cards) if (c.by && todo.has(c.by) && w.cards[c.id]) todo.add(c.id);
+  for (const c of les.wow.cards.filter(x => todo.has(x.id))) { w.cards[c.id] = drawFresh(seen, c.id, cardDeck(c, w), w.cards[c.id]); w.votes[c.id] = []; }
   w.link = null; // новые карты — связка устарела
   if (!w.given && w.status !== 'building') w.status = 'cards';
   store.saveClass(cls); wowChanged(cls, les);
@@ -907,9 +915,9 @@ route('POST', '/api/teacher/wow/link', (ctx) => {
   if (missing.length) throw Object.assign(new Error('Сначала вытяните карты: ' + missing.map(c => c.label).join(', ')), { status: 400 });
   const key = cardsKey(w), prev = w.link;
   const job = startJob(ctx.who.token, 'link', async () => {
-    const link = await ai.wowLink(w.cards, prev, { class: cls.code, nick: 'учитель', lesson: les.id });
+    const link = await ai.wowLink(w.cards, prev, { class: cls.code, nick: 'учитель', lesson: les.id }, wowGenre(les, w));
     const c2 = store.getClass(cls.code), w2 = wowState(c2, les);
-    if (cardsKey(w2) !== key) throw Object.assign(new Error('Пока ИИ сводил карты, их перетянули — попросите связку ещё раз'), { status: 409 });
+    if (cardsKey(w2) !== key) throw Object.assign(new Error('Пока ИИ сводил карты, их перетянули — попросите гейм дизайн документ ещё раз'), { status: 409 });
     w2.link = Object.assign(link, { cards: key, accepted: false, at: store.now() });
     store.saveClass(c2); wowChanged(c2, les);
     return w2.link;
@@ -918,7 +926,7 @@ route('POST', '/api/teacher/wow/link', (ctx) => {
 });
 route('POST', '/api/teacher/wow/link/accept', (ctx) => {
   const { cls, les, w } = needWow(ctx);
-  if (!w.link) throw Object.assign(new Error('Связки ещё нет'), { status: 400 });
+  if (!w.link) throw Object.assign(new Error('Гейм дизайн документа ещё нет'), { status: 400 });
   w.link.accepted = !!ctx.body.accepted;
   store.saveClass(cls); wowChanged(cls, les);
   return { link: w.link };
@@ -927,7 +935,7 @@ route('POST', '/api/teacher/wow/link/edit', (ctx) => { // учитель пра�
   const { cls, les, w } = needWow(ctx);
   const missing = les.wow.cards.filter(c => !w.cards[c.id]);
   if (missing.length) throw Object.assign(new Error('Сначала вытяните карты: ' + missing.map(c => c.label).join(', ')), { status: 400 });
-  if (w.given || w.status === 'building') throw Object.assign(new Error('Игра уже собирается — связку не поменять'), { status: 409 });
+  if (w.given || w.status === 'building') throw Object.assign(new Error('Игра уже собирается — гейм дизайн документ не поменять'), { status: 409 });
   const src = ctx.body.link || {}, text = k => String(src[k] == null ? '' : src[k]).replace(/\s+/g, ' ').trim().slice(0, 400);
   const fields = {}; for (const [k] of ai.LINK_FIELDS) fields[k] = text(k);
   if (!fields.phrase) throw Object.assign(new Error('Нужна хотя бы фраза игры'), { status: 400 });
@@ -1022,7 +1030,7 @@ route('POST', '/api/teacher/wow/playtest-fix', (ctx) => {
   const whoAI = { class: cls.code, nick: 'учитель', lesson: les.id };
   const job = startJob(ctx.who.token, 'wow', async (progress) => {
     try {
-      const r = await ai.playtestFix(code, report, { cards: w.cards, link: acceptedLink(w) }, whoAI, progress);
+      const r = await ai.playtestFix(code, report, { cards: w.cards, genre: wowGenre(les, w), link: acceptedLink(w) }, whoAI, progress);
       return wowVersion(cls.code, Object.assign(r, { knob: w.knob }), secretId, { kind: 'правка по плейтесту', from: n, autoFix: !!ctx.body.auto });
     } catch (e) {
       const c2 = store.getClass(cls.code), w2 = wowState(c2, les);
@@ -1075,7 +1083,7 @@ route('POST', '/api/teacher/wow/build', (ctx) => {
   const whoAI = { class: cls.code, nick: 'учитель', lesson: les.id };
   const job = startJob(ctx.who.token, 'wow', async (progress) => {
     try {
-      const r = await ai.buildShared({ cards: w.cards, secret: sec.prompt, base: sec.base || null, howto: sec.howto || null, link: acceptedLink(w), title: wowTitle(les, w), fallback: fb }, whoAI, progress);
+      const r = await ai.buildShared({ cards: w.cards, genre: wowGenre(les, w), secret: sec.prompt, base: sec.base || null, howto: sec.howto || null, link: acceptedLink(w), title: wowTitle(les, w), fallback: fb }, whoAI, progress);
       return wowVersion(cls.code, r, secretId);
     } catch (e) {
       const c2 = store.getClass(cls.code), w2 = wowState(c2, les);

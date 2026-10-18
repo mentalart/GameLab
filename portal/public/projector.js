@@ -422,7 +422,7 @@ async function refreshWow() {
   drawWow(prev);
 }
 function drawWow(prev) {
-  const r = P.w, host = $('#pj-demo'), w = r.wow, decks = Object.fromEntries((P.o.lesson.wow.cards || []).map(c => [c.id, c.deck || []]));
+  const r = P.w, host = $('#pj-demo'), w = r.wow, decks = Object.fromEntries((P.o.lesson.wow.cards || []).map(c => [c.id, (c.by && c.decks && c.decks[w.cards[c.by]]) || c.deck || []])); // угроза и поворот крутят колоду своего жанра
   const ready = r.cards.every(c => w.cards[c.id]), busy = w.status === 'building' || !!P.job;
   const key = JSON.stringify([w.cards, w.votes, w.status, w.given, w.link, r.game && r.game.id + '/' + r.game.version, !!P.job, P.o.students.length, P.o.students.filter(s => s.online).length]);
   if (key === P.wKey) return;

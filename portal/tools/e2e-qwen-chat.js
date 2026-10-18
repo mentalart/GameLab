@@ -136,7 +136,7 @@ const patch = (find, repl) => `<<<<<<< НАЙТИ\n${find}\n=======\n${repl}\n>>
     const tj = (await call(t, '/api/teacher/wow/build', { code: cls.code })).job;
     j = await poll(t, tj, ['waiting']);
     const tClear = await prompt(t, tj, true);
-    check('Игра класса: Clear с картами и секретом', j.manual.clear > 0 && tClear.startsWith(ai.CHAT.phrase) && /# Связка геймдизайнера/.test(tClear) && /_secret/.test(tClear) && !/lab\./.test(tClear));
+    check('Игра класса: Clear с картами и секретом', j.manual.clear > 0 && tClear.startsWith(ai.CHAT.phrase) && /# Гейм дизайн документ/.test(tClear) && /_secret/.test(tClear) && !/lab\./.test(tClear));
     const tj2 = (await call(t, '/api/teacher/wow/build', { code: cls.code })).job;
     j = await poll(t, tj, ['error']);
     check('Повторная сборка отменяет ждущее задание', /Отменено/.test(j.error) && tj2 !== tj);

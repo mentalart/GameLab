@@ -288,11 +288,11 @@ const Games = (() => {
     if (d.kind === 'day') { beep('done'); toast(`Учитель дал мир дня: «${d.title}». Весь класс играет один мир — кнопка на доске вызовов.`, 'ok', 7000); }
   }
 
-  /* ---------- вау-старт: связка карт от ИИ (панель учителя и проектор) ---------- */
+  /* ---------- вау-старт: связка карт от ИИ — «Гейм дизайн документ» (панель учителя и проектор) ---------- */
   // геймдизайнер сводит карты вау-старта в одну игру: фраза, главный цикл, поворот × действие, смешной момент.
   // Учитель принимает связку или просит другую; принятая уходит программисту вместе с картами. onChange — перерисовать вкладку.
   // строки связки под фразой игры (как LINK_FIELDS в lib/ai.js): ключ, подпись, подсказка для правки учителем
-  const LINK_ROWS = [['frame', 'Каркас и камера', 'Арена, изометрия / Ловля / Бег навстречу / Вид сбоку / Тир'], ['controls', 'Кнопки', 'Движение — …, A — …, B — …'],
+  const LINK_ROWS = [['frame', 'Жанр и камера', 'Жанр с карты действия: арена, изометрия / ловля / бег навстречу / вид сбоку / тир'], ['controls', 'Что делает герой и кнопки контроллера', 'Движение — …, A — …, B — …'],
     ['loop', 'Главный цикл', 'Каждые 2–4 секунды игрок …'], ['risk', 'Риск и очки', 'Рискнул — очки ×2: …'], ['threats', 'Угрозы', '2–3 угрозы, разные по поведению; жизнь отнимает …'],
     ['curve', 'Нарастание', 'К 30-й секунде …, к 60-й …, к 90-й …'], ['twist', 'Поворот × действие', 'Поворот мешает …, но и помогает …'], ['funny', 'Смешной момент', 'Класс смеётся, когда …']];
   function linkBox({ link, ready, editable, code, onChange }) {
@@ -300,7 +300,7 @@ const Games = (() => {
     if (!ready || (!link && !editable)) { box.hidden = true; return box; }
     const ask = async btn => {
       btn.disabled = true;
-      try { await Lab.job('/api/teacher/wow/link', { code }, j => { btn.textContent = `🧠 Геймдизайнер сводит карты… ${j.seconds} с`; }); beep('good'); } catch (e) { toast(e.message, 'err'); }
+      try { await Lab.job('/api/teacher/wow/link', { code }, j => { btn.textContent = `🧠 Геймдизайнер пишет документ… ${j.seconds} с`; }); beep('good'); } catch (e) { toast(e.message, 'err'); }
       onChange();
     };
     const act = async accepted => { try { await api('/api/teacher/wow/link/accept', { code, accepted }); if (accepted) beep('done'); } catch (e) { toast(e.message, 'err'); } onChange(); };
@@ -310,7 +310,7 @@ const Games = (() => {
       box.innerHTML = ''; box.classList.add('editing');
       const fields = [['phrase', 'Фраза игры', 'Ты — …, ты … в …, но … Цель — …', 3], ...LINK_ROWS.map(([k, label, ph]) => [k, label, ph, 2])];
       const inputs = {};
-      box.append(el('div', { class: 'eyebrow' }, 'Связка геймдизайнера · правка учителя'),
+      box.append(el('div', { class: 'eyebrow' }, 'Гейм дизайн документ · правка учителя'),
         ...fields.map(([k, label, ph, rows]) => el('label', { class: 'stack', style: 'gap:2px' }, el('b', { class: 'small' }, label),
           inputs[k] = el('textarea', { rows, placeholder: ph, maxlength: 400, 'data-link': k }, (link && link[k]) || ''))));
       const save = el('button', { class: 'btn warm', type: 'button' }, '✓ Сохранить и принять');
@@ -326,18 +326,18 @@ const Games = (() => {
     };
     const editBtn = label => el('button', { class: 'btn ghost', type: 'button', onclick: editForm }, label);
     if (!link) {
-      box.append(el('div', { class: 'row' }, el('div', { class: 'grow stack', style: 'gap:2px' }, el('b', {}, '🧠 Связка: как карты становятся одной игрой'),
-        el('span', { class: 'muted small' }, 'Геймдизайнер сведёт карты в одну игру: фраза, каркас и камера, кнопки, цикл, риск, угрозы, нарастание, поворот, смешной момент. Принятая связка уйдёт программисту.')),
-      el('div', { class: 'row' }, askBtn('🧠 Связка от ИИ'), editBtn('✎ Написать самому'))));
+      box.append(el('div', { class: 'row' }, el('div', { class: 'grow stack', style: 'gap:2px' }, el('b', {}, '🧠 Гейм дизайн документ: как карты становятся одной игрой'),
+        el('span', { class: 'muted small' }, 'Геймдизайнер сведёт карты в одну игру: фраза, жанр и камера, что делает герой и кнопки контроллера, цикл, риск, угрозы, нарастание, поворот, смешной момент. Принятый документ уйдёт программисту.')),
+      el('div', { class: 'row' }, askBtn('🧠 Документ от ИИ'), editBtn('✎ Написать самому'))));
       return box;
     }
-    box.append(el('div', { class: 'row' }, el('div', { class: 'eyebrow grow' }, 'Связка геймдизайнера'),
+    box.append(el('div', { class: 'row' }, el('div', { class: 'eyebrow grow' }, 'Гейм дизайн документ'),
       link.edited ? el('span', { class: 'tag' }, '✎ учитель') : null,
-      link.accepted ? el('span', { class: 'tag ok' }, '✓ принята — уйдёт в сборку') : editable ? el('span', { class: 'tag' }, 'ждёт решения учителя') : null),
+      link.accepted ? el('span', { class: 'tag ok' }, '✓ принят — уйдёт в сборку') : editable ? el('span', { class: 'tag' }, 'ждёт решения учителя') : null),
     el('p', { class: 'link-phrase' }, link.phrase),
     el('div', { class: 'link-rows' }, LINK_ROWS.filter(([k]) => link[k]).map(([k, label]) => el('div', { 'data-row': k }, el('b', {}, label + ': '), link[k]))));
     if (editable) box.append(el('div', { class: 'row' }, link.accepted ? el('button', { class: 'btn ghost small', type: 'button', onclick: () => act(false) }, 'Снять принятие')
-      : el('button', { class: 'btn warm', type: 'button', onclick: () => act(true) }, '✓ Принять связку'), editBtn('✎ Править'), askBtn('↻ Другая связка')));
+      : el('button', { class: 'btn warm', type: 'button', onclick: () => act(true) }, '✓ Принять документ'), editBtn('✎ Править'), askBtn('↻ Другой документ')));
     return box;
   }
 

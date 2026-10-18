@@ -55,7 +55,12 @@ const FRAMES = [
   { re: /сбоку|платформ|прыж/i, name: 'вид сбоку', file: 'games/tur-nad-hadzhohom.js', about: '«Тур над Хаджохом» — вид сбоку: прыжки по скалам, камера едет за героем, уровень строится впереди' },
   { re: /тир|оборон|мишен/i, name: 'тир', file: 'games/nlo-v-stanice.js', about: '«НЛО в станице» — тир и оборона: герой почти на месте, цели наступают, сочный выстрел по восьми шагам' },
 ];
-const frameOf = text => FRAMES.find(f => f.re.test(text || '')) || FRAMES[FRAMES.length - 1];
+// каркас, названный в строке раньше других: «Гонки — бег навстречу, ловишь звёзды» — бег навстречу, а не ловля
+const frameOf = text => {
+  let best = null, at = Infinity;
+  for (const f of FRAMES) { const i = String(text || '').search(f.re); if (i >= 0 && i < at) { best = f; at = i; } }
+  return best || FRAMES[FRAMES.length - 1];
+};
 
 // Claude: короткий промпт без повторов (claude-prompt.md) и один образец в конце
 const isClaude = model => /claude|anthropic/i.test(model || '');

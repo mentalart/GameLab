@@ -474,6 +474,14 @@ async function wowStart(teacher, student, mode, shot) {
   await teacher.click('#wowCards [data-card=hero] >> text=🎲 Перетянуть');
   await student.waitForFunction(() => !document.querySelector('#step-vau-karty [data-card=hero] .btn.on'), null, { timeout: 10000 });
   check('Перетянутая карта сбросила голоса', true);
+  // колода по жанрам: угроза и поворот — из колоды жанра на карте действия, новое действие перетягивает их под свой жанр
+  const wcode = (await teacher.textContent('#classCode')).trim();
+  const wowCards = () => teacher.evaluate(async c => (await Lab.api('/api/teacher/wow?code=' + encodeURIComponent(c))).wow.cards, wcode);
+  const byGenre = (id, c) => lesson1.wow.cards.find(x => x.id === id).decks[c.action].includes(c[id]);
+  const c1 = await wowCards();
+  check('Угроза и поворот — из колоды жанра на карте действия', byGenre('threat', c1) && byGenre('twist', c1), c1.action.split(' — ')[0]);
+  const c2 = await teacher.evaluate(async c => (await Lab.api('/api/teacher/wow/draw', { code: c, card: 'action' })).wow.cards, wcode);
+  check('Новое действие перетянуло угрозу и поворот под свой жанр', c2.action !== c1.action && byGenre('threat', c2) && byGenre('twist', c2) && c2.hero === c1.hero && c2.place === c1.place, c2.action.split(' — ')[0]);
   // секрет скрыт, пока учитель его не откроет; в уроке 1 он один на все классы — ни кубика, ни замены
   check('Секрет скрыт у учителя, пока он его не откроет', !(await teacher.textContent('#wowSecret')).includes(SECRET1));
   await teacher.click('#wowSecret >> text=Показать');
@@ -485,12 +493,12 @@ async function wowStart(teacher, student, mode, shot) {
   check('Сервер не даёт заменить секрет урока', swap === 400, 'ответ ' + swap);
   await teacher.click('#wowSecret >> text=Скрыть');
   // связка от ИИ: геймдизайнер сводит карты в одну игру, учитель принимает — связку видят ученики, она уходит в сборку
-  await teacher.click('#wowLink >> text=🧠 Связка от ИИ');
+  await teacher.click('#wowLink >> text=🧠 Документ от ИИ');
   await teacher.waitForSelector('#wowLink .link-phrase', { timeout: 30000 });
   let phrase = (await teacher.textContent('#wowLink .link-phrase')).trim();
-  check('Связка от ИИ свела карты: фраза игры', phrase.length > 20, phrase.slice(0, 90));
-  await teacher.click('#wowLink >> text=✓ Принять связку');
-  await teacher.waitForSelector('#wowLink >> text=принята — уйдёт в сборку', { timeout: 10000 });
+  check('Гейм дизайн документ от ИИ свёл карты: фраза игры', phrase.length > 20, phrase.slice(0, 90));
+  await teacher.click('#wowLink >> text=✓ Принять документ');
+  await teacher.waitForSelector('#wowLink >> text=принят — уйдёт в сборку', { timeout: 10000 });
   // учитель правит связку руками: сохранённая правка сразу принята
   await teacher.click('#wowLink >> text=✎ Править');
   await teacher.waitForSelector('#wowLink textarea[data-link="phrase"]');
@@ -498,7 +506,7 @@ async function wowStart(teacher, student, mode, shot) {
   phrase = phrase0 + ' Учитель добавил: козёл не тормозит.';
   await teacher.fill('#wowLink textarea[data-link="phrase"]', phrase);
   await teacher.click('#wowLink >> text=✓ Сохранить и принять');
-  await teacher.waitForSelector('#wowLink >> text=принята — уйдёт в сборку', { timeout: 10000 });
+  await teacher.waitForSelector('#wowLink >> text=принят — уйдёт в сборку', { timeout: 10000 });
   check('Учитель поправил связку руками', (await teacher.textContent('#wowLink .link-phrase')).trim() === phrase && (await teacher.textContent('#wowLink')).includes('✎ учитель'));
   await student.waitForSelector('#step-vau-karty .linkbox .link-phrase', { timeout: 10000 });
   await student.waitForFunction(p => (document.querySelector('#step-vau-karty .linkbox .link-phrase') || {}).textContent === p, phrase, { timeout: 10000 }).catch(() => {});
@@ -509,9 +517,9 @@ async function wowStart(teacher, student, mode, shot) {
   await teacher.waitForSelector('#wowBuild >> text=📣 Раздать классу', { timeout: 60000 });
   const info = (await teacher.textContent('#wowBuild')).replace(/\s+/g, ' ');
   if (mode === 'mock') check('ИИ собрал игру класса с ручкой secret и скрытым счётчиком', !/нет ручки secret|не считается/.test(info) && !/запасная игра «/.test(info), info.slice(0, 120));
-  if (mode === 'mock') check('Принятая связка ушла программисту вместе с картами', /Связка геймдизайнера — класс принял её/.test(mock.last.wowUser || '') && (mock.last.wowUser || '').includes(phrase));
+  if (mode === 'mock') check('Принятая связка ушла программисту вместе с картами', /Гейм дизайн документ — класс принял его/.test(mock.last.wowUser || '') && (mock.last.wowUser || '').includes(phrase));
   if (mode === 'mock') { const threat = (await teacher.textContent('#wowCards [data-card=threat] .wc-text')).trim(); check('Карта угрозы ушла программисту с особенностью', /- Угроза: .+ — .+/.test(mock.last.wowUser || ''), threat); }
-  if (mode === 'mock') check('Связка задаёт программисту каркас, кнопки и риск', /- Каркас и камера: Арена/.test(mock.last.wowUser || '') && /- Риск и очки: /.test(mock.last.wowUser || ''));
+  if (mode === 'mock') check('Документ задаёт программисту жанр и камеру, кнопки контроллера и риск', /- Жанр и камера: Арена/.test(mock.last.wowUser || '') && /- Риск и очки: /.test(mock.last.wowUser || ''));
   else check('Без ключа собралась запасная игра урока', /запасная игра/.test(info), info.slice(0, 120));
   // бот-плейтестер сам прогоняет новую версию в рамке предпросмотра: три партии, отчёт сохраняется у версии
   await teacher.waitForSelector('#wowBot .botbox', { timeout: 180000 });

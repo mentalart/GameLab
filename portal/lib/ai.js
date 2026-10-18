@@ -6,7 +6,7 @@ const path = require('path');
 const vm = require('vm');
 const crypto = require('crypto');
 const store = require('./store');
-const { systemPrompt, userTemplate, lessonSample, lessonModule } = require('../tools/build-prompt');
+const { systemPrompt, userTemplate, lessonSample, lessonModule, FRAMES } = require('../tools/build-prompt');
 
 const PORTAL = path.resolve(__dirname, '..');
 const CONFIG_FILE = process.env.LAB_CONFIG ? path.resolve(process.env.LAB_CONFIG) : path.join(PORTAL, 'config.json');
@@ -295,7 +295,7 @@ function chatBuild(plan, who, onProgress, kind) {
 async function chatShared(wow, who, onProgress) {
   const text = fill(chatTpl('wow'), {
     'герой': wow.cards.hero, 'действие': wow.cards.action, 'место': wow.cards.place, 'угроза': wow.cards.threat || 'нет карты — придумай по месту', 'поворот': wow.cards.twist,
-    'связка': wow.link ? 'Связка (класс принял её, строй игру по ней):\n' + LINK_FIELDS.filter(([k]) => wow.link[k]).map(([k, label]) => `- ${label}: ${wow.link[k]}`).join('\n') : '',
+    'связка': wow.link ? 'Гейм дизайн документ (класс принял его, строй игру по нему):\n' + LINK_FIELDS.filter(([k]) => wow.link[k]).map(([k, label]) => `- ${label}: ${wow.link[k]}`).join('\n') : '',
   }) + chatSecret(wow.secret, wow.base, wow.howto);
   const full = fullTask(who, fill(userTemplate('wow'), {
     'герой': wow.cards.hero, 'действие': wow.cards.action, 'место': wow.cards.place, 'угроза': wow.cards.threat || 'нет карты — придумай по месту', 'поворот': wow.cards.twist, 'секрет': wow.secret, 'база': wow.base || SECRET_BASE, 'связка': linkText(wow.link),
@@ -458,9 +458,9 @@ function demoProducerFix(plan, review, who) {
   return { igra, changes, demo: true };
 }
 
-/* ---------------- связка карт вау-старта: геймдизайнер сводит пять карт в одну игру ---------------- */
+/* ---------------- связка карт вау-старта (на экране — «Гейм дизайн документ»): геймдизайнер сводит пять карт в одну игру ---------------- */
 // поля связки: ключ и подпись — в таком порядке их видит учитель и получает программист
-const LINK_FIELDS = [['phrase', 'Фраза игры'], ['frame', 'Каркас и камера'], ['controls', 'Кнопки'], ['loop', 'Главный цикл'], ['risk', 'Риск и очки'],
+const LINK_FIELDS = [['phrase', 'Фраза игры'], ['frame', 'Жанр и камера'], ['controls', 'Что делает герой и кнопки контроллера'], ['loop', 'Главный цикл'], ['risk', 'Риск и очки'],
   ['threats', 'Угрозы'], ['curve', 'Нарастание'], ['twist', 'Поворот × действие'], ['funny', 'Главный смешной момент']];
 function parseLink(text) {
   const a = text.indexOf('{'), b = text.lastIndexOf('}');
@@ -470,39 +470,41 @@ function parseLink(text) {
   if (!link.phrase || !link.loop) throw new Error('нет фразы игры');
   return link;
 }
-async function wowLink(cards, prev, who) {
-  if (demo()) return demoLink(cards, who);
+// genre — жанр карты действия из сценария урока ({ name, frame }): каркас жанра — подсказка связке
+const genreLine = genre => (genre ? `Жанр игры — ${genre.name}, каркас жанра — ${genre.frame}. Угроза и поворот взяты из колоды этого жанра.` : '');
+async function wowLink(cards, prev, who, genre) {
+  if (demo()) return demoLink(cards, who, genre);
   const model = models().link;
   const t0 = Date.now();
-  const user = ['Карты:', `- Герой: ${cards.hero}`, `- Действие: ${cards.action}`, `- Место: ${cards.place}`, `- Угроза: ${cards.threat || 'нет карты — придумай сам по месту'}`, `- Поворот: ${cards.twist}`,
-    prev ? `\nУчитель попросил другую связку. Прошлая была: «${prev.phrase}»${prev.frame ? ` (${prev.frame})` : ''} — найди другое чтение карт, лучше в другом каркасе.` : ''].filter(Boolean).join('\n');
+  const user = ['Карты:', `- Герой: ${cards.hero}`, `- Действие: ${cards.action}`, `- Место: ${cards.place}`, `- Угроза: ${cards.threat || 'нет карты — придумай сам по месту'}`, `- Поворот: ${cards.twist}`, genreLine(genre),
+    prev ? `\nУчитель попросил другую связку. Прошлая была: «${prev.phrase}»${prev.frame ? ` (${prev.frame})` : ''} — найди другое чтение карт: другой цикл, риск или смешной момент в том же жанре.` : ''].filter(Boolean).join('\n');
   try {
     const { text, entry } = await call('связка карт', who, model, [
       { role: 'system', content: promptSection('link-prompt.md', '<!-- prompt:start -->', '<!-- prompt:end -->') },
       { role: 'user', content: user },
     ]);
     let link;
-    try { link = parseLink(text); entry.ok = true; } catch (e) { entry.ok = false; entry.error = 'связка: ' + e.message; log(entry); throw new Error('Геймдизайнер ответил не по форме — попросите другую связку'); }
+    try { link = parseLink(text); entry.ok = true; } catch (e) { entry.ok = false; entry.error = 'связка: ' + e.message; log(entry); throw new Error('Геймдизайнер ответил не по форме — попросите другой документ'); }
     log(entry);
     return Object.assign(link, { model });
   } catch (e) { if (!/не по форме/.test(e.message)) log(Object.assign({ kind: 'связка карт', model, ms: Date.now() - t0, ok: false, error: e.message }, meta(who))); throw e; }
 }
-function demoLink(cards, who) {
+function demoLink(cards, who, genre) {
   log(Object.assign({ kind: 'связка карт', model: 'демо', ms: 0, ok: true, demo: true }, meta(who)));
   return {
     phrase: `Ты — ${cards.hero}. Главное действие: ${cards.action}. Место: «${cards.place}». Мешает: ${cards.threat || 'всё вокруг'}. Поворот: ${cards.twist}. Цель — продержаться и набрать рекорд класса.`,
-    frame: 'Арена, изометрия: всё поле видно целиком, герой бегает по нему.',
-    controls: `Движение — бегать, A — ${cards.action}, B не нужна.`,
+    frame: genre ? `${genre.name}: ${genre.frame}.` : 'Арена, изометрия: всё поле видно целиком, герой бегает по нему.',
+    controls: `Движение — бегать, A — ${String(cards.action).split(' — ').pop()}, B не нужна.`,
     loop: `Каждые несколько секунд: ${cards.action} — и сразу видно, попал ли ты; промах стоит времени.`,
     risk: 'Действие рядом с опасностью даёт очки ×2.',
     threats: cards.threat ? `Главная угроза с карты: ${cards.threat}. К ней — мелкие помехи места; касание отнимает жизнь.` : 'Одни угрозы идут прямо, другие заходят сбоку; касание отнимает жизнь.',
     curve: 'К 30-й секунде — второй вид угроз, к 60-й — быстрее, к 90-й — всё вместе.',
     twist: `Поворот «${cards.twist}» меняет то, как работает главное действие: им можно и помешать себе, и выиграть.`,
-    funny: 'Демо-режим: без ключа ИИ связка собрана по шаблону из карт.', model: 'демо', demo: true,
+    funny: 'Демо-режим: без ключа ИИ документ собран по шаблону из карт.', model: 'демо', demo: true,
   };
 }
-const linkText = link => (link ? ['Связка геймдизайнера — класс принял её до сборки, строй игру по ней: каркас, камеру, кнопки, риск и угрозы бери отсюда.', ...LINK_FIELDS.filter(([k]) => link[k]).map(([k, label]) => `- ${label}: ${link[k]}`)].join('\n')
-  : 'Связки геймдизайнера нет: найди чтение карт сам — одну понятную, напряжённую и смешную игру.');
+const linkText = link => (link ? ['Гейм дизайн документ — класс принял его до сборки, строй игру по нему: жанр, камеру, кнопки, риск и угрозы бери отсюда.', ...LINK_FIELDS.filter(([k]) => link[k]).map(([k, label]) => `- ${label}: ${link[k]}`)].join('\n')
+  : 'Гейм дизайн документа нет: найди чтение карт сам — одну понятную, напряжённую и смешную игру в жанре с карты действия.');
 
 async function producer(plan, lesson, who) {
   if (demo()) return demoProducer(plan, who, lesson);
@@ -701,7 +703,8 @@ async function fix(code, error, who, onProgress, model) {
 
 // Общая игра урока (вау-старт): своя игра только из карт колоды безумных идей (без донора урока) + секретная механика из колоды секретов урока.
 // Секрет живёт в ручке secret и в скрытом счётчике телеметрии _secret. Без ключа — запасная игра урока.
-const wowFrame = wow => (wow.link && wow.link.frame) || ''; // каркас связки: по нему Claude получает один образец
+// каркас связки: по нему Claude получает один образец; если в строке связки каркаса не узнать — каркас жанра с карты действия
+const wowFrame = wow => { const t = (wow.link && wow.link.frame) || '', g = (wow.genre && wow.genre.frame) || ''; return t && FRAMES.some(f => f.re.test(t)) ? t : g || t; };
 async function buildShared(wow, who, onProgress) {
   if (manual(who && who.lesson)) return chatShared(wow, who, onProgress);
   if (demo()) return demoShared(wow, who);
