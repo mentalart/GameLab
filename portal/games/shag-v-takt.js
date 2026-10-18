@@ -14,6 +14,7 @@ const GAME = {
   camera: 'side', // в start: цель едет за танцором
   field: { w: 22, h: 10 },
   sky: '#2a2d6e',
+  fog: 0.01,
   accent: '#ffd23f',
   lives: 5,
   decisions: [
@@ -49,7 +50,6 @@ const GAME = {
     lab.setCamera({ type: 'side', beta: 1.38, target: [0, 3, 0], distance: duel ? 17 : 20 });
     this.world(lab, scene, duel);
     st.hero = this.dancer(lab, scene, '#c0392b');
-    lab.hero(st.hero.node);
     if (duel) return this.duelStart(lab, scene);
     this.timeline(lab, scene);
     lab.hud('acc', 'Слушай щелчок: кувшин будет через долю');
@@ -143,7 +143,6 @@ const GAME = {
       lab.tone(98, 0.25, 'sawtooth', 0.12, 70); // фальшивая нота
       lab.popup(at, 'Мимо', '#ff6b6b', 20);
       lab.hurt(at, 'Сбился с ритма');
-      st.hero.c.hurt(at);
       return;
     }
     st.devs.push(dev); st.combo++; st.best = Math.max(st.best, st.combo);
@@ -210,25 +209,32 @@ const GAME = {
     const m = pieces.length > 1 ? BABYLON.Mesh.MergeMeshes(pieces, true, true, undefined, false, true) : pieces[0];
     m.name = name; return m;
   },
-  // танцор — существо из набора: белая папаха, черкеска в цвет игрока, газыри — своя примета
+  // танцор в черкеске и папахе
   dancer(lab, scene, coat) {
-    const node = new BABYLON.TransformNode('танцор', scene);
-    const c = lab.creature({ plan: 'двуногий', size: 2.5, role: 'герой', autoFace: false,
-      colors: { main: '#f2c9a0', belly: '#e8e8f0', second: '#1a1a22', detail: coat, accent: '#ffd23f' },
-      wear: ['папаха:#f4f0e6', 'черкеска', 'пояс:#ffd23f'], face: { mustache: true } });
-    c.root.parent = node; c.root.rotation.y = Math.PI / 2; // лицом по ходу — вправо
-    return { node, c, x: 0, jump: 0 };
+    const MB = BABYLON.MeshBuilder, node = new BABYLON.TransformNode('танцор', scene);
+    const P = (m, c, x, y, z, o) => { m = this.part(lab, m, c, x, y, z, o); m.parent = node; return m; };
+    P(MB.CreateCylinder('черкеска', { height: 1.3, diameterTop: 0.6, diameterBottom: 0.9, tessellation: 8 }, scene), coat, 0, 1.15, 0);
+    P(MB.CreateBox('пояс', { width: 0.66, height: 0.1, depth: 0.66 }, scene), '#ffd23f', 0, 1.2, 0, { glow: 0.4 });
+    P(MB.CreateSphere('голова', { diameter: 0.5, segments: 8 }, scene), '#f2c9a0', 0, 2.05, 0);
+    P(MB.CreateCylinder('папаха', { height: 0.35, diameter: 0.56, tessellation: 8 }, scene), '#f4f0e6', 0, 2.38, 0);
+    for (const s of [-1, 1]) {
+      P(MB.CreateSphere('глаз', { diameter: 0.1, segments: 4 }, scene), '#1a1a22', 0.2, 2.08, s * 0.1);
+      P(MB.CreateBox('газыри', { width: 0.05, height: 0.3, depth: 0.2 }, scene), '#e8e8f0', 0.28, 1.5, s * 0.17);
+    }
+    const legs = [-1, 1].map(s => { const l = P(MB.CreateBox('сапог', { width: 0.2, height: 0.55, depth: 0.2 }, scene), '#1a1a22', 0, 0.28, s * 0.16); return l; });
+    const arms = [-1, 1].map(s => { const a = P(MB.CreateBox('рука', { width: 0.16, height: 0.7, depth: 0.16 }, scene), coat, 0, 1.45, s * 0.42); return a; });
+    return { node, legs, arms, x: 0, jump: 0, run: 0 };
   },
   animate(lab, h, dt) {
     const st = lab.state, beat = st.duel ? st.duel.beat : st.beat || 0.5;
-    if (h.jump > 0) {
-      if (h.jump === 0.0001) h.c.stretch();
-      h.jump += dt / (beat * 0.9);
-      if (h.jump >= 1) { h.jump = 0; h.c.squash(); }
-    }
-    h.node.position.y = h.jump > 0 ? Math.sin(Math.PI * h.jump) * 1.9 : 0;
+    h.run += dt * 10;
+    if (h.jump > 0) { h.jump += dt / (beat * 0.9); if (h.jump >= 1) h.jump = 0; }
+    const y = h.jump > 0 ? Math.sin(Math.PI * h.jump) * 1.9 : 0;
+    h.node.position.y = y;
     if (!st.duel) h.node.position.x = h.x;
     h.node.rotation.z = h.jump > 0 ? -h.jump * Math.PI * 2 * (lab.juicy('squash') ? 1 : 0) : 0; // сальто
+    h.legs.forEach((l, i) => { l.rotation.z = h.jump > 0 ? 0.5 : Math.sin(h.run + i * Math.PI) * 0.6; });
+    h.arms.forEach((a, i) => { a.rotation.x = (i ? 1 : -1) * (h.jump > 0 ? 2.4 : 1.1 + Math.sin(h.run * 0.5) * 0.3); }); // руки в стороны, как в удже
   },
   // кувшин на доле; цвет — высота ноты
   jug(lab, o) {
@@ -253,30 +259,29 @@ const GAME = {
     for (let i = -4; i * this.U < len + 30; i++) { const m = (i % 2 ? a : b).createInstance('плита'); m.position.set(i * this.U, -0.15, 0); }
     // фонари вдоль улицы мигают в долю
     st.lamps = [];
-    const lamp = lab.build('фонарь аула', [['cyl', [0.12, 3, 0.12], [0, 1.5, 0], 0, '#2a2440'], ['box', [0.3, 0.3, 0.3], [0, 0.15, 0], 0, '#2a2440'],
-      ['sphere', [0.55, 0.55, 0.55], [0, 3.1, 0], 0, 'свет', { glow: 1 }], ['cone', [0.5, 0.25, 0.5], [0, 3.45, 0], 0, '#2a2440']]);
-    for (let x = -8; x < len + 30; x += this.U * 4) st.lamps.push(lamp.copy([x, 0, 2.2]));
+    const lamp = this.merge([this.part(lab, MB.CreateCylinder('столб', { height: 3, diameter: 0.12, tessellation: 5 }, sc), '#2a2440', 0, 1.5, 0),
+      this.part(lab, MB.CreateSphere('огонь', { diameter: 0.55, segments: 6 }, sc), '#ffd86b', 0, 3.1, 0, { glow: 1 })], 'фонарь');
+    lamp.isVisible = false;
+    for (let x = -8; x < len + 30; x += this.U * 4) { const l = lamp.createInstance('фонарь'); l.position.set(x, 0, 2.2); st.lamps.push(l); }
   },
-  // мир из готовых деталей: аул ночью, своя сакля с террасой и сторожевая башня на каждом круге
   world(lab, scene, duel) {
-    lab.style({ mood: 'ночь', shape: 'круглый', wind: 0.4, palette: { земля: '#24543f', стена: '#f1e3c8', крыша: '#b5523b', камень: '#4b3f8f', дерево: '#8a5a33', свет: '#ffcf5a', акцент: '#ffd23f' } });
+    const MB = BABYLON.MeshBuilder;
     lab.ground({ w: 900, h: 80, color: '#24543f', y: -0.31 }).position.x = 300;
-    lab.backdrop({ type: 'горы', layers: 2 });
-    const range = duel ? 30 : 700, face = Math.PI; // дома и плетни смотрят на камеру
-    const saklya = lab.build('сакля', [['box', [4, 2.6, 3], [0, 1.3, 0], 0, 'стена'], ['box', [4.4, 0.25, 3.4], [0, 2.7, 0], 0, 'дерево'],
-      ['box', [4.4, 0.5, 0.08], [0, 3.05, 1.66], 0, 'дерево'], ['box', [0.08, 0.5, 3.4], [2.16, 3.05, 0], 0, 'дерево'], ['box', [0.08, 0.5, 3.4], [-2.16, 3.05, 0], 0, 'дерево'],
-      ['box', [0.8, 0.7, 0.1], [-0.9, 1.4, 1.52], 0, 'свет', { glow: 0.9 }], ['box', [0.8, 0.7, 0.1], [0.9, 1.4, 1.52], 0, 'свет', { glow: 0.9 }],
-      ['box', [0.9, 1.6, 0.08], [0, 0.8, 1.53], 0, 'дерево'], ['box', [1.2, 1.4, 1.2], [1.2, 3.5, -0.6], 0, 'стена'], ['prism', [1.5, 0.7, 1.5], [1.2, 4.55, -0.6], 0, 'крыша']]);
-    const fence = lab.prop('плетень', { v: 3 });
+    const roof = this.part(lab, MB.CreateCylinder('крыша', { height: 4.6, diameter: 2.8, tessellation: 3 }, scene), '#b5523b', 0, 3.2, 0);
+    roof.rotation.z = Math.PI / 2; roof.rotation.y = Math.PI / 2;
+    const house = this.merge([this.part(lab, MB.CreateBox('дом', { width: 4, height: 2.6, depth: 3 }, scene), '#f1e3c8', 0, 1.3, 0), roof,
+      this.part(lab, MB.CreateBox('окно', { width: 0.8, height: 0.7, depth: 0.1 }, scene), '#ffcf5a', -0.9, 1.4, -1.52, { glow: 0.9 }),
+      this.part(lab, MB.CreateBox('окно', { width: 0.8, height: 0.7, depth: 0.1 }, scene), '#ffcf5a', 0.9, 1.4, -1.52, { glow: 0.9 })], 'сакля');
+    house.isVisible = false;
+    const fence = this.part(lab, MB.CreateBox('плетень', { width: 2.8, height: 0.9, depth: 0.15 }, scene), '#8a5a33'); fence.isVisible = false;
+    const range = duel ? 30 : 700;
     for (let x = -20; x < range; x += 9) {
-      saklya.copy([x + lab.rand(-1, 1), 0, lab.rand(7, 10)], face);
-      fence.copy([x + 4.5, 0, 4.2], face);
+      const h = house.createInstance('сакля'); h.position.set(x + lab.rand(-1, 1), 0, lab.rand(7, 10));
+      const f = fence.createInstance('плетень'); f.position.set(x + 4.5, 0.45, 4.2);
     }
-    const tower = lab.build('сторожевая башня', [['box', [2.4, 9, 2.4], [0, 4.5, 0], 0, 'камень', { taper: 0.78 }], ['box', [2.1, 0.5, 2.1], [0, 9.1, 0], 0, '#3a3070'],
-      ['pyramid', [2.2, 1.6, 2.2], [0, 10.1, 0], 0, 'крыша'], ['box', [0.25, 0.7, 0.1], [0, 6.5, 1.0], 0, 'свет', { glow: 1 }], ['box', [0.25, 0.6, 0.1], [0, 3.6, 1.12], 0, 'свет', { glow: 0.7 }]]);
-    for (let x = 30; x < range + 40; x += this.U * 32) tower.copy([x, 0, 13], face); // на каждом круге мелодии
-    lab.scatter([['тополь', 2], ['куст', 3]], { n: duel ? 14 : 160, area: { x: range / 2 - 10, w: range + 40, z: 12, h: 4 } });
-    lab.state.moon = this.part(lab, BABYLON.MeshBuilder.CreateSphere('луна', { diameter: 7, segments: 10 }, scene), '#fff4c2', 30, 26, 70, { glow: 1 });
+    const mount = this.part(lab, MB.CreateCylinder('гора', { height: 1, diameterTop: 0, diameterBottom: 1, tessellation: 5 }, scene), '#4b3f8f'); mount.isVisible = false; lab.noShadow(mount);
+    for (let x = -60; x < range + 60; x += 34) { const m = mount.createInstance('гора'), h = lab.rand(20, 34); m.scaling.set(lab.rand(30, 46), h, 14); m.position.set(x, h / 2 - 1, 60); }
+    lab.state.moon = this.part(lab, MB.CreateSphere('луна', { diameter: 7, segments: 10 }, scene), '#fff4c2', 30, 26, 70, { glow: 1 });
   },
   // свет в долю: фонари и луна вспыхивают на каждой доле — картинка тоже играет музыку
   pulseBeat(lab) {

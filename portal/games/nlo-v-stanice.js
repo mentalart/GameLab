@@ -14,6 +14,8 @@ const GAME = {
   ],
   camera: { type: 'iso', beta: 1.1, target: [0, 0, -4] }, // чуть ниже обычного «iso»: видно и горы, и станицу
   field: { w: 28, h: 30 },
+  sky: '#162038',
+  fog: 0.008,
   accent: '#ffe08a',
   decisions: [
     'Чувство: напряжение растёт к концу волны, последнее НЛО несётся как сумасшедшее, а золотое НЛО — маленький бой с боссом',
@@ -57,19 +59,25 @@ const GAME = {
     st.boss = null; st.bossT = lab.cfg.bossAt; st.bossKills = 0; st.combo = 0; st.bestCombo = 0;
     st.fireT = 2; st.note = 0; st.reload = 0; st.want = 0; st.lastWarned = false;
 
-    // ночная станица: стиль задаёт свет, небо и гамму, мир — готовые детали и свои
-    lab.style({ mood: 'ночь', shape: 'круглый', wear: 'старое', wind: 0.8, palette: { земля: '#2f6a3a', листва: '#25683f', стена: '#f4efe4', крыша: '#c9a24a', ткань: '#3b6fd1', свет: '#ffcf6a', акцент: '#ffd23f' } });
+    // земля, поле, горы, лес, станица
+    lab.ground({ w: 140, h: 140, color: '#2a5a35' });
+    const field = B.MeshBuilder.CreateGround('поле', { width: 26, height: 28 }, scene);
+    field.position.set(0, 0.01, 0); field.material = lab.mat('#336b3e'); lab.noShadow(field);
     this.scenery(lab, scene);
 
     // пушка; огонёк заряда на конце ствола разгорается к концу перезарядки
     const cannon = new B.TransformNode('пушка', scene);
     const add = (mesh, color, o) => { mesh.material = lab.mat(color, o); mesh.parent = cannon; return mesh; };
-    lab.build('лафет', [['box', [1.5, 0.45, 1.1], [0, 0.45, 0], 0, '#c0392b'], ['box', [0.8, 0.45, 0.7], [0, 0.85, -0.05], 0, '#e9e4d8'],
-      ...[-0.62, 0.62].flatMap(x => [-0.32, 0.32].map(z => ['cyl', [0.5, 0.18, 0.5], [x, 0.25, z], [0, 0, Math.PI / 2], '#1c1f27']))]).copy([0, 0, 0], 0, 1, cannon);
+    add(B.MeshBuilder.CreateBox('лафет', { width: 1.5, height: 0.45, depth: 1.1 }, scene), '#c0392b').position.y = 0.45;
+    add(B.MeshBuilder.CreateBox('башня', { width: 0.8, height: 0.45, depth: 0.7 }, scene), '#e9e4d8').position.set(0, 0.85, -0.05);
     const barrel = add(B.MeshBuilder.CreateCylinder('ствол', { height: 1.0, diameter: 0.24, tessellation: 8 }, scene), '#2b2f3a');
     barrel.rotation.x = Math.PI / 2; barrel.position.set(0, 0.88, 0.55);
     st.charge = add(B.MeshBuilder.CreateSphere('заряд', { diameter: 0.34, segments: 6 }, scene), '#ffb347', { glow: 1 });
     st.charge.position.set(0, 0.88, 1.1); lab.noShadow(st.charge);
+    for (const x of [-0.62, 0.62]) for (const z of [-0.32, 0.32]) {
+      const w = add(B.MeshBuilder.CreateCylinder('колесо', { height: 0.18, diameter: 0.5, tessellation: 8 }, scene), '#1c1f27');
+      w.rotation.z = Math.PI / 2; w.position.set(x, 0.25, z);
+    }
     cannon.position.set(0, 0, st.playerZ);
     st.cannon = cannon; st.barrel = barrel; lab.hero(cannon);
 
@@ -91,7 +99,6 @@ const GAME = {
   // ---------- каждый кадр ----------
   update(lab, dt) {
     const st = lab.state, cfg = lab.cfg, p = lab.p1;
-    st.mill.rotation.z += dt * 0.8;
     // пушка
     const c = st.cannon;
     c.position.x = lab.clamp(c.position.x + p.x * cfg.playerSpeed * dt, -st.edge, st.edge);
@@ -130,26 +137,67 @@ const GAME = {
   },
 
   // ---------- мир вокруг поля ----------
-  // Мир на готовых деталях оболочки: стиль ночи, газон, горы, ели, хаты, подсолнухи и плетень из библиотеки.
-  // Свои детали — пушка, тарелки НЛО и ветряк-ориентир за станицей.
+  // Повторяющиеся предметы (горы, ёлки, хаты, подсолнухи, колья плетня) — один исходный меш и копии createInstance:
+  // копии рисуются одним вызовом, игра летает даже на слабом школьном компьютере.
   scenery(lab, scene) {
-    const st = lab.state;
-    lab.floor({ type: 'газон с тропой', w: 26, h: 28 });
-    lab.backdrop({ type: 'горы', layers: 2 });
-    const hata = lab.prop('хата', { v: 1 });
-    [-11, -6.5, -2, 2.5, 7, 11.5].forEach(x => hata.copy([x + lab.rand(-0.4, 0.4), 0, -16 + lab.rand(-0.6, 0.6)], Math.PI + lab.rand(-0.2, 0.2)));
-    const flower = lab.prop('подсолнух', { h: 1.5 });
-    for (let x = -12; x <= 12; x += 1.7) flower.copy([x + lab.rand(-0.3, 0.3), 0, this.LINE_Z - 1.1], Math.PI);
+    const B = BABYLON;
+    const source = (mesh, color, o) => { mesh.material = lab.mat(color, o); mesh.isVisible = false; return mesh; };
+    const cone = (name, color) => {
+      const m = B.MeshBuilder.CreateCylinder(name, { height: 1, diameterTop: 0, diameterBottom: 1, tessellation: 6 }, scene);
+      m.convertToFlatShadedMesh(); return source(m, color);
+    };
+    // горы на горизонте: тень не отбрасывают, чтобы не растягивать карту теней
+    const rock = lab.noShadow(cone('гора', '#56637f')), snow = lab.noShadow(cone('снег', '#eef3ff'));
+    [[-34, 62, 26, 13], [-10, 70, 36, 17], [16, 64, 26, 13], [40, 58, 20, 10], [2, 54, 15, 8]].forEach(([x, z, h, r]) => {
+      const a = lab.rand(0, 1);
+      const m = rock.createInstance('гора'); m.scaling.set(r * 2, h, r * 2); m.position.set(x, h / 2 - 0.5, z); m.rotation.y = a;
+      const c = snow.createInstance('снег'); c.scaling.set(r * 0.62, h * 0.28, r * 0.62); c.position.set(x, h * 0.86 - 0.5, z); c.rotation.y = a;
+    });
+    // ёлки по краям поля
+    const trunk = B.MeshBuilder.CreateCylinder('ствол', { height: 0.7, diameter: 0.3, tessellation: 5 }, scene);
+    source(trunk, '#5a3d2b');
+    const crowns = ['#1f5a3a', '#25683f', '#2f7a46'].map(c => cone('крона', c));
+    for (let i = 0; i < 28; i++) {
+      const side = i % 2 ? 1 : -1, x = side * lab.rand(15, 24), z = lab.rand(-17, 20), h = lab.rand(1.8, 3.6);
+      trunk.createInstance('ствол').position.set(x, 0.35, z);
+      const cr = lab.pick(crowns).createInstance('крона');
+      cr.scaling.set(h * 0.7, h, h * 0.7); cr.position.set(x, 0.7 + h / 2, z); cr.rotation.y = lab.rand(0, 3);
+    }
+    // станица: белёная хата под соломенной крышей собрана из частей в один меш (MergeMeshes), дальше — копии
+    const parts = [];
+    const walls = B.MeshBuilder.CreateBox('стены', { width: 2.3, height: 1.5, depth: 1.8 }, scene);
+    walls.position.y = 0.75; walls.material = lab.mat('#f4efe4'); parts.push(walls);
+    const roof = B.MeshBuilder.CreateCylinder('крыша', { height: 1.3, diameterTop: 0, diameterBottom: 3.2, tessellation: 4 }, scene);
+    roof.rotation.y = Math.PI / 4; roof.position.y = 2.1; roof.material = lab.mat('#c9a24a'); parts.push(roof);
+    for (const wx of [-0.55, 0.55]) {
+      const win = B.MeshBuilder.CreateBox('окно', { width: 0.42, height: 0.42, depth: 0.05 }, scene);
+      win.position.set(wx, 0.9, 0.92); win.material = lab.mat('#ffcf6a', { glow: 0.9 }); parts.push(win);
+      const shut = B.MeshBuilder.CreateBox('ставни', { width: 0.66, height: 0.5, depth: 0.03 }, scene);
+      shut.position.set(wx, 0.9, 0.91); shut.material = lab.mat('#3b6fd1'); parts.push(shut);
+    }
+    const house = B.Mesh.MergeMeshes(parts, true, true, undefined, false, true); // multiMaterial: цвета частей сохраняются
+    house.name = 'хата'; house.isVisible = false;
+    [-11, -6.5, -2, 2.5, 7, 11.5].forEach(x => {
+      const h = house.createInstance('хата');
+      h.position.set(x + lab.rand(-0.4, 0.4), 0, -16 + lab.rand(-0.6, 0.6)); h.rotation.y = Math.PI + lab.rand(-0.2, 0.2);
+    });
+    // подсолнухи у плетня
+    const stem = B.MeshBuilder.CreateCylinder('стебель', { height: 1.3, diameter: 0.08, tessellation: 4 }, scene);
+    stem.position.y = 0.65; stem.material = lab.mat('#3f8a3a');
+    const petals = B.MeshBuilder.CreateCylinder('цветок', { height: 0.06, diameter: 0.55, tessellation: 8 }, scene);
+    petals.rotation.x = 1.2; petals.position.set(0, 1.35, 0.05); petals.material = lab.mat('#ffcc22');
+    const heart = B.MeshBuilder.CreateCylinder('серединка', { height: 0.08, diameter: 0.28, tessellation: 8 }, scene);
+    heart.rotation.x = 1.2; heart.position.set(0, 1.36, 0.08); heart.material = lab.mat('#5a3d2b');
+    const flower = B.Mesh.MergeMeshes([stem, petals, heart], true, true, undefined, false, true);
+    flower.isVisible = false;
+    for (let x = -12; x <= 12; x += 1.7) flower.createInstance('подсолнух').position.set(x + lab.rand(-0.3, 0.3), 0, this.LINE_Z - 1.1);
     // плетень — граница станицы. «Видно = правда»: НЛО, дошедшее до плетня, садится на станицу
-    const fence = lab.prop('плетень', { v: 0 });
-    for (let x = -11.5; x <= 11.5; x += 3) fence.copy([x, 0, this.LINE_Z - 0.4]);
-    // ориентир: ветряк за станицей, крылья крутятся в update
-    lab.build('ветряк', [['cyl', [2.6, 5, 2.6], [0, 2.5, 0], 0, 'стена', { top: 0.7 }], ['cone', [2.6, 1.6, 2.6], [0, 5.8, 0], 0, 'крыша'],
-      ['box', [0.7, 1.1, 0.1], [0, 0.55, 1.15], 0, 'дерево'], ['box', [0.5, 0.5, 0.1], [0, 3.2, 1.0], 0, 'окно']]).copy([16, 0, 9], -0.6);
-    st.mill = new BABYLON.TransformNode('крылья ветряка', scene); st.mill.position.set(15.25, 5.2, 9.9); st.mill.rotation.y = -0.6;
-    lab.build('крылья', [0, 1, 2, 3].map(i => ['box', [0.5, 3.4, 0.06], [Math.sin(i * Math.PI / 2) * 1.7, Math.cos(i * Math.PI / 2) * 1.7, 0], [0, 0, -i * Math.PI / 2], 'ткань']).concat([['cyl', [0.4, 0.3, 0.4], [0, 0, 0], [Math.PI / 2, 0, 0], 'дерево']])).copy([0, 0, 0], 0, 1, st.mill);
-    lab.scatter('ель', { n: 40, area: 'вокруг' }); // после хат и ветряка: россыпь их обходит
-    lab.ambient('светлячки', { n: 30 });
+    const post = source(B.MeshBuilder.CreateBox('кол', { width: 0.14, height: 0.8, depth: 0.14 }, scene), '#7a5232');
+    for (let x = -12.5; x <= 12.5; x += 1.25) post.createInstance('кол').position.set(x, 0.4, this.LINE_Z - 0.4);
+    for (const y of [0.3, 0.6]) {
+      const rail = B.MeshBuilder.CreateBox('жердь', { width: 25.2, height: 0.08, depth: 0.08 }, scene);
+      rail.position.set(0, y, this.LINE_Z - 0.4); rail.material = lab.mat('#8f6440');
+    }
   },
 
   // ---------- стога-укрытия из блоков сена ----------
@@ -195,11 +243,22 @@ const GAME = {
 
   // ---------- волна НЛО ----------
   makeSaucer(lab, scene, color, name, scale = 1) {
-    const lights = [0, 1, 2, 3, 4, 5].map(i => ['box', [0.16, 0.16, 0.16], [Math.cos(i / 6 * Math.PI * 2) * 0.86, -0.1, Math.sin(i / 6 * Math.PI * 2) * 0.86], 0, color, { glow: 1 }]);
-    const m = lab.build(name, [['cyl', [1.6, 0.3, 1.6], [0, 0, 0], 0, '#c9cfdc', { top: 0.69, shiny: 1 }], ['cyl', [1.8, 0.12, 1.8], [0, -0.1, 0], 0, '#8a93a8'],
-      ['hemi', [0.85, 0.42, 0.85], [0, 0.12, 0], 0, color, { glow: 0.35 }], ...lights]).mesh;
-    m.isVisible = true; m.scaling.setAll(scale);
-    return m;
+    const B = BABYLON;
+    const parts = [];
+    const body = B.MeshBuilder.CreateCylinder(name, { height: 0.3, diameterTop: 1.1, diameterBottom: 1.6, tessellation: 10 }, scene);
+    body.material = lab.mat('#c9cfdc', { shiny: true }); parts.push(body);
+    const rim = B.MeshBuilder.CreateCylinder(name, { height: 0.12, diameter: 1.8, tessellation: 10 }, scene);
+    rim.position.y = -0.1; rim.material = lab.mat('#8a93a8'); parts.push(rim);
+    const dome = B.MeshBuilder.CreateSphere(name, { diameter: 0.85, segments: 4, slice: 0.5 }, scene);
+    dome.position.y = 0.12; dome.material = lab.mat(color, { glow: 0.35 }); parts.push(dome);
+    for (let i = 0; i < 6; i++) {
+      const a = i / 6 * Math.PI * 2, l = B.MeshBuilder.CreateBox(name, { size: 0.16 }, scene);
+      l.position.set(Math.cos(a) * 0.86, -0.1, Math.sin(a) * 0.86); l.material = lab.mat(color, { glow: 1 }); parts.push(l);
+    }
+    parts.forEach(m => m.convertToFlatShadedMesh());
+    const merged = B.Mesh.MergeMeshes(parts, true, true, undefined, false, true);
+    merged.name = name; merged.scaling.setAll(scale);
+    return merged;
   },
   buildWave(lab, scene) {
     const st = lab.state, cfg = lab.cfg;
