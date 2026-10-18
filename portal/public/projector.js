@@ -117,9 +117,10 @@ async function refreshPoll() {
 
 /* ---------- финал: стена аркады урока, рекорды, мир дня, провал дня ---------- */
 async function refreshFinal() {
-  let r;
+  let r, w = { again: [], fails: [] };
   try { r = await api('/api/teacher/final?code=' + encodeURIComponent(P.code)); } catch (e) { toast(e.message, 'err'); return; }
-  const key = JSON.stringify(r);
+  try { w = await api('/api/teacher/wall?code=' + encodeURIComponent(P.code)); } catch (e) { /* без рейтинга «ещё раз» */ }
+  const key = JSON.stringify([r, w]);
   if (key === P.finalKey) return; // без перерисовки: рамка провала дня и поле заметки живут
   P.finalKey = key;
   if (P.failFrame) { P.failFrame.destroy(); P.failFrame = null; }
@@ -149,9 +150,26 @@ async function refreshFinal() {
   host.append(el('div', { class: 'row' }, el('div', { class: 'grow stack', style: 'gap:4px' }, el('div', { class: 'eyebrow' }, `Финал урока ${r.lesson.number}`), el('h1', {}, 'Стена аркады урока')),
       el('span', { class: 'pj-sub' }, `игр урока: ${r.games.length}`)),
     el('div', { class: 'pj-finaltop' }, day, cg, failBox),
+    wallRow(w),
     r.games.length ? el('div', { class: 'agrid' }, r.games.map(c => Games.card(c, { compact: true,
       actions: [el('button', { class: 'btn ghost small', type: 'button', title: 'Провал дня: показать баг этой игры всему классу', onclick: () => setFail({ game: c.id, version: c.version }) }, '🤡 Провал дня')] })))
       : el('p', { class: 'pj-sub' }, 'Игр урока пока нет.'));
+}
+
+// финал: рейтинг «ещё раз» (чужие игроки сами захотели вернуться — главный тест курса)
+// и эксперимент, где предсказание не сбылось: несбывшееся предсказание — находка, а не ошибка. Ник не показывается
+function wallRow(w) {
+  const again = el('div', { class: 'card stack' }, el('div', { class: 'eyebrow' }, '🔁 Ещё раз!'),
+    w.again.length ? el('ol', { class: 'pj-again' }, w.again.map(g => el('li', {}, el('span', { class: 'pj-ag-n' }, String(g.again)),
+      el('div', {}, el('b', {}, g.title), el('div', { class: 'pj-sub' }, `${g.emblem ? g.emblem + ' ' : ''}${g.nick} · сыграли ${g.plays}`)))))
+      : el('p', { class: 'muted' }, 'Пока никто не нажал «ещё раз» в чужой игре: захотел ли игрок вернуться сам — главный тест.'));
+  const f = w.fails[0];
+  const surprise = el('div', { class: 'card stack' }, el('div', { class: 'eyebrow' }, '🧪 Предсказание не сбылось'),
+    f ? el('div', { class: 'stack', style: 'gap:6px' }, el('p', {}, el('b', {}, 'Предсказали: '), f.guess || '—'),
+      el('p', {}, `Ручка ${f.knob}: ${f.from} → ${f.to}. Счёт ${f.before.score} → ${f.after.score}, партия ${f.before.time} → ${f.after.time} с.`),
+      el('p', { class: 'pj-big' }, f.result + '!'), f.noticed ? el('p', {}, el('b', {}, 'Заметили: '), f.noticed) : null)
+      : el('p', { class: 'muted' }, 'Появится, когда чьё-то предсказание в эксперименте с ручкой не сбудется. Это лучшая находка урока.'));
+  return el('div', { class: 'pj-wallrow' }, again, surprise);
 }
 
 /* ---------- урок: код, чекпоинт, таймер, кто закончил шаги ---------- */
@@ -274,7 +292,7 @@ function drawDemo(prev) {
     el('button', { class: 'btn' + (all && !d.ready ? '' : ' ghost'), type: 'button', id: 'pjBuild', onclick: build, disabled: !all || building || null }, d.ready ? '↻ Собрать заново' : '⚙ Собрать игру с ИИ', el('kbd', {}, 'Enter')),
     el('span', { class: 'grow' }),
     el('span', { class: 'muted small' }, `на связи: ${r.watching} из ${r.students} · сыграли: ${r.played}`),
-    el('button', { class: 'btn ghost small', type: 'button', disabled: building || null, onclick: async () => { if (!confirm('Начать заново: новые карты, новая игра?')) return; try { await api('/api/teacher/demo/reset', { code: P.code }); Games.stopAll(); P.tf = null; P.frameFor = null; $('#pjGame').innerHTML = ''; await refreshDemo(); } catch (e) { toast(e.message, 'err'); } } }, '↺ Новые карты')].filter(Boolean));
+    el('button', { class: 'btn ghost small', type: 'button', disabled: building || null, onclick: async () => { if (!(await Lab.ask('Начать заново: новые карты, новая игра?', { ok: 'Начать заново' }))) return; try { await api('/api/teacher/demo/reset', { code: P.code }); Games.stopAll(); P.tf = null; P.frameFor = null; $('#pjGame').innerHTML = ''; await refreshDemo(); } catch (e) { toast(e.message, 'err'); } } }, '↺ Новые карты')].filter(Boolean));
   drawGame();
   tick();
 }

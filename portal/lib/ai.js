@@ -255,8 +255,17 @@ async function producerFix(plan, review, lesson, who) {
     let r;
     try { r = parseFix(text); entry.ok = true; } catch (e) { entry.ok = false; entry.error = 'правка продюсера: ' + e.message; log(entry); throw new Error('Продюсер ответил не по форме — попробуй ещё раз'); }
     log(entry);
-    return r;
+    return keepTwist(plan, r);
   } catch (e) { if (!/не по форме/.test(e.message)) log(Object.assign({ kind: 'правка продюсера', model, ms: Date.now() - t0, ok: false, error: e.message }, meta(who))); throw e; }
+}
+// твист — сердце замысла: если в промпте ИГРА он был, а после правки продюсера пропал, он возвращается в правила словами автора
+const stems = t => [...new Set(String(t || '').toLowerCase().replace(/ё/g, 'е').match(/[а-яa-z]{5,}/g) || [])].map(w => w.slice(0, 5));
+function keepTwist(plan, r) {
+  const st = stems(plan.twist);
+  if (!st.length) return r;
+  const has = igra => { const t = stems(Object.values(igra || {}).join(' ')); return st.some(w => t.includes(w)); };
+  if (!has(plan.igra) || has(r.igra)) return r;
+  return Object.assign({}, r, { igra: Object.assign({}, r.igra, { r: `${r.igra.r} Твист: ${plan.twist}.`.trim() }), changes: r.changes.concat('Вернул твой твист в правила: это сердце игры, его нельзя терять.') });
 }
 // демо: решения развилок дописываются в правила, кнопки — в глагол, если их не было
 function demoProducerFix(plan, review, who) {

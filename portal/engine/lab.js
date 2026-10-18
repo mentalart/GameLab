@@ -959,6 +959,15 @@
     if (m.type === 'data') { lab.data = m.data && typeof m.data === 'object' ? m.data : {}; if (state === 'menu') buildRound(true); }
     if (m.type === 'setCfg' && m.cfg) { for (const k in m.cfg) if (k in cfg) cfg[k] = Number(m.cfg[k]); document.querySelectorAll('.knob').forEach(w => w._sync && w._sync()); knobChanged(true); }
     if (m.type === 'pause') setPause(true);
+    // обложка для аркады: кадр холста сразу после отрисовки (буфер ещё цел), уменьшенный до 480 px по ширине
+    if (m.type === 'poster') engine.onEndFrameObservable.addOnce(() => {
+      try {
+        const w = Math.min(480, canvas.width), c2 = document.createElement('canvas');
+        c2.width = w; c2.height = Math.round(canvas.height * w / canvas.width);
+        c2.getContext('2d').drawImage(canvas, 0, 0, c2.width, c2.height);
+        post({ type: 'poster', data: c2.toDataURL('image/jpeg', 0.78) });
+      } catch (e) { /* кадр недоступен — обложка останется цветной */ }
+    });
     if (m.type === 'playtest') playtest(m.options || {}).catch(e => post({ type: 'playtest', error: e.message }));
     if (m.type === 'challengeOn') challengeOn = true;
     if (m.type === 'ghost') ghost = m.ghost && Array.isArray(m.ghost.line) ? { nick: String(m.ghost.nick || 'соперник').slice(0, 24), score: Number(m.ghost.score) || 0, line: m.ghost.line.slice(0, 600) } : null;

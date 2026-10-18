@@ -65,7 +65,8 @@ function writeConfig(aiPart) {
 async function gameFrame(page, urlPart, n = 0) {
   for (let i = 0; i < 100; i++) {
     const fr = page.frames().filter(f => f.url().includes(urlPart));
-    if (fr[n]) { await fr[n].waitForFunction('window.__lab && (window.__lab.ready || window.__lab.errored)', null, { timeout: 30000 }); return fr[n]; }
+    // опрос по таймеру, а не по кадрам: рамка за краем экрана (чужое происхождение) кадров не рисует
+    if (fr[n]) { await fr[n].waitForFunction('window.__lab && (window.__lab.ready || window.__lab.errored)', null, { timeout: 30000, polling: 250 }); return fr[n]; }
     await sleep(200);
   }
   throw new Error('Не дождался рамки игры ' + urlPart);
@@ -79,6 +80,12 @@ async function playRound(frame, { score = 0, hold = null, page = null, restart =
   } else await sleep(300);
   await frame.evaluate(s => { window.__lab.lab.score = s; window.__lab.end('lose', 'Проверка'); }, score);
 }
+// «null» текстом на странице: нативный append превращает null в слово (так было под картами вау-старта и в секрете у учителя)
+const nullText = p => p.evaluate(() => {
+  const w = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+  for (let n; (n = w.nextNode());) if (/^\s*(null|undefined)\s*$/.test(n.nodeValue) && n.parentElement && n.parentElement.offsetParent !== null) return n.parentElement.outerHTML.replace(/\s+/g, ' ').slice(0, 160);
+  return '';
+}).catch(() => '');
 const watch = (p, errors) => {
   p.on('pageerror', e => errors.push(e.message + ' @ ' + p.url().replace(/^https?:\/\/[^/]+/, '') + ' ' + String(e.stack || '').split('\n').slice(1, 3).join(' ').trim()));
   p.on('dialog', d => d.accept());
@@ -90,11 +97,17 @@ async function run(browser, base, mode) {
   const errors = [];
   const tctx = await browser.newContext({ viewport: { width: 1280, height: 860 } });
   const sctx = await browser.newContext({ viewport: { width: 1280, height: 900 } });
+  // вопросы «да / нет» портала (Lab.ask) в прогоне отвечают «да» сами
+  for (const c of [tctx, sctx]) await c.addInitScript(() => { window.LAB_ASK_AUTO = true; });
   const teacher = await tctx.newPage(), student = await sctx.newPage();
   await teacher.addInitScript(() => { window.LAB_PLAYTEST_SECONDS = 12; }); // бот-плейтестер в проверке играет короткие партии
   failShots = async () => { await student.screenshot({ path: path.join(OUT, `portal-${mode}-x-student.png`), fullPage: true }).catch(() => {}); await teacher.screenshot({ path: path.join(OUT, `portal-${mode}-x-teacher.png`) }).catch(() => {}); };
   for (const p of [teacher, student]) watch(p, errors);
-  const shot = async (p, name, fullPage = false) => p.screenshot({ path: path.join(OUT, `portal-${mode}-${name}.png`), fullPage });
+  const shot = async (p, name, fullPage = false) => {
+    const where = await nullText(p);
+    if (where) check(`Нет слова «null» на странице (снимок ${name})`, false, where);
+    return p.screenshot({ path: path.join(OUT, `portal-${mode}-${name}.png`), fullPage });
+  };
 
   // учитель: вход, класс, первый чекпоинт
   await teacher.goto(base + '/');
@@ -125,6 +138,7 @@ async function run(browser, base, mode) {
   await student.waitForURL('**/student');
   await student.waitForSelector('#step-donor-play');
   check('Ученик вошёл и видит открытый чекпоинт «Вау-старт»', true);
+  check('Карты до вытягивания без слова «null»', !(await nullText(student)));
   await shot(student, '1-donor');
 
   // донор: партия в ремейке
@@ -257,6 +271,8 @@ async function run(browser, base, mode) {
   check(`Откат к версии ${back} одним кликом`, new RegExp('v' + back).test(cur), cur);
   await shot(student, '6-workshop');
 
+  check('Кнопка «Сохранить мой баланс» есть и ждёт повёрнутой ручки', await student.$eval('#step-masterskaya [data-balance]', b => b.disabled));
+
   if (mode === 'mock') await together(browser, base, code, teacher, student, errors, shot);
   else {
     await student.click('.cp >> text=Играем вместе');
@@ -292,6 +308,37 @@ async function run(browser, base, mode) {
   await student.click('#step-plan-v2 >> text=Ответить');
   await student.waitForSelector('#step-plan-v2.done');
   await projectorFinal(pj, shot);
+  // «Моя студия»: полка, значки, журнал с планом версии 2, эмблема у ника в аркаде
+  {
+    const planText = await student.textContent('#step-plan-v2 textarea, #step-plan-v2 .own').catch(() => '');
+    const sp = await student.context().newPage(); watch(sp, errors);
+    await sp.goto(base + '/studio'); await sp.waitForSelector('#badges .badge');
+    const sv = await sp.evaluate(() => Lab.api('/api/studio'));
+    check('Моя студия: игра на полке, значок «Первая сборка», журнал с планом версии 2',
+      sv.games.length >= 1 && sv.badges.find(b => b.id === 'build').got && sv.journal.some(j => j.plan), `игр ${sv.games.length}, значков ${sv.badges.filter(b => b.got).length}; план: ${(sv.journal.find(j => j.plan) || {}).plan || planText}`);
+    await sp.click('#emblems .emblem >> nth=2');
+    await sp.waitForFunction(() => /^\S+ Тестер/.test(document.querySelector('#nick').textContent), null, { timeout: 5000 });
+    const card = (await sp.evaluate(() => Lab.api('/api/arcade'))).mine[0];
+    check('Эмблема студии видна рядом с ником в аркаде', !!card.emblem, card.emblem);
+    await shot(sp, '6c-studio', true);
+    await sp.close();
+  }
+  // игра одним файлом: оболочка, Babylon и код версии внутри, скачивание вложением
+  {
+    const me3 = await student.evaluate(() => Lab.api('/api/me'));
+    const dl = await student.evaluate(u => fetch(u).then(async r => ({ status: r.status, cd: r.headers.get('content-disposition') || '', html: await r.text() })), `/download/${me3.game.id}/${me3.game.current}.html`);
+    check('Игра скачивается одним файлом .html', dl.status === 200 && /attachment/.test(dl.cd) && dl.html.length > 1e6 && !/src="lab\.js"/.test(dl.html) && /\bGAME\b/.test(dl.html), `${Math.round(dl.html.length / 1e6)} МБ, ${dl.cd.slice(0, 40)}`);
+  }
+  // «Нужна помощь»: рука ученика — первой в очереди учителя, «Помог» опускает её
+  await teacher.click('.tabs >> text=Урок');
+  await student.click('#helpBtn');
+  await teacher.waitForSelector('#helpQueue [data-helped="Тестер"]', { timeout: 10000 });
+  check('Поднятая рука ученика — в очереди «Нужна помощь» у учителя', /поднял руку/.test(await teacher.textContent('#helpQueue')));
+  await teacher.click('#helpQueue [data-helped="Тестер"]');
+  await student.waitForFunction(() => /Нужна помощь/.test(document.querySelector('#helpBtn').textContent), null, { timeout: 10000 });
+  check('Кнопка учителя «Помог» опустила руку у ученика', true);
+  const wall = await teacher.evaluate(c => Lab.api('/api/teacher/wall?code=' + c), code);
+  check('Финал на проекторе: рейтинг «ещё раз» и несбывшиеся предсказания', Array.isArray(wall.again) && Array.isArray(wall.fails), `ещё раз: ${wall.again.length}, провалов: ${wall.fails.length}`);
   await student.click('#noteBtn');
   await student.fill('#noteText', 'Проверка: заметка автора с шага');
   await student.click('#noteSend');
@@ -374,6 +421,7 @@ async function wowStart(teacher, student, mode, shot) {
   await teacher.click('#wowSecret >> text=Показать');
   await teacher.waitForSelector('#wowSecretSel');
   check('Учитель видит секрет кубика', (await teacher.textContent('#wowSecret')).includes('[кубик]'));
+  check('Секрет у учителя без слова «null»', !(await nullText(teacher)));
   await teacher.selectOption('#wowSecretSel', 'yarost');
   await teacher.waitForSelector('#wowSecret >> text=выбор учителя', { timeout: 10000 });
   check('Учитель тайно заменил секрет', (await teacher.textContent('#wowSecret')).includes('Под конец игра злится'));
@@ -675,6 +723,44 @@ async function fixtureLesson(mode, teacher, student, pj, shot) {
 
 /* ---------- урок 2: донор и одно правило, секрет донора, квизы, Фабрика с донором на выбор, сборка, дуэль ---------- */
 const step2 = id => lesson2.checkpoints.flatMap(c => c.steps).find(s => s.id === id);
+// эксперимент с ручкой (уроки 2–8): партия как есть → ручка и предсказание → партия с ручкой → сравнение → «Оставить эти числа» — версия «баланс» без ИИ
+async function experimentRound(student, shot) {
+  // эксперимент с ручкой: партия как есть → ручка и предсказание → партия с ручкой → сравнение → «Оставить эти числа» — версия «баланс» без ИИ
+  const aiBefore = (await student.evaluate(() => Lab.api('/api/me'))).aiCalls;
+  await student.click('#step-eksperiment .veil .btn');
+  let ex = await gameFrame(student, '/play/', 0);
+  await playRound(ex, { score: 40 });
+  await student.waitForSelector('#step-eksperiment [data-exp=knob]', { timeout: 10000 });
+  const knob = await student.$eval('#step-eksperiment [data-exp=knob]', s => s.options[1].value);
+  await student.selectOption('#step-eksperiment [data-exp=knob]', knob);
+  await student.fill('#f-eksperimentguess', 'Станет напряжённее');
+  await student.waitForTimeout(700);
+  const turned = await student.$eval('#step-eksperiment [data-exp=range]', r => { const to = Number(r.value) === Number(r.max) ? r.min : r.max; r.value = to; r.dispatchEvent(new Event('input')); r.dispatchEvent(new Event('change')); return Number(to); });
+  await student.waitForSelector('#step-eksperiment >> text=Ручка уже повёрнута в игре', { timeout: 10000 });
+  await sleep(600);
+  await playRound(ex, { score: 70, restart: true });
+  await student.waitForSelector('#step-eksperiment [data-result]', { timeout: 10000 });
+  check('Эксперимент: цифры партии как есть и с ручкой рядом', /как есть/.test(await student.textContent('#step-eksperiment table')), `ручка ${knob} → ${turned}`);
+  await student.click('#step-eksperiment [data-result="Сбылось"]');
+  await student.fill('#f-eksperimentnoticed', 'Враги ближе, партия короче');
+  const exVers = await student.locator('#step-eksperiment .ver').count();
+  await student.click('#step-eksperiment [data-exp=keep]');
+  await student.waitForFunction(n => document.querySelectorAll('#step-eksperiment .ver').length > n, exVers, { timeout: 15000 });
+  await student.waitForSelector('#step-eksperiment.done', { timeout: 10000 });
+  const me2 = await student.evaluate(() => Lab.api('/api/me'));
+  const balV = me2.game.versions[me2.game.current - 1];
+  check('«Оставить эти числа» — новая версия «баланс» без вызова ИИ', balV.kind === 'баланс' && balV.cfg[knob] === turned && me2.aiCalls === aiBefore, `v${me2.game.current}: ${JSON.stringify(balV.cfg)}`);
+  const balHtml = await student.evaluate(u => fetch(u).then(r => r.text()), `/play/${me2.game.id}/${me2.game.current}`);
+  check('Числа баланса в коде версии: оболочка берёт их как «Как задумано»', balHtml.includes('Лаб3D: баланс автора') && balHtml.includes(`"${knob}":${turned}`));
+  ex = await gameFrame(student, `/play/${me2.game.id}/${me2.game.current}`, 0); // рамка перезапущена на новой версии
+  const asDesigned = await ex.evaluate(k => GAME.config[k].value, knob); // eslint-disable-line no-undef
+  check('Новая версия стартует с числами автора', asDesigned === turned, `${knob} = ${asDesigned}`);
+  await shot(student, 'l8-experiment', true);
+  // «Моя студия» после эксперимента: значки «Баланс без ИИ» и «Экспериментатор», запись эксперимента в журнале
+  const sv = await student.evaluate(() => Lab.api('/api/studio'));
+  check('Моя студия: значки «Баланс без ИИ» и «Экспериментатор», эксперимент в журнале', sv.badges.find(b => b.id === 'balance').got && sv.badges.find(b => b.id === 'experiment').got && sv.journal.some(j => j.experiments.length), sv.badges.filter(b => b.got).map(b => b.title).join(', '));
+}
+
 async function lessonTwo(mode, teacher, student, shot) {
   await teacher.click('.tabs >> text=Урок');
   await teacher.selectOption('#moduleSel', '1');
@@ -1614,6 +1700,7 @@ async function lessonEight(mode, teacher, student, shot, { browser, base, code, 
 
   // релиз модуля 2: на выбор игры уроков 5–8
   await student.click('.cp >> text=Мастерская');
+  await experimentRound(student, shot);
   await student.waitForSelector('#step-reliz .seg .opt');
   const built = [5, 6, 7, 8].filter(n => n >= FROM).length;
   const games = await student.$$eval('#step-reliz .seg .opt', bs => bs.map(b => b.dataset.game));
@@ -1644,6 +1731,7 @@ async function lessonEight(mode, teacher, student, shot, { browser, base, code, 
   await student.click('.cp >> text=Играем вместе');
   if (mode === 'demo') { check('Выставка без игр класса ждёт игры джема', /Ждём игры класса/.test(await student.textContent('#step-vystavka'))); return; }
   const nctx = await browser.newContext({ viewport: { width: 1280, height: 900 } });
+  await nctx.addInitScript(() => { window.LAB_ASK_AUTO = true; });
   const nb = await nctx.newPage();
   watch(nb, errors);
   await nb.goto(base + '/?code=' + code);
@@ -1704,6 +1792,7 @@ async function lessonEight(mode, teacher, student, shot, { browser, base, code, 
 /* ---------- «Играем вместе»: второй ученик, игры друг друга, вызов, плейтест, отзыв, аркада ---------- */
 async function together(browser, base, code, teacher, student, errors, shot) {
   const nctx = await browser.newContext({ viewport: { width: 1280, height: 900 } });
+  await nctx.addInitScript(() => { window.LAB_ASK_AUTO = true; });
   const nb = await nctx.newPage();
   watch(nb, errors);
   // вторая ученица собирает свою игру: Фабрика и решения кубиками, ИГРА, сборка без продюсера
@@ -1790,7 +1879,7 @@ async function together(browser, base, code, teacher, student, errors, shot) {
   await nb.click('#step-pleytest >> text=↻ Обновить');
   await nb.waitForSelector('#step-pleytest .discovery .barrow', { timeout: 10000 });
   const disc = (await nb.textContent('#step-pleytest .discovery')).replace(/\s+/g, ' ');
-  check('Открытие плейтеста: партии чужих игроков и «ещё раз»', /2\s*партий сыграли чужие/.test(disc) && /1\s*раз нажали «ещё раз»/.test(disc), disc.slice(0, 90));
+  check('Открытие плейтеста: партии чужих игроков и «ещё раз»', /2\s*партий сыграли чужие/.test(disc) && /1\s*раз чужие игроки сами нажали «ещё раз»/.test(disc), disc.slice(0, 90));
   check('Открытие плейтеста: доминирующая кнопка — «→»', /держали → вправо/.test(disc), (disc.match(/держали[^.]*/) || [''])[0]);
   check('Автор видит карточку плейтеста соседа', disc.includes('Хочется видеть, откуда летят тучи'));
   check('Автор видит слепую пару: свой секрет почувствовали 1 из 1', /твой секрет почувствовали 1 из 1/.test((await nb.textContent('#step-pleytest')).replace(/\s+/g, ' ')));

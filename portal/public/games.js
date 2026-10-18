@@ -11,7 +11,7 @@ const Games = (() => {
   // score: false — партии не записываются (рамки учителя на проекторе и в карточке ученика).
   // data — данные для игры (lab.data), например мелодия из секвенсора; уходят до cfg
   // challenge — под игрой есть кнопка вызова (оболочка пишет о ней на экране конца партии), ghost — призрак соперника { nick, score, line }.
-  function frame({ src, key, info, cfg, data, label, onReady, onOver, onScore, onAgain, onError, onPlaytest, onPlaytestStep, autostart, score = true, challenge, ghost }) {
+  function frame({ src, key, info, cfg, data, label, onReady, onOver, onScore, onAgain, onError, onPlaytest, onPlaytestStep, onPoster, autostart, score = true, challenge, ghost }) {
     const box = el('div', { class: 'gamebox' });
     const veil = el('div', { class: 'veil' });
     let iframe = null, timer = null, ready = false;
@@ -26,7 +26,7 @@ const Games = (() => {
       if (!iframe || e.source !== iframe.contentWindow) return;
       const m = e.data || {};
       if (m.source !== 'lab-game') return;
-      if (m.type === 'ready') { ready = true; clearTimeout(timer); if (score) sendRecords(); if (data) post({ type: 'data', data }); if (cfg) post({ type: 'setCfg', cfg }); if (challenge) post({ type: 'challengeOn' }); if (ghost) post({ type: 'ghost', ghost }); if (onReady) onReady(m.meta || {}); }
+      if (m.type === 'ready') { ready = true; clearTimeout(timer); h.meta = m.meta || {}; h.changed = {}; if (score) sendRecords(); if (data) post({ type: 'data', data }); if (cfg) post({ type: 'setCfg', cfg }); if (challenge) post({ type: 'challengeOn' }); if (ghost) post({ type: 'ghost', ghost }); if (onReady) onReady(m.meta || {}); if (h.onCfg) h.onCfg(h.changed); }
       if (m.type === 'over' && score) {
         api('/api/score', Object.assign({ game: key(), score: m.score, seed: m.seed, tele: m.tele }, extra()))
           .then(r => { postRecords(r); if (onScore) onScore(m, r); }).catch(() => {});
@@ -37,6 +37,9 @@ const Games = (() => {
       }
       if (m.type === 'again' && onAgain) onAgain(m);
       if (m.type === 'error') { clearTimeout(timer); if (onError) onError(m); }
+      // ручки, повёрнутые в игре (Tab), относительно «Как задумано» — для «Сохранить мой баланс» и эксперимента с ручкой
+      if (m.type === 'poster' && onPoster && m.data) onPoster(m.data);
+      if (m.type === 'cfg') { h.changed = m.cfg || {}; if (h.onCfg) h.onCfg(h.changed); }
       if (m.type === 'playtestStep' && onPlaytestStep) onPlaytestStep(m);
       if (m.type === 'playtest' && onPlaytest) onPlaytest(m);
     }
@@ -63,6 +66,7 @@ const Games = (() => {
       destroy() { removeEventListener('message', onMsg); h.stop(true); const i = frames.indexOf(h); if (i >= 0) frames.splice(i, 1); },
       fullscreen() { if (box.requestFullscreen) box.requestFullscreen().catch(() => {}); },
       post,
+      meta: null, changed: {}, onCfg: null,
       get ready() { return ready; },
     };
     box.append(veil);
@@ -116,10 +120,13 @@ const Games = (() => {
   const hue = id => [...String(id)].reduce((n, c) => (n * 31 + c.charCodeAt(0)) % 360, 7);
   function cover(c) {
     const h = hue(c.id);
-    return el('div', { class: 'cover', style: `background:linear-gradient(140deg,hsl(${h} 65% 34%),hsl(${(h + 50) % 360} 70% 16%))` },
+    // кадр из игры автора, пока его нет — цветная обложка по id
+    const bg = `linear-gradient(140deg,hsl(${h} 65% 34%),hsl(${(h + 50) % 360} 70% 16%))`;
+    return el('div', { class: 'cover' + (c.poster ? ' shot' : ''), style: c.poster ? `background:linear-gradient(180deg,transparent 40%,#000a),url("${c.poster}") center/cover,${bg}` : `background:${bg}` },
       el('h3', { class: 'cv-title' }, c.title), el('span', { class: 'cv-ver' }, 'v' + c.version));
   }
   const DEC = [['feeling', 'Чувство'], ['honesty', 'Честность'], ['choice', 'Выбор']];
+  const plural = (n, one, few, many) => { const a = n % 10, b = n % 100; return a === 1 && b !== 11 ? one : a >= 2 && a <= 4 && (b < 12 || b > 14) ? few : many; };
   function recordLine(c) {
     return c.record && c.record.score > 0
       ? el('div', { class: 'small rec' }, '🏆 Рекорд класса: ', el('b', {}, String(c.record.score)), ` · ${c.record.nick}`)
@@ -134,10 +141,11 @@ const Games = (() => {
       compact ? null : cover(c),
       el('div', { class: 'stack', style: 'gap:6px' },
         compact ? el('div', { class: 'row', style: 'gap:6px' }, el('h3', { class: 'grow' }, c.title), tags) : tags.length ? el('div', { class: 'row', style: 'gap:6px' }, tags) : null,
-        el('div', { class: 'small muted' }, `автор: ${c.nick}` + (c.lesson ? ` · урок ${c.lesson.number}` : '') + ` · версия ${c.version}`),
+        el('div', { class: 'small muted' }, `автор: ${c.emblem ? c.emblem + ' ' : ''}${c.nick}` + (c.lesson ? ` · урок ${c.lesson.number}` : '') + ` · версия ${c.version}`),
         c.donor ? el('div', { class: 'small donor-line' }, `по мотивам механики ${c.donor}`) : null,
         dec.length ? el('div', { class: 'decided' }, el('div', { class: 'eyebrow' }, 'Что решил я'),
           el('ul', {}, dec.map(([k, label]) => el('li', {}, el('b', {}, label + ': '), valText(c.decisions[k]))))) : null,
+        el('div', { class: 'again-line' + (c.again ? '' : ' none'), title: 'Сколько раз чужие игроки сами нажали «ещё раз» — главный тест игры' }, el('b', {}, String(c.again || 0)), c.again ? ` ${plural(c.again, 'раз', 'раза', 'раз')} сыграли ещё` : ' — пока никто не вернулся сыграть ещё'),
         recordLine(c), extra || null,
         actions ? el('div', { class: 'row', style: 'gap:8px;margin-top:4px' }, actions) : null));
   }
@@ -168,12 +176,36 @@ const Games = (() => {
         host.append(el('div', { class: 'row' },
           el('div', { class: 'stack', style: 'gap:2px' }, el('div', { class: 'eyebrow' }, 'Код вызова'), el('div', { class: 'chcode' }, r.code)),
           el('div', { class: 'grow small muted' }, `Вызов уже на доске вызовов у всего класса: тот же мир (зерно ${r.seed}), кто наберёт больше? Код и ссылка — для аркады и другого компьютера класса.`, el('br'), el('a', { href: r.url, target: '_blank', rel: 'noopener' }, url)),
-          el('button', { class: 'btn ghost small', type: 'button', onclick: () => copy(text) }, '⧉ Скопировать вызов')));
+          el('button', { class: 'btn ghost small', type: 'button', onclick: () => copy(text) }, '⧉ Скопировать вызов'),
+          el('button', { class: 'btn ghost small', type: 'button', 'data-postcard': '1', onclick: () => postcard({ title: r.challenge.title, code: r.code, score: over.score, line: (over.tele || {}).line, poster: t.poster }) }, '🖼 Открытка')));
         beep('good');
       } catch (e) { toast(e.message, 'err'); btn.disabled = false; }
     });
     host.append(el('div', { class: 'row' }, btn, el('span', { class: 'muted small' }, 'Тот же мир для всего класса: вызов появится у одноклассников на доске вызовов.')));
     return host;
+  }
+
+  // открытка вызова: картинка 1200×630 с обложкой игры, кодом и полоской партии — её можно отправить другу или повесить в чат класса
+  async function postcard({ title, code, score, line, poster }) {
+    const W = 1200, H = 630, cv = document.createElement('canvas'); cv.width = W; cv.height = H;
+    const c = cv.getContext('2d');
+    const g = c.createLinearGradient(0, 0, W, H); g.addColorStop(0, '#1E2447'); g.addColorStop(1, '#0b1020');
+    c.fillStyle = g; c.fillRect(0, 0, W, H);
+    if (poster) await new Promise(res => { const im = new Image(); im.onload = () => { c.globalAlpha = 0.55; c.drawImage(im, 0, 0, W, H * 0.62); c.globalAlpha = 1; res(); }; im.onerror = res; im.src = poster; });
+    const sh = c.createLinearGradient(0, H * 0.3, 0, H); sh.addColorStop(0, 'rgba(11,16,32,0)'); sh.addColorStop(0.5, 'rgba(11,16,32,.95)'); c.fillStyle = sh; c.fillRect(0, 0, W, H);
+    c.fillStyle = '#FFC51F'; c.font = '700 30px system-ui, sans-serif'; c.fillText('ПОБЕЙ МОЙ МИР', 60, 330);
+    c.fillStyle = '#f2efe6'; c.font = '800 64px system-ui, sans-serif'; c.fillText(String(title || 'Моя игра').slice(0, 30), 60, 405);
+    c.font = '700 40px system-ui, sans-serif'; c.fillText(`${score} очков — сможешь больше?`, 60, 470);
+    c.fillStyle = '#7cf5a8'; c.font = '900 96px ui-monospace, Consolas, monospace'; c.fillText(code, 60, 580);
+    c.fillStyle = '#9aa3c7'; c.font = '26px system-ui, sans-serif'; c.fillText('код вызова · аркада класса · Лаборатория игр', 470, 572);
+    if (Array.isArray(line) && line.length > 1) {
+      const max = Math.max(1, ...line), x0 = 720, y0 = 300, w = 420, h = 120;
+      c.strokeStyle = '#7cf5a8'; c.lineWidth = 5; c.beginPath();
+      line.forEach((v, i) => { const x = x0 + i / (line.length - 1) * w, y = y0 + h - v / max * h; if (i) c.lineTo(x, y); else c.moveTo(x, y); });
+      c.stroke();
+    }
+    const a = document.createElement('a'); a.download = `вызов ${code}.png`; a.href = cv.toDataURL('image/png'); document.body.append(a); a.click(); a.remove();
+    toast('Открытка сохранена: отправь её тому, кого вызываешь', 'ok');
   }
 
   // игра по вызову: тот же мир и ручки, призрак лидера сверху в игре, таблица вызова. После партии призрак обновляется (новый лидер — новый призрак).
@@ -331,7 +363,10 @@ const Games = (() => {
     const box = el('div', { class: 'stack discovery' });
     if (!d || (!d.rounds && !d.cards.length)) { box.append(el('p', { class: 'muted' }, 'Пока никто из класса не играл в эту игру. Открытие появится после первых партий соседей.')); return box; }
     const tile = (value, label) => el('div', { class: 'stat' }, el('b', {}, String(value)), el('span', {}, label));
-    box.append(el('div', { class: 'scores' }, tile(d.rounds, 'партий сыграли чужие игроки'), tile(d.players, 'игроков'), tile(d.again, 'раз нажали «ещё раз»')));
+    // «ещё раз» — главный тест курса: игрок сам захотел вернуться. Поэтому эта плитка первая и крупная
+    const hero = el('div', { class: 'stat hero' }, el('b', {}, String(d.again)), el('span', {}, d.again ? `раз чужие игроки сами нажали «ещё раз»` : 'пока никто не нажал «ещё раз»: в чём игре не хватает крючка?'));
+    box.append(el('div', { class: 'scores' }, hero, tile(d.rounds, 'партий сыграли чужие игроки'), tile(d.players, 'игроков')));
+    if ((d.runs || []).some(r => r.line.length > 1)) box.append(runs(d.runs));
     if (d.dominant) {
       const strong = d.dominant.share >= 0.5;
       box.append(el('p', { class: 'concept' }, el('b', {}, 'Открытие плейтеста. '),
@@ -352,6 +387,25 @@ const Games = (() => {
       [['like', 'Нравится'], ['want', 'Хочется'], ['whatif', 'А что если']].filter(([k]) => valText(c[k])).map(([k, label]) =>
         el('div', { class: 'small' }, el('b', {}, label + ': '), valText(c[k]), c[k].dice ? el('span', { class: 'tag dice', style: 'margin-left:6px' }, '[кубик]') : null)))));
     return box;
+  }
+  // полоска партии: счёт по секундам; участок, где счёт стоял дольше 8 секунд, — подсвечен как «тут, возможно, скучно»
+  function runs(list) {
+    const wrap = el('div', { class: 'stack runs', style: 'gap:6px' }, el('b', {}, 'Как шли чужие партии'));
+    list.filter(r => r.line.length > 1).forEach(r => {
+      const W = 220, H = 34, max = Math.max(1, ...r.line), n = r.line.length;
+      const x = i => Math.round(i / (n - 1) * W), y = v => Math.round(H - 3 - v / max * (H - 6));
+      let flat = null, run = 0, bestRun = 0, end = 0;
+      for (let i = 1; i < n; i++) { run = r.line[i] === r.line[i - 1] ? run + 1 : 0; if (run > bestRun) { bestRun = run; end = i; } }
+      const flatSec = bestRun * r.step;
+      if (flatSec >= 8) flat = `<rect x="${x(end - bestRun)}" y="0" width="${Math.max(2, x(end) - x(end - bestRun))}" height="${H}" class="flat"/>`;
+      const pts = r.line.map((v, i) => `${x(i)},${y(v)}`).join(' ');
+      wrap.append(el('div', { class: 'runrow' },
+        el('span', { class: 'small', style: 'min-width:90px' }, r.nick),
+        el('span', { class: 'spark', html: `<svg viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" role="img" aria-label="счёт по секундам">${flat || ''}<polyline points="${pts}"/></svg>` }),
+        el('span', { class: 'small muted' }, `${r.score} очков за ${r.time} с` + (r.hurts ? `, урон ${r.hurts}` : '') + (flatSec >= 8 ? ` · ${flatSec} с без очков` : '') + (r.again ? ' · 🔁 ещё раз' : ''))));
+    });
+    wrap.append(el('p', { class: 'small muted' }, 'Розовая полоса — долго без очков. Там игроку могло быть скучно: что можно туда добавить?'));
+    return wrap;
   }
   function feedback(fb) {
     if (!fb) return el('p', { class: 'muted small' }, 'Отзыв учителя появится здесь, когда учитель посмотрит твою игру.');

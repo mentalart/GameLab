@@ -30,6 +30,7 @@ function answerText(step, a, game) {
     case 'producer': return v.result ? (v.result.forks || []).map((x, i) => `${x.question} → ${(v.choices || {})[i] || 'не выбрано'}`).join('\n') || 'прочитал' : '';
     case 'build': return game ? `«${game.title || ''}», версий ${game.versions.length}, текущая v${game.current}` + (v.rounds ? `, партий ${v.rounds}` : '') : '';
     case 'ownplay': return v.rounds ? `партий ${v.rounds}` + (val(v.answer) ? `; ${step.question || 'ответ'}: ${dice(v.answer)}` : '') : '';
+    case 'experiment': return v.knob ? `ручка ${v.knob}: ${v.from} → ${v.to == null ? '—' : v.to}; предсказание: ${dice(v.guess) || '—'}` + (v.before && v.after ? `; счёт ${v.before.score} → ${v.after.score}` : '') + (v.result ? `; ${v.result.toLowerCase()}` : '') + (v.kept === 'keep' ? '; числа сохранены' : '') : '';
     case 'aicheck': return val(v.text) ? `догадка: ${val(v.text)}` : '';
     case 'workshop': return (v.requests || []).map(r => `${r.text}${r.dice ? ' [кубик]' : ''} → v${r.version}`).join('\n');
     case 'arcade': return v.game ? `«${v.title || ''}» (автор ${v.author || '—'}), партий ${v.rounds || 0}, лучший счёт ${v.best || 0}${v.beat ? ', рекорд автора побит' : ''}` : '';

@@ -48,6 +48,21 @@ const Lab = (() => {
     host.append(t);
     setTimeout(() => t.remove(), ms);
   }
+  // вопрос «да / нет» в окне страницы вместо системного confirm(): тот блокирует игры в рамках и выглядит как ошибка браузера.
+  // LAB_ASK_AUTO — для проверочного прогона e2e: ответ «да» без окна
+  function ask(text, { ok = 'Да', cancel = 'Отмена', danger = false } = {}) {
+    if (window.LAB_ASK_AUTO) return Promise.resolve(true);
+    return new Promise(resolve => {
+      const dlg = el('dialog', { class: 'ask' });
+      const done = v => { dlg.close(); dlg.remove(); resolve(v); };
+      dlg.append(el('div', { class: 'stack' }, el('p', {}, text), el('div', { class: 'row' },
+        el('button', { class: 'btn' + (danger ? ' danger' : ''), type: 'button', 'data-ok': '1', onclick: () => done(true) }, ok),
+        el('button', { class: 'btn ghost', type: 'button', onclick: () => done(false) }, cancel))));
+      dlg.addEventListener('cancel', e => { e.preventDefault(); done(false); });
+      document.body.append(dlg); dlg.showModal();
+      dlg.querySelector('[data-ok]').focus();
+    });
+  }
   // кубик: случайный вариант из колоды, не повторяя текущий
   function roll(deck, current) {
     const list = (deck || []).filter(x => x !== current);
@@ -97,7 +112,7 @@ const Lab = (() => {
       if (!cardRow) return;
       cardRow.innerHTML = '';
       hand.forEach(t => cardRow.append(el('button', { type: 'button', class: 'cardopt' + (v.text === t ? ' on' : ''), 'aria-pressed': String(v.text === t), onclick: () => {
-        v = { text: t, card: true }; ta.value = t; setTag(); onChange(v); beep('tick'); paintCards();
+        v = { text: t, card: true }; rolled = null; ta.value = t; mark(); setTag(); onChange(v); beep('tick'); paintCards();
       } }, t)));
       if (f.deck.length > 6) cardRow.append(el('button', { type: 'button', class: 'cardopt more', onclick: () => { deal(); beep('dice'); } }, '↻ Другие карты'));
     };
@@ -107,7 +122,11 @@ const Lab = (() => {
       paintCards();
     };
     if (cardRow) { deal(); if (f.deck.includes(v.text) && !hand.includes(v.text)) { hand[0] = v.text; paintCards(); } }
-    ta.addEventListener('input', () => { v = { text: ta.value, dice: false }; setTag(); onChange(v); if (cardRow) cardRow.querySelectorAll('.cardopt.on').forEach(b => { b.classList.remove('on'); b.setAttribute('aria-pressed', 'false'); }); });
+    // текст кубика подсвечен, пока его не переписали: правка запятой или регистра своими словами не считается
+    const norm = t => String(t || '').toLowerCase().replace(/ё/g, 'е').replace(/[^a-zа-я0-9]+/g, '');
+    let rolled = v.dice ? v.text : null;
+    const mark = () => ta.classList.toggle('dice-text', !!v.dice);
+    ta.addEventListener('input', () => { v = { text: ta.value, dice: rolled != null && norm(ta.value) === norm(rolled) }; mark(); setTag(); onChange(v); if (cardRow) cardRow.querySelectorAll('.cardopt.on').forEach(b => { b.classList.remove('on'); b.setAttribute('aria-pressed', 'false'); }); });
     const kids = [ta];
     const example = f.example ? el('div', { class: 'hint example', 'aria-live': 'polite' }) : null;
     if (f.deck && f.deck.length) {
@@ -115,12 +134,12 @@ const Lab = (() => {
       d.addEventListener('click', () => {
         d.classList.remove('roll'); void d.offsetWidth; d.classList.add('roll'); beep('dice');
         if (example) { example.dataset.text = roll(f.deck, example.dataset.text); example.textContent = 'Например: ' + example.dataset.text + '. А у тебя?'; return; }
-        v = { text: roll(f.deck, v.text), dice: true }; ta.value = v.text; setTag(); onChange(v);
+        v = { text: roll(f.deck, v.text), dice: true }; rolled = v.text; ta.value = v.text; mark(); setTag(); onChange(v);
         if (cardRow) { if (!hand.includes(v.text)) hand[0] = v.text; paintCards(); }
       });
       kids.push(d);
     }
-    setTag();
+    setTag(); mark();
     return el('div', { class: 'field' + (f.cards ? ' with-cards' : '') },
       el('div', { class: 'head' }, f.letter ? el('span', { class: 'letter' }, f.letter) : null, el('label', { class: 'lbl', for: ta.id, style: 'margin:0' }, f.label), tagHost),
       f.hint ? el('div', { class: 'hint' }, f.hint) : null,
@@ -128,5 +147,5 @@ const Lab = (() => {
       el('div', { class: 'box' }, kids), example);
   }
   const fmtTime = iso => { if (!iso) return '—'; const s = Math.round((Date.now() - new Date(iso)) / 1000); return s < 60 ? s + ' с назад' : s < 3600 ? Math.round(s / 60) + ' мин назад' : new Date(iso).toLocaleString('ru-RU'); };
-  return { token, api, job, el, toast, roll, beep, copy, fmtTime, valText, fieldTag, fieldEditor };
+  return { token, api, job, el, toast, ask, roll, beep, copy, fmtTime, valText, fieldTag, fieldEditor };
 })();

@@ -44,7 +44,7 @@ $('#studentForm').addEventListener('submit', async e => {
     const r = await Lab.api('/api/login', { role: 'student', code: $('#code').value, nick: $('#nick').value });
     Lab.token.set(r.token, 'student');
     const next = q.get('next') || '';
-    location.href = /^\/arcade(\?[\w=&-]*)?$/.test(next) ? next : '/student'; // вход по ссылке вызова ведёт обратно в аркаду
+    location.href = /^\/(arcade|studio)(\?[\w=&-]*)?$/.test(next) ? next : '/student'; // вход по ссылке вызова ведёт обратно в аркаду, из «Моей студии» — в студию
   } catch (err) { $('#sErr').textContent = err.message; }
 });
 $('#teacherForm').addEventListener('submit', async e => {

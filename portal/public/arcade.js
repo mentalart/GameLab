@@ -77,7 +77,8 @@ function drawMine() {
       try { await api('/api/arcade/hide', { game: c.id, hidden: !c.hidden }); toast(c.hidden ? 'Игра снова в аркаде' : 'Игра скрыта из аркады класса', 'ok'); await load(); } catch (e) { toast(e.message, 'err'); }
     });
     host.append(el('div', { class: 'mine-row' },
-      Games.card(c, { actions: [el('button', { class: 'btn small', type: 'button', onclick: () => play(c) }, '▶ Играть'), hide] }),
+      Games.card(c, { actions: [el('button', { class: 'btn small', type: 'button', onclick: () => play(c) }, '▶ Играть'), hide,
+        el('a', { class: 'btn ghost small', href: `/download/${c.id}/${c.version}.html`, download: '', title: 'Один файл .html: открывается без портала и без интернета' }, '⬇ Скачать')] }),
       el('div', { class: 'card stack', style: 'gap:8px' }, el('h3', {}, `Урок ${c.lesson ? c.lesson.number + '. ' + c.lesson.title : ''}`),
         el('div', { class: 'small muted' }, `Версий: ${c.versions}, в аркаде — версия ${c.version}. Партий чужих игроков: ${c.plays}.`),
         Games.discovery(c.discovery))));

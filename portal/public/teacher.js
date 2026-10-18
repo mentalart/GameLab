@@ -3,7 +3,7 @@
 'use strict';
 const { el, api, toast, copy, beep, fmtTime, fieldEditor, valText } = Lab;
 const $ = s => document.querySelector(s);
-const T = { classes: [], lessons: [], modules: [], module: null, code: null, overview: null, timer: null, skew: 0, demo: false, filter: 'all' };
+const T = { cheat: new Set(), classes: [], lessons: [], modules: [], module: null, code: null, overview: null, timer: null, skew: 0, demo: false, filter: 'all' };
 
 async function boot() {
   try { await loadClasses(); } catch (e) { if (e.status === 401) { location.href = '/'; return; } toast(e.message, 'err'); return; }
@@ -90,9 +90,10 @@ function drawLesson() {
     el('a', { class: 'btn warm', href: '/projector?code=' + o.class.code, target: 'lab-projector', rel: 'opener', id: 'projectorBtn' }, '📽 Проектор ↗'),
     nextCp ? el('button', { class: 'btn', type: 'button', onclick: () => setOpened(opened.concat(nextCp.id)) }, `Открыть: ${nextCp.title} →`) : el('span', { class: 'tag ok' }, 'все чекпоинты открыты'),
     el('button', { class: 'btn ghost small', type: 'button', onclick: () => setOpened(cps.map(c => c.id)) }, 'Открыть все'),
-    el('button', { class: 'btn ghost small', type: 'button', onclick: () => { if (confirm('Закрыть все чекпоинты?')) setOpened([]); } }, 'Закрыть все')));
+    el('button', { class: 'btn ghost small', type: 'button', onclick: async () => { if (await Lab.ask('Закрыть все чекпоинты?', { ok: 'Закрыть все' })) setOpened([]); } }, 'Закрыть все')));
   host.append(el('p', { class: 'muted small' }, o.lesson.goal));
   host.append(spendBar(o));
+  host.append(helpQueue(o, cps)); // кого обойти первым — выше чекпоинтов, чтобы видеть с порога
   const total = o.students.length;
   const studentsAt = id => o.students.filter(s => s.where && cps.find(c => c.id === id).steps.some(st => st.id === s.where)).length;
   const finished = c => o.students.filter(s => c.steps.every(st => s.doneSteps.includes(st.id))).length;
@@ -117,7 +118,8 @@ function drawLesson() {
       el('div', { class: 'grow' }, el('b', {}, `${i + 1}. ${c.title}`), el('div', { class: 'small muted' }, `${c.minutes} мин · ${c.steps.map(s => s.title).join(' · ')}`), script(c)),
       timed ? el('span', { class: 'tag timer-tag', 'data-timer': '1' }, '⏱') : on ? el('button', { class: 'btn ghost small', type: 'button', title: 'Запустить таймер этого чекпоинта', onclick: () => timer('restart', c.id) }, '⏱ таймер') : null,
       on && total ? el('span', { class: 'tag' + (finished(c) === total ? ' ok' : '') }, `закончили: ${finished(c)} из ${total}`) : null,
-      el('span', { class: 'tag' }, `здесь: ${studentsAt(c.id)}`));
+      el('span', { class: 'tag' }, `здесь: ${studentsAt(c.id)}`),
+      cheatSheet(c));
   })));
   if (o.class.timer) host.append(el('div', { class: 'row small' }, el('span', { class: 'muted' }, 'Таймер чекпоинта:'),
     el('button', { class: 'btn ghost small', type: 'button', onclick: () => timer('restart') }, '↻ заново'),
@@ -151,6 +153,72 @@ function drawLesson() {
   }
   tickTimers();
   scrollTo(0, keepScroll);
+}
+// шпаргалка чекпоинта: по каждому шагу — один вопрос, который учитель задаёт у парты, и признак, что ученик буксует.
+// Показывается у чекпоинтов без своего «Сценария учителя»; у шага может быть свой teacher: { ask, watch } — он важнее общего по типу шага
+const TIPS = {
+  cards: ['Какая карта самая безумная? Как она уживётся с остальными?', 'Спорят о картах дольше двух минут — пора тянуть игру'],
+  play: ['Что ты сейчас почувствовал? В какой момент?', 'Играет молча и без эмоций — спросите, чего не хватает'],
+  choice: ['Почему именно это? Чем докажешь из своей партии?', 'Выбирает первый вариант не читая'],
+  abtest: ['В какой копии было напряжённее и в какой момент?', 'Сыграл одну копию и голосует'],
+  secret: ['Что ты заметил в игре, а не на картах?', 'Выбирает то, что было на картах, — это ловушка'],
+  text: ['Перескажи одной фразой: что здесь главное?', 'Пролистал за секунды'],
+  sort: ['Почему эта карточка — решение геймдизайнера, а не программиста?', 'Жмёт наугад ради очков'],
+  factory: ['Что почувствует игрок? Какое слово тут твоё, а не кубика?', 'Все поля заполнены кубиком'],
+  decisions: ['Как игрок поймёт, что проиграл честно?', 'Пишет «чтобы было весело» вместо ощущения'],
+  igra: ['Что делает игрок руками каждую секунду?', 'Поля пустые или повторяют Фабрику'],
+  producer: ['Какую развилку выбрал и почему? Твой поворот на месте?', 'Нажимает «поправит продюсер», не читая находки'],
+  build: ['Что проверишь первым, когда игра соберётся?', 'Пересобирает снова и снова вместо игры'],
+  aicheck: ['Что программист решил сам, а ты бы решил иначе?', 'Не нашёл ни одного своеволия'],
+  experiment: ['Что предсказал? Сбылось? Одна партия — уже закон?', 'Крутит много ручек сразу, а не одну'],
+  workshop: ['Это баг или ощущение? Опиши по формуле «Делал… Ожидал… Получилось… Не трогай…»', 'Просит «сделай лучше» без подробностей'],
+  arcade: ['Что в игре соседа ты бы украл в свою?', 'Играет только в свою игру'],
+  playtest: ['Что ты увидел, а не что тебе понравилось?', 'Карточка из одних кубиков'],
+  rounds: ['Что изменилось от раунда к раунду?', 'Отвечает до конца раунда'],
+  predict: ['Что предскажешь до игры и почему?', 'Пишет предсказание после партии'],
+  trace: ['Где игрок принимает решение?', 'Описывает картинку, а не действие'],
+  cycle: ['Что повторяется каждые несколько секунд?', 'Путает цикл с целью игры'],
+  release: ['Почему эта версия — 1.0? Что проверил на соседях?', 'Выпускает первую попавшуюся версию'],
+  blind: ['По чему понял, что эффект был?', 'Угадывает наугад'],
+  blindpair: ['Почему хочется вернуться именно туда?', 'Сыграл одну копию'],
+  listen: ['Что звук говорит игроку?', 'Играет без звука'],
+  sequencer: ['Под какую мелодию игроку легче?', 'Мелодия без пауз'],
+  vote: ['За что голосуешь: за идею или за исполнение?', 'Голосует за друга, не играя'],
+};
+function cheatSheet(c) {
+  if (c.teacher) return null; // у чекпоинта свой «Сценарий учителя» в сценарии урока
+  const rows = c.steps.map(s => { const t = s.teacher || {}, d = TIPS[s.type] || []; return [s.title, t.ask || d[0], t.watch || d[1]]; }).filter(r => r[1]);
+  if (!rows.length) return null;
+  // таблица перерисовывается каждые 3 секунды — открытая шпаргалка помнится, чтобы не захлопываться
+  const d = el('details', { class: 'cheat', open: T.cheat.has(c.id) || null });
+  d.addEventListener('toggle', () => { if (d.open) T.cheat.add(c.id); else T.cheat.delete(c.id); });
+  d.append(el('summary', {}, 'Шпаргалка'),
+    el('dl', {}, rows.flatMap(([title, ask, watch]) => [el('dt', {}, title), el('dd', {}, el('div', {}, 'Спросите: «' + ask + '»'), watch ? el('div', { class: 'small muted' }, 'Буксует, если: ' + watch[0].toLowerCase() + watch.slice(1)) : null)])));
+  return d;
+}
+// очередь «Нужна помощь»: кого обойти первым и почему. Поднятая рука — сверху, потом упавшая игра, кончились запросы к ИИ, застрял, пишет одним кубиком
+function helpQueue(o, cps) {
+  const stepName = id => { for (const c of cps) for (const s of c.steps) if (s.id === id) return s.title; return ''; };
+  const ago = at => Math.max(0, Math.round((Date.now() + T.skew - Date.parse(at)) / 60000));
+  const items = o.students.map(s => {
+    const why = [];
+    let rank = 9;
+    if (s.help) { why.push(`поднял руку ${ago(s.help.at)} мин назад` + (s.help.where ? ` на шаге «${stepName(s.help.where)}»` : '')); rank = 0; }
+    if (s.game && s.game.error) { why.push('игра упала: ' + s.game.error); rank = Math.min(rank, 1); }
+    if (s.aiLimit && s.aiCalls >= s.aiLimit) { why.push('кончились запросы к ИИ'); rank = Math.min(rank, 2); }
+    if (s.stuck) { why.push(`нет движения ${Math.floor(s.idle / 60)} мин` + (s.where ? ` на шаге «${stepName(s.where)}»` : '')); rank = Math.min(rank, 3); }
+    if (s.dice >= 3 && s.fields && s.dice * 2 >= s.fields) { why.push(`пишет кубиком: ${s.dice} из ${s.fields} полей`); rank = Math.min(rank, 4); }
+    return { s, why, rank };
+  }).filter(x => x.why.length).sort((a, b) => a.rank - b.rank || a.s.nick.localeCompare(b.s.nick, 'ru'));
+  const box = el('div', { class: 'card stack help-queue', id: 'helpQueue', style: 'gap:8px' },
+    el('div', { class: 'row' }, el('h3', { class: 'grow' }, items.length ? `Нужна помощь (${items.length})` : 'Нужна помощь'), el('span', { class: 'small muted' }, 'Сверху — кого обойти первым')));
+  if (!items.length) { box.append(el('p', { class: 'small muted' }, 'Сейчас всё спокойно: рук нет, игры работают, никто не застрял.')); return box; }
+  items.slice(0, 8).forEach(({ s, why, rank }) => box.append(el('div', { class: 'help-row' + (rank === 0 ? ' hand' : '') },
+    el('b', {}, (rank === 0 ? '✋ ' : '') + s.nick), el('span', { class: 'grow small' }, why.join(' · ')),
+    el('button', { class: 'btn ghost small', type: 'button', onclick: () => openStudent(s.nick) }, 'Открыть'),
+    s.help ? el('button', { class: 'btn small', type: 'button', 'data-helped': s.nick, onclick: async () => { try { await api('/api/teacher/help', { code: T.code, nick: s.nick }); await refresh(true); } catch (e) { toast(e.message, 'err'); } } }, '✓ Помог') : null)));
+  if (items.length > 8) box.append(el('p', { class: 'small muted' }, `и ещё ${items.length - 8} — в таблице ниже`));
+  return box;
 }
 // запросы к ИИ: полоска расхода и «+10» прямо в таблице
 function aiCell(s) {
@@ -358,9 +426,9 @@ function drawWowSecret() {
     sel.addEventListener('change', () => wowAct('/api/teacher/wow/secret', { id: sel.value }));
     box.append(el('div', {}, el('span', { class: 'tag ' + (r.wow.secretBy === 'кубик' ? 'dice' : 'own') }, r.wow.secretBy === 'кубик' ? '[кубик]' : 'выбор учителя'), ' ', el('b', {}, r.secret.title)),
       el('div', { class: 'row' }, el('div', { class: 'grow' }, sel), el('button', { class: 'btn ghost small', type: 'button', onclick: () => wowAct('/api/teacher/wow/secret', {}) }, '🎲 Другой секрет')),
-      r.secret.sound && !r.headphones ? el('p', { class: 'small', style: 'color:var(--warm)' }, '🎧 Этот секрет слышно только в наушниках, а в классе их нет — класс его не почувствует.') : null,
-      r.built && r.built.id !== r.secret.id ? el('p', { class: 'small', style: 'color:var(--warm)' }, `В собранной игре сейчас другой секрет: «${r.built.title}». Пересоберите игру, чтобы заложить новый.`) : null,
-      r.demo ? el('p', { class: 'small muted' }, 'Демо-режим: без ключа ИИ собирается запасная игра урока, у неё свой секрет — ускорение волны.') : null);
+      r.secret.sound && !r.headphones ? el('p', { class: 'small', style: 'color:var(--warm)' }, '🎧 Этот секрет слышно только в наушниках, а в классе их нет — класс его не почувствует.') : '',
+      r.built && r.built.id !== r.secret.id ? el('p', { class: 'small', style: 'color:var(--warm)' }, `В собранной игре сейчас другой секрет: «${r.built.title}». Пересоберите игру, чтобы заложить новый.`) : '',
+      r.demo ? el('p', { class: 'small muted' }, 'Демо-режим: без ключа ИИ собирается запасная игра урока, у неё свой секрет — ускорение волны.') : '');
   }
   // наушники: без них секреты со звуком не выпадают кубиком и не попадают в карту секрета Фабрики
   const hp = el('input', { type: 'checkbox', id: 'wowHeadphones', checked: r.headphones ? true : null });
@@ -390,7 +458,7 @@ function drawWowBuild() {
     W.busy = false; drawWow(true);
   } }, r.game ? '↻ Собрать заново' : '⚙ Собрать с ИИ');
   box.append(el('div', { class: 'row' }, buildBtn,
-    el('button', { class: 'btn ghost small', type: 'button', onclick: () => { if (confirm('Взять запасную игру урока вместо сборки ИИ? Её секрет — ускорение волны.')) wowAct('/api/teacher/wow/fallback', {}, true); } }, 'Запасная игра'),
+    el('button', { class: 'btn ghost small', type: 'button', onclick: async () => { if (await Lab.ask('Взять запасную игру урока вместо сборки ИИ? Её секрет — ускорение волны.', { ok: 'Взять запасную' })) wowAct('/api/teacher/wow/fallback', {}, true); } }, 'Запасная игра'),
     el('span', { class: 'muted small' }, r.demo ? 'Демо-режим: соберётся запасная игра урока с названием по картам.' : 'Полная 3D-игра пишется 5–20 минут. Пока ИИ пишет, класс играет в донора.')), prog);
   if (r.game) {
     const g = r.game;
@@ -655,7 +723,7 @@ document.addEventListener('keydown', async e => {
   const c = code && T.classes.find(x => x.code === code);
   if (!c) return;
   e.preventDefault();
-  if (!confirm(`Удалить класс «${c.name}» (${c.code})? Ученики больше не войдут по этому коду. Папка класса переедет в data/deleted.`)) return;
+  if (!(await Lab.ask(`Удалить класс «${c.name}» (${c.code})? Ученики больше не войдут по этому коду. Папка класса переедет в data/deleted.`, { ok: 'Удалить', danger: true }))) return;
   try {
     await api('/api/teacher/class/delete', { code: c.code });
     await loadClasses(); hoverCode = null;
@@ -668,7 +736,7 @@ document.addEventListener('keydown', async e => {
 $('#moduleSel').addEventListener('change', e => { T.module = Number(e.target.value); drawLessonSel(); });
 $('#lessonSel').addEventListener('change', async e => {
   if (!e.target.value) return;
-  if (!confirm('Сменить урок класса? Открытые чекпоинты закроются, ответы учеников сохранятся.')) { drawLessonSel(); return; }
+  if (!(await Lab.ask('Сменить урок класса? Открытые чекпоинты закроются, ответы учеников сохранятся.', { ok: 'Сменить урок' }))) { drawLessonSel(); return; }
   try { await api('/api/teacher/class/update', { code: T.code, lesson: e.target.value }); await refresh(true); } catch (err) { toast(err.message, 'err'); }
 });
 function toggleAuthor() {

@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="ru" data-role="student">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Моя студия · Лаборатория игр</title>
+<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+<header class="top">
+  <div class="logo"><i></i> Лаборатория игр · моя студия</div>
+  <div class="muted small" id="className"></div>
+  <div class="who"><a class="btn ghost small" href="/student">← К уроку</a><a class="btn ghost small" href="/arcade">🕹 Аркада</a><span id="nick"></span><button class="btn ghost small" id="logout" type="button">Выйти</button></div>
+</header>
+<main class="apage">
+  <section class="stack">
+    <div class="row">
+      <div class="grow stack" style="gap:4px">
+        <h1>Моя студия</h1>
+        <p class="muted">Всё, что ты сделал как геймдизайнер: игры, колоды, открытия и значки. Это остаётся у тебя после каждого урока.</p>
+      </div>
+      <div class="stack" style="gap:6px">
+        <span class="lbl" style="margin:0">Эмблема студии</span>
+        <div class="emblems" id="emblems" role="radiogroup" aria-label="Эмблема студии"></div>
+      </div>
+    </div>
+  </section>
+  <section class="stack"><h2>Полка игр</h2><div class="agrid" id="shelf"><p class="muted">Загрузка…</p></div></section>
+  <section class="stack"><h2>Значки</h2><p class="muted small">Значки дают за решения геймдизайнера, а не за очки.</p><div class="badges" id="badges"></div></section>
+  <section class="stack"><h2>Мои колоды</h2><p class="muted small">Донор и линза каждого урока. Донор можно взять в любую следующую игру, линзой можно проверить любую игру.</p><div class="decks" id="deck"></div></section>
+  <section class="stack"><h2>Журнал геймдизайнера</h2><div class="stack" id="journal"></div></section>
+  <section class="stack"><h2>Банк идей класса</h2><p class="muted small">«А что если…» из карточек плейтеста и варианты развилок, которые никто не выбрал. Бери любую в свою следующую версию.</p><div class="ideas" id="ideas"></div></section>
+</main>
+<script src="/common.js"></script>
+<script src="/games.js"></script>
+<script src="/studio.js"></script>
+</body>
+</html>

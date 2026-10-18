@@ -198,9 +198,27 @@ function playPage(res, gameId, n) {
   if (!code) return send(res, 404, 'Нет такой версии игры', 'text/plain; charset=utf-8');
   const html = fs.readFileSync(path.join(PORTAL, 'engine', 'game.html'), 'utf8')
     .replace('<head>', '<head>\n<base href="/engine/">')
-    .replace('<!--GAME-->', '<script>\n' + code.replace(/<\/script/gi, '<\\/script') + '\n</script>');
+    .replace('<!--GAME-->', () => '<script>\n' + code.replace(/<\/script/gi, '<\\/script') + '\n</script>'); // функцией: «$&» и «$'» в коде игры — не шаблоны замены
   // CSP sandbox: даже открытая отдельной вкладкой игра не видит данных портала (своё «пустое» происхождение)
   send(res, 200, html, 'text/html; charset=utf-8', Object.assign({ 'Content-Security-Policy': 'sandbox allow-scripts allow-pointer-lock' }, CORS));
+}
+// игра одним файлом: оболочка, Babylon.js и код версии в одном .html — работает без портала и без интернета (кроме игр с физикой Havok)
+let BABYLON_JS = null;
+const inlineScript = js => '<script>\n' + js.replace(/<\/script/gi, '<\\/script') + '\n</script>';
+function downloadPage(res, gameId, n) {
+  const g = store.getGame(gameId);
+  const v = g && (Number(n) || g.current), code = g && store.versionCode(gameId, v);
+  if (!code) return send(res, 404, 'Нет такой версии игры', 'text/plain; charset=utf-8');
+  if (/\bphysics\s*:\s*true/.test(code)) return send(res, 409, 'Эта игра с физикой: одним файлом она не запустится. Играй в неё в аркаде.', 'text/plain; charset=utf-8');
+  if (!BABYLON_JS) BABYLON_JS = fs.readFileSync(path.join(PORTAL, 'engine', 'vendor', 'babylon', 'babylon.js'), 'utf8');
+  const lab = fs.readFileSync(path.join(PORTAL, 'engine', 'lab.js'), 'utf8');
+  const html = fs.readFileSync(path.join(PORTAL, 'engine', 'game.html'), 'utf8')
+    .replace('<script src="vendor/babylon/babylon.js"></script>', () => inlineScript(BABYLON_JS))
+    .replace('<script src="lab.js"></script>', () => inlineScript(lab))
+    .replace('<!--GAME-->', () => inlineScript(code))
+    .replace('<title>Лаборатория игр</title>', () => `<title>${String(g.title || 'Моя игра').replace(/[<>&]/g, '')} · Лаборатория игр</title>`);
+  const name = `${(g.title || 'igra').replace(/[\\/:*?"<>|]+/g, '').trim() || 'igra'} v${v}.html`;
+  send(res, 200, html, 'text/html; charset=utf-8', { 'Content-Security-Policy': 'sandbox allow-scripts allow-pointer-lock', 'Content-Disposition': `attachment; filename="igra.html"; filename*=UTF-8''${encodeURIComponent(name)}` });
 }
 // решения программиста из поля notes текущей версии — для шага «Найди, где ИИ своевольничал»
 function gameNotes(code) {
@@ -248,11 +266,35 @@ function needStudent(ctx) {
 }
 function needTeacher(ctx) { if (!ctx.who || ctx.who.role !== 'teacher') throw Object.assign(new Error('Нужен вход учителя'), { status: 401 }); }
 
+const plainChoice = t => t.replace(/(^| · )свои слова: /g, '$1'); // ответ шага choice для самого ученика: без служебной пометки
+// «План версии 2» с последнего пройденного урока — показывается в начале нового урока
+function prevPlan(s, les) {
+  const prev = lessons().filter(l => l.number < les.number && s.lessons && s.lessons[l.id]).pop();
+  if (!prev) return null;
+  const f = stepOf(prev, 'plan-v2'), text = f ? plainChoice(answers.answerText(f.step, answerOf(s.lessons[prev.id], 'plan-v2'))) : '';
+  const g = s.lessons[prev.id].gameId ? store.getGame(s.lessons[prev.id].gameId) : null;
+  return text ? { lesson: prev.number, title: prev.title, text, game: g ? g.title || '' : '' } : null;
+}
+// «Нужна помощь»: ученик поднимает руку, учитель видит его первым в очереди и опускает руку кнопкой «Помог»
+route('POST', '/api/help', (ctx) => {
+  const { w, s, st } = needStudent(ctx);
+  s.help = ctx.body.on ? { at: store.now(), where: s.where || null } : null;
+  store.saveStudent(w.class, s);
+  return { help: s.help };
+});
+route('POST', '/api/teacher/help', (ctx) => {
+  needTeacher(ctx);
+  const s = store.getStudent(String(ctx.body.code || ''), String(ctx.body.nick || ''));
+  if (!s) throw Object.assign(new Error('Нет такого ученика'), { status: 404 });
+  s.help = null; store.saveStudent(ctx.body.code, s);
+  broadcast(ctx.body.code, 'help', { nick: s.nick });
+  return { ok: true };
+});
 route('GET', '/api/me', (ctx) => {
   const { w, cls, les, s, st } = needStudent(ctx);
   s.seen = store.now(); store.saveStudent(w.class, s);
   const g = st.gameId ? store.getGame(st.gameId) : null;
-  return { nick: w.nick, class: { code: cls.code, name: cls.name, opened: cls.opened, authorMode: cls.authorMode }, lesson: studentLesson(les, cls), answers: st.answers, game: g, wow: les.wow ? publicWow(cls, les) : null, feedback: st.feedback || null, demo: ai.demo(), aiCalls: st.aiCalls, aiLimit: aiLimit(st) };
+  return { nick: w.nick, class: { code: cls.code, name: cls.name, opened: cls.opened, authorMode: cls.authorMode }, lesson: studentLesson(les, cls), answers: st.answers, game: g, wow: les.wow ? publicWow(cls, les) : null, feedback: st.feedback || null, demo: ai.demo(), aiCalls: st.aiCalls, aiLimit: aiLimit(st), prevPlan: prevPlan(s, les), help: s.help || null };
 });
 
 route('POST', '/api/answer', (ctx) => {
@@ -321,7 +363,11 @@ function cleanTele(t) {
   t = t && typeof t === 'object' ? t : {};
   const nums = (o, keys) => Object.fromEntries(Object.entries(o && typeof o === 'object' ? o : {}).filter(([k, v]) => (!keys || keys.includes(k)) && Number.isFinite(Number(v))).slice(0, 12).map(([k, v]) => [String(k).slice(0, 40), Math.round(Number(v) * 10) / 10]));
   const btn = Object.keys(BTN_NAMES);
-  return { time: Math.max(0, Math.round((Number(t.time) || 0) * 10) / 10), hold: nums(t.hold, btn), presses: nums(t.presses, btn), custom: nums(t.custom) };
+  // line — счёт по секундам партии (не больше 120 точек): из него у автора полоска каждой чужой партии
+  const line = Array.isArray(t.line) ? t.line.slice(0, 600).map(v => Math.round(Number(v) || 0)) : [];
+  const step = Math.max(1, Math.ceil(line.length / 120));
+  return { time: Math.max(0, Math.round((Number(t.time) || 0) * 10) / 10), hold: nums(t.hold, btn), presses: nums(t.presses, btn), custom: nums(t.custom),
+    hurts: Math.max(0, Math.min(999, Math.round(Number(t.hurts) || 0))), line: line.filter((_, i) => i % step === 0), lineStep: step };
 }
 function classGame(w, id) { const g = id && store.getGame(id); return g && g.class === w.class && g.current ? g : null; }
 // все собранные игры класса: по одной на ученика и урок
@@ -342,11 +388,13 @@ function gameCard(code, g, viewer) {
   return {
     id: g.id, title: g.title || 'Моя игра', nick: g.nick, donor: g.donor || (les ? les.donor : ''),
     lesson: les ? { id: les.id, number: les.number, title: les.title, module: les.module || 0 } : null,
-    decisions: dec || {}, version: g.current, versions: g.versions.length,
+    decisions: dec || {}, version: g.current, versions: g.versions.length, balanced: g.versions.filter(v => v.kind === 'баланс').length,
     release: g.release ? { version: g.release.version, at: g.release.at, note: g.release.note.text, lesson: g.release.lesson } : null,
     record: rec.record, top: rec.top.slice(0, 5), authorBest: all[g.nick] ? all[g.nick].score : 0, myBest: rec.mine,
     plays: store.plays(g.id).filter(p => p.type === 'over' && p.nick !== g.nick).length,
-    hidden: !!g.hidden, mine: g.nick === viewer, knob: g.knob || null,
+    again: store.plays(g.id).filter(p => p.type === 'again' && p.nick !== g.nick).length, // «ещё раз» чужих игроков — главный тест курса
+    poster: g.poster ? `/poster/${g.id}.jpg?v=${g.poster.version}` : null,
+    hidden: !!g.hidden, mine: g.nick === viewer, knob: g.knob || null, emblem: (store.getStudent(code, g.nick) || {}).emblem || '',
   };
 }
 // игра соседа по кругу: следующий по алфавиту автор после after (по умолчанию — после меня); игры этого урока — первыми
@@ -373,6 +421,8 @@ function discovery(g) {
   cards.forEach(c => (c.emotions || []).forEach(e => { emotions[e] = (emotions[e] || 0) + 1; }));
   return {
     rounds: overs.length, players: new Set(overs.map(p => p.nick)).size, again: plays.filter(p => p.type === 'again').length,
+    // последние чужие партии по секундам: где счёт стоял на месте, там игроку, возможно, было скучно
+    runs: overs.slice(-6).reverse().map(p => { const t = p.tele || {}; return { nick: p.nick, score: p.score || 0, time: Math.round(t.time || 0), hurts: t.hurts || 0, line: t.line || [], step: t.lineStep || 1, again: plays.some(q => q.type === 'again' && q.nick === p.nick && q.at >= p.at) }; }),
     time: Math.round(time), best: overs.reduce((n, p) => Math.max(n, p.score || 0), 0),
     holds, dominant: holds[0] || null,
     presses: { a: Math.round(presses.a || 0), b: Math.round(presses.b || 0) },
@@ -392,6 +442,65 @@ route('GET', '/api/arcade', (ctx) => {
     games: cards.filter(c => !c.hidden), mine,
     neighbour: neighbour(cards, w.nick, ctx.url.searchParams.get('after'), les.id),
   };
+});
+/* ---------- «Моя студия»: всё, что ученик сделал как геймдизайнер, на одной странице ---------- */
+// эмблема автора видна рядом с ником в аркаде; только из этого набора — без свободного ввода
+const EMBLEMS = ['🐉', '🦊', '🐺', '🦉', '🐝', '🌻', '🏔', '🌊', '🔥', '⚡', '🎲', '🚀', '🛡', '🗝', '🎯', '🍯'];
+const answerOf = (st, id) => (st.answers || {})[id] || null;
+function studio(w, cls, s) {
+  const all = lessons(), plays = new Map();
+  const playsOf = id => { if (!plays.has(id)) plays.set(id, store.plays(id)); return plays.get(id); };
+  const cards = classGames(w.class).map(g => gameCard(w.class, g, w.nick));
+  const mine = cards.filter(c => c.mine).sort((a, b) => ((a.lesson || {}).number || 0) - ((b.lesson || {}).number || 0))
+    .map(c => Object.assign(c, { discovery: discovery(store.getGame(c.id)) }));
+  const worked = all.filter(l => s.lessons && s.lessons[l.id] && Object.keys(s.lessons[l.id].answers || {}).length);
+  // колоды: донор и линза каждого пройденного урока — карты, которые остаются у ученика
+  const deck = worked.map(l => ({ lesson: l.number, title: l.title, donor: l.donor || '', lens: l.lens || '', goal: l.goal || '' }));
+  // журнал: открытие дня, план версии 2 и решения замысла по каждому уроку
+  const journal = worked.map(l => {
+    const st = s.lessons[l.id], P = l.plan ? buildPlan(l, st) : null;
+    const line = id => { const f = stepOf(l, id); return f ? plainChoice(answers.answerText(f.step, answerOf(st, id))) : ''; };
+    const exp = l.checkpoints.flatMap(cp => cp.steps).filter(x => x.type === 'experiment').map(x => answers.answerText(x, answerOf(st, x.id))).filter(Boolean);
+    return { lesson: l.number, title: l.title, game: P ? P.title : '', twist: P ? P.twist : '', decisions: P ? P.decisions : {}, discovery: line('otkrytie-den'), plan: line('plan-v2'), experiments: exp };
+  }).filter(j => j.discovery || j.plan || j.twist || j.experiments.length);
+  // значки — за действия геймдизайнера, а не за очки
+  const myGames = mine.map(c => store.getGame(c.id)).filter(Boolean);
+  const versions = myGames.flatMap(g => g.versions);
+  const stepDone = type => worked.some(l => l.checkpoints.some(cp => cp.steps.some(x => x.type === type && (answerOf(s.lessons[l.id], x.id) || {}).done)));
+  const own = worked.reduce((n, l) => { const P = l.plan ? buildPlan(l, s.lessons[l.id]) : null; return n + (P ? P.fieldCount - P.diceCount : 0); }, 0);
+  const gaveCards = cards.filter(c => !c.mine).some(c => playsOf(c.id).some(p => p.type === 'card' && p.nick === w.nick));
+  const badges = [
+    { id: 'build', icon: '🛠', title: 'Первая сборка', how: 'Собрать свою игру', got: myGames.length > 0 },
+    { id: 'own', icon: '✍', title: 'Своими словами', how: 'Написать 10 полей замысла без кубика', got: own >= 10 },
+    { id: 'balance', icon: '🎚', title: 'Баланс без ИИ', how: 'Сохранить свои числа кнопкой «Сохранить мой баланс»', got: versions.some(v => v.kind === 'баланс') },
+    { id: 'experiment', icon: '🧪', title: 'Экспериментатор', how: 'Пройти эксперимент с ручкой до вывода', got: stepDone('experiment') },
+    { id: 'fix', icon: '🩹', title: 'Точная правка', how: 'Попросить программиста о правке', got: versions.some(v => v.kind === 'правка') },
+    { id: 'tester', icon: '🔍', title: 'Плейтестер', how: 'Оставить карточку плейтеста в чужой игре', got: gaveCards },
+    { id: 'again', icon: '🔁', title: '«Ещё раз!»', how: 'Чужой игрок нажал «ещё раз» в твоей игре', got: mine.some(c => c.again > 0) },
+    { id: 'release', icon: '🏁', title: 'Релиз 1.0', how: 'Выпустить лучшую игру модуля', got: myGames.some(g => g.release) },
+  ];
+  // банк идей класса: «а что если» из карточек плейтеста и развилки продюсера, которые никто не выбрал
+  const ideas = [], seen = new Set();
+  const addIdea = (text, from, extra) => { const t = String(text || '').trim(); if (t.length < 4 || seen.has(t.toLowerCase())) return; seen.add(t.toLowerCase()); ideas.push(Object.assign({ text: t.slice(0, 200), from }, extra)); };
+  for (const c of cards.filter(x => !x.hidden)) for (const p of playsOf(c.id)) if (p.type === 'card' && p.card) addIdea(fieldText(p.card.whatif), 'плейтест', { game: c.title });
+  for (const st of store.students(w.class)) for (const l of all) {
+    const ls = (st.lessons || {})[l.id]; if (!ls || !l.plan) continue;
+    const prod = (answerOf(ls, l.plan.producer) || {}).value || {};
+    ((prod.result && prod.result.forks) || []).forEach((f, i) => (f.options || []).filter(o => o !== (prod.choices || {})[i]).forEach(o => addIdea(o, 'развилка', { question: f.question })));
+  }
+  return {
+    nick: w.nick, class: { code: cls.code, name: cls.name }, emblem: s.emblem || '', emblems: EMBLEMS,
+    games: mine, deck, journal, badges, ideas: ideas.slice(-40).reverse(),
+  };
+}
+route('GET', '/api/studio', (ctx) => { const { w, cls, s } = needStudent(ctx); return studio(w, cls, s); });
+route('POST', '/api/studio/emblem', (ctx) => {
+  const { w, s } = needStudent(ctx);
+  const e = String(ctx.body.emblem || '');
+  if (e && !EMBLEMS.includes(e)) throw Object.assign(new Error('Такой эмблемы нет'), { status: 400 });
+  s.emblem = e; store.saveStudent(w.class, s);
+  broadcast(w.class, 'arcade', { author: w.nick });
+  return { emblem: e };
 });
 route('POST', '/api/arcade/hide', (ctx) => {
   const { w } = needStudent(ctx);
@@ -568,10 +677,19 @@ route('POST', '/api/playtest', (ctx) => {
   return { ok: true };
 });
 // моя игра урока глазами класса: открытие плейтеста и отзыв учителя
+// слепая проба (шаг blindpair) по игре автора: сколько соседей захотели вернуться в сочную, в сухую или не почувствовали разницы
+function blindVotes(code, g) {
+  const out = { juicy: 0, dry: 0, same: 0 };
+  for (const s of store.students(code)) for (const st of Object.values(s.lessons || {})) for (const a of Object.values(st.answers || {})) {
+    const v = (a && a.value) || {};
+    if (v.game === g.id && v.dry && v.vote && !('felt' in v)) out[v.vote === 'same' ? 'same' : v.juicy ? 'juicy' : 'dry']++;
+  }
+  return out.juicy + out.dry + out.same ? out : null;
+}
 route('GET', '/api/playtest/mine', (ctx) => {
   const { w, st } = needStudent(ctx);
   const g = st.gameId && store.getGame(st.gameId);
-  return { game: g && g.current ? gameCard(w.class, g, w.nick) : null, discovery: g && g.current ? discovery(g) : null, feedback: st.feedback || null, blind: g ? blindSecret(w.class, g) : null };
+  return { game: g && g.current ? gameCard(w.class, g, w.nick) : null, discovery: g && g.current ? discovery(g) : null, feedback: st.feedback || null, blind: g ? blindSecret(w.class, g) : null, juice: g && g.current ? blindVotes(w.class, g) : null };
 });
 // слепая пара с секретом (шаг blindpair, mode: 'secret'): сколько соседей проголосовали за мою игру и сколько почувствовали секрет
 function blindSecret(code, g) {
@@ -1022,6 +1140,46 @@ route('POST', '/api/game/error', (ctx) => { // ошибка без автопо�
   return { ok: true };
 });
 
+// «Мой баланс»: ручки, которые ученик повернул в игре, становятся новой версией без ИИ.
+// В конец кода дописываются числа ручек, оболочка берёт их как «Как задумано» — у соседей, в аркаде, в вызовах и у бота.
+const BALANCE_MARK = '/* Лаб3D: баланс автора */';
+function withBalance(code, cfg) {
+  const i = code.lastIndexOf('\n' + BALANCE_MARK);
+  let prev = {};
+  if (i >= 0) { const m = /const b = (\{[^\n]*\});/.exec(code.slice(i)); if (m) try { prev = JSON.parse(m[1]); } catch (e) { /* старый баланс не читается — пишем новый */ } }
+  const all = Object.assign(prev, cfg);
+  return {
+    cfg: all,
+    code: (i >= 0 ? code.slice(0, i) : code.replace(/\s*$/, '')) + '\n' + BALANCE_MARK +
+      '\n;(function () { const b = ' + JSON.stringify(all) + '; try { for (const k in b) if (GAME.config && GAME.config[k]) GAME.config[k].value = b[k]; } catch (e) { /* нет GAME — игра упадёт сама */ } })();\n',
+  };
+}
+route('POST', '/api/game/balance', (ctx) => {
+  const c = needStudent(ctx);
+  // своя игра: текущего урока или любая своя (релиз модуля выбирает игру прошлых уроков)
+  const g = store.getGame(ctx.body.game || c.st.gameId);
+  if (!g || !g.current || g.nick !== c.w.nick || g.class !== c.w.class || g.teacher || g.compareOf) throw Object.assign(new Error('Сначала собери свою игру'), { status: 400 });
+  const cfg = cleanCfg(ctx.body.cfg);
+  if (!Object.keys(cfg).length) throw Object.assign(new Error('Поверни хотя бы одну ручку игры (Tab)'), { status: 400 });
+  const base = g.current, b = withBalance(store.versionCode(g.id, base), cfg);
+  const request = String(ctx.body.why || '').trim().slice(0, 300);
+  return addVersion(g.id, { code: b.code, model: null, attempts: 0, ms: 0, rub: 0 }, { kind: 'баланс', from: base, cfg: b.cfg, request: request || Object.entries(cfg).map(([k, v]) => `${k} = ${v}`).join(', ') });
+});
+
+// обложка игры в аркаде — кадр холста, который оболочка присылает из рамки автора после партии; одна на игру, новая версия — новый кадр
+route('POST', '/api/game/poster', (ctx) => {
+  const c = needStudent(ctx);
+  const g = store.getGame(ctx.body.game);
+  const data = String(ctx.body.data || '');
+  if (!g || g.nick !== c.w.nick || g.class !== c.w.class) throw Object.assign(new Error('Обложку ставит автор игры'), { status: 403 });
+  const m = /^data:image\/jpeg;base64,([A-Za-z0-9+/=]+)$/.exec(data);
+  if (!m || m[1].length > 600000) throw Object.assign(new Error('Обложка — кадр JPEG до 450 КБ'), { status: 400 });
+  fs.writeFileSync(path.join(store.gameDir(g.id), 'poster.jpg'), Buffer.from(m[1], 'base64'));
+  g.poster = { version: Number(ctx.body.version) || g.current, at: store.now() }; store.saveGame(g);
+  if (!g.teacher && !g.compareOf) broadcast(g.class, 'arcade', { game: g.id, author: g.nick });
+  return { ok: true, poster: `/poster/${g.id}.jpg?v=${g.poster.version}` };
+});
+
 route('GET', '/api/game/notes', (ctx) => {
   const c = needStudent(ctx);
   const g = c.st.gameId && store.getGame(c.st.gameId);
@@ -1094,6 +1252,26 @@ route('POST', '/api/teacher/timer', (ctx) => {
   broadcast(cls.code, 'class', { opened: cls.opened, lesson: cls.lesson, authorMode: cls.authorMode, timer: cls.timer || null });
   return { timer: cls.timer };
 });
+// стена класса на проекторе: рейтинг «ещё раз», открытия дня и «провал дня» — эксперимент, где предсказание не сбылось
+route('GET', '/api/teacher/wall', (ctx) => {
+  needTeacher(ctx);
+  const cls = store.getClass(ctx.url.searchParams.get('code'));
+  if (!cls) throw Object.assign(new Error('Нет класса'), { status: 404 });
+  const les = lesson(cls.lesson), students = store.students(cls.code);
+  const cards = classGames(cls.code).map(g => gameCard(cls.code, g, '')).filter(c => !c.hidden);
+  const again = cards.filter(c => c.again > 0).sort((a, b) => b.again - a.again || b.plays - a.plays).slice(0, 5)
+    .map(c => ({ id: c.id, title: c.title, nick: c.nick, emblem: c.emblem, again: c.again, plays: c.plays, poster: c.poster, lesson: c.lesson }));
+  const steps = les.checkpoints.flatMap(cp => cp.steps);
+  const fails = [];
+  for (const s of students) {
+    const st = (s.lessons || {})[les.id]; if (!st) continue;
+    for (const x of steps.filter(y => y.type === 'experiment')) {
+      const v = (answerOf(st, x.id) || {}).value || {};
+      if (v.before && v.after && v.result && v.result !== 'Сбылось') fails.push({ nick: s.nick, knob: v.knob, from: v.from, to: v.to, guess: fieldText(v.guess), result: v.result, before: v.before, after: v.after, noticed: fieldText(v.noticed), at: (answerOf(st, x.id) || {}).at || '' });
+    }
+  }
+  return { again, fails: fails.slice(-3).reverse() };
+});
 const STUCK_SEC = 300; // «застрял»: нет движения 5+ минут, а в открытых чекпоинтах есть недоделанные шаги
 route('GET', '/api/teacher/overview', (ctx) => {
   needTeacher(ctx);
@@ -1117,7 +1295,7 @@ route('GET', '/api/teacher/overview', (ctx) => {
       dice: fs_.dice, fields: fs_.fields, aiCalls: st.aiCalls || 0, aiLimit: aiLimit(st), aiBonus: st.aiBonus || 0,
       game: g ? { id: g.id, title: g.title, versions: g.versions.length, current: g.current, error: last && last.error ? last.error.message : null, errors: g.versions.filter(v => v.error).length, model: last && last.model, hidden: !!g.hidden } : null,
       plays: g ? store.plays(g.id).filter(p => p.type === 'over' && p.nick !== g.nick).length : 0,
-      feedback: !!st.feedback,
+      feedback: !!st.feedback, help: s.help || null,
     };
   });
   const votes = Object.fromEntries(les.checkpoints.flatMap(c => c.steps).filter(x => x.type === 'vote').map(x => [x.id, voteTally(cls.code, les, x)])); // выставка джема
@@ -1578,15 +1756,19 @@ async function handle(req, res) {
       return fail(res, e.status || 500, e.message);
     }
   }
+  const dl = /^\/download\/([\w-]{6,20})\/(\d+)\.html$/.exec(p);
+  if (dl) return downloadPage(res, dl[1], dl[2]);
   const m = /^\/play\/([\w-]+)\/(\d+)$/.exec(p);
   if (m) { // ?seed= — вызов «побей мой мир»: оболочка читает зерно из адреса и строит тот же мир
     const seed = url.searchParams.get('seed');
     if (seed != null && !/^\d{1,10}$/.test(seed)) return send(res, 400, 'Зерно — число', 'text/plain; charset=utf-8');
     return playPage(res, m[1], Number(m[2]));
   }
+  const pm = /^\/poster\/([\w-]{6,20})\.jpg$/.exec(p);
+  if (pm) return serveFile(res, path.join(store.gameDir(pm[1]), 'poster.jpg'));
   if (p.startsWith('/engine/') || p.startsWith('/games/')) return staticUnder(PORTAL, p, res, CORS);
   if (p === '/' ) return serveFile(res, path.join(PUBLIC, 'index.html'));
-  if (p === '/student' || p === '/teacher' || p === '/arcade' || p === '/projector') return serveFile(res, path.join(PUBLIC, p.slice(1) + '.html'));
+  if (p === '/student' || p === '/teacher' || p === '/arcade' || p === '/projector' || p === '/studio') return serveFile(res, path.join(PUBLIC, p.slice(1) + '.html'));
   return staticUnder(PUBLIC, p, res);
 }
 

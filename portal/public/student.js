@@ -17,11 +17,21 @@ async function boot() {
   $('#nick').textContent = me.nick + ' · класс ' + me.class.code;
   $('#demoBanner').hidden = !me.demo;
   $('#noteBtn').hidden = !me.class.authorMode;
+  drawHelp();
   S.cpId = pickCheckpoint();
   S.board = Games.board(); // доска вызовов класса: над шагами любого чекпоинта
   render();
   listen();
 }
+// поднятая рука: видна учителю в очереди «Нужна помощь», опускается самим учеником или кнопкой учителя «Помог»
+function drawHelp() {
+  const b = $('#helpBtn'), on = !!S.me.help;
+  b.textContent = on ? '✋ Рука поднята — учитель идёт' : '✋ Нужна помощь';
+  b.classList.toggle('warm', on); b.classList.toggle('ghost', !on); b.setAttribute('aria-pressed', String(on));
+}
+$('#helpBtn').addEventListener('click', async () => {
+  try { const r = await api('/api/help', { on: !S.me.help }); S.me.help = r.help; drawHelp(); if (r.help) toast('Учитель увидит тебя первым в очереди', 'ok'); } catch (e) { toast(e.message, 'err'); }
+});
 function listen() {
   const es = new EventSource('/api/events?token=' + encodeURIComponent(Lab.token.get()));
   es.addEventListener('class', e => {
@@ -59,6 +69,7 @@ function listen() {
   });
   // вау-старт учителя: карты, сборка, игра открылась — шаг teacher-demo обновляется сам
   es.addEventListener('demo', e => { const d = JSON.parse(e.data); S.hooks.forEach(h => h('demo', d)); });
+  es.addEventListener('help', e => { if (JSON.parse(e.data).nick === S.me.nick) { S.me.help = null; drawHelp(); } });
   es.addEventListener('limits', e => {
     const d = JSON.parse(e.data);
     if (d.nick !== S.me.nick) return;
@@ -130,6 +141,13 @@ function renderMain() {
   main.append(el('div', { class: 'stack', style: 'gap:6px' },
     el('div', { class: 'eyebrow' }, `Чекпоинт ${idx + 1} из ${S.lesson.checkpoints.length} · ${cp.minutes} минут`),
     el('h1', {}, cp.title)));
+  if (idx === 0 && S.me.prevPlan) {
+    const pp = S.me.prevPlan;
+    main.append(el('div', { class: 'card prev-plan stack', style: 'gap:6px' },
+      el('b', {}, `Твой план версии 2 с урока ${pp.lesson}` + (pp.game ? ` для «${pp.game}»` : '')),
+      el('p', {}, pp.text),
+      el('p', { class: 'small muted' }, 'Сегодня можно взять этот план в новую игру или вернуться к старой. Все игры и записи — в «Моей студии».')));
+  }
   cp.steps.forEach((step, i) => main.append(stepCard(step, i, cp)));
   const next = S.lesson.checkpoints[idx + 1];
   main.append(el('div', { class: 'row' },
@@ -405,7 +423,7 @@ STEPS.cards = ctx => {
       prev[c.id] = c.text;
     });
     if (flipped) beep('dice');
-    host.append(row, W.link ? Games.linkBox({ link: Object.assign({ accepted: true }, W.link), ready: true, editable: false }) : null,
+    host.append(row, W.link ? Games.linkBox({ link: Object.assign({ accepted: true }, W.link), ready: true, editable: false }) : '',
       el('p', { class: 'wow-status', 'aria-live': 'polite' }, wowStatusText(W)));
     if (W.status === 'given' && !ctx.done) ctx.save({ cards: W.cards.map(c => `${c.label}: ${c.text}`) }, true);
   }
@@ -455,7 +473,7 @@ STEPS.secret = ctx => {
       const col = (k, withSecret) => el('div', {}, el('div', { class: 'eyebrow' }, `Игра ${L(k)} · ${withSecret ? 'с секретом' : 'без секрета'}`),
         el('b', {}, `лучший счёт ${AB[k].best}`),
         el('div', { class: 'small muted' }, [`партий ${AB[k].rounds}`, `в среднем ${avg(AB[k])} с`, `урона ${AB[k].hurts}`].concat(withSecret ? [`секрет сработал ${AB[k].secret} раз`] : []).join(' · ')));
-      host.append(el('p', { class: 'verdict ' + verdict[0] }, verdict[1]), felt ? el('p', { class: 'verdict ' + felt[0] }, felt[1]) : null,
+      host.append(el('p', { class: 'verdict ' + verdict[0] }, verdict[1]), felt ? el('p', { class: 'verdict ' + felt[0] }, felt[1]) : '',
         el('div', { class: 'secret-reveal' },
           el('div', { class: 'eyebrow' }, 'Секрет игры класса'), el('h3', {}, a.secret.title), el('p', {}, a.secret.reveal),
           a.secret.effect ? el('span', { class: 'tag' }, a.secret.effect === 'помощник' ? 'помощник: незаметно помогает игроку' : 'нагнетатель: делает игру напряжённее') : null),
@@ -956,7 +974,7 @@ STEPS.predict = ctx => {
     const topOpt = st.options[vals.indexOf(top)];
     host.append(el('div', { class: 'eyebrow' }, `Телеметрия: в среднем за партию (партий: ${play.rounds})`), rows,
       el('p', { class: 'verdict ' + (hit ? 'good' : 'bad') }, top === 0 ? 'Телеметрия пока ничего не заметила — сыграй ещё партию подольше.' : hit ? '🎯 Предсказание сбылось: ты угадал главную динамику.' : `${st.miss || 'В игре вышло по-другому'}: чаще всего — «${topOpt.text}».`),
-      top > 0 && topOpt.why ? el('p', { class: 'concept' }, topOpt.why) : null,
+      top > 0 && topOpt.why ? el('p', { class: 'concept' }, topOpt.why) : '',
       el('div', {}, el('button', { class: 'btn', type: 'button', onclick: () => { v.result = { hit, top: topOpt.counter, values: Object.fromEntries(st.options.map((o, k) => [o.counter, vals[k]])) }; ctx.save(v, true, true); } }, ctx.done ? 'Сравнил ✓' : 'Понятно, дальше')));
   }
   S.hooks.push((kind, d) => { if (kind === 'played' && d.step === st.play && v.locked) draw(); });
@@ -1024,9 +1042,12 @@ STEPS.factory = ctx => {
       beep('dice'); ctx.save(v); draw();
     } }, '🎲 Кубик для пустых полей'),
     st.quickBuild ? el('button', { class: 'btn ghost', type: 'button', title: 'Собрать игру с тем, что есть: пустые поля допишет кубик', onclick: () => { ctx.save(v); startBuild(); } }, '⚙ Собрать сейчас') : null,
-    el('button', { class: 'btn', type: 'button', onclick: () => {
+    el('button', { class: 'btn', type: 'button', onclick: async () => {
       const missing = visible().filter(f => !valText(v.fields[f.id]));
       if (missing.length) { toast('Заполни: ' + missing.map(f => f.label).join(', ')); return; }
+      // честно: замысел целиком из кубика — ещё не игра автора
+      const own = visible().filter(f => !(v.fields[f.id] || {}).dice).length;
+      if (!own && !(await Lab.ask('Весь замысел пока из кубика. Это ещё не твоя игра: перепиши своими словами хотя бы твист. Всё равно готово?', { ok: 'Всё равно готово', cancel: 'Поправлю' }))) return;
       ctx.save(v, true);
     } }, 'Замысел готов')));
   draw();
@@ -1209,15 +1230,49 @@ STEPS.producer = ctx => {
 };
 
 /* ---------- своя игра: версии, автопочинка ---------- */
-function ownGame({ onOver, autostart } = {}) {
+// «Мой баланс»: повёрнутые ручки (Tab) сохраняются новой версией без ИИ — соседи, аркада и вызовы играют в неё,
+// а «Как задумано» в ручках становится числами автора. Переключатели оболочки (сочность, камера) сюда не входят.
+const fmtNum = v => String(Math.round(Number(v) * 100) / 100).replace('.', ',');
+function balanceBar(h, gameId, onSaved, { why } = {}) {
+  const conf = () => (h.meta || {}).config || {};
+  const mine = () => Object.fromEntries(Object.entries(h.changed || {}).filter(([k]) => k in conf()));
+  const line = el('span', { class: 'small muted grow', 'aria-live': 'polite' });
+  const btn = el('button', { class: 'btn ghost small', type: 'button', disabled: true, 'data-balance': '1' }, '💾 Сохранить мой баланс');
+  function show() {
+    const c = conf(), m = mine(), keys = Object.keys(m), shell = Object.keys(h.changed || {}).filter(k => !(k in c)).length;
+    btn.disabled = !keys.length;
+    line.textContent = keys.length
+      ? 'Повёрнуто: ' + keys.map(k => `${(c[k] && c[k].label) || k} ${fmtNum(c[k].value)} → ${fmtNum(m[k])}`).join('; ') + '.' + (shell ? ' Переключатели оболочки в баланс не входят.' : '')
+      : shell ? 'Переключатели оболочки (сочность, камера) в баланс не входят — только ручки игры.' : 'Поверни ручки (Tab) и сохрани числа, которые нравятся: это новая версия игры без ИИ.';
+  }
+  h.onCfg = show;
+  btn.addEventListener('click', async () => {
+    btn.disabled = true;
+    try {
+      const r = await api('/api/game/balance', { game: gameId(), cfg: mine(), why: why ? why() : '' });
+      beep('done'); toast(`Баланс сохранён: версия ${r.version}. Соседи и аркада играют в неё, «Как задумано» — твои числа.`, 'ok', 6000);
+      if (onSaved) onSaved(r);
+    } catch (e) { toast(e.message, 'err'); show(); }
+  });
+  show();
+  return el('div', { class: 'row balance' }, btn, line);
+}
+const gameChanged = () => S.hooks.forEach(fn => fn('game'));
+function ownGame({ onOver, autostart, onReady, onBalance, balanceWhy } = {}) {
   const status = el('div', { class: 'small', 'aria-live': 'polite' });
   const versions = el('div', { class: 'versions' });
   let fixTries = 0;
   const g = () => S.game;
   const h = Games.frame({
     src: () => `/play/${g().id}/${g().current}`, key: () => 'game:' + g().id, info: () => ({ version: g().current }), label: 'Играть в свою игру', autostart,
-    onReady: () => { status.textContent = `Версия ${g().current} запущена.`; fixTries = 0; api('/api/game/ran', { version: g().current }).catch(() => {}); },
-    onOver: m => { if (onOver) onOver(m); },
+    onReady: meta => { status.textContent = `Версия ${g().current} запущена.`; fixTries = 0; api('/api/game/ran', { version: g().current }).catch(() => {}); if (onReady) onReady(meta); },
+    onOver: m => {
+      // обложка в аркаде: кадр после первой партии каждой новой версии
+      const gg = g();
+      if (gg && (!gg.poster || gg.poster.version !== gg.current)) { gg.poster = { version: gg.current }; h.post({ type: 'poster' }); }
+      if (onOver) onOver(m);
+    },
+    onPoster: data => { const gg = g(); api('/api/game/poster', { game: gg.id, version: gg.current, data }).catch(() => { gg.poster = null; }); },
     onError: async err => {
       const n = g().current;
       if (fixTries >= 2 || S.demo) {
@@ -1231,7 +1286,7 @@ function ownGame({ onOver, autostart } = {}) {
       h.message(el('div', { class: 'progress' }, el('div', { class: 'spinner' }), p));
       try {
         const r = await Lab.job('/api/ai/fix', { version: n, error: { phase: err.phase, message: err.message, line: err.line } }, j => { p.textContent = `Программист чинит ошибку «${err.message}» — попытка ${fixTries} из 2… ${j.seconds} с`; });
-        S.game = r.game; drawVersions(); h.start();
+        S.game = r.game; gameChanged(); h.start();
       } catch (e) { h.message(el('p', {}, 'Починка не удалась: ' + e.message)); }
     },
   });
@@ -1241,11 +1296,14 @@ function ownGame({ onOver, autostart } = {}) {
     g().versions.forEach(v => versions.append(el('button', {
       type: 'button', class: 'ver' + (v.n === g().current ? ' cur' : '') + (v.error ? ' bad' : ''),
       title: (v.kind || '') + (v.request ? ': ' + v.request : '') + (v.error ? ' · ошибка: ' + v.error.message : ''),
-      onclick: async () => { try { const r = await api('/api/game/current', { version: v.n }); S.game = r.game; fixTries = 0; drawVersions(); h.start(); } catch (e) { toast(e.message, 'err'); } },
+      onclick: async () => { try { const r = await api('/api/game/current', { version: v.n }); S.game = r.game; fixTries = 0; gameChanged(); h.start(); } catch (e) { toast(e.message, 'err'); } },
     }, `v${v.n} · ${v.kind || ''}`)));
   }
   drawVersions();
-  return { h, el: el('div', { class: 'stack' }, h.box, Games.bar(h), el('div', { class: 'row' }, el('span', { class: 'small muted' }, 'Версии:'), versions), status), drawVersions };
+  // своя игра видна в нескольких шагах (сборка, эксперимент, мастерская): новая версия в одном — списки версий обновляются во всех
+  S.hooks.push(kind => { if (kind === 'game') drawVersions(); });
+  const bal = balanceBar(h, () => g().id, r => { S.game = r.game; fixTries = 0; gameChanged(); h.start(); if (onBalance) onBalance(r); }, { why: balanceWhy });
+  return { h, el: el('div', { class: 'stack' }, h.box, Games.bar(h), bal, el('div', { class: 'row' }, el('span', { class: 'small muted' }, 'Версии:'), versions), status), drawVersions };
 }
 
 // build: собрать можно в любой момент — пустые поля Фабрики, решений и ИГРА сервер дописывает кубиком и возвращает их сюда.
@@ -1273,7 +1331,7 @@ STEPS.build = ctx => {
     host.append(el('div', { class: 'row' }, buildBtn, el('span', { class: 'muted small' }, S.demo ? 'Демо-режим: соберётся образец урока с твоим названием.' : 'Программист пишет 5–10 минут, игра сохранится.')));
   }
   async function build() {
-    if (S.game && S.game.current && !confirm('Собрать игру заново по замыслу? Правки этой игры останутся в версиях.')) return;
+    if (S.game && S.game.current && !(await Lab.ask('Собрать игру заново по замыслу? Правки этой игры останутся в версиях.', { ok: 'Собрать заново' }))) return;
     pauseFrames();
     host.innerHTML = '';
     const p = el('p', {}, 'Программист пишет игру…');
@@ -1321,6 +1379,102 @@ STEPS.ownplay = ctx => {
   host.append(og.el, el('div', { class: 'small' }, status),
     st.question ? fieldEditor({ id: 'answer', label: st.question, deck: st.deck }, v.answer, nv => { v.answer = nv; ctx.save(v, ready() ? true : null); }, { idPrefix: st.id }) : null);
   show();
+  return host;
+};
+
+// experiment: эксперимент с одной ручкой своей игры — партия как есть → ручка и предсказание → партия с повёрнутой ручкой →
+// сравнение цифр двух партий, «сбылось или нет» и решение: оставить числа (новая версия «баланс») или вернуть как было. ИИ не нужен.
+const EXPERIMENT_DECK = [
+  'Станет напряжённее: угрозы будут ближе к герою',
+  'Станет легче, и партия будет дольше',
+  'Партия станет короче, но веселее',
+  'Я буду чаще жать главную кнопку',
+  'Появится стратегия «стоять на месте»',
+  'Счёт вырастет, но играть станет скучнее',
+];
+const partStats = m => { const t = m.tele || {}; return { score: Math.round(m.score || 0), time: Math.round(t.time || 0), hurts: t.hurts || 0, presses: Object.values(t.presses || {}).reduce((a, b) => a + b, 0) }; };
+STEPS.experiment = ctx => {
+  const st = ctx.step;
+  let v = Object.assign({ knob: null, from: null, to: null, guess: { text: '' }, before: null, after: null, result: null, noticed: { text: '' }, kept: null }, ctx.value);
+  const host = el('div', { class: 'stack' });
+  if (!S.game || !S.game.current) { host.append(el('p', { class: 'muted' }, 'Сначала собери игру в чекпоинте «Сборка».')); return host; }
+  let conf = {};
+  const save = done => ctx.save(v, done == null ? null : done, true);
+  const og = ownGame({
+    onReady: meta => {
+      conf = meta.config || {};
+      if (v.knob && !(v.knob in conf)) v.knob = null;
+      if (v.knob && v.to != null && !v.after && !v.kept) og.h.post({ type: 'setCfg', cfg: { [v.knob]: v.to } }); // рамка перезапустилась — ручка снова повёрнута
+      draw();
+    },
+    onOver: m => {
+      const ch = og.h.changed || {};
+      if (!v.before && !Object.keys(ch).some(k => k in conf)) { v.before = partStats(m); save(); draw(); return; }
+      if (v.before && v.knob && v.to != null && ch[v.knob] === v.to && !v.after) { v.after = partStats(m); save(); draw(); }
+    },
+    onBalance: () => { v.kept = 'keep'; save(true); draw(); },
+    balanceWhy: () => v.knob ? `эксперимент: ${(conf[v.knob] || {}).label || v.knob}; предсказание — ${valText(v.guess) || '—'}; итог — ${v.result || '—'}` : '',
+  });
+  const panel = el('div', { class: 'stack' });
+  host.append(og.el, panel);
+  const stage = (n, title, body, on) => el('div', { class: 'exp-stage' + (on ? ' on' : '') }, el('b', {}, `${n}. ${title}`), body);
+  function draw() {
+    panel.innerHTML = '';
+    const keys = Object.keys(conf);
+    // 1. партия как есть
+    panel.append(stage(1, 'Сыграй партию как есть', v.before ? el('p', { class: 'small ok-text' }, `✓ Счёт ${v.before.score}, партия ${v.before.time} с, урон ${v.before.hurts}`) : el('p', { class: 'small muted' }, 'Ручки не трогай: это точка отсчёта.'), !v.before));
+    if (!v.before) return;
+    // 2. одна ручка и предсказание
+    const body2 = el('div', { class: 'stack', style: 'gap:8px' });
+    if (!keys.length) body2.append(el('p', { class: 'small muted' }, 'Ручки игры ещё загружаются — запусти игру.'));
+    else {
+      const sel = el('select', { 'aria-label': 'Ручка для эксперимента', 'data-exp': 'knob' }, el('option', { value: '' }, 'Выбери одну ручку…'), ...keys.map(k => el('option', { value: k, selected: k === v.knob ? true : null }, conf[k].label || k)));
+      sel.addEventListener('change', () => { if (v.after) return; v.knob = sel.value || null; v.from = v.knob ? conf[v.knob].value : null; v.to = null; save(); draw(); });
+      body2.append(sel);
+      if (v.knob) {
+        const c = conf[v.knob];
+        if (c.hint) body2.append(el('p', { class: 'small muted' }, c.hint));
+        body2.append(fieldEditor({ id: 'guess', label: 'Что изменится, если повернуть её?', hint: 'Одной фразой: что почувствует игрок и почему', deck: st.deck || EXPERIMENT_DECK }, v.guess, nv => { v.guess = nv; save(); }, { idPrefix: st.id }));
+        const out = el('output', {}, fmtNum(v.to != null ? v.to : c.value));
+        const range = el('input', { type: 'range', min: c.min, max: c.max, step: c.step || 1, value: v.to != null ? v.to : c.value, 'aria-label': c.label || v.knob, 'data-exp': 'range', disabled: v.after ? true : null });
+        range.addEventListener('input', () => { out.textContent = fmtNum(range.value); });
+        range.addEventListener('change', () => {
+          if (!valText(v.guess)) { toast('Сначала запиши предсказание'); range.value = v.to != null ? v.to : c.value; out.textContent = fmtNum(range.value); return; }
+          v.to = Number(range.value); save(); og.h.post({ type: 'setCfg', cfg: { [v.knob]: v.to } }); beep('tick'); draw();
+        });
+        body2.append(el('label', { class: 'row small' }, el('span', {}, `${c.label || v.knob}: было ${fmtNum(v.from)}, стало`), out), range);
+      }
+    }
+    panel.append(stage(2, 'Выбери одну ручку и предскажи', body2, !v.to && v.to !== 0));
+    if (v.to == null) return;
+    // 3. партия с повёрнутой ручкой
+    panel.append(stage(3, 'Сыграй партию с повёрнутой ручкой', v.after ? el('p', { class: 'small ok-text' }, `✓ Счёт ${v.after.score}, партия ${v.after.time} с, урон ${v.after.hurts}`) : el('p', { class: 'small muted' }, 'Ручка уже повёрнута в игре. Играй как обычно.'), !v.after));
+    if (!v.after) return;
+    // 4. сравнение и вывод
+    const row = (label, k) => el('tr', {}, el('td', {}, label), el('td', {}, String(v.before[k])), el('td', {}, String(v.after[k])), el('td', { class: v.after[k] > v.before[k] ? 'ok-text' : v.after[k] < v.before[k] ? 'warn-text' : 'muted' }, v.after[k] === v.before[k] ? '=' : (v.after[k] > v.before[k] ? '+' : '') + (v.after[k] - v.before[k])));
+    const res = el('div', { class: 'seg', role: 'radiogroup', 'aria-label': 'Сбылось ли предсказание' });
+    ['Сбылось', 'Не сбылось', 'Вышло неожиданно'].forEach(x => res.append(el('button', { type: 'button', class: 'opt' + (v.result === x ? ' on' : ''), 'aria-pressed': String(v.result === x), 'data-result': x, onclick: () => { v.result = x; save(); beep('tick'); draw(); } }, x)));
+    const body4 = el('div', { class: 'stack', style: 'gap:8px' },
+      el('p', { class: 'small' }, el('b', {}, 'Предсказание: '), valText(v.guess)),
+      el('div', { class: 'tablewrap' }, el('table', {}, el('thead', {}, el('tr', {}, ['', 'как есть', 'с ручкой', 'разница'].map(h => el('th', {}, h)))),
+        el('tbody', {}, row('Счёт', 'score'), row('Длина партии, с', 'time'), row('Урон герою', 'hurts'), row('Нажатий', 'presses')))),
+      res);
+    if (v.result) {
+      body4.append(fieldEditor({ id: 'noticed', label: 'Что заметил?', hint: 'Одна партия — ещё не закон: что проверишь на соседе?' }, v.noticed, nv => { v.noticed = nv; save(); }, { idPrefix: st.id }));
+      if (v.kept === 'keep') body4.append(el('p', { class: 'concept' }, '✓ Числа сохранены новой версией «баланс». Соседи в «Играем вместе» играют уже в неё.'));
+      else if (v.kept === 'back') body4.append(el('p', { class: 'concept' }, '↩ Ручка вернулась как было. Эксперимент записан, а это тоже результат.'));
+      else body4.append(el('div', { class: 'row' },
+        el('button', { class: 'btn', type: 'button', 'data-exp': 'keep', onclick: async () => {
+          try {
+            const r = await api('/api/game/balance', { cfg: { [v.knob]: v.to }, why: `эксперимент: ${(conf[v.knob] || {}).label || v.knob}; предсказание — ${valText(v.guess)}; итог — ${v.result}` });
+            S.game = r.game; gameChanged(); v.kept = 'keep'; save(true); beep('done'); toast(`Баланс сохранён: версия ${r.version}`, 'ok'); og.h.start();
+          } catch (e) { toast(e.message, 'err'); }
+        } }, '💾 Оставить эти числа'),
+        el('button', { class: 'btn ghost', type: 'button', 'data-exp': 'back', onclick: () => { og.h.post({ type: 'setCfg', cfg: { [v.knob]: v.from } }); v.kept = 'back'; save(true); draw(); } }, '↩ Вернуть как было')));
+    }
+    panel.append(stage(4, 'Сравни и реши', body4, true));
+  }
+  draw();
   return host;
 };
 
@@ -1389,10 +1543,18 @@ STEPS.workshop = ctx => {
       });
       const send = el('button', { class: 'btn', type: 'button' }, 'Отправить программисту');
       const prog = el('div');
+      // баг по формуле — четыре коротких поля: программисту нужен шаг, ожидание, результат и то, что ломать нельзя
+      const BUG = [['did', 'Делал', 'Нажал пробел у края экрана'], ['want', 'Ожидал', 'Герой выстрелит'], ['got', 'Получилось', 'Герой застрял в стене'], ['keep', 'Не трогай', 'Скорость врагов и счёт']];
+      const bug = {};
+      const bugBox = el('div', { class: 'bugform', hidden: true }, BUG.map(([k, label, ph]) => el('label', { class: 'row small' }, el('b', { style: 'min-width:92px' }, label + '…'),
+        el('input', { type: 'text', maxlength: 160, placeholder: ph, 'data-bug': k, class: 'grow', style: 'width:auto;flex:1', oninput: e => { bug[k] = e.target.value.trim(); } }))));
+      const bugBtn = el('button', { class: 'btn ghost small', type: 'button', 'aria-expanded': 'false', onclick: () => { bugBox.hidden = !bugBox.hidden; bugBtn.setAttribute('aria-expanded', String(!bugBox.hidden)); } }, '🐞 Это баг — опишу по формуле');
       send.addEventListener('click', async () => {
-        const own = valText(req).trim();
+        const bugText = bug.did || bug.got ? `Баг. Делал: ${bug.did || '—'}. Ожидал: ${bug.want || '—'}. Получилось: ${bug.got || '—'}.` + (bug.keep ? ` Не трогай: ${bug.keep}.` : '') : '';
+        if (!bugBox.hidden && bugText && (!bug.did || !bug.got)) { toast('Для бага нужны хотя бы «Делал» и «Получилось»'); return; }
+        const own = [valText(req).trim(), bugText].filter(Boolean).join('\n');
         if (!preset && !own) { toast('Выбери, что не так, или напиши свою просьбу'); return; }
-        if (st.limit && !confirm(left === 1 ? (several ? 'Это единственная правка в этом шаге. Отправить?' : 'Это единственная правка на уроке. Отправить?') : `Осталось правок: ${left}. Отправить?`)) return;
+        if (st.limit && !(await Lab.ask(left === 1 ? (several ? 'Это единственная правка в этом шаге. Отправить?' : 'Это единственная правка на уроке. Отправить?') : `Осталось правок: ${left}. Отправить?`, { ok: 'Отправить' }))) return;
         const text = preset ? preset.request + (own ? '\nЕщё от автора: ' + own : '') : own;
         send.disabled = true; pauseFrames();
         prog.innerHTML = ''; const p = el('p', {}, 'Программист вносит правку…');
@@ -1400,14 +1562,15 @@ STEPS.workshop = ctx => {
         try {
           const r = await Lab.job('/api/ai/change', { request: text }, j => { p.textContent = `Программист вносит правку… ${j.seconds} с` + (j.chars ? ` · ${j.chars.toLocaleString('ru-RU')} символов` : ''); });
           S.game = r.game; v.requests = v.requests.concat({ text: preset ? preset.label + (own ? ': ' + own : '') : own, dice: !preset && !!req.dice, version: r.version }); ctx.save(v, true, true);
-          toast(S.demo ? 'Демо-режим: правка записана, но игра не изменилась' : `Готово: версия ${r.version}`, 'ok'); draw(); if (live) live.h.start();
+          toast(S.demo ? 'Демо-режим: правка записана, но игра не изменилась' : `Готово: версия ${r.version}`, 'ok'); draw(); gameChanged(); if (live) live.h.start();
         } catch (e) { toast(e.message, 'err', 8000); send.disabled = false; prog.innerHTML = ''; }
       });
       const cardsHost = el('div', { class: 'stack' });
       if (st.cardsFrom) loadCards(cardsHost);
       host.append(og.el, cardsHost,
         el('label', { class: 'lbl' }, 'Что не так с игрой?'), grid,
-        fieldEditor({ id: 'req', label: 'Или своими словами (можно вместе с кнопкой)', hint: 'Баг — по формуле «Делал… Ожидал… Получилось… Не трогай…». Числа меняй ручками (Tab).', deck: st.deck }, req, nv => { req = nv; }, { rows: 2, idPrefix: st.id }),
+        fieldEditor({ id: 'req', label: 'Или своими словами (можно вместе с кнопкой)', hint: 'Числа программист не нужен: их меняют ручки (Tab) и «Сохранить мой баланс».', deck: st.deck }, req, nv => { req = nv; }, { rows: 2, idPrefix: st.id }),
+        bugBtn, bugBox,
         el('div', { class: 'row' }, send, st.limit ? el('span', { class: 'muted small' }, left === 1 ? (several ? 'Здесь одна правка: выбирай главное.' : 'На этом уроке одна правка: выбирай главное.') : `Осталось правок: ${left}`) : null), prog);
     }
     if (v.requests.length) host.append(el('details', {}, el('summary', {}, `Мои правки (${v.requests.length})`), el('ol', {}, v.requests.map(r => el('li', {}, `${r.text}${r.dice ? ' [кубик]' : ''} → v${r.version}`)))));
@@ -1542,7 +1705,18 @@ STEPS.playtest = ctx => {
     mineHost.append(el('div', { class: 'row' }, el('h3', { class: 'grow' }, r.game ? `Твоя игра «${r.game.title}» глазами класса` : 'Твоя игра глазами класса'),
       el('button', { class: 'btn ghost small', type: 'button', onclick: drawMine }, '↻ Обновить')));
     if (!r.game) mineHost.append(el('p', { class: 'muted' }, 'Ты ещё не собрал игру — открытие плейтеста появится, когда в неё сыграют соседи.'));
-    else mineHost.append(Games.discovery(r.discovery));
+    else {
+      mineHost.append(Games.discovery(r.discovery));
+      if (r.juice) mineHost.append(el('p', { class: 'concept' }, el('b', {}, 'Слепая проба сочности твоей игры. '),
+        `Вернуться в сочную захотели ${r.juice.juicy}, в сухую — ${r.juice.dry}, разницы не почувствовали ${r.juice.same}. `,
+        r.juice.juicy > r.juice.dry + r.juice.same ? 'Сочность работает.' : 'Сочность пока не тянет назад: может, эффекты мешают видеть главное или их мало?'));
+      // открытие плейтеста — повод для решения: проверить ручкой (без ИИ) или попросить программиста
+      const go = type => { const cp = S.lesson.checkpoints.find(c => c.steps.some(x => x.type === type)); return cp ? () => { S.cpId = cp.id; render(); const sx = cp.steps.find(x => x.type === type); setTimeout(() => { const n = document.getElementById('step-' + sx.id); if (n) n.scrollIntoView({ block: 'start' }); }, 50); } : null; };
+      const toKnob = go('experiment'), toCoder = go('workshop');
+      if (r.discovery && r.discovery.rounds && (toKnob || toCoder)) mineHost.append(el('div', { class: 'row' }, el('span', { class: 'small' }, el('b', {}, 'Что сделаешь с открытием?')),
+        toKnob ? el('button', { class: 'btn ghost small', type: 'button', 'data-act': 'knob', onclick: toKnob }, '🎚 Проверю ручкой') : null,
+        toCoder ? el('button', { class: 'btn ghost small', type: 'button', 'data-act': 'coder', onclick: toCoder }, '🛠 Попрошу программиста') : null));
+    }
     // predict: что автор предсказал в Фабрике (удовольствие, динамика) — рядом с тем, что телеметрия увидела у соседей
     const pred = (st.predict || []).map(p => [p.label, valText((((ans(p.step).value || {}).fields) || {})[p.field])]).filter(p => p[1]);
     if (r.game && pred.length) mineHost.append(el('div', { class: 'secret-reveal' }, el('div', { class: 'eyebrow' }, st.predictTitle || 'Твоё предсказание из Фабрики — совпало с тем, что делали соседи?'),
@@ -1723,7 +1897,7 @@ STEPS.blind = ctx => {
     host.append(el('div', { class: 'hud' }, el('span', {}, `Загадка ${v.i + 1} из ${st.rounds.length}`), el('span', {}, `угадано ${v.picks.filter(p => p && p.ok).length}`)),
       tabs, h.box, Games.bar(h), el('div', { class: 'eyebrow' }, st.question || 'Что изменилось?'), wait, el('div', { class: 'opts' }, btns));
     if (done) host.append(el('p', { class: 'verdict ' + (done.ok ? 'good' : 'bad') }, done.ok ? `Верно: ${r.answer}.` : `Нет, изменилось другое: ${r.answer}.`),
-      r.why ? el('p', { class: 'concept' }, r.why) : null,
+      r.why ? el('p', { class: 'concept' }, r.why) : '',
       el('div', {}, el('button', { class: 'btn', type: 'button', onclick: () => { v.i++; played = 0; tab = 'mystery'; auto = true; ctx.save(v, null, true); draw(); } }, v.i + 1 < st.rounds.length ? 'Следующая загадка ▶' : 'Итог ▶')));
   }
   function finish() {
@@ -1845,7 +2019,7 @@ STEPS.vote = ctx => {
         voteBox.append(el('div', { class: 'eyebrow' }, `Итоги класса · проголосовали ${tally.voters}`),
           el('div', { class: 'vote-noms' }, tally.noms.map(n => el('div', { class: 'card vote-nom' }, el('b', {}, n.label),
             n.top.length ? el('ol', {}, n.top.slice(0, 3).map(t => el('li', {}, `${t.title} — ${t.nick} · ${t.votes}`))) : el('p', { class: 'muted small' }, 'голосов нет')))),
-          win ? el('p', { class: 'concept' }, `Игра кнопочного турнира — «${win.title}» (${win.nick}): победитель номинации «${cup.label}». Турнир идёт на проекторе: каждый играет одну партию.`) : null);
+          win ? el('p', { class: 'concept' }, `Игра кнопочного турнира — «${win.title}» (${win.nick}): победитель номинации «${cup.label}». Турнир идёт на проекторе: каждый играет одну партию.`) : '');
       }
       voteBox.append(el('div', { class: 'row' }, el('button', { class: 'btn ghost small', type: 'button', onclick: async () => { await loadTally(); drawVote(); } }, '↻ Обновить итоги'),
         el('button', { class: 'btn ghost small', type: 'button', onclick: () => { v.votes = null; tally = null; ctx.save(v); drawVote(); } }, 'Изменить голоса')));
@@ -2040,6 +2214,7 @@ const RELEASE_AUTO = {
   plays: g => { const d = g.discovery || {}; return [d.rounds > 0, d.rounds ? `соседи сыграли ${d.rounds} партий, «ещё раз» — ${d.again}, рекорд класса ${g.record ? g.record.score : 0}` : 'в игру ещё не играл никто, кроме тебя']; },
   time: g => { const d = g.discovery || {}; const avg = d.rounds ? Math.round(d.time / d.rounds) : 0; return [avg >= 60, d.rounds ? `соседи играли в среднем ${avg} с за партию` : 'нет чужих партий — проверь с соседом']; },
   versions: g => [g.versions > 1, `версий: ${g.versions}${g.versions > 1 ? ' — были правки' : ' — правок ещё не было'}`],
+  balance: g => [g.balanced > 0, g.balanced ? `свой баланс сохранён ${g.balanced} раз — «Как задумано» это твои числа` : 'баланс ещё не сохранён: поверни ручки (Tab) и нажми «Сохранить мой баланс»'],
 };
 STEPS.release = ctx => {
   const st = ctx.step;
@@ -2071,7 +2246,7 @@ STEPS.release = ctx => {
     } }, el('b', {}, x.title), el('div', { class: 'small muted' }, `урок ${x.lesson.number} · версия ${x.version}` + (x.release ? ' · 1.0' : '')))));
     host.append(el('p', { class: 'small' }, el('b', {}, `Твоих игр модуля ${S.lesson.module} в аркаде: ${inArcade} из ${st.goal || 4}. `), 'Выбери лучшую — не обязательно сегодняшнюю.'), seg);
     const h = cur = Games.frame({ src: () => `/play/${g.id}/${g.version}`, key: () => 'game:' + g.id, info: () => ({ version: g.version }), label: 'Проверить игру перед релизом' });
-    host.append(Games.card(g, { compact: true }), h.box, Games.bar(h));
+    host.append(Games.card(g, { compact: true }), h.box, Games.bar(h), balanceBar(h, () => g.id, () => load()));
     const list = el('div', { class: 'checklist' });
     st.checklist.forEach(item => {
       const auto = item.auto && RELEASE_AUTO[item.auto] ? RELEASE_AUTO[item.auto](g) : null;
@@ -2135,6 +2310,7 @@ function stepSummary(step) {
     case 'producer': return v.result ? [v.result.praise, ...v.result.findings.map(x => `[${x.kind}] ${x.text}`), ...v.result.forks.map((x, i) => `${x.question} → ${(v.choices || {})[i] || 'не выбрано'}`)].filter(Boolean).join('\n') : 'не вызывался';
     case 'build': return S.game ? `«${S.game.title || ''}», версий ${S.game.versions.length}, текущая v${S.game.current}, модель ${(S.game.versions[S.game.current - 1] || {}).model || '—'}, партий ${v.rounds || 0}` : 'игра не собрана';
     case 'ownplay': return `партий ${v.rounds || 0}` + (step.question ? `; ${step.question} — ${f(v.answer) || '—'}` : '');
+    case 'experiment': return v.knob ? `ручка ${v.knob}: ${v.from} → ${v.to == null ? '—' : v.to}; предсказание: ${f(v.guess) || '—'}` + (v.before && v.after ? `; счёт ${v.before.score} → ${v.after.score}, партия ${v.before.time} → ${v.after.time} с` : '') + (v.result ? `; ${v.result.toLowerCase()}` : '') + (valText(v.noticed) ? `; заметил: ${f(v.noticed)}` : '') + (v.kept === 'keep' ? '; числа сохранены' : v.kept === 'back' ? '; вернул как было' : '') : 'не начат';
     case 'aicheck': return `догадка: ${v.text || '—'}` + (v.notes ? '\nрешения программиста: ' + (v.notes.join('; ') || 'нет записей') : '');
     case 'workshop': return (v.requests || []).map(r => `${r.text}${r.dice ? ' [кубик]' : ''} → v${r.version}`).join('\n') || 'правок не было';
     case 'arcade': return v.game ? `игра «${v.title || ''}» (автор ${v.author || '—'}), партий ${v.rounds || 0}, лучший счёт ${v.best || 0}${v.beat ? ', рекорд автора побит' : ''}` : 'не играл';
