@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<title>Кот на Луне</title>
+<style>html,body{margin:0;height:100%;background:#0b1020;color:#fff;font:16px system-ui}canvas{display:block;width:100%;height:100%}#hud{position:fixed;top:8px;left:10px}</style>
+</head>
+<body>
+<div id="hud">0</div>
+<canvas id="c"></canvas>
+<script>
+// игра-образец для проверки урока 1 версии 2: так отвечает Qwen из чата — страница без Babylon, связь с порталом через portal
+const cfg = portal.knobs({ speed: { value: 8, min: 2, max: 20, step: 0.5, label: 'Скорость героя' }, secret: { value: 1, min: 0, max: 1, step: 0.05, label: 'Секрет' } }, { 'Новичок': { speed: 5 }, 'Без секрета': { secret: 0 } });
+const cv = document.getElementById('c'), g = cv.getContext('2d'), hud = document.getElementById('hud');
+let x = 100, score = 0, t = 0, last = performance.now();
+portal.onRecord = (record, best) => { hud.dataset.record = record ? record.score : 0; };
+const keys = {};
+addEventListener('keydown', e => { keys[e.key] = true; });
+addEventListener('keyup', e => { keys[e.key] = false; });
+function frame(now) {
+  const dt = Math.min(0.05, (now - last) / 1000); last = now;
+  if (!portal.paused) {
+    const pad = navigator.getGamepads ? [...navigator.getGamepads()].find(Boolean) : null;
+    const dir = (keys.ArrowRight ? 1 : 0) - (keys.ArrowLeft ? 1 : 0) + (pad ? pad.axes[0] : 0);
+    x += dir * cfg.speed * 30 * dt; t += dt; score = Math.floor(t * 10);
+    if (cfg.secret > 0.5 && Math.floor(t) !== Math.floor(t - dt)) portal.count('_secret');
+  }
+  cv.width = innerWidth; cv.height = innerHeight;
+  g.fillStyle = '#ffb547'; g.fillRect(x, cv.height / 2, 40, 40);
+  hud.textContent = score;
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+window.endRound = () => { portal.over(score); t = 0; portal.again(); };
+</script>
+</body>
+</html>

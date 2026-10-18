@@ -40,11 +40,12 @@ const Lab = (() => {
     dlg.addEventListener('cancel', e => e.preventDefault()); // окно не закрывается случайным Esc: задание ждёт ответа
     document.body.append(dlg); dlg.showModal();
     let shown = '', busy = false;
-    const q = (short) => api('/api/job/prompt?id=' + encodeURIComponent(id) + (short ? '&short=1' : ''));
-    function copyBtn(label, short, cls) {
-      const b = el('button', { type: 'button', class: cls || 'btn', disabled: true }, label + ' …');
+    const q = clear => api('/api/job/prompt?id=' + encodeURIComponent(id) + (clear ? '&clear=1' : ''));
+    const size = n => (n / 1000).toFixed(1).replace('.', ',') + ' тыс. знаков';
+    function copyBtn(label, clear) {
+      const b = el('button', { type: 'button', class: 'btn' + (clear ? ' clear' : ''), disabled: true }, label + ' …');
       let text = '';
-      q(short).then(r => { text = r.text; b.disabled = false; b.textContent = label; }).catch(e => { b.textContent = e.message; });
+      q(clear).then(r => { text = r.text; b.disabled = false; b.textContent = label; }).catch(e => { b.textContent = e.message; });
       b.addEventListener('click', () => { copy(text); beep('tick'); });
       return b;
     }
@@ -73,9 +74,10 @@ const Lab = (() => {
       const steps = m.cont ? el('div', { class: 'row' }, copyBtn('📋 Скопировать «Продолжи»'), open)
         : m.followUp ? el('div', { class: 'row' }, copyBtn('📋 Скопировать сообщение'), open)
         : el('ol', { class: 'qwen-steps' },
-          el('li', {}, el('div', { class: 'row' }, copyBtn(`📋 Скопировать задание (${Math.round(m.chars / 1000)} тыс. знаков)`),
-            m.short ? copyBtn('Я в том же чате: без правил', true, 'btn ghost') : null)),
-          el('li', {}, el('div', { class: 'row' }, open, el('span', { class: 'small muted' }, 'Новый чат на каждую игру. Длинное задание чат может превратить во вложение — это нормально.'))),
+          // Clear — задание из трёх частей без Babylon.js (ответ — страница HTML); автор сравнивает оба варианта
+          el('li', {}, el('div', { class: 'row' }, copyBtn(`📋 Скопировать задание (${size(m.chars)})`),
+            m.clear ? copyBtn(`📋 Скопировать задание — Clear (${size(m.clear)})`, true) : null)),
+          el('li', {}, el('div', { class: 'row' }, open, el('span', { class: 'small muted' }, 'Новый чат на каждую игру, правки — в том же чате.'))),
           el('li', {}, 'Когда Qwen допишет, нажми в чате «Копировать» над блоком кода и вставь ответ ниже.'));
       dlg.append(el('div', { class: 'stack' },
         el('div', { class: 'eyebrow' }, 'Программист — Qwen в чате' + (m.step > 1 ? ` · сообщение ${m.step}` : '') + (m.parts ? ` · часть ${m.parts + 1}` : '')),

@@ -178,7 +178,10 @@ function extractCode(text) {
 const isHtml = code => /^\s*(<!doctype html|<html)/i.test(code || '');
 function htmlPage(text) {
   const m = /(<!doctype html[\s\S]*?<\/html>|<html[\s\S]*?<\/html>)/i.exec(String(text));
-  return m && !/\bconst\s+GAME\s*=/.test(m[1]) ? m[1] : '';
+  if (m) return /\bconst\s+GAME\s*=/.test(m[1]) ? '' : m[1];
+  // блок ```html без <html>: только <canvas>, <style> и <script> — оборачиваем в страницу
+  const b = /```html\s*\n([\s\S]*?)```/i.exec(String(text));
+  return b && /<script/i.test(b[1]) ? `<!DOCTYPE html>\n<html lang="ru"><head><meta charset="utf-8"></head><body>\n${b[1].trim()}\n</body></html>` : '';
 }
 function syntaxError(code) {
   if (isHtml(code)) return null;
@@ -211,8 +214,8 @@ async function call(kind, who, model, messages, onProgress) {
 // портал выдаёт следующее сообщение в тот же чат. Продюсер, связка и черновик отзыва остаются на API.
 const CHAT = {
   model: 'chat.qwen.ai', url: 'https://chat.qwen.ai/',
-  phrase: 'собери яркую lowpoly 3d игру для школьников на html', // просьба автора курса (18.10.2026) в конце каждого задания на новую игру
-  // напоминание о том, что нужно порталу (автор курса, 18.10.2026): правила целиком выше, здесь — короткий чек-лист в конце, где чат читает внимательнее
+  phrase: 'собери яркую lowpoly 3d игру для школьников на html', // просьба автора курса (18.10.2026) в каждом задании на новую игру
+  // памятка в конце прежнего задания (правила Лаб3D с образцом): что нужно порталу от объекта GAME
   format: [
     'Формат ответа — как сказано выше: один блок ```js с объектом GAME для оболочки Лаб3D, ни слова до и после. Страница HTML с Babylon.js в портале уже есть: не пиши <html>, <script> и не подключай библиотеки.',
     'Обязательно для портала:',
@@ -226,18 +229,87 @@ const CHAT = {
 };
 const manual = lessonId => { const l = lessonModule(lessonId); return !!(l && l.programmer === 'chat'); };
 const programmerDemo = lessonId => demo() && !manual(lessonId);
-// Первое сообщение задания — правила и задание целиком (prompt, для нового чата) и только задание (short, для чата, где правила уже есть).
-// Следующие сообщения того же задания (ответ не подошёл, повтор) — только новый текст в тот же чат.
-async function chatCall(kind, who, messages, onProgress, newGame) {
-  if (!onProgress || !onProgress.ask) throw new Error('Программист работает через chat.qwen.ai: ответ некуда вставить');
-  const system = messages[0].content, user = messages[messages.length - 1].content;
-  const tail = newGame ? `\n\n${CHAT.phrase}\n${CHAT.format}` : '';
-  const q = onProgress.asked ? { prompt: user, followUp: true } : { prompt: `${system}\n\n# Задание\n${user}${tail}`, short: user + tail };
-  onProgress.asked = (onProgress.asked || 0) + 1;
-  const t0 = Date.now();
-  const text = await onProgress.ask(Object.assign({ kind, url: CHAT.url }, q));
-  return { text, entry: Object.assign({ kind, model: CHAT.model, ms: Date.now() - t0, chars: text.length, manual: true, rub: 0 }, meta(who)) };
+// Задание на новую игру — два варианта, автор сравнивает их на уроке (18.10.2026), окно даёт обе кнопки:
+// - прежнее: правила Лаб3D с одним образцом (короткий промпт, как для Claude), задание, просьба автора и памятка — ответ объект GAME;
+// - Clear: три части — просьба автора, связка геймдизайнера или замысел ученика, что нужно порталу (portal/ai/chat-prompt.md) —
+//   ответ страница HTML без Babylon.js, связь с порталом — мост engine/portal.js.
+// Правка и починка идут в формате той игры, что есть: страница HTML — по chat-prompt.md, объект GAME — по game-prompt.md.
+const fullTask = (who, user, popts) => `${systemPrompt(Object.assign({ lesson: who && who.lesson, model: CHAT.model, short: true }, popts))}\n\n# Задание\n${user}\n\n${CHAT.phrase}\n${CHAT.format}`;
+const chatTpl = name => promptSection('chat-prompt.md', `<!-- chat:${name}:start -->`, `<!-- chat:${name}:end -->`);
+// пустое поле замысла fill превращает в «—»: такие строки в задании для чата не нужны
+const chatTask = middle => [CHAT.phrase, middle.replace(/^—\r?\n/gm, '').replace(/\n—\s*$/, '').trim(), chatTpl('portal')].join('\n\n');
+// секрет в задании Clear: без API оболочки Лаб3D (звук секрета «ритм» игра пишет сама)
+const chatSecret = prompt => (prompt ? '\n' + fill(chatTpl('secret'), { 'секрет': prompt.replace(/\s*\(lab\.tone[^)]*\)/, ' (низкий тон через Web Audio)') }) : '');
+// замечания проверки к игре из чата: то, без чего портал работает хуже
+function chatWarnings(code, secret) {
+  if (!isHtml(code)) return lint(code);
+  const w = [];
+  if (!/portal\.over\s*\(/.test(code)) w.push('нет portal.over: рекорды не запишутся');
+  if (!/portal\.knobs\s*\(/.test(code)) w.push('нет portal.knobs: нет ручек');
+  if (!/getGamepads/.test(code)) w.push('нет геймпада');
+  if (/\b(localStorage|sessionStorage|alert\s*\(|confirm\s*\(|prompt\s*\()/.test(code)) w.push('localStorage или alert: в песочнице не работают');
+  if (secret && !/_secret/.test(code)) w.push('секрет не считается в portal.count');
+  return w;
 }
+// Один круг с чатом: портал выдаёт текст, человек вставляет ответ (progress.ask, см. startJob в server.js), портал проверяет код.
+// Не подошло — следующее сообщение в тот же чат, до трёх ответов. base — код, к которому прикладываются куски правки.
+async function chatProgram(kind, prompt, who, onProgress, base, secret, clear) {
+  if (!onProgress || !onProgress.ask) throw new Error('Программист работает через chat.qwen.ai: ответ некуда вставить');
+  const attempts = [];
+  let ask = prompt;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const t0 = Date.now();
+    const text = await onProgress.ask({ kind, url: CHAT.url, prompt: ask, clear: attempt ? null : clear || null, followUp: attempt > 0 });
+    const entry = Object.assign({ kind: attempt ? kind + ': повтор' : kind, model: CHAT.model, ms: Date.now() - t0, chars: text.length, manual: true, rub: 0 }, meta(who));
+    let code = '', problem = '';
+    PATCH_RE.lastIndex = 0;
+    if (base && PATCH_RE.test(text)) {
+      const p = applyPatches(base, text);
+      code = p.code;
+      if (p.failed.length) problem = 'Эти куски не легли в код: ' + p.failed.join('; ') + '. Пришли куски заново: в «НАЙТИ» — дословная копия строк из текущего кода, которая встречается в нём один раз. Или пришли игру целиком одним блоком ```html.';
+    } else {
+      try { code = extractCode(text); } catch (e) { problem = 'В ответе нет кода игры. Пришли игру целиком: один файл HTML одним блоком ```html, без пояснений.'; }
+    }
+    const err = !problem && syntaxError(code);
+    if (err) problem = `В коде ошибка: ${err.message}${err.line ? ', строка ' + err.line : ''}. Исправь и пришли игру целиком одним блоком \`\`\`html.`;
+    entry.ok = !problem; if (problem) entry.error = problem;
+    attempts.push(log(entry));
+    if (!problem) return { code, model: CHAT.model, attempts: attempts.length, warnings: chatWarnings(code, secret), ms: attempts.reduce((n, e) => n + e.ms, 0), rub: 0 };
+    ask = problem;
+  }
+  throw new Error('Три ответа из чата не подошли — начните задание заново в новом чате');
+}
+function chatBuild(plan, who, onProgress, kind) {
+  const text = fill(chatTpl('new'), {
+    'название': plan.title, 'донор': plan.donor, 'твист': plan.twist, 'мир': plan.world, 'детали': plan.details.join('\n'),
+    'идея': plan.igra.i, 'глагол': plan.igra.g, 'правила': plan.igra.r, 'атмосфера': plan.igra.a,
+    'чувство': plan.decisions.feeling, 'честность': plan.decisions.honesty, 'выбор': plan.decisions.choice,
+    'развилки': plan.forks.length ? plan.forks.map(f => `- ${f.question} → ${f.answer}`).join('\n') : 'развилок не было',
+    'находки': plan.findings && plan.findings.length ? 'Продюсер заметил:\n' + plan.findings.map(f => '- ' + f).join('\n') : '',
+  }) + chatSecret(plan.secret && plan.secret.prompt);
+  return chatProgram(kind || 'сборка', fullTask(who, newGameMessage(plan), studentFrame(plan)), who, onProgress, null, !!plan.secret, chatTask(text));
+}
+async function chatShared(wow, who, onProgress) {
+  const text = fill(chatTpl('wow'), {
+    'герой': wow.cards.hero, 'действие': wow.cards.action, 'место': wow.cards.place, 'угроза': wow.cards.threat || 'нет карты — придумай по месту', 'поворот': wow.cards.twist,
+    'связка': wow.link ? 'Связка (класс принял её, строй игру по ней):\n' + LINK_FIELDS.filter(([k]) => wow.link[k]).map(([k, label]) => `- ${label}: ${wow.link[k]}`).join('\n') : '',
+  }) + chatSecret(wow.secret);
+  const full = fullTask(who, fill(userTemplate('wow'), {
+    'герой': wow.cards.hero, 'действие': wow.cards.action, 'место': wow.cards.place, 'угроза': wow.cards.threat || 'нет карты — придумай по месту', 'поворот': wow.cards.twist, 'секрет': wow.secret, 'связка': linkText(wow.link),
+  }), { frame: wowFrame(wow) });
+  return Object.assign(await chatProgram('общая игра', full, who, onProgress, null, true, chatTask(text)), { knob: 'secret' });
+}
+function chatChange(code, request, who, onProgress, kind) {
+  const text = isHtml(code) ? fill(chatTpl('change'), { 'код': code.trim(), 'просьба': request, 'формат': chatTpl('patch') })
+    : `${systemPrompt({ lesson: who && who.lesson, model: CHAT.model, short: true })}\n\n# Задание\n${fill(userTemplate('change'), { 'код': code.trim(), 'просьба': request, 'формат': userTemplate('patch') })}`;
+  return chatProgram(kind || 'правка', text, who, onProgress, code);
+}
+function chatFix(code, error, who, onProgress) {
+  const text = isHtml(code) ? fill(chatTpl('fix'), { 'ошибка': error.message || '?', 'строка': error.line || '?', 'код': code.trim(), 'формат': chatTpl('patch') })
+    : `${systemPrompt({ lesson: who && who.lesson, model: CHAT.model, short: true })}\n\n# Задание\n${fill(userTemplate('fix'), { 'фаза: загрузка | start | update | отрисовка': error.phase || 'update', 'текст ошибки': error.message || '?', 'номер': error.line || '?', 'код': code.trim(), 'формат': userTemplate('patch') })}`;
+  return chatProgram('починка', text, who, onProgress, code);
+}
+
 // ответ из чата оборвался: незакрытый блок кода, незакрытый кусок правки, страница без </html> или код игры без конца
 function truncated(text) {
   text = String(text || '');
@@ -491,15 +563,14 @@ function applyPatches(code, text) {
   return { code, count, failed };
 }
 async function patchProgram(kind, code, firstUser, who, onProgress, popts, model) {
-  const viaChat = manual(who && who.lesson);
-  model = viaChat ? CHAT.model : model || models().code;
-  const system = systemPrompt(Object.assign({ lesson: who && who.lesson, model, short: viaChat }, popts));
+  model = model || models().code;
+  const system = systemPrompt(Object.assign({ lesson: who && who.lesson, model }, popts));
   let messages = [{ role: 'system', content: system }, { role: 'user', content: firstUser }];
   const attempts = [];
   for (let attempt = 0; attempt < 2; attempt++) {
     const t0 = Date.now();
     let res;
-    try { res = viaChat ? await chatCall(attempt ? kind + ': повтор' : kind, who, messages, onProgress) : await call(attempt ? kind + ': повтор' : kind, who, model, messages, onProgress); } catch (e) {
+    try { res = await call(attempt ? kind + ': повтор' : kind, who, model, messages, onProgress); } catch (e) {
       log(Object.assign({ kind, model, ms: Date.now() - t0, ok: false, error: e.message }, meta(who)));
       throw e;
     }
@@ -532,17 +603,16 @@ async function patchOrWhole(kind, code, tpl, map, who, onProgress, popts, model)
 // Программист: один вызов модели + проверка синтаксиса. При синтаксической ошибке — до 2 починок сразу на сервере.
 // model — другая модель для сравнения на том же замысле (иначе — модель из панели учителя). В ответе — время и рубли всех попыток.
 async function program(kind, firstUser, who, onProgress, model, popts) {
-  const viaChat = manual(who && who.lesson);
-  model = viaChat ? CHAT.model : model || models().code;
-  // popts.frame — каркас связки игры класса: для Claude один образец этого каркаса; popts.newGame — задание на новую игру (для чата — с просьбой автора)
-  const system = systemPrompt(Object.assign({ lesson: who && who.lesson, model, short: viaChat }, popts)); // второй образец — ремейк урока (sample в сценарии); Claude — со стандартом геймдизайна
+  model = model || models().code;
+  // popts.frame — каркас связки игры класса: для Claude один образец этого каркаса
+  const system = systemPrompt(Object.assign({ lesson: who && who.lesson, model }, popts)); // второй образец — ремейк урока (sample в сценарии); Claude — со стандартом геймдизайна
   let messages = [{ role: 'system', content: system }, { role: 'user', content: firstUser }];
   const attempts = [];
   const total = () => ({ ms: attempts.reduce((n, e) => n + (e.ms || 0), 0), rub: attempts.some(e => e.rub != null) ? Math.round(attempts.reduce((n, e) => n + (e.rub || 0), 0) * 100) / 100 : null });
   for (let attempt = 0; attempt < 3; attempt++) {
     const t0 = Date.now();
     let res;
-    try { res = viaChat ? await chatCall(attempt ? 'починка синтаксиса' : kind, who, messages, onProgress, !attempt && popts && popts.newGame) : await call(attempt ? 'починка синтаксиса' : kind, who, model, messages, onProgress); } catch (e) {
+    try { res = await call(attempt ? 'починка синтаксиса' : kind, who, model, messages, onProgress); } catch (e) {
       log(Object.assign({ kind: attempt ? 'починка синтаксиса' : kind, model, ms: Date.now() - t0, ok: false, error: e.message }, meta(who)));
       throw e;
     }
@@ -563,18 +633,21 @@ async function program(kind, firstUser, who, onProgress, model, popts) {
 const studentFrame = plan => (plan.frame && !/донор/i.test(plan.frame) ? { frame: plan.frame } : undefined);
 // opts.model и opts.kind — для сравнения моделей: тот же замысел, другая модель, запись «сравнение» в журнале
 async function build(plan, who, onProgress, opts = {}) {
-  if (programmerDemo(who && who.lesson)) return demoGame(plan, who, opts.kind);
-  const r = await program(opts.kind || 'сборка', newGameMessage(plan), who, onProgress, opts.model, Object.assign({ newGame: true }, studentFrame(plan)));
+  if (manual(who && who.lesson)) return chatBuild(plan, who, onProgress, opts.kind);
+  if (demo()) return demoGame(plan, who, opts.kind);
+  const r = await program(opts.kind || 'сборка', newGameMessage(plan), who, onProgress, opts.model, studentFrame(plan));
   if (plan.secret && !/\bsecret\s*:\s*\{/.test(r.code)) r.warnings = r.warnings.concat('нет ручки secret');
   return r;
 }
 async function change(code, request, who, onProgress) {
-  if (programmerDemo(who && who.lesson)) { log(Object.assign({ kind: 'правка', model: 'демо', ms: 0, ok: true, demo: true }, meta(who))); return { code, model: 'демо', attempts: 1, warnings: [], demo: true }; }
+  if (manual(who && who.lesson)) return chatChange(code, request, who, onProgress);
+  if (demo()) { log(Object.assign({ kind: 'правка', model: 'демо', ms: 0, ok: true, demo: true }, meta(who))); return { code, model: 'демо', attempts: 1, warnings: [], demo: true }; }
   return patchOrWhole('правка', code, userTemplate('change'), { 'код': code.trim(), 'просьба': request }, who, onProgress);
 }
 // model — чинит та же модель, что собирала (важно для честного сравнения моделей)
 async function fix(code, error, who, onProgress, model) {
-  if (programmerDemo(who && who.lesson)) { log(Object.assign({ kind: 'починка', model: 'демо', ms: 0, ok: false, demo: true }, meta(who))); throw new Error('Демо-режим: без ключа программист не чинит ошибки'); }
+  if (manual(who && who.lesson)) return chatFix(code, error, who, onProgress);
+  if (demo()) { log(Object.assign({ kind: 'починка', model: 'демо', ms: 0, ok: false, demo: true }, meta(who))); throw new Error('Демо-режим: без ключа программист не чинит ошибки'); }
   return patchOrWhole('починка', code, userTemplate('fix'), {
     'фаза: загрузка | start | update | отрисовка': error.phase || 'update', 'текст ошибки': error.message || '?', 'номер': error.line || '?', 'код': code.trim(),
   }, who, onProgress, null, model);
@@ -584,10 +657,11 @@ async function fix(code, error, who, onProgress, model) {
 // Секрет живёт в ручке secret и в скрытом счётчике телеметрии _secret. Без ключа — запасная игра урока.
 const wowFrame = wow => (wow.link && wow.link.frame) || ''; // каркас связки: по нему Claude получает один образец
 async function buildShared(wow, who, onProgress) {
-  if (programmerDemo(who && who.lesson)) return demoShared(wow, who);
+  if (manual(who && who.lesson)) return chatShared(wow, who, onProgress);
+  if (demo()) return demoShared(wow, who);
   const r = await program('общая игра', fill(userTemplate('wow'), {
     'герой': wow.cards.hero, 'действие': wow.cards.action, 'место': wow.cards.place, 'угроза': wow.cards.threat || 'нет карты — придумай по месту', 'поворот': wow.cards.twist, 'секрет': wow.secret, 'связка': linkText(wow.link),
-  }), who, onProgress, null, { frame: wowFrame(wow), newGame: true });
+  }), who, onProgress, null, { frame: wowFrame(wow) });
   if (!/\bsecret\s*:\s*\{/.test(r.code)) r.warnings = r.warnings.concat('нет ручки secret');
   if (!/_secret/.test(r.code)) r.warnings = r.warnings.concat('секрет не считается в телеметрии');
   return Object.assign(r, { knob: 'secret' });
@@ -599,6 +673,7 @@ function playtestRounds(report) {
     + (x.offscreen != null ? `, герой за кадром ${x.offscreen}% времени` : '') + (x.flat ? `, дольше всего без очков — ${x.flat} с` : '') + (x.over ? `, конец партии: «${x.endText}»` : ', дожил до конца') + (x.error ? `, ошибка: ${x.error}` : '')).join('\n');
 }
 async function playtestFix(code, report, wow, who, onProgress) {
+  if (manual(who && who.lesson)) return Object.assign(await chatChange(code, 'исправь игру по отчёту бота-плейтестера:\n' + report.findings.map(f => '- ' + f).join('\n'), who, onProgress, 'правка по плейтесту'), { knob: 'secret' });
   const r = await patchOrWhole('правка по плейтесту', code, userTemplate('playtest'), {
     'код': code.trim(), 'связка': linkText(wow.link), 'секунд': String(report.seconds), 'партии': playtestRounds(report), 'выводы': report.findings.map(f => '- ' + f).join('\n'),
   }, who, onProgress, { frame: wowFrame(wow) });

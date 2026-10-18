@@ -68,7 +68,7 @@ function claudePrompt(opts) {
 }
 
 // opts: { lesson } — id урока, { sample } — { file, about }, { model } — модель программиста (Claude — свой промпт),
-// { short } — короткий промпт с одним образцом и для другой модели (программист в chat.qwen.ai, урок 1 версии 2),
+// { short } — тот же короткий промпт с одним образцом для другой модели (прежнее задание для chat.qwen.ai, урок 1 версии 2),
 // { frame } — каркас из связки игры класса (строка, можно пустую): для Claude образец этого каркаса; строка — старый вызов: файл образца 1
 function systemPrompt(opts = {}) {
   if (typeof opts === 'string') opts = { example: opts };

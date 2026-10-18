@@ -204,10 +204,11 @@ function staticUnder(root, rel, res, extra) {
 // игры работают в рамке без своего происхождения (sandbox без allow-same-origin): им нужен CORS для wasm
 const CORS = { 'Access-Control-Allow-Origin': '*' };
 
-// страница без оболочки сама не говорит порталу «запустилась» и не сообщает об ошибке: короткий мостик в одну строку
-// (номера строк ошибок совпадают с кодом из чата) — иначе рамка через 25 секунд сочтёт игру упавшей
-const HTML_BRIDGE = '<script>(function(){var p=function(m){m.source="lab-game";try{parent.postMessage(m,"*")}catch(e){}};p({type:"ready",meta:{html:true}});addEventListener("error",function(e){p({type:"error",phase:"update",message:String(e.message||"ошибка"),line:e.lineno||null})})})();</script>';
-const htmlGame = code => (/<head[^>]*>/i.test(code) ? code.replace(/<head[^>]*>/i, m => m + HTML_BRIDGE) : code.replace(/<html[^>]*>/i, m => m + HTML_BRIDGE));
+// Игра-страница из чата (урок 1, версия 2) — без оболочки Лаб3D: мост engine/portal.js даёт ей объект portal
+// (ручки и их панель, конец партии и рекорды, счётчики, ошибки со строкой). Вставляется первым в <head> без перевода строки:
+// номера строк ошибок совпадают с кодом из чата. В скачанной игре мост — внутри файла.
+const bridgeTag = inline => inline ? inlineScript(fs.readFileSync(path.join(PORTAL, 'engine', 'portal.js'), 'utf8')) : '<script src="/engine/portal.js"></script>';
+const htmlGame = (code, inline) => (/<head[^>]*>/i.test(code) ? code.replace(/<head[^>]*>/i, m => m + bridgeTag(inline)) : code.replace(/<html[^>]*>/i, m => m + bridgeTag(inline)));
 function playPage(res, gameId, n) {
   const g = store.getGame(gameId);
   const code = g && store.versionCode(gameId, n || g.current);
@@ -227,7 +228,7 @@ function downloadPage(res, gameId, n) {
   const g = store.getGame(gameId);
   const v = g && (Number(n) || g.current), code = g && store.versionCode(gameId, v);
   if (!code) return send(res, 404, 'Нет такой версии игры', 'text/plain; charset=utf-8');
-  if (ai.isHtml(code)) return send(res, 200, code, 'text/html; charset=utf-8', { 'Content-Security-Policy': 'sandbox allow-scripts allow-pointer-lock', 'Content-Disposition': `attachment; filename="igra.html"; filename*=UTF-8''${encodeURIComponent((g.title || 'igra') + ' v' + v + '.html')}` });
+  if (ai.isHtml(code)) return send(res, 200, htmlGame(code, true), 'text/html; charset=utf-8', { 'Content-Security-Policy': 'sandbox allow-scripts allow-pointer-lock', 'Content-Disposition': `attachment; filename="igra.html"; filename*=UTF-8''${encodeURIComponent((g.title || 'igra') + ' v' + v + '.html')}` });
   if (/\bphysics\s*:\s*true/.test(code)) return send(res, 409, 'Эта игра с физикой: одним файлом она не запустится. Играй в неё в аркаде.', 'text/plain; charset=utf-8');
   if (!BABYLON_JS) BABYLON_JS = fs.readFileSync(path.join(PORTAL, 'engine', 'vendor', 'babylon', 'babylon.js'), 'utf8');
   const lab = fs.readFileSync(path.join(PORTAL, 'engine', 'lab.js'), 'utf8');
@@ -1227,9 +1228,9 @@ route('GET', '/api/job', (ctx) => {
   if (!job || !ctx.who || job.owner !== ctx.who.token) throw Object.assign(new Error('Задание не найдено (сервер перезапускался?)'), { status: 404 });
   const m = job.state === 'waiting' && job.manual;
   return { state: job.state, kind: job.kind, seconds: Math.round((Date.now() - job.started) / 1000), chars: job.chars, phase: job.phase, result: job.result, error: job.error,
-    manual: m ? { step: m.step, kind: m.kind, url: m.url, followUp: !!m.followUp, short: !!m.short, cont: m.parts > 0, parts: m.parts, chars: m.prompt.length } : null };
+    manual: m ? { step: m.step, kind: m.kind, url: m.url, followUp: !!m.followUp, clear: m.clear ? m.clear.length : 0, cont: m.parts > 0, parts: m.parts, chars: m.prompt.length } : null };
 });
-// программист в chat.qwen.ai: текст для чата (полный или без правил), вставленный ответ и отмена
+// программист в chat.qwen.ai: текст для чата (clear=1 — задание Clear из трёх частей), вставленный ответ и отмена
 function waitingJob(ctx, id) {
   const job = jobs.get(id);
   if (!job || !ctx.who || job.owner !== ctx.who.token) throw Object.assign(new Error('Задание не найдено (сервер перезапускался?)'), { status: 404 });
@@ -1246,7 +1247,7 @@ function busyJob(id) {
 const CONTINUE = 'Ответ оборвался. Продолжи ровно с того места, где остановился: без повторов, без пояснений, тем же блоком кода.';
 route('GET', '/api/job/prompt', (ctx) => {
   const m = waitingJob(ctx, ctx.url.searchParams.get('id')).manual;
-  return { step: m.step, text: m.parts ? CONTINUE : ctx.url.searchParams.get('short') && m.short ? m.short : m.prompt };
+  return { step: m.step, text: m.parts ? CONTINUE : ctx.url.searchParams.get('clear') && m.clear ? m.clear : m.prompt };
 });
 route('POST', '/api/job/answer', (ctx) => {
   const job = waitingJob(ctx, ctx.body.id), m = job.manual;
