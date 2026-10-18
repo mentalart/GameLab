@@ -1,8 +1,12 @@
-// «Камни мудреца» — ремейк-донор урока 2 по мотивам механики «Крестики-нолики».
-// Образец пошаговой игры на поле-сетке с ботом: ход игрока курсором, ход бота по перебору (минимакс), матч из нескольких партий.
+// «Камни мудреца» — ремейк-донор урока 2 по мотивам механики «Крестики-нолики» на оболочке «Лаб3D 1.0» (three.js).
+// Пошаговая игра на поле 3 × 3 с ботом: ход игрока курсором, ход мудреца по перебору (минимакс), матч из нескольких партий.
 // Секрет донора — неопределённость исхода. В классике мудрец не ошибается, и исход известен заранее: при точной игре — ничья.
 // Одно правило (ручка «Секрет: одно правило») делает игру слишком большой для полного расчёта, и исход снова открыт.
+// Из лучших игр жанра: весы исхода — шкала оценки, как у шахматного движка; светится «две в ряд» и «вилка», как в «Четыре в ряд»;
+// мудрец сначала показывает лунку лучом, как враги в Into the Breach; победная линия — замедление, наезд камеры и звон по нарастающей.
+// Ось Z в three.js смотрит на игрока: дальний ряд доски и мудрец — в −Z, «вверх по экрану».
 const GAME = {
+  engine: 'three',
   title: 'Камни мудреца',
   subtitle: 'Три камня в ряд против мудреца с плато Лаго-Наки. Он не ошибается — пока в игре нет одного правила.',
   donor: 'Крестики-нолики',
@@ -12,23 +16,25 @@ const GAME = {
     { input: 'move4', text: 'выбрать лунку' },
     { input: 'a', text: 'положить камень' },
   ],
-  camera: { type: 'iso', beta: 0.92, target: [0, 1, 0.6] },
-  field: { w: 15, h: 15 },
-  sky: '#9fd3f5',
+  camera: { type: 'iso', tilt: 0.98, target: [0, 0, -1.6] },
+  field: { w: 12.5, h: 13 },
+  sky: ['#5fa9e6', '#ffe1b3'],
   fog: 0.007,
   accent: '#ffd23f',
   decisions: [
     'Чувство: азарт «а вдруг выиграю», который пропадает в решённой игре и возвращается с одним правилом',
-    'Честность: камень, который исчезнет следующим, заранее мигает красным, а ветер показывает, куда сдвинет камень',
+    'Честность: камень, который исчезнет следующим, заранее дрожит в красном круге, ветер показан стрелкой и призраком, весы показывают, что видит мудрец',
     'Выбор: занять центр сейчас или сберечь камень, который скоро исчезнет',
   ],
   config: {
     vs: { value: 0, min: 0, max: 1, step: 1, label: 'Соперник', hint: '0 — мудрец, 1 — друг за этим же экраном: ходите по очереди', restart: true },
-    rule: { value: 1, min: 0, max: 2, step: 1, label: 'Секрет: одно правило', hint: '0 — классика: исход известен заранее; 1 — старые камни исчезают; 2 — ветер сдвигает камни', restart: true },
+    rule: { value: 1, min: 0, max: 2, step: 1, label: 'Секрет: одно правило', hint: '0 — классика: исход известен заранее; 1 — старые камни исчезают; 2 — ветер сдвигает камни', restart: true, names: ['классика', 'исчезающие камни', 'ветер с Фишта'] },
     keep: { value: 3, min: 2, max: 5, step: 1, label: 'Правило 1: камней у каждого', hint: 'Кладёшь лишний — самый старый твой камень исчезает', restart: true },
     wind: { value: 0.6, min: 0, max: 1, step: 0.05, label: 'Правило 2: доля ходов с ветром' },
     depth: { value: 9, min: 1, max: 9, step: 1, label: 'Мудрость: на сколько ходов вперёд считает', hint: 'В классике 9 — до конца игры. С правилом 1 мудрец видит не дальше 4 ходов, с ветром — 3' },
     mistake: { value: 0, min: 0, max: 0.6, step: 0.05, label: 'Мудрец ошибается: доля случайных ходов' },
+    oracle: { value: 1, min: 0, max: 1, step: 1, label: 'Весы исхода: что видит мудрец', hint: 'Шкала у края доски: камень на весах уходит к тому, кто победит при точной игре. Замок — исход известен' },
+    threats: { value: 1, min: 0, max: 1, step: 1, label: 'Подсказка «две в ряд»', hint: 'Пустая лунка, где кто-то следующим ходом соберёт три, светится его цветом' },
     first: { value: 2, min: 0, max: 2, step: 1, label: 'Кто ходит первым', hint: '0 — ты, 1 — мудрец, 2 — по очереди' },
     turnTime: { value: 0, min: 0, max: 15, step: 1, label: 'Время на ход, с', hint: '0 — без ограничения' },
     think: { value: 0.7, min: 0.1, max: 2, step: 0.1, label: 'Мудрец думает, с' },
@@ -37,6 +43,7 @@ const GAME = {
     lives: { value: 3, min: 1, max: 9, step: 1, label: 'Жизни (поражение — минус жизнь)', restart: true },
     win: { value: 100, min: 10, max: 300, step: 10, label: 'Очки за победу' },
     draw: { value: 25, min: 0, max: 100, step: 5, label: 'Очки за ничью' },
+    fork: { value: 20, min: 0, max: 100, step: 5, label: 'Очки за вилку (две угрозы разом)' },
   },
   presets: {
     'Новичок': { depth: 2, mistake: 0.25, first: 0, lives: 5, think: 0.9 },
@@ -45,40 +52,48 @@ const GAME = {
     'Безумие': { rule: 1, keep: 2, turnTime: 3, think: 0.2 },
     'Вдвоём': { vs: 1 },
   },
+  notes: [
+    'Весы исхода считают тем же перебором, что и мудрец: в классике он видит игру до конца, с правилом — на несколько ходов',
+    'Камень мудреца летит из посоха по дуге: видно, кто и куда сходил',
+  ],
 
   CELL: 2.3, // шаг лунок, м
   TOP: 1.0,  // высота плиты-доски
   LINES: [[0, 1, 2], [3, 4, 5], [6, 7, 8], [0, 3, 6], [1, 4, 7], [2, 5, 8], [0, 4, 8], [2, 4, 6]],
   WINDS: [{ d: [0, -1], name: 'к мудрецу', arrow: '↑' }, { d: [0, 1], name: 'к тебе', arrow: '↓' }, { d: [-1, 0], name: 'влево', arrow: '←' }, { d: [1, 0], name: 'вправо', arrow: '→' }],
+  SUN: ['#ffd23f', '#fff3a0', '#ff9f1c'],
+  MOON: ['#5fa8ff', '#8fe3ff', '#ffffff'],
 
   // ---------- новая партия: мир и матч ----------
   start(lab, scene) {
     const st = lab.state;
-    st.game = 0; st.wins = 0; st.draws = 0; st.losses = 0; st.secretHits = 0; st.timeouts = 0;
-    st.known = []; st.lengths = []; st.anims = []; st.stones = [];
+    Object.assign(st, { game: 0, wins: 0, draws: 0, losses: 0, secretHits: 0, timeouts: 0, forks: 0, blocks: 0, sageBlocks: 0,
+      known: [], lengths: [], stones: [], cursor: 4, repeat: 0, zoomK: 0, zoomWas: false, windT: 0, scaleX: 0, mood: '' });
+    this.assets(lab);
     this.scenery(lab, scene);
-    this.buildTable(lab, scene);
-    this.buildSage(lab, scene);
-    this.buildMarkers(lab, scene);
-    st.cursor = 4; st.repeat = 0;
+    this.buildTable(lab);
+    this.buildSage(lab);
+    this.buildMarkers(lab);
+    this.buildScales(lab);
+    st.camT = lab.view.target.clone(); st.camBase = lab.view.distance; st.zoomAt = lab.v3(0, 0, 0);
+    lab.hero(st.cursorMesh);
     this.newGame(lab);
   },
 
   // ---------- каждый кадр ----------
   update(lab, dt) {
-    const st = lab.state, cfg = lab.cfg;
-    this.tickAnims(lab, dt);
-    this.animateWorld(lab, dt);
-    const duel = Math.round(cfg.vs) === 1;
+    const st = lab.state, cfg = lab.cfg, duel = Math.round(cfg.vs) === 1;
     if (st.phase === 'turn' && (st.turn === 1 || duel)) this.playerTurn(lab, dt);
-    else if (st.phase === 'turn' && st.turn === 2) {
+    else if (st.phase === 'turn') {
       st.t -= dt;
-      if (st.t <= 0) { st.target = this.botMove(lab); st.phase = 'aim'; st.t = 0.4; this.showAim(lab, st.target); lab.tone(880, 0.08, 'sine', 0.05, 1320); }
+      if (st.t <= 0) { st.target = this.botMove(lab); st.phase = 'aim'; st.t = 0.45; this.showAim(lab, st.target); }
     } else if (st.phase === 'aim') {
       st.t -= dt;
+      this.updateBeam(lab);
       if (st.t <= 0) { this.hideAim(lab); this.place(lab, st.target, 2); }
     } else if (st.phase === 'anim') {
-      if (!st.anims.length) this.afterMove(lab);
+      st.t -= dt;
+      if (st.t <= 0) this.afterMove(lab);
     } else if (st.phase === 'end') {
       st.t -= dt;
       if (st.t <= 0) {
@@ -86,26 +101,32 @@ const GAME = {
         else this.newGame(lab);
       }
     }
+    this.animateWorld(lab, dt);
     this.updateMarkers(lab, dt);
-    lab.hud('game', `Партия ${Math.min(st.game, Math.round(cfg.games))} из ${Math.round(cfg.games)} · ${st.wins} : ${st.losses} · ничьих ${st.draws}`);
-    lab.hud('rule', ['Правило: классика', `Правило: у каждого не больше ${Math.round(cfg.keep)} камней`, 'Правило: ветер с Фишта'][Math.round(cfg.rule)]);
+    this.updateScales(lab, dt);
+    this.updateCamera(lab);
+    const games = Math.round(cfg.games), rule = Math.round(cfg.rule);
+    lab.hud('game', `Партия ${Math.min(st.game, games)} из ${games} · ${st.wins} : ${st.losses} · ничьих ${st.draws}`);
+    lab.hud('rule', ['Правило: классика', `Правило: у каждого не больше ${Math.round(cfg.keep)} камней`, 'Правило: ветер с Фишта'][rule]);
     const clock = cfg.turnTime > 0 ? ` · ${Math.ceil(Math.max(0, st.clock))} с` : '';
     lab.hud('turn', st.phase === 'end' ? st.resultText : duel ? (st.turn === 1 ? 'Ходят солнца (игрок 1)' : 'Ходят луны (игрок 2)') + clock : st.turn === 1 ? 'Твой ход' + clock : 'Мудрец думает…');
-    lab.hud('wind', Math.round(cfg.rule) === 2 && st.phase !== 'end' ? (st.wind ? `Ветер ${st.wind.arrow} ${st.wind.name}` : 'Безветрие') : null);
+    lab.hud('wind', rule === 2 && st.phase !== 'end' ? (st.wind ? `Ветер ${st.wind.arrow} ${st.wind.name}` : 'Безветрие') : null);
+    lab.hud('oracle', cfg.oracle && st.phase !== 'end' ? this.oracleText(lab) : null);
   },
 
   overNote(lab) {
     const st = lab.state, rule = Math.round(lab.cfg.rule), n = st.wins + st.draws + st.losses, notes = [];
-    if (Math.round(lab.cfg.vs) === 1) notes.push(`Партий: ${n} · солнца ${st.wins} : ${st.losses} луны · ничьих ${st.draws}`);
+    const duel = Math.round(lab.cfg.vs) === 1;
+    if (duel) notes.push(`Партий: ${n} · солнца ${st.wins} : ${st.losses} луны · ничьих ${st.draws}`);
     else notes.push(`Партий: ${n} · побед ${st.wins} · ничьих ${st.draws} · поражений ${st.losses}`);
     const avg = list => list.length ? Math.round(10 * list.reduce((a, b) => a + b, 0) / list.length) / 10 : 0;
-    const duel = Math.round(lab.cfg.vs) === 1;
     if (rule === 0) notes.push(duel ? 'Классика решена: кто знает, как не проиграть, всегда сведёт партию вничью.' : 'Исход каждой партии был известен с первого хода: при точной игре — ничья. Мудрец просчитал игру до конца.');
     else if (st.known.length) notes.push(`Исход становился известен в среднем на ходу ${avg(st.known)} из ${avg(st.lengths)}: до этого игра была открыта`);
     if (rule === 1) notes.push(`Секрет сработал ${st.secretHits} раз: старые камни исчезали`);
     if (rule === 2) notes.push(`Секрет сработал ${st.secretHits} раз: ветер сдвигал камни`);
     if (rule === 0 && n && st.draws === n) notes.push('Все партии — ничьи. Решённая игра: что бы ты ни делал, исход известен заранее.');
     if (rule === 0 && !duel && lab.cfg.mistake > 0) notes.push('Мудрец иногда ошибался — неопределённость принесла его ошибка, а не правило');
+    if (st.forks || st.blocks || st.sageBlocks) notes.push(`Вилок: ${st.forks} · ты закрыл линий: ${st.blocks} · ${duel ? 'луны' : 'мудрец'} закрыл${duel ? 'и' : ''}: ${st.sageBlocks}`);
     if (st.timeouts) notes.push(`Ход по таймеру сделан за тебя ${st.timeouts} раз`);
     return notes;
   },
@@ -113,27 +134,33 @@ const GAME = {
   // ---------- партия ----------
   newGame(lab) {
     const st = lab.state, cfg = lab.cfg;
-    st.stones.forEach(s => s.dispose()); st.stones = [];
-    st.anims = [];
+    st.stones.forEach((g, i) => lab.after(i * 0.04, () => { // старые камни взлетают и тают
+      const y0 = g.position.y;
+      lab.tween(0.32, k => { g.position.y = y0 + k * 2.2; g.scale.setScalar(Math.max(0.01, 1 - k)); g.rotation.y += 0.2; }, 'inQuad');
+      lab.after(0.33, () => g.removeFromParent());
+    }));
+    st.stones = [];
     st.meshAt = new Array(9).fill(null);
     st.pos = { b: new Array(9).fill(0), q: [null, [], []], ply: 0 };
     st.game++;
-    st.knownAt = null;
+    st.knownAt = null; st.mood = ''; st.last = -1;
     const first = Math.round(cfg.first);
     st.turn = first === 2 ? (st.game % 2 ? 1 : 2) : first === 0 ? 1 : 2;
-    st.line.isVisible = false;
-    lab.popup(lab.v3(0, 3.2, 0), `Партия ${st.game}`, '#ffffff', 24);
+    if (st.line.visible) { const s = st.line.scale.x; lab.tween(0.25, k => { st.line.scale.x = Math.max(0.01, s * (1 - k)); }); lab.after(0.26, () => { st.line.visible = false; }); }
+    lab.popup(lab.v3(0, 3.4, 0), `Партия ${st.game}`, '#ffffff', 28);
+    const duel = Math.round(cfg.vs) === 1;
+    lab.after(0.35, () => lab.popup(lab.v3(0, 2.6, 0), duel ? (st.turn === 1 ? 'Первыми — солнца' : 'Первыми — луны') : st.turn === 1 ? 'Ты ходишь первым' : 'Мудрец ходит первым', st.turn === 1 ? '#ffe680' : '#a8dcff', 18));
+    lab.tone(392, 0.12, 'triangle', 0.06); lab.tone(587, 0.16, 'triangle', 0.06, 0, 0.1);
     this.beginTurn(lab);
   },
   beginTurn(lab) {
     const st = lab.state, cfg = lab.cfg;
     st.phase = 'turn';
     st.wind = null;
-    if (Math.round(cfg.rule) === 2 && lab.chance(cfg.wind)) { st.wind = lab.pick(this.WINDS); lab.sfx.whoosh(); }
-    if (st.turn === 1) st.clock = cfg.turnTime;
-    else if (Math.round(cfg.vs) === 1) st.clock = cfg.turnTime;
+    if (Math.round(cfg.rule) === 2 && lab.chance(cfg.wind)) { st.wind = lab.pick(this.WINDS); lab.sfx.whoosh(); lab.pulse(st.windArrow, 1.4, 0.2); }
+    if (st.turn === 1 || Math.round(cfg.vs) === 1) { st.clock = cfg.turnTime; st.tick = Math.ceil(cfg.turnTime); }
     else st.t = cfg.think;
-    this.checkKnown(lab);
+    this.evaluate(lab);
   },
   playerTurn(lab, dt) {
     const st = lab.state, p = lab.p1;
@@ -147,14 +174,16 @@ const GAME = {
     } else st.repeat = 0;
     if (dx || dy) {
       const r = lab.clamp(Math.floor(st.cursor / 3) + dy, 0, 2), c = lab.clamp(st.cursor % 3 + dx, 0, 2);
-      if (r * 3 + c !== st.cursor) { st.cursor = r * 3 + c; lab.tone(520, 0.04, 'triangle', 0.04); }
+      if (r * 3 + c !== st.cursor) { st.cursor = r * 3 + c; lab.tone(520 + r * 40 + c * 20, 0.04, 'triangle', 0.04); lab.pulse(st.cursorMesh, 1.15, 0.1); }
     }
     if (p.pressed.a) {
-      if (st.pos.b[st.cursor]) { lab.tone(140, 0.12, 'square', 0.05); lab.pulse(st.cursorMesh, 1.25, 0.15); lab.count('в занятую лунку'); }
+      if (st.pos.b[st.cursor]) { lab.tone(140, 0.12, 'square', 0.05); lab.pulse(st.cursorMesh, 1.3, 0.15); lab.shake(0.08); lab.count('в занятую лунку'); }
       else { this.place(lab, st.cursor, st.turn); return; }
     }
     if (lab.cfg.turnTime > 0) {
       st.clock -= dt;
+      if (st.clock < st.tick - 1 && st.tick <= 4 && st.clock > 0) lab.tone(st.tick <= 2 ? 1040 : 780, 0.05, 'square', 0.04); // последние секунды тикают
+      if (st.clock < st.tick - 1) st.tick--;
       if (st.clock <= 0) { // время вышло: камень кладётся в случайную свободную лунку
         const free = st.pos.b.map((v, i) => v ? -1 : i).filter(i => i >= 0);
         st.timeouts++; lab.count('ходы по таймеру'); lab.sfx.warn();
@@ -165,28 +194,86 @@ const GAME = {
 
   // ---------- ход: камень, ветер, исчезновение ----------
   place(lab, cell, side) {
-    const st = lab.state, cfg = lab.cfg;
-    const res = this.step(st.pos, cell, side, st.wind, Math.round(cfg.rule), Math.round(cfg.keep));
-    const mesh = (side === 1 ? st.sunSrc : st.moonSrc).createInstance(side === 1 ? 'солнце' : 'луна');
-    const from = this.cellPos(cell), to = this.cellPos(res.at);
-    mesh.position.set(from.x, this.TOP + 3, from.z);
-    mesh.rotation.y = lab.rand(0, 6.28);
-    st.stones.push(mesh);
-    st.anims.push({ mesh, t: 0, dur: 0.2, kind: 'drop', y: side === 1 ? this.TOP + 0.2 : this.TOP + 0.55, side });
-    if (res.at !== cell) { // ветер сдвинул камень — секрет сработал
-      st.anims.push({ mesh, t: -0.22, dur: 0.28, kind: 'slide', from, to });
-      st.secretHits++; lab.count('_secret');
-      lab.tone(300, 0.25, 'sine', 0.05, 700, 0.2);
+    const st = lab.state, cfg = lab.cfg, T = this.TOP, duel = Math.round(cfg.vs) === 1;
+    const rule = Math.round(cfg.rule), res = this.step(st.pos, cell, side, st.wind, rule, Math.round(cfg.keep));
+    const oppThreats = this.threats(st.pos.b, 3 - side);
+    const g = this.makeStone(lab, side), from = this.cellPos(cell), to = this.cellPos(res.at);
+    const rest = T + (side === 1 ? 0.17 : 0.6);
+    g.rotation.y = lab.rand(0, 6.28);
+    let fly = 0.16;
+    if (side === 2 && !duel) { // камень мудреца летит из посоха по дуге
+      const tip = st.tip.getWorldPosition(lab.v3());
+      fly = 0.34;
+      g.position.copy(tip);
+      const tr = lab.trail(g, { color: '#8fe3ff', width: 0.45, length: 12 });
+      lab.tween(fly, k => { g.position.set(lab.lerp(tip.x, from.x, k), lab.lerp(tip.y, rest, k) + Math.sin(k * Math.PI) * 1.6, lab.lerp(tip.z, from.z, k)); g.rotation.y += 0.3; }, 'inOutQuad');
+      lab.after(fly + 0.2, () => tr.dispose());
+      lab.tone(880, 0.12, 'sine', 0.05, 1500);
+      lab.burst(tip, { count: 10, colors: this.MOON, speed: 4 });
+    } else {
+      const y0 = T + 0.75;
+      g.position.set(from.x, y0, from.z);
+      lab.tween(fly, k => { g.position.y = lab.lerp(y0, rest, k); }, 'inQuad');
     }
-    st.meshAt[res.at] = mesh;
+    lab.after(fly, () => this.land(lab, g, side, res.at, rest));
+    let wait = fly + 0.2;
+    if (res.at !== cell) { // ветер сдвинул камень — секрет сработал
+      lab.after(fly + 0.08, () => {
+        lab.sfx.whoosh();
+        lab.tween(0.32, k => { g.position.x = lab.lerp(from.x, to.x, k); g.position.z = lab.lerp(from.z, to.z, k); g.rotation.x = Math.sin(k * Math.PI) * 0.5 * (to.z - from.z ? Math.sign(to.z - from.z) : 1); }, 'inOutCubic');
+        lab.after(0.32, () => { lab.ring([to.x, T, to.z], { color: '#e8f7ff', radius: 1.3 }); lab.burst([to.x, T + 0.3, to.z], { count: 10, color: '#e8f7ff', speed: 3 }); });
+        lab.popup([to.x, T + 1.6, to.z], 'Ветер!', '#e8f7ff', 20);
+      });
+      st.secretHits++; lab.count('_secret');
+      wait = fly + 0.5;
+    }
+    st.meshAt[res.at] = g; st.stones.push(g); st.last = res.at;
     if (res.gone >= 0) { // старый камень исчезает — секрет сработал
       const old = st.meshAt[res.gone]; st.meshAt[res.gone] = null;
-      if (old) st.anims.push({ mesh: old, t: -0.15, dur: 0.3, kind: 'vanish' });
+      if (old) lab.after(fly + 0.1, () => this.vanish(lab, old));
       st.secretHits++; lab.count('_secret');
+      wait = Math.max(wait, fly + 0.5);
+    }
+    // лучшие моменты жанра: закрыть чужую линию и поставить вилку
+    const win = this.winner(res.b);
+    if (!win && oppThreats.includes(res.at) && res.b[res.at] === side) {
+      if (side === 1) { st.blocks++; lab.count('закрытые линии'); } else { st.sageBlocks++; lab.count(duel ? 'луны закрыли' : 'мудрец закрыл'); }
+      lab.after(wait, () => { lab.popup([to.x, T + 1.8, to.z], side === 1 ? 'Закрыл!' : duel ? 'Закрыли!' : 'Мудрец закрыл', side === 1 ? '#ffe680' : '#a8dcff', 22); lab.tone(side === 1 ? 784 : 330, 0.14, 'square', 0.05); });
+    }
+    if (!win && this.threats(res.b, side).length >= 2) {
+      if (side === 1) { st.forks++; lab.count('вилки'); } else lab.count(duel ? 'вилки лун' : 'вилки мудреца');
+      lab.after(wait, () => {
+        lab.popup([to.x, T + 2.4, to.z], 'Вилка!', side === 1 ? '#ffd23f' : '#8fe3ff', 30);
+        lab.slowmo(0.4, 0.4); lab.flash(side === 1 ? '#ffd23f' : '#5fa8ff', 0.15);
+        lab.tone(659, 0.1, 'triangle', 0.08); lab.tone(988, 0.18, 'triangle', 0.08, 0, 0.08);
+        if (side === 1 && lab.cfg.fork > 0) lab.addScore(lab.cfg.fork, [to.x, T + 1.2, to.z], '#ffd23f');
+      });
+      wait += 0.25;
     }
     st.pos = res;
     if (side === 1) lab.count('мои ходы');
-    st.phase = 'anim';
+    st.phase = 'anim'; st.t = wait;
+  },
+  land(lab, g, side, cell, rest) {
+    const st = lab.state, p = this.cellPos(cell), ply = st.pos.ply;
+    g.position.y = rest;
+    lab.burst([p.x, this.TOP + 0.3, p.z], { count: 14, colors: side === 1 ? this.SUN : this.MOON, speed: 5, up: 1 });
+    lab.ring([p.x, this.TOP, p.z], { color: side === 1 ? '#ffd23f' : '#8fe3ff', radius: 1.4 });
+    const f = (side === 1 ? 660 : 392) * lab.pitch(Math.floor(ply / 2)); // доска заполняется — звон всё выше
+    lab.tone(f, 0.1, 'triangle', 0.08, f * 1.5); lab.noise(0.05, 0.08, 2600);
+    lab.shake(0.12); lab.vibrate(40, 0.3);
+    lab.pulse(g, 1.3, 0.16);
+  },
+  vanish(lab, old) {
+    const st = lab.state, y0 = old.position.y, p = old.position.clone();
+    lab.whiten(old, 0.1, '#ff4d5e');
+    lab.tone(240, 0.28, 'sine', 0.07, 80); lab.noise(0.18, 0.08, 900);
+    lab.tween(0.34, k => { old.scale.setScalar(Math.max(0.01, 1 - k)); old.position.y = y0 + k * 1.2; old.rotation.y += 0.25; }, 'inQuad');
+    lab.after(0.34, () => {
+      lab.burst(p, { count: 18, colors: ['#c9ccd4', '#ffffff', '#ff8a8a'], speed: 4, up: 2 });
+      lab.ring([p.x, this.TOP, p.z], { color: '#ff6b7a', radius: 1.2 });
+      old.removeFromParent(); st.stones = st.stones.filter(x => x !== old);
+    });
   },
   afterMove(lab) {
     const st = lab.state, cfg = lab.cfg;
@@ -195,34 +282,52 @@ const GAME = {
     if (!w && !full) { st.turn = 3 - st.turn; this.beginTurn(lab); return; }
     if (st.knownAt == null) st.knownAt = st.pos.ply;
     st.known.push(st.knownAt); st.lengths.push(st.pos.ply);
-    st.phase = 'end'; st.t = 1.8;
-    if (w) {
-      const line = this.LINES.find(l => l.every(i => st.pos.b[i] === w));
-      this.showLine(lab, line, w);
-    }
-    const duel = Math.round(cfg.vs) === 1;
+    st.phase = 'end'; st.t = 2.2;
+    const duel = Math.round(cfg.vs) === 1, at = lab.v3(0, this.TOP + 1, 0);
+    if (w) this.winLine(lab, this.LINES.find(l => l.every(i => st.pos.b[i] === w)), w);
     if (w === 1) {
       st.wins++; st.resultText = duel ? 'Солнца выиграли партию' : 'Победа!'; lab.count('победы');
-      lab.addScore(cfg.win, lab.v3(0, 3, 0), '#ffd23f'); lab.sfx.power(); lab.flash('#ffd23f', 0.3); lab.shake(0.4);
-      lab.burst(lab.v3(0, this.TOP + 1, 0), { count: 50, colors: ['#ffd23f', '#fff3a0', '#ff8a3d'], speed: 9, up: 3 });
+      lab.after(0.45, () => { lab.addScore(cfg.win, lab.v3(0, 3.2, 0), '#ffd23f'); lab.sfx.win(); lab.flash('#ffd23f', 0.35); lab.shake(0.45);
+        lab.burst(at, { count: 70, colors: this.SUN, speed: 11, up: 5, life: 1 }); this.say(lab, 'Не может быть!', true); });
     } else if (w === 2 && duel) { // вдвоём луны — второй игрок: его победа без потери жизни
       st.losses++; st.resultText = 'Луны выиграли партию'; lab.count('победы лун');
-      lab.sfx.power(); lab.flash('#5fa8ff', 0.3); lab.shake(0.4);
-      lab.burst(lab.v3(0, this.TOP + 1, 0), { count: 50, colors: ['#5fa8ff', '#8fe3ff', '#ffffff'], speed: 9, up: 3 });
+      lab.after(0.45, () => { lab.sfx.win(); lab.flash('#5fa8ff', 0.35); lab.shake(0.45); lab.burst(at, { count: 70, colors: this.MOON, speed: 11, up: 5, life: 1 }); });
     } else if (w === 2) {
       st.losses++; st.resultText = 'Мудрец выиграл партию'; lab.count('поражения');
-      lab.hurt(lab.v3(0, this.TOP + 1, 0), 'Мудрец забрал все жизни');
+      lab.after(0.45, () => { lab.burst(st.tip, { count: 30, colors: this.MOON, speed: 7, up: 3 }); this.say(lab, 'Так было предначертано.', true); lab.hurt(at, 'Мудрец забрал все жизни'); });
     } else {
       st.draws++; st.resultText = Math.round(cfg.rule) === 1 && !st.pos.b.every(Boolean) ? 'Ничья: ходы кончились' : 'Ничья';
       lab.count('ничьи'); lab.addScore(cfg.draw, lab.v3(0, 3, 0), '#bfe9ff');
-      lab.tone(392, 0.3, 'triangle', 0.08); lab.tone(392, 0.3, 'triangle', 0.08, 0, 0.18);
+      lab.tone(392, 0.3, 'triangle', 0.08); lab.tone(494, 0.3, 'triangle', 0.07, 0, 0.16); lab.tone(392, 0.4, 'triangle', 0.08, 0, 0.32);
+      st.stones.forEach((g, i) => lab.after(i * 0.05, () => lab.pulse(g, 0.85, 0.2))); // камни разом «вздыхают»
+      if (!duel && Math.round(cfg.rule) === 0) this.say(lab, 'Как я и говорил: ничья.', true);
     }
     const rule = Math.round(cfg.rule);
     if (st.known.length) lab.stat('исход известен с хода', rule === 0 ? 1 : Math.round(10 * st.known.reduce((a, b) => a + b, 0) / st.known.length) / 10);
   },
+  // победная линия: камни звенят по очереди всё выше, линия прочерчивается, стоп-кадр, замедление, камера наезжает
+  winLine(lab, line, side) {
+    const st = lab.state, a = this.cellPos(line[0]), b = this.cellPos(line[2]), T = this.TOP;
+    const len = Math.hypot(b.x - a.x, b.z - a.z) + 1.8, cols = side === 1 ? this.SUN : this.MOON;
+    lab.hitstop(0.1); lab.slowmo(0.7, 0.45);
+    line.forEach((c, k) => lab.after(0.08 + k * 0.12, () => {
+      const m = st.meshAt[c], p = this.cellPos(c);
+      if (m) { const y0 = m.position.y; lab.tween(0.3, q => { m.position.y = y0 + Math.sin(q * Math.PI) * 0.9; }); lab.pulse(m, 1.5, 0.22); }
+      lab.tone((side === 1 ? 523 : 392) * lab.pitch(k * 4), 0.18, 'triangle', 0.1);
+      lab.burst([p.x, T + 0.6, p.z], { count: 16, colors: cols, speed: 6, up: 2 });
+    }));
+    st.line.material = side === 1 ? st.sunLine : st.moonLine;
+    st.line.visible = true; st.line.scale.x = 0.01;
+    st.line.position.set((a.x + b.x) / 2, T + 0.9, (a.z + b.z) / 2);
+    st.line.rotation.y = -Math.atan2(b.z - a.z, b.x - a.x);
+    lab.after(0.1, () => lab.tween(0.4, k => { st.line.scale.x = Math.max(0.01, len * k); }, 'outCubic'));
+    st.zoomAt.set((a.x + b.x) / 2, 0, (a.z + b.z) / 2);
+    lab.tween(0.5, k => { st.zoomK = k; }, 'outCubic');
+    lab.after(1.5, () => lab.tween(0.6, k => { st.zoomK = 1 - k; }, 'inOutCubic'));
+  },
 
   // ---------- правила и перебор (чистые функции позиции) ----------
-  // позиция: b — 9 лунок (0 пусто, 1 ты, 2 мудрец), q — очередь камней каждой стороны (старые первыми), ply — сделано ходов
+  // позиция: b — 9 лунок (0 пусто, 1 солнца, 2 луны), q — очередь камней каждой стороны (старые первыми), ply — сделано ходов
   step(pos, cell, side, wind, rule, keep) {
     const b = pos.b.slice(), q = [null, pos.q[1].slice(), pos.q[2].slice()];
     let at = cell;
@@ -236,6 +341,15 @@ const GAME = {
     return { b, q, ply: pos.ply + 1, at, gone };
   },
   winner(b) { for (const [x, y, z] of this.LINES) if (b[x] && b[x] === b[y] && b[x] === b[z]) return b[x]; return 0; },
+  // пустые лунки, где сторона s следующим ходом соберёт три в ряд
+  threats(b, s) {
+    const out = [];
+    for (const l of this.LINES) {
+      const mine = l.filter(i => b[i] === s).length, empty = l.filter(i => !b[i]);
+      if (mine === 2 && empty.length === 1 && !out.includes(empty[0])) out.push(empty[0]);
+    }
+    return out;
+  },
   heur(b, s) { // оценка позиции без перебора: открытые линии своих камней минус чужих
     let v = 0;
     for (const l of this.LINES) {
@@ -284,12 +398,12 @@ const GAME = {
     const winds = [[null, 1 - wc]].concat(this.WINDS.map(w => [w, wc / 4]));
     return { rule, keep: Math.round(cfg.keep), cap: cfg.cap, winds, nodes: 0, budget };
   },
+  sight(lab, rule) { return Math.min(Math.round(lab.cfg.depth), rule === 2 ? 3 : rule === 1 ? 4 : 9); }, // с правилом игра слишком велика для расчёта до конца
   botMove(lab) {
     const st = lab.state, cfg = lab.cfg;
     const free = st.pos.b.map((v, i) => v ? -1 : i).filter(i => i >= 0);
     if (lab.chance(cfg.mistake)) { lab.count('ошибки мудреца'); return lab.pick(free); }
-    const ctx = this.ctx(lab, 120000);
-    const depth = Math.min(Math.round(cfg.depth), ctx.rule === 2 ? 3 : ctx.rule === 1 ? 4 : 9); // с правилом игра слишком велика для расчёта до конца
+    const ctx = this.ctx(lab, 120000), depth = this.sight(lab, ctx.rule);
     let best = -Infinity, moves = [];
     for (const m of free) { // ход мудреца: ветер этого хода известен, дальше — среднее
       const next = this.step(st.pos, m, 2, st.wind, ctx.rule, ctx.keep);
@@ -298,271 +412,351 @@ const GAME = {
     }
     return lab.pick(moves);
   },
-  // исход известен: в классике — всегда (игра решена); с правилом — когда перебор находит вынужденную победу одной из сторон
-  checkKnown(lab) {
+  // весы исхода: что видит мудрец тем же перебором. В классике — всё (игра решена); с правилом — только вынужденную победу на несколько ходов
+  evaluate(lab) {
+    const st = lab.state, ctx = this.ctx(lab, 15000), depth = this.sight(lab, ctx.rule);
+    let v;
+    if (ctx.rule === 0 && depth >= 9) { v = this.solve(st.pos, st.turn); st.sure = true; }
+    else { v = this.search(st.pos, st.turn, ctx.rule === 2 ? 2 : Math.min(5, depth), -Infinity, Infinity, ctx); st.sure = Math.abs(v) > 900; }
+    if (st.turn === 2) v = -v; // весы — от лица солнц
+    st.evalV = v;
+    st.scaleTo = st.sure ? Math.sign(v) : Math.tanh(v / 6) * 0.6;
+    if (st.sure && st.knownAt == null) st.knownAt = st.pos.ply + 1;
+    // реплика мудреца, когда меняется то, что он видит
+    const mood = !st.sure ? 'open' : v > 0 ? 'sun' : v < 0 ? 'moon' : 'draw';
+    if (mood !== st.mood) {
+      const was = st.mood; st.mood = mood;
+      if (Math.round(lab.cfg.vs) !== 1) {
+        if (mood === 'draw') this.say(lab, 'Я вижу исход: ничья.');
+        else if (mood === 'moon') this.say(lab, lab.pick(['Вижу свою победу.', 'Ты уже проиграл.']));
+        else if (mood === 'sun') this.say(lab, 'Хм… я проиграл?');
+        else if (was === '' || was === 'draw') this.say(lab, 'Хм… не вижу конца.');
+      }
+      if (st.sure && was !== '' && lab.cfg.oracle) { lab.tone(196, 0.4, 'sine', 0.08, 147); lab.pulse(st.scaleGem, 1.6, 0.25); lab.ring(st.scaleGem, { color: v > 0 ? '#ffd23f' : v < 0 ? '#5fa8ff' : '#ffffff', radius: 1.2 }); }
+    }
+  },
+  oracleText(lab) {
+    const st = lab.state, duel = Math.round(lab.cfg.vs) === 1;
+    if (!st.sure) return 'Весы: исход открыт';
+    if (st.evalV === 0) return 'Весы: исход известен — ничья';
+    return st.evalV > 0 ? 'Весы: солнца побеждают при точной игре' : duel ? 'Весы: луны побеждают при точной игре' : 'Весы: мудрец видит свою победу';
+  },
+  say(lab, text, force) {
     const st = lab.state;
-    if (st.knownAt != null) return;
-    const ctx = this.ctx(lab, 15000);
-    if (ctx.rule === 0) { st.knownAt = st.pos.ply + 1; return; }
-    const v = this.search(st.pos, st.turn, ctx.rule === 2 ? 2 : 5, -Infinity, Infinity, ctx);
-    if (Math.abs(v) > 900) st.knownAt = st.pos.ply + 1;
+    if (!force && lab.t - (st.saidAt || -9) < 1.2) return;
+    st.saidAt = lab.t;
+    lab.popup(st.head.getWorldPosition(lab.v3()).add(lab.v3(0, 1.3, 0)), text, '#e8f7ff', 18);
   },
 
-  // ---------- анимации ----------
-  tickAnims(lab, dt) {
-    const st = lab.state;
-    st.anims = st.anims.filter(a => {
-      a.t += dt;
-      if (a.t < 0) return true;
-      const k = Math.min(1, a.t / a.dur), m = a.mesh;
-      if (a.kind === 'drop') {
-        m.position.y = lab.lerp(this.TOP + 3, a.y, k * k);
-        if (k >= 1) {
-          lab.burst(m.position, { count: 14, colors: a.side === 1 ? ['#ffd23f', '#fff3a0'] : ['#8fe3ff', '#5fa8ff'], speed: 5 });
-          lab.tone(a.side === 1 ? 660 : 330, 0.1, 'triangle', 0.08, a.side === 1 ? 990 : 220); lab.shake(0.12);
-          lab.pulse(m, 1.2, 0.14);
-        }
-      } else if (a.kind === 'slide') {
-        m.position.x = lab.lerp(a.from.x, a.to.x, k); m.position.z = lab.lerp(a.from.z, a.to.z, k);
-      } else if (a.kind === 'vanish') {
-        if (a.t - dt <= 0) lab.tone(240, 0.25, 'sine', 0.06, 90);
-        m.scaling.setAll(Math.max(0.01, 1 - k)); m.position.y += dt * 2;
-        if (k >= 1) { lab.burst(m.position, { count: 16, colors: ['#c9ccd4', '#ffffff'], speed: 4 }); m.dispose(); st.stones = st.stones.filter(x => x !== m); }
-      }
-      return k < 1;
-    });
-  },
+  // ---------- оживление мира ----------
   animateWorld(lab, dt) {
-    const st = lab.state, t = lab.t;
-    const thinking = Math.round(lab.cfg.vs) !== 1 && (st.phase === 'turn' && st.turn === 2 || st.phase === 'aim');
-    st.head.rotation.x = thinking ? Math.sin(t * 5) * 0.12 : lab.lerp(st.head.rotation.x, 0, 0.1);
-    st.tip.scaling.setAll(thinking ? 1 + Math.sin(t * 12) * 0.25 : 1);
-    st.sheep.forEach((s, i) => { s.position.y = Math.abs(Math.sin(t * 2 + i)) * 0.05; s.rotation.y += Math.sin(t * 0.3 + i) * dt * 0.2; });
-    if (st.windArrow) {
-      const w = Math.round(lab.cfg.rule) === 2 && st.phase !== 'end' ? st.wind : null;
-      st.windArrow.setEnabled(!!w);
-      if (w) {
-        st.windArrow.rotation.y = Math.atan2(w.d[0], -w.d[1]);
-        const k = 0.5 + 0.4 * Math.sin(t * 4); // стрелка у ближнего края доски «дует» в сторону ветра
-        st.windArrow.position.x = w.d[0] * k; st.windArrow.position.z = -4.9 - w.d[1] * k * 0.5;
+    const st = lab.state, t = lab.t, duel = Math.round(lab.cfg.vs) === 1;
+    const thinking = !duel && (st.phase === 'turn' && st.turn === 2 || st.phase === 'aim');
+    // мудрец следит за курсором, качает головой, когда думает; кристалл посоха пульсирует
+    const c = this.cellPos(st.cursor), look = st.phase === 'turn' && st.turn === 1 ? Math.atan2(c.x, c.z + 6.3) * 0.8 : 0;
+    st.head.rotation.y = lab.damp(st.head.rotation.y, thinking ? Math.sin(t * 2.2) * 0.35 : look, 6, dt);
+    st.head.rotation.x = thinking ? Math.sin(t * 5) * 0.1 : lab.damp(st.head.rotation.x, 0.12, 6, dt);
+    st.tip.scale.setScalar(thinking ? 1 + Math.sin(t * 12) * 0.25 : 1);
+    st.tip.rotation.y += dt * (thinking ? 6 : 1.5);
+    st.body.scale.y = 1 + Math.sin(t * 1.6) * 0.012; // дышит
+    // овцы пасутся
+    st.sheep.forEach((s, i) => {
+      s.a += Math.sin(t * 0.3 + i * 1.7) * dt * 0.3;
+      const hop = Math.abs(Math.sin(t * 2 + i)) * 0.05;
+      lab.place(st.wool, i, [s.x, hop, s.z], { rot: s.a });
+      lab.place(st.dark, i, [s.x, hop, s.z], { rot: s.a });
+    });
+    // ветер: стрелка над доской дует и гонит по доске струи
+    const w = Math.round(lab.cfg.rule) === 2 && st.phase !== 'end' ? st.wind : null;
+    st.windArrow.visible = !!w;
+    if (w) {
+      st.windArrow.rotation.y = Math.atan2(w.d[0], w.d[1]);
+      const k = 0.4 * Math.sin(t * 4);
+      st.windArrow.position.set(w.d[0] * k, this.TOP + 2.6, w.d[1] * k);
+      if ((st.windT -= dt) <= 0) {
+        st.windT = 0.09;
+        const side = lab.rand(-4, 4), x = w.d[0] ? -w.d[0] * 4.5 : side, z = w.d[1] ? -w.d[1] * 4.5 : side;
+        lab.burst([x, this.TOP + lab.rand(0.3, 1.2), z], { count: 2, color: '#f2fbff', speed: 2, dir: [w.d[0], 0, w.d[1]], gravity: 0, life: 1, size: 0.12 });
       }
     }
   },
 
-  // ---------- маркеры: курсор, призрак под ветром, предупреждение об исчезновении, прицел мудреца ----------
+  // ---------- маркеры: курсор, камень в руке, призрак под ветром, исчезающий камень, угрозы, прицел мудреца ----------
   updateMarkers(lab, dt) {
-    const st = lab.state, cfg = lab.cfg, my = st.phase === 'turn' && (st.turn === 1 || Math.round(cfg.vs) === 1);
-    const c = this.cellPos(st.cursor);
-    st.cursorMesh.setEnabled(my);
+    const st = lab.state, cfg = lab.cfg, T = this.TOP, t = lab.t;
+    const my = st.phase === 'turn' && (st.turn === 1 || Math.round(cfg.vs) === 1);
+    const c = this.cellPos(st.cursor), busy = !!st.pos.b[st.cursor];
+    st.cursorMesh.visible = my;
     if (my) {
-      st.cursorMesh.position.set(c.x, this.TOP + 0.08, c.z);
-      st.cursorMesh.material = st.pos.b[st.cursor] ? st.badMat : st.okMat;
-      st.cursorMesh.rotation.y += dt;
+      st.cursorMesh.position.set(c.x, T + 0.06, c.z);
+      st.cursorMesh.material = busy ? st.badMat : st.turn === 1 ? st.okMat : st.okMoonMat;
+      st.cursorMesh.rotation.z += dt;
     }
+    // камень в руке: висит над лункой курсора, туда и упадёт
+    [1, 2].forEach(s => {
+      const h = st.hand[s], on = my && st.turn === s && !busy;
+      h.visible = on;
+      if (on) { h.position.set(lab.damp(h.position.x, c.x, 22, dt), T + 0.75 + Math.sin(t * 4) * 0.08, lab.damp(h.position.z, c.z, 22, dt)); h.rotation.y += dt * 1.2; }
+    });
     // призрак: куда на самом деле ляжет камень при этом ветре
     let ghostAt = -1;
-    if (my && st.wind && !st.pos.b[st.cursor]) { const r = this.step(st.pos, st.cursor, st.turn, st.wind, 2, 9); if (r.at !== st.cursor) ghostAt = r.at; }
-    st.ghost.setEnabled(ghostAt >= 0);
-    if (ghostAt >= 0) st.ghost.material = st.turn === 1 ? st.sunGhost : st.moonGhost;
-    if (ghostAt >= 0) { const g = this.cellPos(ghostAt); st.ghost.position.set(g.x, this.TOP + 0.25 + Math.sin(lab.t * 6) * 0.08, g.z); }
-    // «видно = правда»: камень, который исчезнет при следующем ходе своей стороны, мигает красным
-    [1, 2].forEach(side => {
-      const ring = st.doom[side], q = st.pos.q[side];
-      const on = Math.round(cfg.rule) === 1 && q.length >= Math.round(cfg.keep) && st.phase !== 'end' && st.meshAt[q[0]];
-      ring.setEnabled(!!on);
-      if (on) { const p = this.cellPos(q[0]); ring.position.set(p.x, this.TOP + 0.06, p.z); ring.scaling.setAll(1 + 0.12 * Math.sin(lab.t * 10)); }
+    if (my && st.wind && !busy) { const r = this.step(st.pos, st.cursor, st.turn, st.wind, 2, 9); if (r.at !== st.cursor) ghostAt = r.at; }
+    [1, 2].forEach(s => {
+      const g = st.ghost[s], on = ghostAt >= 0 && st.turn === s;
+      g.visible = on;
+      if (on) { const p = this.cellPos(ghostAt); g.position.set(p.x, T + 0.3 + Math.sin(t * 6) * 0.08, p.z); g.rotation.y += dt * 2; }
     });
+    // «видно = правда»: камень, который исчезнет при следующем ходе своей стороны, дрожит в красном круге
+    const doomed = [];
+    [1, 2].forEach(s => {
+      const ring = st.doom[s], q = st.pos.q[s];
+      const on = Math.round(cfg.rule) === 1 && q.length >= Math.round(cfg.keep) && st.phase !== 'end' && st.meshAt[q[0]];
+      ring.visible = !!on;
+      if (on) { const p = this.cellPos(q[0]); ring.position.set(p.x, T + 0.07, p.z); ring.scale.setScalar(1 + 0.12 * Math.sin(t * 10)); doomed.push(st.meshAt[q[0]]); }
+    });
+    st.meshAt.forEach(m => { if (m) m.rotation.z = doomed.includes(m) && st.phase !== 'anim' ? Math.sin(t * 22) * 0.07 : 0; });
+    // угрозы «две в ряд»: пустая лунка светится цветом того, кто соберёт там три
+    let n = 0;
+    if (cfg.threats && (st.phase === 'turn' || st.phase === 'aim')) {
+      for (const s of [1, 2]) for (const i of this.threats(st.pos.b, s)) {
+        const p = this.cellPos(i), k = 1 + 0.08 * Math.sin(t * 6 + s);
+        lab.place(st.threat, n++, [p.x, T + 0.03, p.z], { scale: k, color: s === 1 ? '#ffb400' : '#2f8cff' });
+      }
+    }
+    for (let i = n; i < 9; i++) lab.place(st.threat, i, [0, -5, 0], { scale: 0.001 });
+    // последний ход подсвечен, как в шахматах
+    st.lastMark.visible = st.last >= 0 && st.phase !== 'end' && !!st.pos.b[st.last];
+    if (st.lastMark.visible) { const p = this.cellPos(st.last); st.lastMark.position.set(p.x, T + 0.025, p.z); st.lastMark.material = st.pos.b[st.last] === 1 ? st.lastSun : st.lastMoon; }
   },
   showAim(lab, cell) {
     const st = lab.state, p = this.cellPos(cell);
-    st.aim.setEnabled(true); st.aim.position.set(p.x, this.TOP + 0.08, p.z);
-    const from = st.tip.getAbsolutePosition(), to = lab.v3(p.x, this.TOP + 0.3, p.z);
-    const len = BABYLON.Vector3.Distance(from, to);
-    st.beam.setEnabled(true); st.beam.scaling.y = len;
-    st.beam.position = BABYLON.Vector3.Center(from, to);
-    st.beam.lookAt(to); st.beam.rotation.x += Math.PI / 2;
+    st.aim.visible = true; st.aim.position.set(p.x, this.TOP + 0.07, p.z);
+    st.beam.visible = true;
+    lab.pulse(st.aim, 1.4, 0.2);
+    lab.tone(880, 0.08, 'sine', 0.05, 1320);
+    this.updateBeam(lab);
   },
-  hideAim(lab) { lab.state.aim.setEnabled(false); lab.state.beam.setEnabled(false); },
-  showLine(lab, line, side) {
-    const st = lab.state, a = this.cellPos(line[0]), b = this.cellPos(line[2]);
-    const len = Math.hypot(b.x - a.x, b.z - a.z) + 1.6;
-    st.line.isVisible = true;
-    st.line.material = side === 1 ? st.sunLine : st.moonLine;
-    st.line.scaling.x = len; st.line.position.set((a.x + b.x) / 2, this.TOP + 0.75, (a.z + b.z) / 2);
-    st.line.rotation.y = -Math.atan2(b.z - a.z, b.x - a.x);
-    lab.pulse(st.line, 1.3, 0.25);
+  updateBeam(lab) {
+    const st = lab.state, from = st.tip.getWorldPosition(lab.v3()), to = st.aim.position.clone();
+    to.y += 0.2;
+    const dir = to.clone().sub(from), len = dir.length();
+    st.beam.position.copy(from).addScaledVector(dir, 0.5);
+    st.beam.scale.set(1, len, 1);
+    st.beam.quaternion.setFromUnitVectors(lab.v3(0, 1, 0), dir.normalize());
+    st.aim.rotation.z += 0.05;
   },
-  cellPos(i) { return { x: (i % 3 - 1) * this.CELL, z: (1 - Math.floor(i / 3)) * this.CELL }; },
+  hideAim(lab) { lab.state.aim.visible = false; lab.state.beam.visible = false; },
+  updateScales(lab, dt) {
+    const st = lab.state, on = !!lab.cfg.oracle;
+    st.scales.visible = on;
+    if (!on) return;
+    st.scaleX = lab.damp(st.scaleX, st.scaleTo || 0, 5, dt);
+    const wob = st.sure ? 0 : Math.sin(lab.t * 3.1) * 0.06 + Math.sin(lab.t * 7.3) * 0.03; // открытый исход колеблется
+    st.scaleGem.position.x = (st.scaleX + wob) * 3.0;
+    st.scaleGem.rotation.y += dt * (st.sure ? 0.6 : 3);
+    const col = !st.sure ? st.gemOpen : st.evalV > 0 ? st.gemSun : st.evalV < 0 ? st.gemMoon : st.gemDraw;
+    st.scaleGem.children[0].material = col;
+    st.lock.visible = !!st.sure;
+    st.lock.position.x = st.scaleGem.position.x;
+    st.lock.rotation.z += dt;
+  },
+  updateCamera(lab) {
+    const st = lab.state, v = lab.view, k = st.zoomK;
+    if (k > 0.001) { v.distance = st.camBase * (1 - 0.2 * k); st.zoomWas = true; }
+    else if (st.zoomWas) { v.distance = st.camBase; st.zoomWas = false; }
+    else st.camBase = v.distance; // окно поменялось — оболочка подобрала новое расстояние
+    v.target.copy(st.camT).lerp(st.zoomAt, 0.55 * k);
+  },
+  cellPos(i) { return { x: (i % 3 - 1) * this.CELL, z: (Math.floor(i / 3) - 1) * this.CELL }; },
   plural(n, one, few, many) { const m = n % 10, h = n % 100; return m === 1 && h !== 11 ? one : m >= 2 && m <= 4 && (h < 12 || h > 14) ? few : many; },
 
-  // ---------- стол-плита, лунки, камни ----------
-  buildTable(lab, scene) {
-    const B = BABYLON, st = lab.state, T = this.TOP;
-    const slab = B.MeshBuilder.CreateBox('плита', { width: 8.4, height: 0.5, depth: 8.4 }, scene);
-    slab.position.y = T - 0.25; slab.material = lab.mat('#9a9ca4'); slab.convertToFlatShadedMesh();
-    const leg = B.MeshBuilder.CreateBox('опора', { width: 1.3, height: T - 0.5, depth: 1.3 }, scene);
-    leg.material = lab.mat('#7f8189'); leg.isVisible = false;
-    for (const x of [-3, 3]) for (const z of [-3, 3]) leg.createInstance('опора').position.set(x, (T - 0.5) / 2, z);
-    // лунки и золотая резьба по краю — копии
-    const hole = B.MeshBuilder.CreateCylinder('лунка', { diameter: 1.9, height: 0.04, tessellation: 16 }, scene);
-    hole.material = lab.mat('#6e717a'); hole.isVisible = false; lab.noShadow(hole);
-    for (let i = 0; i < 9; i++) { const p = this.cellPos(i); hole.createInstance('лунка').position.set(p.x, T + 0.01, p.z); }
-    const groove = B.MeshBuilder.CreateBox('резьба', { width: 7.0, height: 0.05, depth: 0.12 }, scene);
-    groove.material = lab.mat('#d9ad4a', { glow: 0.2 }); groove.isVisible = false; lab.noShadow(groove);
-    for (const k of [-0.5, 0.5]) {
-      groove.createInstance('резьба').position.set(0, T + 0.02, k * this.CELL);
-      const g2 = groove.createInstance('резьба'); g2.position.set(k * this.CELL, T + 0.02, 0); g2.rotation.y = Math.PI / 2;
-    }
-    // орнамент: золотые треугольники по краю плиты
-    const tri = B.MeshBuilder.CreateCylinder('орнамент', { diameter: 0.4, height: 0.06, tessellation: 3 }, scene);
-    tri.material = lab.mat('#d9ad4a', { glow: 0.25 }); tri.isVisible = false; lab.noShadow(tri);
-    for (let k = -3.6; k <= 3.61; k += 0.8) for (const [x, z, a] of [[k, -3.95, 0], [k, 3.95, Math.PI], [-3.95, k, Math.PI / 2], [3.95, k, -Math.PI / 2]]) {
-      const o = tri.createInstance('орнамент'); o.position.set(x, T + 0.02, z); o.rotation.y = a;
-    }
-    // камень игрока — золотое солнце с лучами (части в один меш, дальше копии)
-    const parts = [];
-    const disc = B.MeshBuilder.CreateCylinder('солнце', { diameter: 1.25, height: 0.32, tessellation: 12 }, scene);
-    disc.material = lab.mat('#ffc93c', { glow: 0.12 }); parts.push(disc);
-    const face = B.MeshBuilder.CreateCylinder('солнце', { diameter: 0.7, height: 0.36, tessellation: 12 }, scene);
-    face.material = lab.mat('#fff0a8', { glow: 0.3 }); parts.push(face);
+  // ---------- камни: солнце (диск с лучами) и луна (кристалл), общие формы на всю партию ----------
+  assets(lab) {
+    const T3 = lab.THREE, U = lab.addons.BufferGeometryUtils, st = lab.state;
+    const rays = [];
     for (let i = 0; i < 8; i++) {
-      const a = i / 8 * Math.PI * 2, ray = B.MeshBuilder.CreateCylinder('луч', { diameterTop: 0, diameterBottom: 0.32, height: 0.38, tessellation: 4 }, scene);
-      ray.rotation.z = -Math.PI / 2; ray.rotation.y = -a; ray.position.set(Math.cos(a) * 0.78, 0, Math.sin(a) * 0.78);
-      ray.material = lab.mat('#ff9f1c', { glow: 0.15 }); parts.push(ray);
+      const a = i / 8 * Math.PI * 2, g = new T3.ConeGeometry(0.16, 0.38, 4);
+      g.rotateZ(-Math.PI / 2); g.rotateY(-a); g.translate(Math.cos(a) * 0.78, 0, Math.sin(a) * 0.78);
+      rays.push(g);
     }
-    parts.forEach(m => m.convertToFlatShadedMesh());
-    st.sunSrc = B.Mesh.MergeMeshes(parts, true, true, undefined, false, true); st.sunSrc.name = 'солнце'; st.sunSrc.isVisible = false;
-    // камень мудреца — голубой кристалл-луна
-    st.moonSrc = B.MeshBuilder.CreatePolyhedron('луна', { type: 1, size: 0.62 }, scene);
-    st.moonSrc.scaling.y = 1.25; st.moonSrc.material = lab.mat('#5fa8ff', { glow: 0.45, shiny: true }); st.moonSrc.isVisible = false;
+    const moon = new T3.OctahedronGeometry(0.62); moon.scale(1, 1.25, 1);
+    st.geo = { sun: new T3.CylinderGeometry(0.62, 0.62, 0.32, 12), rays: U.mergeGeometries(rays), face: new T3.CylinderGeometry(0.36, 0.36, 0.36, 12), moon };
+    rays.forEach(g => g.dispose());
+    st.mats = { sun: lab.mat('#ffc93c', { glow: 0.15 }), rays: lab.mat('#ff9f1c', { glow: 0.2 }), face: lab.mat('#fff0a8', { glow: 0.4 }), moon: lab.mat('#5fa8ff', { glow: 0.45, shiny: true }) };
+  },
+  makeStone(lab, side, o = {}) {
+    const st = lab.state, g = lab.group(o);
+    if (side === 1) {
+      lab.mesh(st.geo.sun, o.ghost || st.mats.sun, { parent: g });
+      lab.mesh(st.geo.rays, o.ghost || st.mats.rays, { parent: g });
+      if (!o.ghost) lab.mesh(st.geo.face, st.mats.face, { parent: g });
+    } else lab.mesh(st.geo.moon, o.ghost || st.mats.moon, { parent: g });
+    if (o.ghost) lab.noShadow(g);
+    return g;
+  },
+
+  // ---------- стол-плита, лунки, корзины с запасом ----------
+  buildTable(lab) {
+    const T3 = lab.THREE, st = lab.state, T = this.TOP, S = 8.8;
+    const parts = [lab.box(S, 0.5, S, '#9a9ca4', { at: [0, T - 0.25, 0] })];
+    for (const x of [-3, 3]) for (const z of [-3, 3]) parts.push(lab.box(1.3, T - 0.5, 1.3, '#7f8189', { at: [x, (T - 0.5) / 2, z] }));
+    lab.merge(parts);
+    // лунки: тёмный край и светлое дно
+    const hole = lab.instances(new T3.CylinderGeometry(0.98, 0.98, 0.04, 18), '#6e717a', 9, { shadow: false });
+    const bed = lab.instances(new T3.CylinderGeometry(0.8, 0.8, 0.05, 18), '#858892', 9, { shadow: false });
+    for (let i = 0; i < 9; i++) { const p = this.cellPos(i); lab.place(hole, i, [p.x, T + 0.01, p.z]); lab.place(bed, i, [p.x, T + 0.015, p.z]); }
+    // золотая резьба между лунками и орнамент по краю — копии
+    const groove = lab.instances(new T3.BoxGeometry(7.0, 0.05, 0.12), '#d9ad4a', 4, { glow: 0.25, shadow: false });
+    [-0.5, 0.5].forEach((k, i) => {
+      lab.place(groove, i * 2, [0, T + 0.02, k * this.CELL]);
+      lab.place(groove, i * 2 + 1, [k * this.CELL, T + 0.02, 0], { rot: Math.PI / 2 });
+    });
+    const sides = [], E = S / 2 - 0.25;
+    for (let k = -3.6; k <= 3.61; k += 0.8) sides.push([k, -E, Math.PI], [-E, k, -Math.PI / 2], [E, k, Math.PI / 2]);
+    for (let k = -3.6; k <= 3.61; k += 0.8) if (Math.abs(k) > 3.4) sides.push([k, E, 0]); // ближний край — под весами исхода
+    const tri = lab.instances(new T3.CylinderGeometry(0.2, 0.2, 0.06, 3), '#d9ad4a', sides.length, { glow: 0.3, shadow: false });
+    sides.forEach(([x, z, a], i) => lab.place(tri, i, [x, T + 0.02, z], { rot: a }));
     // плетёные корзины с запасом камней у каждой стороны стола
-    const basket = B.MeshBuilder.CreateCylinder('корзина', { diameterTop: 1.5, diameterBottom: 1.1, height: 0.6, tessellation: 10 }, scene);
-    basket.material = lab.mat('#a8743f'); basket.isVisible = false; basket.convertToFlatShadedMesh();
-    [[-5.4, -3.4, st.sunSrc], [5.4, 3.6, st.moonSrc]].forEach(([x, z, src]) => {
-      basket.createInstance('корзина').position.set(x, 0.3, z);
+    const basket = lab.instances(new T3.CylinderGeometry(0.75, 0.55, 0.6, 10), '#a8743f', 2);
+    const band = lab.instances(new T3.CylinderGeometry(0.77, 0.7, 0.1, 10), '#7a5232', 2);
+    const res = { sun: lab.instances(st.geo.sun, st.mats.sun, 3), rays: lab.instances(st.geo.rays, st.mats.rays, 3), face: lab.instances(st.geo.face, st.mats.face, 3), moon: lab.instances(st.geo.moon, st.mats.moon, 3) };
+    [[-5.6, 3.4, 1], [5.6, -3.4, 2]].forEach(([x, z, side], b) => {
+      lab.place(basket, b, [x, 0.3, z]); lab.place(band, b, [x, 0.45, z]);
       for (let i = 0; i < 3; i++) {
-        const s = src.createInstance('запас'); s.scaling.setAll(0.5); s.scaling.y *= src === st.moonSrc ? 1.25 : 1;
-        s.position.set(x + Math.cos(i * 2.1) * 0.32, 0.72 + i * 0.06, z + Math.sin(i * 2.1) * 0.32); s.rotation.set(0.3, i, 0.2);
+        const at = [x + Math.cos(i * 2.1) * 0.3, 0.72 + i * 0.07, z + Math.sin(i * 2.1) * 0.3], o = { scale: 0.5, rot: [0.3, i, 0.2] };
+        if (side === 1) { lab.place(res.sun, i, at, o); lab.place(res.rays, i, at, o); lab.place(res.face, i, at, o); }
+        else lab.place(res.moon, i, at, o);
       }
     });
   },
 
-  // ---------- мудрец в черкеске и папахе ----------
-  buildSage(lab, scene) {
-    const B = BABYLON, st = lab.state;
-    const sage = new B.TransformNode('мудрец', scene);
-    const add = (mesh, color, o, parent) => { mesh.material = lab.mat(color, o || {}); mesh.parent = parent || sage; mesh.convertToFlatShadedMesh(); return mesh; };
-    add(B.MeshBuilder.CreateBox('камень-сиденье', { width: 1.8, height: 0.7, depth: 1.3 }, scene), '#8a8c94').position.y = 0.35;
-    add(B.MeshBuilder.CreateCylinder('черкеска', { diameterTop: 0.75, diameterBottom: 1.35, height: 1.6, tessellation: 8 }, scene), '#7a2a3a').position.y = 1.5;
-    add(B.MeshBuilder.CreateCylinder('пояс', { diameter: 1.08, height: 0.14, tessellation: 8 }, scene), '#d9ad4a', { glow: 0.2 }).position.y = 1.15;
-    for (const x of [-0.22, 0.22]) {
-      const g = add(B.MeshBuilder.CreateBox('газыри', { width: 0.22, height: 0.3, depth: 0.1 }, scene), '#efe2c4');
-      g.position.set(x, 1.85, -0.38);
-    }
-    const head = new B.TransformNode('голова', scene); head.parent = sage; head.position.y = 2.45;
-    add(B.MeshBuilder.CreateSphere('лицо', { diameter: 0.62, segments: 4 }, scene), '#e9c29b', null, head);
-    add(B.MeshBuilder.CreateCylinder('папаха', { diameter: 0.74, height: 0.46, tessellation: 9 }, scene), '#f1ede4', null, head).position.y = 0.38;
-    const beard = add(B.MeshBuilder.CreateCylinder('борода', { diameterTop: 0.52, diameterBottom: 0.05, height: 0.7, tessellation: 6 }, scene), '#f7f7f7', null, head);
-    beard.position.set(0, -0.36, -0.2);
-    for (const x of [-0.12, 0.12]) add(B.MeshBuilder.CreateBox('глаз', { size: 0.07 }, scene), '#1c1f27', null, head).position.set(x, 0.05, -0.29);
-    const staff = add(B.MeshBuilder.CreateCylinder('посох', { diameter: 0.1, height: 3.0, tessellation: 6 }, scene), '#7a5232');
-    staff.position.set(1.0, 1.5, -0.25);
-    const arm = add(B.MeshBuilder.CreateBox('рука', { width: 0.7, height: 0.2, depth: 0.2 }, scene), '#7a2a3a'); arm.position.set(0.62, 1.8, -0.22); arm.rotation.z = -0.3;
-    st.tip = add(B.MeshBuilder.CreatePolyhedron('огонь посоха', { type: 1, size: 0.2 }, scene), '#8fe3ff', { glow: 1 });
-    st.tip.position.set(1.0, 3.1, -0.25); lab.noShadow(st.tip);
-    sage.position.set(0, 0, 6.3); sage.rotation.y = 0;
-    st.head = head; st.sage = sage;
+  // ---------- мудрец в черкеске и папахе: лицом к игроку (+Z) ----------
+  buildSage(lab) {
+    const T3 = lab.THREE, st = lab.state;
+    const sage = lab.group({ at: [0, 0, -6.3], scale: 1.3 });
+    // неподвижные части сливаются в один меш на цвет: сначала строим в начале координат, потом ставим на место
+    const bake = (build, parent, at) => {
+      const tmp = lab.group(); build(tmp);
+      const out = lab.merge([tmp]); parent.add(out); if (at) out.position.set(at[0], at[1], at[2]);
+      return out;
+    };
+    lab.box(1.8, 0.7, 1.3, '#8a8c94', { at: [0, 0.35, 0], parent: sage });
+    st.body = bake(g => {
+      lab.cyl(0.375, 0.675, 1.6, '#7a2a3a', { parent: g, at: [0, 0.8, 0], sides: 8 });
+      lab.cyl(0.54, 0.54, 0.14, '#d9ad4a', { parent: g, at: [0, 0.45, 0], sides: 8, glow: 0.2 });
+      for (const x of [-0.22, 0.22]) lab.box(0.22, 0.3, 0.1, '#efe2c4', { parent: g, at: [x, 1.15, 0.46] });
+      lab.box(0.7, 0.2, 0.2, '#7a2a3a', { parent: g, at: [0.62, 1.1, 0.22], rot: [0, 0, -0.3] });
+      lab.cyl(0.05, 0.05, 3.0, '#7a5232', { parent: g, at: [1.0, 0.8, 0.25], sides: 6 });
+    }, sage, [0, 0.7, 0]);
+    st.head = lab.group({ parent: sage, at: [0, 2.45, 0] });
+    bake(g => {
+      lab.ball(0.31, '#e9c29b', { parent: g, detail: 1 });
+      lab.cyl(0.37, 0.37, 0.46, '#f1ede4', { parent: g, at: [0, 0.38, 0], sides: 9 });
+      lab.cyl(0.26, 0.025, 0.7, '#f7f7f7', { parent: g, at: [0, -0.36, 0.2], sides: 6 });
+      for (const x of [-0.12, 0.12]) lab.box(0.07, 0.07, 0.07, '#1c1f27', { parent: g, at: [x, 0.05, 0.29] });
+      for (const x of [-0.12, 0.12]) lab.box(0.14, 0.04, 0.05, '#f7f7f7', { parent: g, at: [x, 0.14, 0.29] });
+    }, st.head);
+    st.tip = lab.mesh(new T3.OctahedronGeometry(0.2), '#8fe3ff', { parent: sage, at: [1.0, 3.1, 0.25], glow: 1, shadow: false });
+    st.sage = sage;
   },
 
-  buildMarkers(lab, scene) {
-    const B = BABYLON, st = lab.state;
-    st.okMat = lab.mat('#ffffff', { unlit: true }); st.badMat = lab.mat('#8a909c', { unlit: true }); // занятая лунка: серый курсор, красный — только у камня, который исчезнет
-    st.cursorMesh = lab.noShadow(B.MeshBuilder.CreateTorus('курсор', { diameter: 1.95, thickness: 0.13, tessellation: 24 }, scene));
-    st.cursorMesh.material = st.okMat;
-    st.ghost = lab.noShadow(B.MeshBuilder.CreateCylinder('призрак', { diameter: 1.25, height: 0.3, tessellation: 12 }, scene));
-    st.sunGhost = st.ghost.material = lab.mat('#ffd23f', { unlit: true, alpha: 0.4 });
-    st.moonGhost = lab.mat('#5fa8ff', { unlit: true, alpha: 0.4 });
-    st.doom = [null, 1, 2].map(s => {
-      if (!s) return null;
-      const r = lab.noShadow(B.MeshBuilder.CreateTorus('исчезнет', { diameter: 1.6, thickness: 0.16, tessellation: 20 }, scene));
-      r.material = lab.mat('#ff4d5e', { unlit: true, alpha: 0.85 }); r.setEnabled(false); return r;
-    });
-    st.aim = lab.noShadow(B.MeshBuilder.CreateTorus('прицел', { diameter: 1.95, thickness: 0.13, tessellation: 24 }, scene));
-    st.aim.material = lab.mat('#8fe3ff', { unlit: true }); st.aim.setEnabled(false);
-    st.beam = lab.noShadow(B.MeshBuilder.CreateCylinder('луч мудреца', { diameter: 0.08, height: 1, tessellation: 6 }, scene));
-    st.beam.material = lab.mat('#8fe3ff', { unlit: true, alpha: 0.6 }); st.beam.setEnabled(false);
-    st.line = lab.noShadow(B.MeshBuilder.CreateBox('линия', { width: 1, height: 0.18, depth: 0.32 }, scene));
-    st.sunLine = lab.mat('#ffd23f', { glow: 1 }); st.moonLine = lab.mat('#5fa8ff', { glow: 1 });
-    st.line.isVisible = false;
-    // стрелка ветра над доской
-    const arrow = new B.TransformNode('ветер', scene);
-    const shaft = lab.noShadow(B.MeshBuilder.CreateCylinder('ветер', { diameter: 0.22, height: 1.6, tessellation: 6 }, scene));
-    shaft.rotation.x = Math.PI / 2; shaft.parent = arrow;
-    const head = lab.noShadow(B.MeshBuilder.CreateCylinder('ветер', { diameterTop: 0, diameterBottom: 0.7, height: 0.7, tessellation: 6 }, scene));
-    head.rotation.x = Math.PI / 2; head.position.z = 1.1; head.parent = arrow;
-    shaft.material = head.material = lab.mat('#e8f7ff', { glow: 0.6 });
-    arrow.position.y = this.TOP + 0.5; arrow.setEnabled(false);
-    st.windArrow = arrow;
+  buildMarkers(lab) {
+    const T3 = lab.THREE, st = lab.state, flat = [Math.PI / 2, 0, 0];
+    st.okMat = lab.mat('#fff4c2', { unlit: true, glow: 0.3 }); st.okMoonMat = lab.mat('#c8ecff', { unlit: true, glow: 0.3 });
+    st.badMat = lab.mat('#8a909c', { unlit: true }); // занятая лунка: серый курсор, красный — только у камня, который исчезнет
+    st.cursorMesh = lab.mesh(new T3.TorusGeometry(0.98, 0.07, 6, 28), st.okMat, { rot: flat, shadow: false });
+    st.hand = [null, this.makeStone(lab, 1), this.makeStone(lab, 2)];
+    st.hand.forEach(h => { if (h) h.visible = false; });
+    const gs = lab.mat('#ffd23f', { unlit: true, alpha: 0.4 }), gm = lab.mat('#5fa8ff', { unlit: true, alpha: 0.4 });
+    st.ghost = [null, this.makeStone(lab, 1, { ghost: gs }), this.makeStone(lab, 2, { ghost: gm })];
+    st.ghost.forEach(g => { if (g) g.visible = false; });
+    st.doom = [null, 1, 2].map(s => s && lab.mesh(new T3.TorusGeometry(0.82, 0.09, 6, 24), lab.mat('#ff4d5e', { unlit: true, glow: 0.5 }), { rot: flat, shadow: false }));
+    st.doom.forEach(r => { if (r) r.visible = false; });
+    const ringGeo = new T3.RingGeometry(0.5, 0.9, 24); ringGeo.rotateX(-Math.PI / 2);
+    st.threat = lab.instances(ringGeo, lab.mat('#ffffff', { unlit: true, add: true }), 9, { shadow: false });
+    const lastGeo = new T3.RingGeometry(0.86, 0.96, 28); lastGeo.rotateX(-Math.PI / 2);
+    st.lastSun = lab.mat('#ffd23f', { unlit: true, alpha: 0.55 }); st.lastMoon = lab.mat('#5fa8ff', { unlit: true, alpha: 0.55 });
+    st.lastMark = lab.mesh(lastGeo, st.lastSun, { shadow: false }); st.lastMark.visible = false;
+    st.aim = lab.mesh(new T3.TorusGeometry(0.98, 0.07, 6, 28), lab.mat('#8fe3ff', { unlit: true, glow: 0.8 }), { rot: flat, shadow: false });
+    st.beam = lab.mesh(new T3.CylinderGeometry(0.05, 0.05, 1, 6), lab.mat('#8fe3ff', { unlit: true, add: true }), { shadow: false });
+    st.aim.visible = st.beam.visible = false;
+    st.sunLine = lab.mat('#ffd23f', { glow: 1.2 }); st.moonLine = lab.mat('#5fa8ff', { glow: 1.2 });
+    st.line = lab.box(1, 0.18, 0.32, st.sunLine, { shadow: false }); st.line.visible = false;
+    // стрелка ветра над доской: смотрит по своей +Z
+    st.windArrow = lab.group();
+    const wm = lab.mat('#e8f7ff', { glow: 0.6 });
+    lab.cyl(0.11, 0.11, 1.6, wm, { parent: st.windArrow, rot: [Math.PI / 2, 0, 0], sides: 6, shadow: false });
+    lab.cone(0.35, 0.7, wm, { parent: st.windArrow, at: [0, 0, 1.1], rot: [Math.PI / 2, 0, 0], sides: 6, shadow: false });
+    st.windArrow.visible = false;
+  },
+  // весы исхода у ближнего края доски: золото — солнца, синева — луны, середина — ничья
+  buildScales(lab) {
+    const T3 = lab.THREE, st = lab.state, y = this.TOP + 0.05, z = 3.75;
+    st.scales = lab.group({ at: [0, y, z] });
+    lab.box(6.8, 0.1, 0.3, '#5d6068', { parent: st.scales });
+    lab.box(3.2, 0.06, 0.18, '#ffc93c', { parent: st.scales, at: [-1.65, 0.07, 0], glow: 0.35, shadow: false });
+    lab.box(3.2, 0.06, 0.18, '#5fa8ff', { parent: st.scales, at: [1.65, 0.07, 0], glow: 0.35, shadow: false });
+    lab.box(0.12, 0.16, 0.36, '#ffffff', { parent: st.scales, at: [0, 0.08, 0], glow: 0.3, shadow: false });
+    st.gemOpen = lab.mat('#e6f0ff', { glow: 0.5, shiny: true }); st.gemSun = lab.mat('#ffd23f', { glow: 1 }); st.gemMoon = lab.mat('#5fa8ff', { glow: 1 }); st.gemDraw = lab.mat('#ffffff', { glow: 1 });
+    st.scaleGem = lab.group({ parent: st.scales, at: [0, 0.38, 0] });
+    lab.mesh(new T3.OctahedronGeometry(0.24), st.gemOpen, { parent: st.scaleGem });
+    st.lock = lab.mesh(new T3.TorusGeometry(0.36, 0.045, 6, 20), lab.mat('#ffffff', { unlit: true, glow: 0.6 }), { parent: st.scales, at: [0, 0.38, 0], shadow: false });
+    st.lock.visible = false;
+    st.scaleTo = 0;
   },
 
-  // ---------- плато Лаго-Наки: горы, ели, камни, овцы, дольмен ----------
+  // ---------- плато Лаго-Наки: горы, пихты, валуны, цветы, овцы, дольмен ----------
   scenery(lab, scene) {
-    const B = BABYLON, st = lab.state;
-    lab.ground({ w: 160, h: 160, color: '#5c9646' });
-    const meadow = B.MeshBuilder.CreateGround('луг', { width: 16, height: 16 }, scene);
-    meadow.position.y = 0.01; meadow.material = lab.mat('#6aa850'); lab.noShadow(meadow);
-    const source = (mesh, color, o) => { mesh.material = lab.mat(color, o); mesh.isVisible = false; mesh.convertToFlatShadedMesh(); return mesh; };
-    const cone = (name, color) => source(B.MeshBuilder.CreateCylinder(name, { height: 1, diameterTop: 0, diameterBottom: 1, tessellation: 6 }, scene), color);
-    const rock = lab.noShadow(cone('гора', '#7d8aa6')), snow = lab.noShadow(cone('снег', '#f4f8ff'));
-    [[-40, 70, 30, 15], [-12, 78, 40, 19], [18, 72, 30, 14], [44, 64, 22, 11], [4, 60, 16, 8], [-60, 50, 20, 10], [62, 48, 18, 9]].forEach(([x, z, h, r]) => {
+    const T3 = lab.THREE, st = lab.state;
+    lab.ground({ w: 240, h: 240, color: '#5c9646', bumps: 2, flat: 0.7 });
+    lab.box(18, 0.04, 18, '#6aa850', { at: [0, 0.02, -1], shadow: false }); // луг вокруг стола
+    // горы вдали со снежными шапками — один меш на цвет
+    const hills = [];
+    [[-40, -70, 30, 15], [-12, -78, 40, 19], [18, -72, 30, 14], [44, -64, 22, 11], [4, -58, 16, 8], [-60, -50, 20, 10], [62, -48, 18, 9]].forEach(([x, z, h, r]) => {
       const a = lab.rand(0, 1);
-      const m = rock.createInstance('гора'); m.scaling.set(r * 2, h, r * 2); m.position.set(x, h / 2 - 0.5, z); m.rotation.y = a;
-      const c = snow.createInstance('снег'); c.scaling.set(r * 0.7, h * 0.32, r * 0.7); c.position.set(x, h * 0.84 - 0.5, z); c.rotation.y = a;
+      hills.push(lab.cone(r, h, '#7d8aa6', { at: [x, h / 2 - 0.5, z], sides: 6, rot: a }));
+      hills.push(lab.cone(r * 0.36, h * 0.34, '#f4f8ff', { at: [x, h * 0.83 - 0.5, z], sides: 6, rot: a }));
     });
-    const trunk = source(B.MeshBuilder.CreateCylinder('ствол', { height: 0.7, diameter: 0.3, tessellation: 5 }, scene), '#5a3d2b');
-    const crowns = ['#1f5a3a', '#25683f', '#2f7a46'].map(c => cone('крона', c));
-    for (let i = 0; i < 30; i++) {
-      const a = lab.rand(0, Math.PI * 2), d = lab.rand(13, 26), x = Math.cos(a) * d, z = Math.abs(Math.sin(a)) * d * 0.9 + lab.rand(-4, 8), h = lab.rand(2, 4);
-      if (Math.abs(x) < 6 && z < 14) continue;
-      trunk.createInstance('ствол').position.set(x, 0.35, z);
-      const cr = lab.pick(crowns).createInstance('крона'); cr.scaling.set(h * 0.7, h, h * 0.7); cr.position.set(x, 0.7 + h / 2, z); cr.rotation.y = lab.rand(0, 3);
+    lab.merge(hills);
+    // пихты — копии: стволы и кроны разных оттенков
+    const N = 46, trunk = lab.instances(new T3.CylinderGeometry(0.15, 0.2, 0.7, 5), '#5a3d2b', N), crown = lab.instances(new T3.ConeGeometry(0.5, 1, 6), '#ffffff', N * 2);
+    let n = 0;
+    for (let i = 0; i < 400 && n < N; i++) {
+      const a = lab.rand(0, Math.PI * 2), d = lab.rand(13, 34), x = Math.cos(a) * d, z = -Math.abs(Math.sin(a)) * d * 0.9 + lab.rand(-6, 6);
+      if (Math.abs(x) < 15 && z > -24) continue;
+      const h = lab.rand(2, 4.2), col = lab.pick(['#1f5a3a', '#25683f', '#2f7a46']);
+      lab.place(trunk, n, [x, 0.35, z]);
+      lab.place(crown, n * 2, [x, 0.7 + h * 0.45, z], { scale: [h * 0.75, h * 0.9, h * 0.75], rot: lab.rand(0, 3), color: col });
+      lab.place(crown, n * 2 + 1, [x, 0.7 + h * 0.95, z], { scale: [h * 0.5, h * 0.6, h * 0.5], rot: lab.rand(0, 3), color: col });
+      n++;
     }
-    const boulder = source(B.MeshBuilder.CreatePolyhedron('валун', { type: 2, size: 0.6 }, scene), '#a3a6ae');
-    for (let i = 0; i < 14; i++) {
-      const b = boulder.createInstance('валун'), s = lab.rand(0.5, 1.6);
-      b.scaling.set(s, s * 0.6, s); b.position.set(lab.pick([-1, 1]) * lab.rand(7, 16), s * 0.25, lab.rand(-8, 12)); b.rotation.y = lab.rand(0, 3);
+    const boulder = lab.instances(new T3.DodecahedronGeometry(0.6, 0), '#a3a6ae', 16);
+    for (let i = 0; i < 16; i++) {
+      const s = lab.rand(0.5, 1.6);
+      lab.place(boulder, i, [lab.pick([-1, 1]) * lab.rand(8, 16), s * 0.2, lab.rand(-12, 8)], { scale: [s, s * 0.6, s], rot: lab.rand(0, 3) });
     }
-    // цветы на лугу — маленькие копии
-    const flower = lab.noShadow(source(B.MeshBuilder.CreateCylinder('цветок', { diameter: 0.22, height: 0.12, tessellation: 5 }, scene), '#ffffff', { glow: 0.2 }));
-    const flower2 = lab.noShadow(source(B.MeshBuilder.CreateCylinder('цветок', { diameter: 0.22, height: 0.12, tessellation: 5 }, scene), '#ff7eb6', { glow: 0.2 }));
-    for (let i = 0; i < 60; i++) {
-      const x = lab.rand(-14, 14), z = lab.rand(-9, 12);
-      if (Math.abs(x) < 5 && Math.abs(z) < 5.5) continue;
-      (i % 3 ? flower : flower2).createInstance('цветок').position.set(x, 0.08, z);
+    // цветы на лугу
+    const flower = lab.instances(new T3.CylinderGeometry(0.12, 0.12, 0.1, 5), '#ffffff', 70, { shadow: false });
+    let f = 0;
+    for (let i = 0; i < 140 && f < 70; i++) {
+      const x = lab.rand(-14, 14), z = lab.rand(-12, 9);
+      if (Math.abs(x) < 6.5 && Math.abs(z + 1) < 6.5) continue;
+      lab.place(flower, f++, [x, 0.07, z], { color: lab.pick(['#ffffff', '#ff7eb6', '#ffe14d', '#b48cff']) });
     }
-    // овцы: тело, голова и ноги в один меш, дальше копии
-    const parts = [];
-    const wool = B.MeshBuilder.CreateSphere('шерсть', { diameter: 1, segments: 2 }, scene);
-    wool.scaling.set(1.1, 0.75, 0.8); wool.position.y = 0.7; wool.material = lab.mat('#f7f4ec'); parts.push(wool);
-    const muzzle = B.MeshBuilder.CreateBox('голова', { width: 0.32, height: 0.36, depth: 0.42 }, scene);
-    muzzle.position.set(0.62, 0.82, 0); muzzle.material = lab.mat('#2b2b30'); parts.push(muzzle);
-    for (const x of [-0.3, 0.3]) for (const z of [-0.2, 0.2]) {
-      const l = B.MeshBuilder.CreateBox('нога', { width: 0.1, height: 0.42, depth: 0.1 }, scene);
-      l.position.set(x, 0.21, z); l.material = lab.mat('#2b2b30'); parts.push(l);
-    }
-    parts.forEach(m => m.convertToFlatShadedMesh());
-    const sheep = B.Mesh.MergeMeshes(parts, true, true, undefined, false, true); sheep.name = 'овца'; sheep.isVisible = false;
-    st.sheep = [[-9, 3], [-10.5, 4.5], [-8, 6], [9.5, -2], [11, 0], [8.5, 8], [-12, -4]].map(([x, z]) => {
-      const s = sheep.createInstance('овца'); s.position.set(x, 0, z); s.rotation.y = lab.rand(0, 6.28); return s;
-    });
+    // овцы: шерсть и тёмные голова с ногами — две пачки копий
+    const U = lab.addons.BufferGeometryUtils, wool = new T3.IcosahedronGeometry(0.5, 1);
+    wool.scale(1.1, 0.75, 0.8); wool.translate(0, 0.7, 0);
+    const bits = [new T3.BoxGeometry(0.32, 0.36, 0.42).rotateY(Math.PI / 2).translate(0.62, 0.82, 0)];
+    for (const x of [-0.3, 0.3]) for (const z of [-0.2, 0.2]) bits.push(new T3.BoxGeometry(0.1, 0.42, 0.1).translate(x, 0.21, z));
+    const dark = U.mergeGeometries(bits); bits.forEach(b => b.dispose());
+    st.sheep = [[-9, -3], [-10.5, -4.5], [-8, -6], [9.5, 2], [11, 0], [8.5, -8], [-12, 4]].map(([x, z]) => ({ x, z, a: lab.rand(0, 6.28) }));
+    st.wool = lab.instances(wool, '#f7f4ec', st.sheep.length);
+    st.dark = lab.instances(dark, '#2b2b30', st.sheep.length);
     // дольмен за спиной мудреца
-    const dp = [];
-    const slab = (w, h, d, x, y, z) => { const m = B.MeshBuilder.CreateBox('дольмен', { width: w, height: h, depth: d }, scene); m.position.set(x, y, z); m.material = lab.mat('#878a92'); dp.push(m); };
-    slab(0.45, 2.6, 3.2, -1.8, 1.3, 11); slab(0.45, 2.6, 3.2, 1.8, 1.3, 11); slab(4.0, 2.6, 0.45, 0, 1.3, 12.6);
-    slab(4.0, 2.6, 0.45, 0, 1.3, 9.4); slab(4.8, 0.5, 4.2, 0, 2.85, 11);
-    const hole = B.MeshBuilder.CreateCylinder('лаз', { diameter: 0.9, height: 0.1, tessellation: 12 }, scene);
-    hole.rotation.x = Math.PI / 2; hole.position.set(0, 1.1, 9.15); hole.material = lab.mat('#25262c'); dp.push(hole);
-    dp.forEach(m => m.convertToFlatShadedMesh());
-    B.Mesh.MergeMeshes(dp, true, true, undefined, false, true).name = 'дольмен';
+    const dp = [], slab = (w, h, d, x, y, z) => dp.push(lab.box(w, h, d, '#878a92', { at: [x, y, z] }));
+    slab(0.45, 2.6, 3.2, -1.8, 1.3, -11); slab(0.45, 2.6, 3.2, 1.8, 1.3, -11); slab(4.0, 2.6, 0.45, 0, 1.3, -12.6);
+    slab(4.0, 2.6, 0.45, 0, 1.3, -9.4); slab(4.8, 0.5, 4.2, 0, 2.85, -11);
+    dp.push(lab.cyl(0.45, 0.45, 0.1, '#25262c', { at: [0, 1.1, -9.15], rot: [Math.PI / 2, 0, 0], sides: 12 }));
+    lab.merge(dp);
   },
 };
