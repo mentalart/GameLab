@@ -228,11 +228,49 @@ function playPage(res, gameId, n) {
 // игра одним файлом: оболочка, Babylon.js и код версии в одном .html — работает без портала и без интернета (кроме игр с физикой Havok)
 let BABYLON_JS = null;
 const inlineScript = js => '<script>\n' + js.replace(/<\/script/gi, '<\\/script') + '\n</script>';
+// игра на three.js (engine: 'three'): страница three-game.html, оболочка lab-three.js
+const isThree = code => /\bengine\s*:\s*['"]three['"]/.test(code || '');
+// модули оболочки и three.js для игры одним файлом: исходники с метками @@Mn@@ вместо путей импорта,
+// загрузчик в странице превращает каждый модуль в blob: — без файлов, импорт-карты и интернета
+let THREE_MODS = null;
+function threeModules() {
+  if (THREE_MODS) return THREE_MODS;
+  const VENDOR = path.join(PORTAL, 'engine', 'vendor', 'three'), mods = [], ids = new Map();
+  const resolve = (spec, from) => spec === 'three' ? path.join(VENDOR, 'three.module.min.js')
+    : spec.startsWith('three/addons/') ? path.join(VENDOR, 'addons', spec.slice(13))
+      : /^\.\.?\//.test(spec) ? path.resolve(path.dirname(from), spec) : null;
+  const add = file => {
+    if (ids.has(file)) return ids.get(file);
+    const id = mods.length, m = { s: '' };
+    ids.set(file, id); mods.push(m);
+    m.s = fs.readFileSync(file, 'utf8').replace(/(\bfrom\s*|\bimport\s*\(?\s*)(['"])([^'"\n]+)\2/g, (all, pre, q, spec) => {
+      const f = resolve(spec, file);
+      return f && fs.existsSync(f) ? pre + q + '@@M' + add(f) + '@@' + q : all; // пути из комментариев (адреса примеров) не трогаем
+    });
+    return id;
+  };
+  add(path.join(PORTAL, 'engine', 'lab-three.js'));
+  THREE_MODS = JSON.stringify(mods).replace(/<\/script/gi, '<\\/script').replace(/<!--/g, '<\\!--');
+  return THREE_MODS;
+}
+const threeLoader = () => '<script>(function () { var M = ' + threeModules() + ', U = [];\n' +
+  'function url(i) { if (U[i]) return U[i]; var s = M[i].s.replace(/@@M(\\d+)@@/g, function (x, d) { return url(+d); });\n' +
+  'return (U[i] = URL.createObjectURL(new Blob([s], { type: \'text/javascript\' }))); }\n' +
+  'var t = document.createElement(\'script\'); t.type = \'module\'; t.src = url(0); document.body.appendChild(t); })();</script>';
 function downloadPage(res, gameId, n) {
   const g = store.getGame(gameId);
   const v = g && (Number(n) || g.current), code = g && store.versionCode(gameId, v);
   if (!code) return send(res, 404, 'Нет такой версии игры', 'text/plain; charset=utf-8');
   if (ai.isHtml(code)) return send(res, 200, htmlGame(code, true), 'text/html; charset=utf-8', { 'Content-Security-Policy': 'sandbox allow-scripts allow-pointer-lock', 'Content-Disposition': `attachment; filename="igra.html"; filename*=UTF-8''${encodeURIComponent((g.title || 'igra') + ' v' + v + '.html')}` });
+  if (isThree(code)) {
+    const html = fs.readFileSync(path.join(PORTAL, 'engine', 'three-game.html'), 'utf8')
+      .replace(/<script type="importmap">[^<]*<\/script>\n?/, '')
+      .replace('<script type="module" src="lab-three.js"></script>', '')
+      .replace('<!--GAME-->', () => inlineScript(code) + '\n' + threeLoader())
+      .replace('<title>Лаборатория игр</title>', () => `<title>${String(g.title || 'Моя игра').replace(/[<>&]/g, '')} · Лаборатория игр</title>`);
+    const name = `${(g.title || 'igra').replace(/[\\/:*?"<>|]+/g, '').trim() || 'igra'} v${v}.html`;
+    return send(res, 200, html, 'text/html; charset=utf-8', { 'Content-Security-Policy': 'sandbox allow-scripts allow-pointer-lock', 'Content-Disposition': `attachment; filename="igra.html"; filename*=UTF-8''${encodeURIComponent(name)}` });
+  }
   if (/\bphysics\s*:\s*true/.test(code)) return send(res, 409, 'Эта игра с физикой: одним файлом она не запустится. Играй в неё в аркаде.', 'text/plain; charset=utf-8');
   if (!BABYLON_JS) BABYLON_JS = fs.readFileSync(path.join(PORTAL, 'engine', 'vendor', 'babylon', 'babylon.js'), 'utf8');
   const lab = fs.readFileSync(path.join(PORTAL, 'engine', 'lab.js'), 'utf8');
