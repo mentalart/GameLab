@@ -5,36 +5,54 @@
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Лаборатория игр</title>
 <link rel="stylesheet" href="/style.css">
+<link rel="stylesheet" href="/stol.css">
 </head>
 <body>
 <main class="login">
   <div class="wrap">
-    <div class="hero">
+    <div class="stol-hero">
       <div class="logo"><i></i> Лаборатория игр</div>
-      <h1>Придумай игру — и сыграй в неё через 20 минут</h1>
-      <p class="muted">Курс геймдизайна Школы креативных индустрий. Ты решаешь, ИИ пишет код.</p>
+      <!-- четыре карты безумной идеи: переворачиваются при загрузке, каждый раз новая связка -->
+      <div class="stol-cards" id="cards" aria-label="Безумная идея дня"></div>
+      <h1 class="stol-title">Придумай игру и сыграй в неё через 20 минут</h1>
+      <p class="muted">Курс геймдизайна Школы креативных индустрий. Ты решаешь, что почувствует игрок, а ИИ пишет код.</p>
       <p class="muted small" id="demoNote" hidden>Портал в демо-режиме: ИИ не подключён, вместо своей игры будет образец урока.</p>
+      <form class="stol-slot" id="studentForm" autocomplete="off">
+        <label for="code">Код класса<input type="text" id="code" maxlength="8" placeholder="K7M2Q" required></label>
+        <label for="nick">Ник<input type="text" id="nick" maxlength="20" placeholder="Как тебя звать в рекордах" required></label>
+        <button class="btn" type="submit">Войти в урок</button>
+        <p class="muted small" style="flex-basis:100%;margin:0">Без фамилии: ник видят одноклассники.</p>
+        <div class="err" id="sErr" role="alert" style="flex-basis:100%"></div>
+      </form>
+      <details class="stol-teacher">
+        <summary>Я учитель</summary>
+        <form class="row" id="teacherForm" style="margin-top:8px">
+          <label class="lbl" for="pass" style="margin:0">Пароль</label><input type="password" id="pass" required style="width:220px">
+          <button class="btn ghost small" type="submit">Открыть панель учителя</button>
+          <div class="err" id="tErr" role="alert"></div>
+        </form>
+      </details>
     </div>
-    <form class="card stack" id="studentForm" autocomplete="off">
-      <h2>Я ученик</h2>
-      <div><label class="lbl" for="code">Код класса</label><input type="text" id="code" maxlength="8" placeholder="Например, K7M2Q" style="text-transform:uppercase;letter-spacing:.12em;font-weight:800" required></div>
-      <div><label class="lbl" for="nick">Ник</label><input type="text" id="nick" maxlength="20" placeholder="Как тебя звать в таблице рекордов" required></div>
-      <p class="muted small">Без фамилии и личных данных: ник видят одноклассники.</p>
-      <div class="err" id="sErr" role="alert"></div>
-      <div><button class="btn" type="submit">Войти в урок</button></div>
-    </form>
-    <form class="card stack" id="teacherForm">
-      <h2>Я учитель</h2>
-      <div><label class="lbl" for="pass">Пароль</label><input type="password" id="pass" required></div>
-      <p class="muted small">Пароль — в файле portal/config.json на сервере.</p>
-      <div class="err" id="tErr" role="alert"></div>
-      <div><button class="btn ghost" type="submit">Открыть панель учителя</button></div>
-    </form>
   </div>
 </main>
 <script src="/common.js"></script>
 <script>
 const $ = s => document.querySelector(s);
+const IDEAS = [
+  ['Пчела-инкассатор', 'собирает всё, что падает с неба', 'на пасеке у Фишта', 'каждые 10 секунд всё меняется местами'],
+  ['Карандаш-рыцарь', 'раскрашивает пол, по которому бежит', 'в станице с подсолнухами', 'всё брошенное возвращается бумерангом'],
+  ['Горный козёл', 'прыгает с платформы на платформу', 'на плато Лаго-Наки', 'земля тает под ногами'],
+  ['Адыгейский сыр в плаще', 'убегает от погони', 'у древних дольменов', 'чем быстрее, тем меньше видно'],
+];
+const LABELS = [['hero', 'Герой'], ['action', 'Действие'], ['place', 'Место'], ['twist', 'Поворот']];
+const idea = IDEAS[Math.floor(Math.random() * IDEAS.length)];
+LABELS.forEach(([k, label], i) => {
+  const c = Lab.el('div', { class: 'scard k-' + k }, Lab.el('div', { class: 'in' },
+    Lab.el('div', { class: 'face back', 'aria-hidden': 'true' }, '?'),
+    Lab.el('div', { class: 'face front' }, Lab.el('small', {}, label), Lab.el('b', {}, idea[i]))));
+  $('#cards').append(c);
+  setTimeout(() => c.classList.add('up'), 350 + i * 220);
+});
 Lab.api('/api/info').then(i => { $('#demoNote').hidden = !i.demo; }).catch(() => {});
 const q = new URLSearchParams(location.search);
 if (q.get('code')) $('#code').value = q.get('code');
@@ -44,7 +62,7 @@ $('#studentForm').addEventListener('submit', async e => {
     const r = await Lab.api('/api/login', { role: 'student', code: $('#code').value, nick: $('#nick').value });
     Lab.token.set(r.token, 'student');
     const next = q.get('next') || '';
-    location.href = /^\/(arcade|studio)(\?[\w=&-]*)?$/.test(next) ? next : '/student'; // вход по ссылке вызова ведёт обратно в аркаду, из «Моей студии» — в студию
+    location.href = /^\/(arcade|studio)(\?[\w=&-]*)?$/.test(next) ? next : '/student';
   } catch (err) { $('#sErr').textContent = err.message; }
 });
 $('#teacherForm').addEventListener('submit', async e => {

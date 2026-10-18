@@ -111,6 +111,7 @@ async function run(browser, base, mode) {
 
   // учитель: вход, класс, первый чекпоинт
   await teacher.goto(base + '/');
+  if (await teacher.$('.stol-teacher')) await teacher.click('.stol-teacher summary'); // вход учителя спрятан под «Я учитель»
   await teacher.fill('#pass', PASSWORD);
   await teacher.click('#teacherForm button[type=submit]');
   await teacher.waitForURL('**/teacher');

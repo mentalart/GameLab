@@ -1,0 +1,240 @@
+/* «Стол геймдизайнера» — визуальная система портала (прототип для показа).
+   Светлый холодный стол, яркие карты колод, тёмный экран — только у игры.
+   Цвет — это информация: жёлтый — кубик, зелёный — свои слова, розовый — твист и вызов, синий — ИИ.
+   Подключается после style.css и переопределяет токены и места с зашитыми тёмными цветами. */
+
+@font-face{font-family:'Unbounded';font-weight:500;font-display:swap;src:url(/fonts/unbounded-cyrillic-500.woff2) format('woff2')}
+@font-face{font-family:'Unbounded';font-weight:700;font-display:swap;src:url(/fonts/unbounded-cyrillic-700.woff2) format('woff2')}
+@font-face{font-family:'Unbounded';font-weight:900;font-display:swap;src:url(/fonts/unbounded-cyrillic-900.woff2) format('woff2')}
+@font-face{font-family:'Unbounded';font-weight:700;font-display:swap;src:url(/fonts/unbounded-latin-700.woff2) format('woff2');unicode-range:U+0000-00FF}
+@font-face{font-family:'Golos Text';font-weight:400;font-display:swap;src:url(/fonts/golos-text-cyrillic-400.woff2) format('woff2')}
+@font-face{font-family:'Golos Text';font-weight:500;font-display:swap;src:url(/fonts/golos-text-cyrillic-500.woff2) format('woff2')}
+@font-face{font-family:'Golos Text';font-weight:600;font-display:swap;src:url(/fonts/golos-text-cyrillic-600.woff2) format('woff2')}
+@font-face{font-family:'Golos Text';font-weight:700;font-display:swap;src:url(/fonts/golos-text-cyrillic-700.woff2) format('woff2')}
+@font-face{font-family:'Golos Text';font-weight:400;font-display:swap;src:url(/fonts/golos-text-latin-400.woff2) format('woff2');unicode-range:U+0000-00FF}
+@font-face{font-family:'Golos Text';font-weight:700;font-display:swap;src:url(/fonts/golos-text-latin-700.woff2) format('woff2');unicode-range:U+0000-00FF}
+
+:root{
+  /* мир курса */
+  --snow:#EEF3F6;        /* Снег Фишта — стол */
+  --night:#1E2447;       /* Ночь над аулом — текст и корпус игрового экрана */
+  --sun:#FFC51F;         /* Подсолнух — кубик */
+  --sun-ink:#7A5A00;     /* текст кубика на светлом */
+  --meadow:#22A565;      /* Луг Лаго-Наки — свои слова, готово */
+  --meadow-ink:#157A49;
+  --rhodo:#E23C8A;       /* Рододендрон — твист, вызов */
+  --rhodo-ink:#B0206A;
+  --sky:#2F6FEB;         /* Горное небо — ИИ */
+  --sky-ink:#1F55C4;
+  --paper:#FFFFFF;
+  --ink2:#4A5175;        /* второстепенный текст, 7,6:1 на снегу */
+  --rule:#C9D3DD;        /* линии и рамки, видны на проекторе */
+  --rule2:#9AA8B8;
+
+  /* токены портала → значения стола */
+  --bg:var(--snow);--bg2:#F7FAFC;--panel:var(--paper);--panel2:#E3EAF0;--line:var(--rule);--line2:var(--rule2);
+  --text:var(--night);--muted:var(--ink2);--accent:var(--meadow-ink);--accent-ink:#fff;--warm:var(--sun-ink);
+  --danger:#D12F45;--info:var(--sky-ink);--violet:#6B4FD8;
+  --r:16px;color-scheme:light;
+  --display:'Unbounded',system-ui,sans-serif;
+  --body:'Golos Text',system-ui,-apple-system,'Segoe UI',sans-serif;
+  --card-shadow:4px 4px 0 var(--night);
+}
+html,body{background:var(--snow);color:var(--night);font:16px/1.5 var(--body)}
+h1,h2,.cv-title,.pj-code,.chcode,.classcode,.pj-timer,.logo{font-family:var(--display);letter-spacing:-.01em}
+h1{font-weight:900;font-size:clamp(28px,4vw,40px)}
+h2{font-weight:700;font-size:22px}
+h3{font-weight:700}
+a{color:var(--sky-ink)}
+button:focus-visible,input:focus-visible,textarea:focus-visible,select:focus-visible,a:focus-visible{outline:3px solid var(--sky);outline-offset:2px}
+
+/* подписи обычным регистром, без разрядки */
+.eyebrow{text-transform:none;letter-spacing:0;font-size:13px;font-weight:600;color:var(--ink2)}
+
+/* кнопки: одна основная — тёмная, как корпус автомата; вторичные — контур */
+.btn{background:var(--night);color:#fff;border-radius:12px;font-weight:700;box-shadow:0 2px 0 #0b0f24}
+.btn:hover{filter:none;background:#2B3366}
+.btn:active{transform:translateY(1px);box-shadow:none}
+.btn.ghost{background:var(--paper);color:var(--night);border:2px solid var(--night);box-shadow:none;font-weight:600}
+.btn.ghost:hover{background:var(--snow);border-color:var(--night)}
+.btn.warm{background:var(--rhodo);color:#fff;box-shadow:0 2px 0 var(--rhodo-ink)}
+.btn.warm:hover{background:var(--rhodo-ink)}
+.btn.danger{background:var(--paper);border:2px solid var(--danger);color:var(--danger)}
+input[type=text],input[type=password],input[type=number],textarea,select{background:var(--paper);color:var(--night);border:2px solid var(--rule);border-radius:10px;font:inherit}
+input:focus,textarea:focus,select:focus{border-color:var(--sky)}
+
+/* метки авторства: кто написал — видно по цвету */
+.tag{background:var(--snow);border:1px solid var(--rule2);color:var(--ink2);font-weight:600}
+.tag.dice{color:var(--sun-ink);background:#FFF3C9;border-color:var(--sun)}
+.tag.own{color:var(--meadow-ink);background:#E3F5EB;border-color:var(--meadow)}
+.tag.auto{color:var(--sky-ink);background:#E6EEFD;border-color:var(--sky)}
+.tag.card{color:var(--rhodo-ink);background:#FCE6F1;border-color:var(--rhodo)}
+.tag.ok{color:#fff;background:var(--meadow-ink);border-color:var(--meadow-ink)}
+.dice-text{background:#FFF8DD!important;border-color:var(--sun)!important}
+
+/* верхняя панель — тихая */
+.top{background:rgba(238,243,246,.92);border-bottom:2px solid var(--night)}
+.logo{font-size:15px;font-weight:700}
+.logo i{background:var(--sun);border:2px solid var(--night);box-shadow:none;border-radius:4px;width:14px;height:14px;transform:rotate(12deg)}
+.top .who{color:var(--ink2)}
+.banner{background:#FFF3C9;color:var(--sun-ink);border-bottom:1px solid var(--sun)}
+
+/* урок ученика: дорожка чекпоинтов, шаги как листы тетради */
+.side{background:var(--paper);border-right:2px solid var(--night);min-height:calc(100vh - 53px)}
+.cp:hover{background:var(--snow)}
+.cp.active{background:var(--snow);border:2px solid var(--night)}
+.cp .dot{background:var(--paper);border:2px solid var(--rule2);color:var(--ink2);font-family:var(--display);font-weight:700}
+.cp.open .dot{background:var(--paper);border-color:var(--night);color:var(--night)}
+.cp.done .dot{background:var(--meadow);border-color:var(--night);color:#fff}
+.step{background:var(--paper);border:2px solid var(--night);border-radius:4px;box-shadow:var(--card-shadow)}
+.step.done{border-color:var(--night);box-shadow:4px 4px 0 var(--meadow)}
+.step-head .n{color:var(--ink2);font-weight:600}
+.step h2{font-size:24px}
+.concept{border-left:4px solid var(--meadow);background:#E3F5EB;color:var(--night);border-radius:0}
+.hookbox{border-left:4px solid var(--sun);background:#FFF8DD;border-radius:0}
+.recall{border-left:4px solid var(--sky);background:#E6EEFD;border-radius:0}
+.feedback{border:2px solid var(--violet);background:#F0ECFD}
+.feedback .eyebrow{color:var(--violet)}
+
+/* поля: лист тетради с линейкой */
+.field .box textarea{background:var(--paper) repeating-linear-gradient(transparent 0 27px,#E3EAF0 27px 28px);line-height:28px;padding-top:8px}
+.letter{background:var(--night);color:var(--sun);border:0;font-family:var(--display)}
+.dicebtn{background:var(--sun);border:2px solid var(--night);color:var(--night);border-radius:12px;box-shadow:2px 2px 0 var(--night)}
+.counter b{color:var(--meadow-ink)}
+
+/* карты выбора — как напечатанные карты колоды */
+.opt,.cardopt,.emo{background:var(--paper);border:2px solid var(--night);border-radius:14px;color:var(--night);box-shadow:3px 3px 0 var(--night)}
+.opt:hover,.cardopt:hover,.emo:hover{border-color:var(--night);transform:translate(-1px,-1px);box-shadow:4px 4px 0 var(--night)}
+.opt.on,.cardopt.on,.emo.on{background:#E3F5EB;border-color:var(--meadow-ink);box-shadow:3px 3px 0 var(--meadow-ink)}
+.cardopt.more{border-style:dashed;box-shadow:none}
+.donor-card{background:var(--paper);border:2px solid var(--night);border-radius:18px;box-shadow:var(--card-shadow)}
+.donor-card .ico{background:var(--sun);border:2px solid var(--night)}
+.formula span{background:var(--paper);border:2px solid var(--night)}
+.fork{border:2px dashed var(--sky);background:#F3F7FE}
+.finding{background:#E6EEFD;border:0;border-left:4px solid var(--sky);border-radius:0}
+
+/* игровой экран — единственное тёмное на странице: корпус автомата */
+.gamebox{border:10px solid var(--night);border-radius:18px;background:#04060d;box-shadow:0 0 0 2px var(--night),0 18px 40px -18px #1E244780}
+.gamebox .veil{background:rgba(30,36,71,.86);color:#fff}
+.gamebox .veil .btn{background:var(--sun);color:var(--night);box-shadow:3px 3px 0 #0b0f24;font-family:var(--display);font-size:18px;padding:14px 22px}
+.gamebar{color:var(--ink2)}
+.ver{background:var(--paper);border:2px solid var(--rule2);border-radius:99px;font-weight:600}
+.ver.cur{border-color:var(--night);background:var(--night);color:#fff}
+.spinner{border-color:var(--rule);border-top-color:var(--sky)}
+
+/* квизы и раунды — стол с картами */
+.sorter,.rounds{background:var(--paper);border:2px solid var(--night);box-shadow:var(--card-shadow)}
+.sorter .item,.rcard{background:var(--paper);border:2px solid var(--night);box-shadow:5px 5px 0 var(--night);font-family:var(--display);font-weight:700}
+.bin,.rbtn{background:var(--paper);border:2px solid var(--night)}
+.bin.flash-good{background:#E3F5EB}
+.bin.flash-bad{background:#FDE7EA}
+
+/* аркада: стена автомата, обложка-кадр, «ещё раз» главной цифрой */
+.acard{background:var(--paper);border:2px solid var(--night);border-radius:18px;box-shadow:var(--card-shadow);gap:10px}
+.acard .cover{border-radius:16px 16px 0 0;height:150px;border-bottom:2px solid var(--night)}
+.cv-title{font-weight:900;font-size:21px;text-shadow:0 2px 0 #1E2447,0 0 18px #1E2447aa;color:#fff}
+.cv-ver{background:var(--sun);color:var(--night);font-family:var(--display);font-weight:700}
+.donor-line{color:var(--rhodo-ink);font-weight:600}
+.decided{border-top:2px dashed var(--rule)}
+.again-line{color:var(--ink2)}
+.again-line b{color:var(--meadow-ink);font-family:var(--display);font-size:30px}
+.rec b{color:var(--night)}
+.stat{background:var(--snow);border:2px solid var(--night);border-radius:12px}
+.stat b{font-family:var(--display);font-weight:700}
+.stat.hero{background:#E3F5EB;border-color:var(--meadow-ink)}
+.stat.hero b{color:var(--meadow-ink)}
+.challenge{background:#FCE6F1;border:2px dashed var(--rhodo)}
+.chcode{color:var(--rhodo-ink)}
+.chip{background:var(--snow);border:1px solid var(--rule2)}
+.ptcard{background:#FFF8DD;border:0;border-radius:2px;box-shadow:2px 3px 0 #E8D79A;transform:rotate(-.4deg)}
+.ptcard:nth-child(2n){transform:rotate(.5deg)}
+.barrow .bt,.meter,.pj-step .bt{background:var(--panel2)}
+.barrow .bt i{background:var(--night)}
+.spark svg{background:var(--paper);border:2px solid var(--night)}
+.spark polyline{stroke:var(--night)}
+.spark .flat{fill:var(--rhodo);opacity:.22}
+.badge{border:2px dashed var(--rule2);opacity:.7}
+.badge.got{border:2px solid var(--night);background:var(--paper);box-shadow:3px 3px 0 var(--sun)}
+.deck-card{border:2px solid var(--night);border-radius:18px;box-shadow:var(--card-shadow)}
+.deck-card.donor{border-top:10px solid var(--sun)}
+.deck-card.lens{border-top:10px solid var(--sky)}
+.deck-card b{font-family:var(--display);font-size:17px}
+.emblem{background:var(--paper);border:2px solid var(--rule2)}
+.emblem.on{border-color:var(--night);box-shadow:3px 3px 0 var(--sun);background:var(--paper)}
+.idea{background:#FFF8DD;border:0;border-left:4px solid var(--sun);border-radius:0}
+
+/* учитель: рабочий инструмент — светлый, тихий, табличные цифры */
+.tside{background:var(--paper);border-right:2px solid var(--night)}
+.classcode{color:var(--night);font-weight:900;letter-spacing:.06em}
+.tabs button{border:2px solid var(--rule2);background:var(--paper);color:var(--night)}
+.tabs button.on{background:var(--night);border-color:var(--night);color:#fff}
+.cprow{background:var(--paper);border:2px solid var(--rule)}
+.cprow.open{border-color:var(--night)}
+.cprow.timed{border-color:var(--sun);box-shadow:3px 3px 0 var(--sun)}
+.switch{background:var(--panel2);border:2px solid var(--rule2)}
+.switch::after{background:var(--paper);border:2px solid var(--rule2);top:2px;left:2px}
+.switch.on{background:var(--meadow);border-color:var(--night)}
+.switch.on::after{background:#fff;border-color:var(--night)}
+th{text-transform:none;letter-spacing:0;font-size:13px;color:var(--ink2)}
+td{font-variant-numeric:tabular-nums}
+.tablewrap{border:2px solid var(--night);border-radius:4px;background:var(--paper)}
+tr.click:hover td{background:var(--snow)}
+tr.stuck td{background:#FDE7EA}
+tr.stuck:hover td{background:#FAD3D9}
+.chipbtn{background:var(--paper);border:2px solid var(--rule2)}
+.chipbtn.on{background:var(--night);border-color:var(--night);color:#fff}
+.tag.timer-tag{color:var(--night);background:#FFF3C9;border-color:var(--sun)}
+.dot-online.on{background:var(--meadow);box-shadow:none}
+.meter i{background:var(--meadow)}
+.help-queue{background:#FFF8DD;border:2px solid var(--night);box-shadow:4px 4px 0 var(--sun)}
+.help-row{border-top:1px solid #E8D79A}
+.help-row.hand b{color:var(--rhodo-ink)}
+.card{background:var(--paper);border:2px solid var(--rule)}
+pre.plan{background:var(--snow)}
+dialog,dialog.ask{background:var(--paper);color:var(--night);border:2px solid var(--night);box-shadow:var(--card-shadow)}
+.toast{background:var(--paper);border:2px solid var(--night);box-shadow:3px 3px 0 var(--night)}
+.toast.ok{box-shadow:3px 3px 0 var(--meadow)}
+.toast.err{box-shadow:3px 3px 0 var(--danger)}
+
+/* проектор: светлый, высокий контраст, крупно — видно с последней парты */
+.pj-body{background:var(--snow)}
+.pj-codebox{background:var(--paper);border:3px solid var(--night);border-radius:22px;box-shadow:6px 6px 0 var(--night)}
+.pj-url{color:var(--sky-ink);font-family:var(--body);font-weight:700}
+.pj-code{color:var(--night);text-shadow:none;font-weight:900;letter-spacing:.04em}
+.pj-sub{color:var(--ink2);font-size:clamp(18px,1.7vw,24px)}
+.pj-timer{color:var(--night);font-weight:900}
+.pj-timer.soon{color:var(--sun-ink)}
+.pj-step{font-size:clamp(20px,1.9vw,28px)}
+.pj-step .bt{height:22px;border:2px solid var(--night);background:var(--paper)}
+.pj-step .bt i{background:var(--meadow)}
+.pj-step.all b{color:var(--meadow-ink)}
+.pj-ag-n{color:var(--meadow-ink);font-family:var(--display)}
+.pj-big{color:var(--rhodo-ink);font-family:var(--display)}
+
+/* вход: карты безумной идеи переворачиваются, под ними слот кода класса */
+.stol-hero{display:flex;flex-direction:column;gap:16px;align-items:flex-start}
+.stol-cards{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px;width:100%}
+@media (max-width:760px){.stol-cards{grid-template-columns:repeat(2,minmax(0,1fr))}}
+.scard{perspective:900px;height:132px}
+.scard .in{position:relative;width:100%;height:100%;transition:transform .7s cubic-bezier(.2,.8,.2,1);transform-style:preserve-3d}
+.scard.up .in{transform:rotateY(180deg)}
+.scard .face{position:absolute;inset:0;backface-visibility:hidden;border:2px solid var(--night);border-radius:18px;box-shadow:5px 5px 0 var(--night);display:flex;flex-direction:column;justify-content:space-between;padding:14px 16px}
+.scard .back{background:var(--night) repeating-linear-gradient(45deg,transparent 0 10px,#ffffff10 10px 20px);color:var(--sun);font:900 40px var(--display);align-items:center;justify-content:center}
+.scard .front{transform:rotateY(180deg);background:var(--paper)}
+.scard .front small{font:600 13px var(--body);color:var(--ink2)}
+.scard .front b{font:700 19px/1.2 var(--display)}
+.scard.k-hero .front{border-top:12px solid var(--sky)}
+.scard.k-action .front{border-top:12px solid var(--meadow)}
+.scard.k-place .front{border-top:12px solid var(--sun)}
+.scard.k-twist .front{border-top:12px solid var(--rhodo)}
+.stol-title{font:900 clamp(28px,3.6vw,46px)/1.08 var(--display);max-width:26ch;margin:0}
+.stol-slot{display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;background:var(--paper);border:2px solid var(--night);border-radius:18px;padding:16px;box-shadow:var(--card-shadow);width:min(720px,100%)}
+.stol-slot label{display:flex;flex-direction:column;gap:4px;font-weight:600;font-size:14px}
+.stol-slot #code{font:900 28px var(--display);letter-spacing:.12em;width:170px;text-transform:uppercase}
+.stol-slot #nick{width:220px;font-size:18px}
+.stol-slot .btn{font-family:var(--display);font-size:18px;padding:14px 24px}
+.stol-teacher{font-size:14px;color:var(--ink2)}
+.login .wrap{grid-template-columns:1fr}
+
+@media (prefers-reduced-motion:reduce){*,*::before,*::after{animation:none!important;transition:none!important}}
+.stol-slot .err:empty{display:none}
