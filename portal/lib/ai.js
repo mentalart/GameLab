@@ -241,7 +241,8 @@ const chatTask = middle => [CHAT.phrase, middle.replace(/^—\r?\n/gm, '').repla
 // секрет в задании Clear: без API оболочки Лаб3D (звук секрета «ритм» игра пишет сама)
 // [база] — что из обычных правил игры делает только секрет (поле base колоды секретов урока): без него копия «Без секрета» содержит тот же эффект
 const SECRET_BASE = 'всё, что в остальных правилах похоже на этот секрет.';
-const chatSecret = (prompt, base) => (prompt ? '\n' + fill(chatTpl('secret'), { 'секрет': prompt.replace(/\s*\(lab\.tone[^)]*\)/, ' (низкий тон через Web Audio)').replace(/lab\.count/g, 'portal.count'), 'база': base || SECRET_BASE }) : '');
+// [как] — пошаговый геймплей секрета (поле howto колоды): Qwen по одному эффекту собирал секрет невнятно
+const chatSecret = (prompt, base, howto) => (prompt ? '\n' + fill(chatTpl('secret'), { 'секрет': prompt.replace(/\s*\(lab\.tone[^)]*\)/, ' (низкий тон через Web Audio)').replace(/lab\.count/g, 'portal.count'), 'база': base || SECRET_BASE, 'как': howto || '' }).replace(/\n{3,}/g, '\n\n') : '');
 // замечания проверки к игре из чата: то, без чего портал работает хуже
 function chatWarnings(code, secret) {
   if (!isHtml(code)) return lint(code);
@@ -288,14 +289,14 @@ function chatBuild(plan, who, onProgress, kind) {
     'чувство': plan.decisions.feeling, 'честность': plan.decisions.honesty, 'выбор': plan.decisions.choice,
     'развилки': plan.forks.length ? plan.forks.map(f => `- ${f.question} → ${f.answer}`).join('\n') : 'развилок не было',
     'находки': plan.findings && plan.findings.length ? 'Продюсер заметил:\n' + plan.findings.map(f => '- ' + f).join('\n') : '',
-  }) + chatSecret(plan.secret && plan.secret.prompt, plan.secret && plan.secret.base);
+  }) + chatSecret(plan.secret && plan.secret.prompt, plan.secret && plan.secret.base, plan.secret && plan.secret.howto);
   return chatProgram(kind || 'сборка', fullTask(who, newGameMessage(plan), studentFrame(plan)), who, onProgress, null, !!plan.secret, chatTask(text));
 }
 async function chatShared(wow, who, onProgress) {
   const text = fill(chatTpl('wow'), {
     'герой': wow.cards.hero, 'действие': wow.cards.action, 'место': wow.cards.place, 'угроза': wow.cards.threat || 'нет карты — придумай по месту', 'поворот': wow.cards.twist,
     'связка': wow.link ? 'Связка (класс принял её, строй игру по ней):\n' + LINK_FIELDS.filter(([k]) => wow.link[k]).map(([k, label]) => `- ${label}: ${wow.link[k]}`).join('\n') : '',
-  }) + chatSecret(wow.secret, wow.base);
+  }) + chatSecret(wow.secret, wow.base, wow.howto);
   const full = fullTask(who, fill(userTemplate('wow'), {
     'герой': wow.cards.hero, 'действие': wow.cards.action, 'место': wow.cards.place, 'угроза': wow.cards.threat || 'нет карты — придумай по месту', 'поворот': wow.cards.twist, 'секрет': wow.secret, 'база': wow.base || SECRET_BASE, 'связка': linkText(wow.link),
   }), { frame: wowFrame(wow) });

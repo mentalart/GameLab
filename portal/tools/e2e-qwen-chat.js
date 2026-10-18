@@ -59,7 +59,7 @@ const patch = (find, repl) => `<<<<<<< НАЙТИ\n${find}\n=======\n${repl}\n>>
     const full = await prompt(s, job), clear = await prompt(s, job, true);
     check('Прежнее задание: правила Лаб3D, образец, просьба автора и памятка', /const GAME = \{/.test(full) && full.includes(ai.CHAT.phrase) && /джойстика \(геймпада\)/.test(full));
     check('Clear: три части без Babylon и образцов', clear.startsWith(ai.CHAT.phrase) && /# Замысел геймдизайнера/.test(clear) && /# Что нужно порталу/.test(clear)
-      && /portal\.knobs/.test(clear) && /getGamepads/.test(clear) && !/Babylon|BABYLON|const GAME/.test(clear) && clear.length < 6000, `${clear.length} знаков`);
+      && /portal\.knobs/.test(clear) && /getGamepads/.test(clear) && !/Babylon|BABYLON|const GAME/.test(clear) && clear.length < 7500, `${clear.length} знаков`); // +1500: секрет по шагам (howto), решение автора 18.10.2026
     // ответ оборвался: портал просит продолжение и склеивает части
     const answer = 'Вот игра:\n```js\n' + SAMPLE.trim() + '\n```\nГотово!';
     const cut = answer.indexOf('update(lab, dt)');

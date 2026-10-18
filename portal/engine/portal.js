@@ -7,6 +7,9 @@
      portal.count('событие') — счётчик партии (_secret — сработал секрет), portal.onRecord = (рекорд, мой) => {} — рекорд класса,
      portal.score(очки) — текущий счёт (из него полоска партии по секундам), portal.hurt() — герою нанесён урон,
      portal.notes(['что программист решил сам', ...]) — записи программиста для шага «Найди, где ИИ своевольничал» (портал читает их из кода).
+     portal.input — 'pad' или 'keys': чем игрок управляет сейчас. Подписи кнопок игра пишет парой <span class="keys-only">Пробел</span><span class="pad-only">A</span>,
+       мост показывает нужную: геймпад подключён или нажата его кнопка — pad-only, нажата клавиша — keys-only.
+   Страховка конца партии: Start на геймпаде после portal.over(), если игра сама не начала новую партию, нажимает за неё Enter, потом R.
    Остальную телеметрию партии мост считает сам (урок 1, чекпоинт 5 «Разбор прототипа», 18.10.2026): длину партии без пауз,
    нажатия и удержание клавиш и геймпада, урон, счёт по секундам и секунды, на которых срабатывали скрытые счётчики («_secret»).
    Мост сообщает порталу «запустилась» и ошибки со строкой — по ним портал выдаёт сообщение для того же чата. */
@@ -17,7 +20,7 @@
   // телеметрия партии — те же поля, что у оболочки Лаб3D: time, presses, hold, hurts, custom, marks, line
   var BTN = ['left', 'right', 'up', 'down', 'a', 'b'];
   var KEYS = { ArrowLeft: 'left', KeyA: 'left', ArrowRight: 'right', KeyD: 'right', ArrowUp: 'up', KeyW: 'up', ArrowDown: 'down', KeyS: 'down', Space: 'a', ShiftLeft: 'b', ShiftRight: 'b' };
-  var tele, held = {}, padHeld = {}, score = 0, t = 0, lastFrame = 0;
+  var tele, held = {}, padHeld = {}, score = 0, t = 0, lastFrame = 0, isOver = false;
   function reset() { tele = { presses: {}, hold: {}, hurts: 0, marks: {}, line: [] }; BTN.forEach(function (k) { tele.presses[k] = 0; tele.hold[k] = 0; }); counts = {}; score = 0; t = 0; }
   reset();
   function teleData() {
@@ -41,11 +44,12 @@
       return values;
     },
     over: function (final) {
+      isOver = true;
       var s = Math.round(Number(final != null ? final : score) || 0);
       while (tele.line.length < Math.min(600, Math.floor(t) + 1)) tele.line.push(s);
       send({ type: 'over', score: s, tele: teleData() }); reset();
     },
-    again: function () { reset(); send({ type: 'again' }); },
+    again: function () { isOver = false; reset(); send({ type: 'again' }); },
     count: function (name) {
       name = String(name); counts[name] = (counts[name] || 0) + 1; if (name === '_secret') lupaHit();
       if (name.charAt(0) === '_') { var m = tele.marks[name] = tele.marks[name] || []; if (m.length < 200) m.push(Math.round(t * 10) / 10); } // секунда партии — для полоски секрета
@@ -54,6 +58,36 @@
     hurt: function () { tele.hurts++; },
     notes: function () { /* записи программиста портал читает из кода игры */ },
   };
+  // подписи кнопок: геймпад или клавиатура — класс на <html>, стиль прячет вторую подпись
+  var input = 'keys';
+  Object.defineProperty(portal, 'input', { get: function () { return input; } });
+  function setInput(kind) {
+    if (kind === input && document.documentElement.getAttribute('data-input') === kind) return;
+    input = kind; document.documentElement.setAttribute('data-input', kind);
+  }
+  (function () {
+    var st = document.createElement('style');
+    st.textContent = 'html:not([data-input=pad]) .pad-only{display:none!important}html[data-input=pad] .keys-only{display:none!important}';
+    (document.head || document.documentElement).appendChild(st);
+    document.documentElement.setAttribute('data-input', 'keys');
+  })();
+  addEventListener('gamepadconnected', function () { setInput('pad'); });
+  // Enter, R — то, чем по заданию закрывается экран конца партии; keyCode — для игр, которые читают старое поле
+  function pressKey(code, key, keyCode) {
+    var target = document.activeElement && document.activeElement !== document.body ? document.activeElement : document;
+    ['keydown', 'keyup'].forEach(function (type, i) {
+      setTimeout(function () {
+        var ev = new KeyboardEvent(type, { key: key, code: code, bubbles: true, cancelable: true });
+        try { Object.defineProperty(ev, 'keyCode', { get: function () { return keyCode; } }); Object.defineProperty(ev, 'which', { get: function () { return keyCode; } }); } catch (e) { /* поле только для чтения */ }
+        target.dispatchEvent(ev);
+      }, i * 60);
+    });
+  }
+  function startOnOver() {
+    if (!isOver) return;
+    setTimeout(function () { if (isOver) pressKey('Enter', 'Enter', 13); }, 200);
+    setTimeout(function () { if (isOver) pressKey('KeyR', 'r', 82); }, 450);
+  }
   Object.defineProperty(portal, 'onRecord', { get: function () { return onRecord; }, set: function (f) { onRecord = f; if (last && typeof f === 'function') f(last.record, last.best); } });
   window.portal = portal;
 
@@ -87,15 +121,19 @@
   }
   addEventListener('keydown', function (e) { if (e.key === 'Tab') { e.preventDefault(); e.stopImmediatePropagation(); toggle(); } }, true);
   // нажатия клавиатуры для телеметрии: повтор клавиши при удержании — не новое нажатие
-  addEventListener('keydown', function (e) { var k = KEYS[e.code]; if (k && !held[e.code] && !portal.paused) { tele.presses[k]++; } if (k) held[e.code] = k; }, true);
+  addEventListener('keydown', function (e) { if (e.isTrusted) setInput('keys'); var k = KEYS[e.code]; if (k && !held[e.code] && !portal.paused) { tele.presses[k]++; } if (k) held[e.code] = k; }, true);
   addEventListener('keyup', function (e) { delete held[e.code]; }, true);
   addEventListener('blur', function () { held = {}; });
-  var selectWas = false;
+  var selectWas = false, startWas = false;
   (function pad(now) {
     var gp = (navigator.getGamepads ? Array.prototype.slice.call(navigator.getGamepads()) : []).filter(Boolean);
     var sel = gp.some(function (g) { return g.buttons[8] && g.buttons[8].pressed; });
     if (sel && !selectWas && document.body) toggle();
     selectWas = sel;
+    var start = gp.some(function (g) { return g.buttons[9] && g.buttons[9].pressed; });
+    if (start && !startWas && !portal.paused) startOnOver();
+    startWas = start;
+    if (gp.some(function (g) { return g.buttons.some(function (b) { return b && b.pressed; }) || g.axes.some(function (a) { return Math.abs(a) > 0.5; }); })) setInput('pad');
     // время партии идёт, пока игра запущена и панель ручек закрыта; счёт по секундам — для полоски партии
     var dt = lastFrame && now ? Math.min(0.1, (now - lastFrame) / 1000) : 0; lastFrame = now || 0;
     if (ready && !portal.paused && dt > 0) {

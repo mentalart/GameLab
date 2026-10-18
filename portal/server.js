@@ -106,7 +106,7 @@ function buildPlan(les, st) {
     donor: chosen ? `${chosen.title} — ${chosen.text} ${chosen.rules || ''}`.trim() : `${les.donor} — ${facStep.donorCard ? facStep.donorCard.text : ''}`,
     donorTitle: chosen ? chosen.title : les.donor,
     twist: fieldText(facFields.twist), world: fieldText(facFields.world),
-    secret: secText ? { title: secText, prompt: secDef ? secDef.prompt : secText, base: secDef ? secDef.base || null : null } : null,
+    secret: secText ? { title: secText, prompt: secDef ? secDef.prompt : secText, base: secDef ? secDef.base || null : null, howto: secDef ? secDef.howto || null : null } : null,
     level: `${level.label} (${level.hint})`, details,
     decisions: { feeling: fieldText(dec.feeling), honesty: fieldText(dec.honesty), choice: fieldText(dec.choice) },
     igra: { i: fieldText(igra.i), g: fieldText(igra.g), r: fieldText(igra.r), a: fieldText(igra.a) },
@@ -1069,7 +1069,7 @@ route('POST', '/api/teacher/wow/build', (ctx) => {
   const whoAI = { class: cls.code, nick: 'учитель', lesson: les.id };
   const job = startJob(ctx.who.token, 'wow', async (progress) => {
     try {
-      const r = await ai.buildShared({ cards: w.cards, secret: sec.prompt, base: sec.base || null, link: acceptedLink(w), title: wowTitle(les, w), fallback: fb }, whoAI, progress);
+      const r = await ai.buildShared({ cards: w.cards, secret: sec.prompt, base: sec.base || null, howto: sec.howto || null, link: acceptedLink(w), title: wowTitle(les, w), fallback: fb }, whoAI, progress);
       return wowVersion(cls.code, r, secretId);
     } catch (e) {
       const c2 = store.getClass(cls.code), w2 = wowState(c2, les);
