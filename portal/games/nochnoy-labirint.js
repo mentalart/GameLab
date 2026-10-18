@@ -1,19 +1,30 @@
-// «Ночной лабиринт» — ремейк-донор урока 3 по мотивам механики Pac-Man.
-// Образец игры в лабиринте по клеткам: герой с поворотом заранее, охотники с простыми правилами выбора пути, смена режимов.
+// «Ночной лабиринт» — ремейк-донор урока 3 по мотивам механики Pac-Man, оболочка «Лаб3D 1.0» (three.js).
+// План.
+// Фраза: пастушок собирает светлячков в каменном лабиринте у дольмена, за ним охотятся четыре волка; факел меняет охотника и добычу местами.
+// Ядро на 3 секунды: поворот нажимается заранее и срезает угол, как у Pac-Man; светлячки хрустят, серия звенит всё выше.
+// Риск — награда: подманить волков к факелу и прогнать всех разом (200 → 400 → 800 → 1600), догнать катящийся сыр, добрать последних светлячков.
+// Угрозы: четыре характера волков (секрет); Вожак злится, когда светлячков мало; со 2-й ночи в коридорах спят волчата —
+// проснутся рядом с пастушком и встанут цепочкой за волком (поезд призраков из Pac-Man CE DX), а с факелом цепочку съедают целиком.
+// Кривая партии: разбег 6 с → погоня 18 с → разбег → погоня…; каждая ночь быстрее, факел короче, волчат больше.
+// Сочность: искры и кольца, стоп-кадр при прогоне волка, замедление «на волосок», лабиринт мигает в конце ночи, пойманный пастушок кружится.
+// Палитра: ночная синь и мох, лаймовые светлячки, оранжевый огонь, у каждого волка свой цвет.
+// Разбор лучших игр жанра (Pac-Man, Ms. Pac-Man, Pac-Man CE DX) — в docs/01_Журнал_курса.md, раздел урока 3.
 // Секрет донора — у каждого из четырёх волков одно своё правило (гонится, заходит наперерез, срезает по напарнику, пугается вблизи)
 // и погоня сменяется разбегом. Из простых механик рождается динамика «меня окружают». Ручка «Секрет», пресет «Без секрета».
+// Ось Z в three.js смотрит на игрока: строка 0 карты — дальний край поля (−Z), строки растут к игроку (+Z).
 const GAME = {
+  engine: 'three',
   title: 'Ночной лабиринт',
   subtitle: 'Собери светлячков в каменном лабиринте у дольмена. Схватил факел — и волки бегут от тебя.',
   donor: 'Pac-Man',
   players: 1,
   duo: 'vs', // ручка vs > 0 включает второго игрока: он ведёт Вожака
   controls: [
-    { input: 'move4', text: 'бежать по лабиринту' },
+    { input: 'move4', text: 'бежать по лабиринту (поворот жми заранее)' },
   ],
-  camera: { type: 'iso', beta: 0.56, target: [0, 0, -1.2] },
-  field: { w: 26, h: 31 },
-  sky: '#0b1430',
+  camera: { type: 'iso', tilt: 0.62 },
+  field: { w: 24.4, h: 26.6 },
+  sky: ['#040816', '#17244a'],
   fog: 0.006,
   accent: '#d8ff6a',
   decisions: [
@@ -35,20 +46,32 @@ const GAME = {
     release: { value: 4, min: 0.5, max: 12, step: 0.5, label: 'Волки выходят из дольмена раз в, с' },
     wolves: { value: 4, min: 1, max: 4, step: 1, label: 'Волков', restart: true },
     nightUp: { value: 0.06, min: 0, max: 0.2, step: 0.01, label: 'Волки быстрее с каждой ночью' },
+    corner: { value: 0.3, min: 0, max: 0.5, step: 0.05, label: 'Срезка угла: поворот раньше, клетки', hint: 'как у Pac-Man: пастушок срезает углы, а волки нет — на поворотах ты быстрее' },
+    eatSlow: { value: 0.1, min: 0, max: 0.4, step: 0.02, label: 'Светлячки замедляют пастушка', hint: 'доля скорости: по пустому коридору бежишь быстрее, чем по полному' },
+    tunnelSlow: { value: 0.5, min: 0.2, max: 1, step: 0.05, label: 'Волки в тоннеле, доля скорости', hint: 'тоннель — твоя лазейка: волки в нём вязнут' },
+    elroy: { value: 20, min: 0, max: 60, step: 5, label: 'Вожак злится, когда светлячков осталось', hint: '0 — никогда. Злой Вожак быстрее и на разбеге не уходит в угол' },
+    pups: { value: 6, min: 0, max: 12, step: 1, label: 'Спящие волчата', hint: 'проснутся рядом с тобой и встанут цепочкой за волком; с факелом цепочку съедают целиком' },
+    pupNight: { value: 2, min: 1, max: 5, step: 1, label: 'Волчата появляются с ночи' },
+    close: { value: 1, min: 0, max: 1, step: 1, label: 'На волосок: замедление, когда волк в шаге', hint: 'мир замирает на миг — успеешь свернуть' },
     showTargets: { value: 0, min: 0, max: 1, step: 1, label: 'Показать, куда целится каждый волк', hint: 'Крестик цвета волка на клетке, к которой он идёт' },
     vs: { value: 0, min: 0, max: 1, step: 1, label: 'Второй игрок ведёт Вожака', hint: '1 — пастушок на WASD или геймпаде 1, Вожак на стрелках или геймпаде 2', restart: true },
     lives: { value: 3, min: 1, max: 9, step: 1, label: 'Жизни', restart: true },
   },
   presets: {
-    'Новичок': { wolfSpeed: 4, powerTime: 10, warnTime: 3, wolves: 3, lives: 5 },
+    'Новичок': { wolfSpeed: 4, powerTime: 10, warnTime: 3, wolves: 3, lives: 5, elroy: 0 },
     'Без секрета': { secret: 0 },
     'Цели видно': { showTargets: 1 },
-    'Безумие': { wolfSpeed: 6.4, heroSpeed: 6.4, powerTime: 3, release: 1, scatterTime: 2 },
+    'Стая волчат': { pups: 10, pupNight: 1 },
+    'Безумие': { wolfSpeed: 6.4, heroSpeed: 6.4, powerTime: 3, release: 1, scatterTime: 2, pups: 12, pupNight: 1 },
     'Вдвоём': { vs: 1 },
   },
+  notes: [
+    'Срезка угла только у пастушка: волки поворачивают в центре клетки, поэтому на поворотах пастушок отрывается.',
+    'Волчата не сидят ближе 6 клеток к пастушку и к дольмену: просыпаются только там, куда ты сам пришёл.',
+  ],
 
   S: 1.25, // шаг клетки, м
-  // # — стена, . — светлячок, o — факел, P — пастушок, D — дольмен, - — дверь дольмена, x — пусто за лабиринтом. Строка 9 — тоннель
+  // # — стена, . — светлячок, o — факел, P — пастушок, D — дольмен, - — дверь дольмена, x — лес за лабиринтом. Строка 9 — тоннель
   MAP: [
     '###################',
     '#o.......#.......o#',
@@ -75,26 +98,30 @@ const GAME = {
   DIRS: [[0, -1], [-1, 0], [0, 1], [1, 0]], // вверх, влево, вниз, вправо: порядок решает ничьи, как в оригинале
   // волки: цвет = характер. corner — угол разбега (за краем поля), slot — место в дольмене
   WOLVES: [
-    { name: 'Вожак', rule: 'гонится', color: '#e0483c', eye: '#ff5a4a', corner: [17, -3], slot: [9, 9] },
-    { name: 'Хитрец', rule: 'заходит наперерез', color: '#e98fd0', eye: '#ff8ae6', corner: [1, -3], slot: [9, 9] },
-    { name: 'Ловчий', rule: 'срезает по напарнику', color: '#5fd0e0', eye: '#5ff0ff', corner: [18, 22], slot: [8, 9] },
-    { name: 'Трус', rule: 'пугается вблизи', color: '#f2a23a', eye: '#ffb84a', corner: [0, 22], slot: [10, 9] },
+    { name: 'Вожак', rule: 'гонится', color: '#d8433a', eye: '#ff5a4a', corner: [17, -3], slot: [9, 9] },
+    { name: 'Хитрец', rule: 'заходит наперерез', color: '#e58ccd', eye: '#ff8ae6', corner: [1, -3], slot: [9, 9] },
+    { name: 'Ловчий', rule: 'срезает по напарнику', color: '#4fc6d8', eye: '#5ff0ff', corner: [18, 22], slot: [8, 9] },
+    { name: 'Трус', rule: 'пугается вблизи', color: '#ee9b32', eye: '#ffb84a', corner: [0, 22], slot: [10, 9] },
   ],
   EXIT: [9, 7], // клетка над дверью дольмена
-  CHEESE: [9, 11],
+  DEN: [7, 8, 11, 10], // дольмен на карте: x от 7 до 11, строки 8–10 — вместо стен там каменные плиты
 
   // ---------- новая партия ----------
   start(lab, scene) {
     const st = lab.state;
     st.W = this.MAP[0].length; st.H = this.MAP.length;
-    st.night = 1; st.combo = 0; st.eaten = 0; st.chased = 0; st.pincers = 0; st.tails = 0; st.ambush = 0;
-    st.checkT = 0; st.pinCool = 0; st.tailT = 0; st.tailCool = 0; st.freeze = 0; st.cheese = null;
+    Object.assign(st, {
+      night: 1, combo: 0, bestCombo: 0, eaten: 0, chased: 0, pincers: 0, tails: 0, ambush: 0, closeCalls: 0, pupsEaten: 0, cheeses: 0,
+      checkT: 0, pinCool: 0, tailT: 0, tailCool: 0, closeCool: 2, freeze: 0, dying: 0, clearT: 0, cheese: null, streak: 0, streakT: 0, eatT: 0, angry: false,
+    });
     this.scenery(lab, scene);
-    this.buildMaze(lab, scene);
-    this.buildHero(lab, scene);
-    this.buildWolves(lab, scene);
-    this.fillDots(lab, scene);
+    this.buildMaze(lab);
+    this.buildHero(lab);
+    this.buildWolves(lab);
+    this.buildPups(lab);
+    this.fillDots(lab);
     this.resetActors(lab);
+    lab.hero(st.hero.g);
     lab.hud('night', 'Ночь 1');
   },
 
@@ -102,11 +129,14 @@ const GAME = {
   update(lab, dt) {
     const st = lab.state, cfg = lab.cfg;
     this.animate(lab, dt);
+    if (st.clearT > 0) { this.clearing(lab, dt); return; }
+    if (st.dying > 0) { this.dyingStep(lab, dt); return; }
     if (st.freeze > 0) { st.freeze -= dt; return; }
     this.modes(lab, dt);
     this.moveHero(lab, dt);
     this.releaseWolves(lab, dt);
     st.wolves.forEach(w => this.moveWolf(lab, w, dt));
+    this.movePups(lab, dt);
     this.collide(lab);
     this.watchDynamics(lab, dt);
     this.updateCheese(lab, dt);
@@ -118,8 +148,8 @@ const GAME = {
     const st = lab.state, notes = [];
     notes.push(Math.round(lab.cfg.secret) ? 'Механика: у четырёх волков по одному правилу — гонится, наперерез, по напарнику, пугается вблизи' : 'Секрет выключен: все волки гнались одинаково. Заметил, что они ходят хвостом?');
     notes.push(`Динамика: тебя окружали с разных сторон ${st.pincers} раз, волки шли за тобой хвостом ${st.tails} раз`);
-    notes.push(`Ты подманил волков к факелу ${st.ambush} раз и прогнал ${st.chased} волков`);
-    notes.push(`Светлячков: ${st.eaten}, ночь ${st.night}`);
+    notes.push(`Ты подманил волков к факелу ${st.ambush} раз и прогнал ${st.chased} волков, лучшая серия ×${st.bestCombo}`);
+    notes.push(`Светлячков: ${st.eaten}, ночь ${st.night}` + (st.pupsEaten ? `, волчат прогнано: ${st.pupsEaten}` : '') + (st.closeCalls ? `, на волосок: ${st.closeCalls}` : ''));
     return notes;
   },
 
@@ -127,18 +157,18 @@ const GAME = {
   wrap(lab, x) { const W = lab.state.W; return ((x % W) + W) % W; },
   cell(lab, x, y) { return y < 0 || y >= lab.state.H ? '#' : this.MAP[y][this.wrap(lab, x)]; },
   open(lab, x, y) { const c = this.cell(lab, x, y); return c !== '#' && c !== 'D' && c !== '-' && c !== 'x'; },
-  wx(lab, x) { return (x - (lab.state.W - 1) / 2) * this.S; },
-  wz(lab, y) { return ((lab.state.H - 1) / 2 - y) * this.S; },
+  wx(x) { return (x - (this.MAP[0].length - 1) / 2) * this.S; },
+  wz(y) { return (y - (this.MAP.length - 1) / 2) * this.S; },
   posOf(a) { return [a.tx + a.dx * a.t, a.ty + a.dy * a.t]; },
-  place(lab, a, y) {
-    const [x, z] = this.posOf(a);
-    a.mesh.position.set(this.wx(lab, x), y, this.wz(lab, z));
-    if (a.dx || a.dy) { // поворот головой по ходу, по кратчайшей дуге
-      const want = Math.atan2(a.dx, -a.dy);
-      let d = want - a.mesh.rotation.y; d = Math.atan2(Math.sin(d), Math.cos(d));
-      a.mesh.rotation.y += d * Math.min(1, lab.dt * 14);
-    }
+  inTunnel(lab, a) { return a.ty === 9 && (a.tx <= 3 || a.tx >= lab.state.W - 4); },
+  // меш догоняет клетку плавно (срезка угла не дёргается), через тоннель — сразу
+  place(lab, a, y, rate) {
+    const [x, z] = this.posOf(a), px = this.wx(x), pz = this.wz(z), m = a.mesh.position;
+    if (!rate || Math.abs(m.x - px) > 3) m.set(px, y, pz);
+    else m.set(lab.damp(m.x, px, rate, lab.dt), y, lab.damp(m.z, pz, rate, lab.dt));
+    if (a.dx || a.dy) this.face(lab, a.mesh, Math.atan2(a.dx, a.dy), 14);
   },
+  face(lab, obj, want, rate) { let d = want - obj.rotation.y; d = Math.atan2(Math.sin(d), Math.cos(d)); obj.rotation.y += d * Math.min(1, lab.dt * rate); },
   // движение по клеткам: t — путь от центра клетки (tx, ty) к соседней по направлению (dx, dy); в центре клетки решает decide
   move(lab, a, dist, decide) {
     for (let g = 0; g < 6 && dist > 0; g++) {
@@ -151,46 +181,91 @@ const GAME = {
   },
   reverse(lab, a) { if (a.t > 0) { a.tx = this.wrap(lab, a.tx + a.dx); a.ty += a.dy; a.t = 1 - a.t; } a.dx = -a.dx; a.dy = -a.dy; },
   near(lab, a, b) { const [ax, ay] = this.posOf(a), [bx, by] = this.posOf(b); let dx = Math.abs(ax - bx); dx = Math.min(dx, lab.state.W - dx); return Math.hypot(dx, ay - by); },
+  stickDir(p) { return Math.abs(p.x) > 0.3 || Math.abs(p.y) > 0.3 ? (Math.abs(p.x) > Math.abs(p.y) ? [Math.sign(p.x), 0] : [0, -Math.sign(p.y)]) : null; },
 
-  // ---------- пастушок: поворот заранее, разворот на месте ----------
+  // ---------- пастушок: поворот заранее, срезка угла, разворот на месте ----------
   moveHero(lab, dt) {
-    const st = lab.state, h = st.hero, p = lab.p1;
-    if (Math.abs(p.x) > 0.3 || Math.abs(p.y) > 0.3) st.want = Math.abs(p.x) > Math.abs(p.y) ? [Math.sign(p.x), 0] : [0, -Math.sign(p.y)];
+    const st = lab.state, h = st.hero, cfg = lab.cfg;
+    const d = this.stickDir(lab.p1); if (d) st.want = d;
     const w = st.want;
     if (w && w[0] === -h.dx && w[1] === -h.dy && (h.dx || h.dy)) this.reverse(lab, h);
-    const mul = 1 + lab.cfg.nightUp * (st.night - 1) * 0.5;
-    this.move(lab, h, lab.cfg.heroSpeed * mul * dt, a => {
+    // срезка угла, как у Pac-Man: поворот засчитывается чуть до центра клетки или чуть после — пастушок идёт по диагонали
+    else if (w && (h.dx || h.dy) && (w[0] !== h.dx || w[1] !== h.dy) && cfg.corner > 0) {
+      if (h.t <= cfg.corner && this.open(lab, h.tx + w[0], h.ty + w[1])) { h.dx = w[0]; h.dy = w[1]; }
+      else if (h.t >= 1 - cfg.corner && this.open(lab, h.tx + h.dx, h.ty + h.dy)) {
+        const nx = this.wrap(lab, h.tx + h.dx), ny = h.ty + h.dy;
+        if (this.open(lab, nx + w[0], ny + w[1])) { h.t = 1 - h.t; h.tx = nx; h.ty = ny; h.dx = w[0]; h.dy = w[1]; this.eat(lab, nx, ny); }
+      }
+    }
+    st.eatT -= dt;
+    const mul = (1 + cfg.nightUp * (st.night - 1) * 0.5) * (st.fright > 0 ? 1.1 : 1) * (st.eatT > 0 ? 1 - cfg.eatSlow : 1);
+    this.move(lab, h, cfg.heroSpeed * mul * dt, a => {
       if (w && this.open(lab, a.tx + w[0], a.ty + w[1])) { a.dx = w[0]; a.dy = w[1]; }
       else if (!this.open(lab, a.tx + a.dx, a.ty + a.dy)) { a.dx = 0; a.dy = 0; }
       if (a.t === 0) this.eat(lab, a.tx, a.ty);
     });
-    this.place(lab, h, (h.dx || h.dy) ? Math.abs(Math.sin(lab.t * 14)) * 0.08 : 0);
+    this.place(lab, h, 0, 30);
+    const run = !!(h.dx || h.dy);
+    h.body.position.y = run ? Math.abs(Math.sin(lab.t * 15)) * 0.09 : 0;
+    const sw = run ? Math.sin(lab.t * 15) * 0.7 : 0;
+    h.legA.rotation.x = sw; h.legB.rotation.x = -sw; h.arm.rotation.x = -sw * 0.4;
+    if ((st.streakT -= dt) <= 0) st.streak = 0;
     lab.stat('светлячков собрано', st.eaten);
   },
   eat(lab, x, y) {
     const st = lab.state, key = x + ',' + y, d = st.dots[key];
     if (!d) return;
-    delete st.dots[key]; d.mesh.dispose(); st.dotsLeft--;
+    delete st.dots[key]; st.dotsLeft--;
+    const at = [this.wx(x), 0.55, this.wz(y)];
     if (d.torch) {
-      lab.addScore(50, d.mesh.position, '#ffb347'); lab.sfx.power(); lab.flash('#ff9a3c', 0.25); lab.count('факелы');
-      lab.burst(d.mesh.position, { count: 30, colors: ['#ffd23f', '#ff7a2a', '#fff3a0'], speed: 6, up: 4 });
-      if (st.wolves.some(wf => wf.state === 'active' && this.near(lab, wf, st.hero) < 4.5)) { st.ambush++; lab.count('засада у факела'); }
+      const t = st.torches[d.torch - 1];
+      t.flame.visible = false; t.light.visible = false; t.lit = false;
+      lab.addScore(50, at, '#ffb347'); lab.sfx.power(); lab.flash('#ff9a3c', 0.3); lab.count('факелы');
+      lab.burst([at[0], 1.3, at[2]], { count: 34, colors: ['#ffd23f', '#ff7a2a', '#fff3a0'], speed: 7, up: 5 });
+      lab.ring(at, { color: '#ff9a3c', radius: 3.4 }); lab.shake(0.3); lab.pulse(st.hero.body, 1.4, 0.2); lab.vibrate(120, 0.5);
+      if (st.wolves.some(wf => wf.state === 'active' && this.near(lab, wf, st.hero) < 4.5)) { st.ambush++; lab.count('засада у факела'); lab.popup([at[0], 2.4, at[2]], 'Засада!', '#ffd23f', 22); }
       st.fright = lab.cfg.powerTime * Math.pow(0.88, st.night - 1); st.combo = 0;
       st.wolves.forEach(wf => { if (wf.state === 'active') { wf.fr = true; this.reverse(lab, wf); } });
+      st.pups.forEach(p => { if (p.state === 'train') p.fr = true; });
+      if (st.heroTrail) st.heroTrail.dispose();
+      st.heroTrail = lab.trail(st.hero.lantern, { color: '#ff8a3c', width: 0.45, length: 16 });
     } else {
-      st.eaten++; lab.addScore(10); lab.count('светлячки');
-      lab.tone(st.eaten % 2 ? 520 : 410, 0.06, 'triangle', 0.05);
-      if (st.eaten % 70 === 0 && !st.cheese) this.spawnCheese(lab);
+      st.eaten++; st.eatT = 0.12; lab.addScore(10); lab.count('светлячки');
+      st.streak++; st.streakT = 0.45; // хруст подряд звенит выше, как серия точек в CE DX
+      lab.tone((st.eaten % 2 ? 560 : 440) * lab.pitch(Math.min(12, Math.floor(st.streak / 8))), 0.06, 'triangle', 0.05);
+      d.gone = true; this.hideDot(st, d);
+      lab.burst(at, { count: 5, colors: ['#e9ff8a', '#b6ff4a'], speed: 2.4, up: 1.8, size: 0.08, life: 0.4 });
+      if (st.streak % 30 === 0) lab.ring([at[0], 0, at[2]], { color: '#d8ff6a', radius: 1.6 });
+      if ((st.eaten % 150 === 60 || st.eaten % 150 === 120) && !st.cheese) this.spawnCheese(lab);
     }
+    if (st.dotsLeft <= Math.round(lab.cfg.elroy) && !st.angry && lab.cfg.elroy > 0 && st.wolves[0]) this.angry(lab);
     if (st.dotsLeft === 0) this.nextNight(lab);
+  },
+  // Вожак злится (Cruise Elroy в Pac-Man): быстрее и без разбега — последних светлячков собирать страшно
+  angry(lab) {
+    const st = lab.state, w = st.wolves[0];
+    st.angry = true; lab.count('вожак злится');
+    lab.popup(lab.v3(w.mesh.position.x, 2.6, w.mesh.position.z), 'Вожак злится!', '#ff5a4a', 22);
+    lab.tone(140, 0.6, 'sawtooth', 0.06, 90); lab.shake(0.2);
+    w.rage = lab.trail(w.head, { color: '#ff3b2e', width: 0.35, length: 10 });
   },
   nextNight(lab) {
     const st = lab.state;
     st.night++; lab.addScore(500, st.hero.mesh.position, '#7cf5a8');
-    lab.sfx.win(); lab.flash('#d8ff6a', 0.3); lab.count('ночи');
-    lab.popup(lab.v3(0, 3, 0), 'Ночь ' + st.night, '#d8ff6a', 30);
-    this.fillDots(lab, lab.scene); this.resetActors(lab);
+    lab.sfx.win(); lab.count('ночи');
+    st.clearT = 1.6; // лабиринт мигает, как в оригинале, потом новая ночь
+    lab.popup(lab.v3(0, 3, 0), 'Ночь ' + st.night, '#d8ff6a', 34);
     lab.hud('night', 'Ночь ' + st.night);
+  },
+  clearing(lab, dt) {
+    const st = lab.state;
+    st.clearT -= dt;
+    const on = Math.floor(st.clearT * 7) % 2 === 0;
+    st.wallMat.emissive.set(on ? '#8fa0ff' : '#000000'); st.wallMat.emissiveIntensity = on ? 0.6 : 0;
+    if (st.clearT > 0) return;
+    st.wallMat.emissive.set('#000000');
+    this.fillDots(lab); this.resetActors(lab);
+    st.freeze = 0.6;
   },
 
   // ---------- режимы: разбег и погоня сменяют друг друга; факел их останавливает ----------
@@ -199,9 +274,12 @@ const GAME = {
     if (st.fright > 0) {
       st.fright -= dt;
       const warn = st.fright < cfg.warnTime && Math.floor(st.fright * 6) % 2 === 0; // честно: факел гаснет — волки мигают белым
-      st.frMat.diffuseColor = lab.color(warn ? '#ffffff' : '#3d5bff');
-      st.frMat.emissiveColor = lab.color(warn ? '#9aa6ff' : '#1a2a99');
-      if (st.fright <= 0) st.wolves.forEach(w => { w.fr = false; });
+      st.frMat.color.set(warn ? '#f2f4ff' : '#3d5bff'); st.frMat.emissive.set(warn ? '#9aa6ff' : '#1a2a99'); st.frWarn = warn;
+      if (st.fright <= 0) {
+        st.wolves.forEach(w => { w.fr = false; });
+        st.pups.forEach((p, i) => { p.fr = false; if (p.state === 'train' && p.lead.state !== 'active') this.sleepPup(lab, p, i, false); });
+        if (st.heroTrail) { st.heroTrail.dispose(); st.heroTrail = null; }
+      }
       return;
     }
     if (!Math.round(cfg.secret)) { st.mode = 'chase'; return; }
@@ -212,7 +290,9 @@ const GAME = {
     st.mode = st.phase % 2 ? 'chase' : 'scatter'; st.modeT = plan[st.phase];
     if (st.mode === 'scatter') lab.count('разбеги');
     st.wolves.forEach(w => { if (w.state === 'active' && !w.human) this.reverse(lab, w); }); // смена режима видна: все волки разворачиваются
-    lab.tone(st.mode === 'chase' ? 260 : 520, 0.5, 'sine', 0.05, st.mode === 'chase' ? 420 : 300);
+    // слышно: на погоню — вой вверх, на разбег — вниз
+    lab.tone(st.mode === 'chase' ? 300 : 620, 0.7, 'sine', 0.06, st.mode === 'chase' ? 520 : 330);
+    lab.tone(st.mode === 'chase' ? 450 : 930, 0.5, 'triangle', 0.025, st.mode === 'chase' ? 780 : 500, 0.1);
   },
 
   // ---------- волки ----------
@@ -220,7 +300,7 @@ const GAME = {
     const st = lab.state, cfg = lab.cfg, h = st.hero, hd = [h.dx || (st.want || [0, 0])[0], h.dy || (st.want || [0, 0])[1]];
     if (w.state === 'eyes') return this.EXIT;
     if (!Math.round(cfg.secret)) return [h.tx, h.ty];
-    if (st.mode === 'scatter') return w.def.corner;
+    if (st.mode === 'scatter' && !(w.i === 0 && st.angry)) return w.def.corner;
     if (w.i === 1) return [h.tx + hd[0] * cfg.ahead, h.ty + hd[1] * cfg.ahead];
     if (w.i === 2) {
       const red = st.wolves[0];
@@ -245,22 +325,25 @@ const GAME = {
   },
   moveWolf(lab, w, dt) {
     const st = lab.state, cfg = lab.cfg;
-    if (w.state === 'home') { w.mesh.position.y = 0.15 + Math.abs(Math.sin(lab.t * 4 + w.i)) * 0.25; this.skin(w); return; }
+    if (w.state === 'home') { w.mesh.position.y = Math.abs(Math.sin(lab.t * 4 + w.i)) * 0.25; this.skin(lab, w); this.trot(lab, w, 0.4); return; }
     if (w.state === 'exit' || w.state === 'enter') {
       w.k = Math.min(1, w.k + dt * 1.6);
       const [ax, ay] = w.state === 'exit' ? w.def.slot : this.EXIT, [bx, by] = w.state === 'exit' ? this.EXIT : w.def.slot;
-      w.mesh.position.set(this.wx(lab, lab.lerp(ax, bx, w.k)), 0, this.wz(lab, lab.lerp(ay, by, w.k)));
+      w.mesh.position.set(this.wx(lab.lerp(ax, bx, w.k)), 0, this.wz(lab.lerp(ay, by, w.k)));
+      this.face(lab, w.mesh, Math.atan2(bx - ax, by - ay), 10);
       if (w.k >= 1) {
         if (w.state === 'exit') { w.state = 'active'; w.tx = this.EXIT[0]; w.ty = this.EXIT[1]; w.t = 0; w.dx = -1; w.dy = 0; }
-        else { w.state = 'home'; w.homeT = 1.5; w.fr = false; }
+        else { w.state = 'home'; w.homeT = 1.5; w.fr = false; if (w.eyeTrail) { w.eyeTrail.dispose(); w.eyeTrail = null; } }
       }
-      this.skin(w); return;
+      this.skin(lab, w); this.trot(lab, w, 1); return;
     }
     const mul = 1 + cfg.nightUp * (st.night - 1);
-    const speed = w.state === 'eyes' ? cfg.wolfSpeed * 2.2 : w.fr ? cfg.frightSpeed : cfg.wolfSpeed * mul;
+    let speed = w.state === 'eyes' ? cfg.wolfSpeed * 2.2 : w.fr ? cfg.frightSpeed : cfg.wolfSpeed * mul;
+    if (w.state === 'active' && this.inTunnel(lab, w)) speed *= cfg.tunnelSlow;
+    if (w.i === 0 && st.angry && w.state === 'active' && !w.fr) speed *= st.dotsLeft <= cfg.elroy / 2 ? 1.2 : 1.1;
     const p2 = lab.p2;
     if (w.human && w.state === 'active') { // второй игрок ведёт Вожака
-      if (Math.abs(p2.x) > 0.3 || Math.abs(p2.y) > 0.3) w.want = Math.abs(p2.x) > Math.abs(p2.y) ? [Math.sign(p2.x), 0] : [0, -Math.sign(p2.y)];
+      const d = this.stickDir(p2); if (d) w.want = d;
       if (w.want && w.want[0] === -w.dx && w.want[1] === -w.dy) this.reverse(lab, w);
     }
     this.move(lab, w, speed * dt, a => {
@@ -277,57 +360,176 @@ const GAME = {
       a.dx = d[0]; a.dy = d[1];
     });
     if (w.state === 'enter') return;
-    this.place(lab, w, 0);
-    this.skin(w);
+    this.place(lab, w, 0, 0);
+    this.skin(lab, w); this.trot(lab, w, w.state === 'eyes' ? 0 : speed / 4.8);
+    // след для цепочки волчат: где волк шёл, по метру за точку
+    const P = w.mesh.position, c = w.crumbs, last = c[c.length - 1];
+    if (!last || Math.abs(last.x - P.x) > 3 || Math.abs(last.z - P.z) > 3) { c.length = 0; c.push({ x: P.x, z: P.z }); }
+    else if (Math.hypot(last.x - P.x, last.z - P.z) > 0.12) { c.push({ x: P.x, z: P.z }); if (c.length > 220) c.shift(); }
     const tg = st.marks[w.i];
     if (tg) {
       const on = !!Math.round(cfg.showTargets) && w.state === 'active' && !w.fr;
-      tg.setEnabled(on);
-      if (on) { const t = this.target(lab, w); tg.position.set(this.wx(lab, t[0]), 0.06, this.wz(lab, t[1])); }
+      tg.visible = on;
+      if (on) { const t = this.target(lab, w); tg.position.set(this.wx(t[0]), 0.08, this.wz(t[1])); tg.rotation.y = lab.t * 2; }
     }
   },
-  // какой меш волка виден: свой цвет, синий «бегу от факела» или одни глаза по дороге в дольмен
-  skin(w) {
-    const eyes = w.state === 'eyes' || w.state === 'enter';
-    w.body.setEnabled(!eyes && !w.fr); w.scared.setEnabled(!eyes && !!w.fr); w.eyes.setEnabled(eyes);
+  // бег рысью: лапы крест-накрест, хвост виляет
+  trot(lab, w, k) {
+    const s = Math.sin(lab.t * 14 + w.i) * 0.8 * Math.min(1.4, k);
+    w.legA.rotation.x = s; w.legB.rotation.x = -s;
+    w.tail.rotation.y = Math.sin(lab.t * (w.fr ? 22 : 9) + w.i) * 0.5;
+    w.body.position.y = Math.abs(Math.sin(lab.t * 14 + w.i)) * 0.06 * k;
+  },
+  // какой вид у волка: свой цвет, синий «бегу от факела» или одни глаза по дороге в дольмен
+  skin(lab, w) {
+    const eyes = w.state === 'eyes' || w.state === 'enter', look = eyes ? 'eyes' : w.fr ? 'scared' : 'own';
+    if (w.look === look) return;
+    w.look = look;
+    w.body.visible = !eyes; w.ghost.visible = eyes;
+    for (const m of w.fur) m.material = w.fr ? lab.state.frMat : w.furMat;
+    w.glowEyes.material = w.fr ? lab.state.frEye : w.eyeMat;
   },
   releaseWolves(lab, dt) {
     const st = lab.state;
-    st.relT += dt;
     st.wolves.forEach(w => {
       if (w.state !== 'home') return;
       w.homeT -= dt;
-      if (w.homeT <= 0) { w.state = 'exit'; w.k = 0; lab.tone(330, 0.2, 'sine', 0.04, 220); }
+      if (w.homeT <= 0) { w.state = 'exit'; w.k = 0; lab.tone(330, 0.25, 'sine', 0.05, 220); lab.ring([this.wx(9), 0, this.wz(8)], { color: w.def.eye, radius: 1.4 }); }
     });
     // честно: дверь дольмена светится цветом волка, который выйдет следующим
     const next = st.wolves.filter(w => w.state === 'home').sort((a, b) => a.homeT - b.homeT)[0];
     const glow = next && next.homeT < 1.2 && Math.floor(lab.t * 8) % 2 === 0;
-    st.doorMat.emissiveColor = lab.color(glow ? next.def.eye : '#2a2018');
+    st.doorMat.emissive.set(glow ? next.def.eye : '#000000'); st.doorMat.emissiveIntensity = glow ? 1.8 : 0;
   },
   collide(lab) {
-    const st = lab.state;
+    const st = lab.state, h = st.hero;
     for (const w of st.wolves) {
-      if (w.state !== 'active' || this.near(lab, w, st.hero) > 0.62) continue;
-      if (w.fr) {
-        st.combo++; st.chased++; lab.count('прогнал волков');
-        const pts = 200 * Math.pow(2, Math.min(st.combo, 4) - 1);
-        lab.addScore(pts, w.mesh.position, w.def.eye); lab.hitstop(0.06); lab.shake(0.25);
-        lab.burst(w.mesh.position, { count: 20, colors: [w.def.color, '#ffffff', '#3d5bff'], speed: 6 });
-        lab.tone(300, 0.25, 'square', 0.05, 1200);
-        w.state = 'eyes'; w.fr = false;
-      } else if (lab.hurt(st.hero.mesh.position, 'Волки поймали пастушка')) {
-        lab.count('поймали');
-        if (lab.lives > 0) { st.freeze = 1; this.resetActors(lab); lab.popup(lab.v3(0, 3, -4), 'Ещё попытка!', '#ffd23f', 24); }
+      if (w.state !== 'active' || this.near(lab, w, h) > 0.62) continue;
+      if (w.fr) { this.chaseAway(lab, w.mesh.position, w.def.color, false); w.state = 'eyes'; w.fr = false; w.eyeTrail = lab.trail(w.ghost, { color: '#9fb4ff', width: 0.25, length: 8 }); }
+      else { this.caught(lab); return; }
+    }
+    const hp = h.mesh.position;
+    for (const p of st.pups) {
+      if (p.state !== 'train' || Math.hypot(p.x - hp.x, p.z - hp.z) > 0.72 * this.S) continue;
+      if (p.fr) { this.chaseAway(lab, [p.x, 0.4, p.z], '#8a8fa8', true); p.state = 'gone'; this.hidePup(lab, st.pups.indexOf(p)); st.pupsEaten++; lab.count('волчата прогнаны'); }
+      else { this.caught(lab); return; }
+    }
+  },
+  // прогнал: очки растут 200 → 400 → 800 → 1600 (с цепочкой волчат — дальше), стоп-кадр, звон выше с каждым
+  chaseAway(lab, at, color, pup) {
+    const st = lab.state;
+    st.combo++; st.bestCombo = Math.max(st.bestCombo, st.combo);
+    if (!pup) { st.chased++; lab.count('прогнал волков'); }
+    const pts = Math.min(3200, 200 * Math.pow(2, st.combo - 1)), p = lab.v3(at.x != null ? at.x : at[0], 1.2, at.z != null ? at.z : at[2]);
+    lab.addScore(pts, p, st.combo >= 4 ? '#ffffff' : '#9fd0ff');
+    if (st.combo >= 3) lab.popup(lab.v3(p.x, 2.4, p.z), `Серия ×${st.combo}`, '#ffd23f', 18 + Math.min(12, st.combo * 2));
+    lab.hitstop(0.07 + Math.min(0.08, st.combo * 0.015)); lab.shake(0.22 + Math.min(0.3, st.combo * 0.05)); lab.vibrate(80, 0.5);
+    lab.burst(p, { count: 24, colors: [color, '#ffffff', '#3d5bff'], speed: 7, up: 3 });
+    lab.ring([p.x, 0, p.z], { color: '#9fb4ff', radius: 2 });
+    lab.tone(300 * lab.pitch(st.combo * 2), 0.25, 'square', 0.05, 1200 * lab.pitch(st.combo * 2)); lab.sfx.whoosh();
+  },
+  caught(lab) {
+    const st = lab.state, h = st.hero;
+    if (!lab.hurt(h.mesh.position, 'Волки поймали пастушка')) return;
+    lab.count('поймали'); st.combo = 0;
+    if (lab.lives <= 0) return;
+    st.dying = 1.3; // пастушок кружится и гаснет фонарь, потом новая попытка
+    lab.tween(1.2, k => { h.body.rotation.y = k * Math.PI * 4; h.body.scale.setScalar(1 - k * 0.7); h.light.intensity = h.baseLight * (1 - k); }, 'inCubic');
+  },
+  dyingStep(lab, dt) {
+    const st = lab.state, h = st.hero;
+    st.dying -= dt;
+    if (st.dying > 0) return;
+    h.body.rotation.y = 0; h.body.scale.setScalar(1); h.light.intensity = h.baseLight;
+    this.resetActors(lab);
+    st.freeze = 1; lab.popup(lab.v3(0, 3, 4), 'Ещё попытка!', '#ffd23f', 24);
+  },
+
+  // ---------- волчата: спят в коридорах, просыпаются рядом с пастушком и встают цепочкой за ближним волком ----------
+  movePups(lab, dt) {
+    const st = lab.state, hp = st.hero.mesh.position, S = this.S;
+    st.pups.forEach((p, i) => {
+      if (p.state === 'gone') return;
+      if (p.state === 'sleep') {
+        if (Math.hypot(p.x - hp.x, p.z - hp.z) < 2.2 * S) { // проснулся: ищет ближнего волка, который не бежит от факела
+          const lead = st.wolves.filter(w => w.state === 'active' && !w.fr).sort((a, b) => lab.flat(a.mesh, [p.x, 0, p.z]) - lab.flat(b.mesh, [p.x, 0, p.z]))[0];
+          if (lead) {
+            p.state = 'train'; p.lead = lead; p.slot = st.pups.filter(q => q.state === 'train' && q.lead === lead).length; p.fr = false; p.jump = 0;
+            lab.popup([p.x, 1.5, p.z], '!', lead.def.eye, 26); lab.tone(880, 0.12, 'square', 0.04, 1300); lab.count('волчата проснулись');
+          }
+        }
+        this.setPup(lab, i, p.x, 0.02 + Math.abs(Math.sin(lab.t * 1.5 + i)) * 0.03, p.z, p.rot, false);
         return;
       }
-    }
+      // в цепочке: идёт по следу ведущего волка на своё место; ведущего прогнали — испуганный волчонок замер
+      if (p.lead.state !== 'active') { this.setPup(lab, i, p.x, 0, p.z, p.rot, true); this.tintPup(lab, i, p); return; }
+      const c = p.lead.crumbs;
+      let need = (p.slot + 1) * 0.95 * S, k = c.length - 1, tx = c[k] ? c[k].x : p.x, tz = c[k] ? c[k].z : p.z;
+      while (k > 0 && need > 0) { const a = c[k], b = c[k - 1], l = Math.hypot(a.x - b.x, a.z - b.z); if (l >= need) { const f = need / l; tx = a.x + (b.x - a.x) * f; tz = a.z + (b.z - a.z) * f; need = 0; } else { need -= l; k--; tx = b.x; tz = b.z; } }
+      const ox = p.x, oz = p.z;
+      p.jump = Math.min(1, p.jump + dt * 3);
+      const r = p.jump < 1 ? 8 : 40; // подбегает к цепочке, потом держит место
+      p.x = Math.abs(tx - p.x) > 3 ? tx : lab.damp(p.x, tx, r, dt); p.z = Math.abs(tz - p.z) > 3 ? tz : lab.damp(p.z, tz, r, dt);
+      if (Math.hypot(p.x - ox, p.z - oz) > 0.002) p.rot = Math.atan2(p.x - ox, p.z - oz);
+      this.setPup(lab, i, p.x, Math.abs(Math.sin(lab.t * 16 + i)) * 0.08 + Math.sin(p.jump * Math.PI) * 1.6, p.z, p.rot, true); // прыжок через стену к цепочке
+      this.tintPup(lab, i, p);
+    });
+  },
+  tintPup(lab, i, p) {
+    const want = p.state === 'sleep' ? '#7c8299' : p.fr ? (lab.state.frWarn ? '#f2f4ff' : '#3d5bff') : p.lead.def.color;
+    if (p.col === want) return;
+    p.col = want; lab.state.pupBody.setColorAt(i, lab.color(want)); lab.state.pupBody.instanceColor.needsUpdate = true;
+  },
+  // факел погас: волчата без ведущего засыпают там, где стоят
+  sleepPup(lab, p, i, home) {
+    Object.assign(p, { state: 'sleep', lead: null, fr: false });
+    if (home) { p.x = p.hx; p.z = p.hz; }
+    this.tintPup(lab, i, p);
+  },
+  setPup(lab, i, x, y, z, rot, awake) {
+    const st = lab.state, M = st.pupM;
+    st.pupQ.setFromAxisAngle(st.pupUp, rot);
+    st.pupS.set(1, awake ? 1 : 0.55, awake ? 1 : 1.25); // спящий — свернулся клубком
+    M.compose(st.pupP.set(x, y, z), st.pupQ, st.pupS);
+    st.pupBody.setMatrixAt(i, M); st.pupBody.instanceMatrix.needsUpdate = true;
+    if (!awake) st.pupS.set(0, 0, 0);
+    M.compose(st.pupP, st.pupQ, st.pupS);
+    st.pupEyes.setMatrixAt(i, M); st.pupEyes.instanceMatrix.needsUpdate = true;
+  },
+  hidePup(lab, i) { const st = lab.state; st.pupM.makeScale(0, 0, 0); st.pupBody.setMatrixAt(i, st.pupM); st.pupEyes.setMatrixAt(i, st.pupM); st.pupBody.instanceMatrix.needsUpdate = true; st.pupEyes.instanceMatrix.needsUpdate = true; },
+  // волчата ночи: не ближе 6 клеток к пастушку и к дольмену, по одному на клетку
+  placePups(lab) {
+    const st = lab.state, cfg = lab.cfg, n = st.night >= cfg.pupNight ? Math.min(st.pups.length, Math.round(cfg.pups) + (st.night - cfg.pupNight)) : 0, free = [];
+    this.MAP.forEach((row, y) => row.split('').forEach((c, x) => {
+      if ((c === '.' || c === ' ') && y !== 9 && Math.hypot(x - st.start[0], y - st.start[1]) > 6 && Math.hypot(x - 9, y - 9) > 6) free.push([x, y]);
+    }));
+    st.pups.forEach((p, i) => {
+      if (i >= n || !free.length) { p.state = 'gone'; this.hidePup(lab, i); return; }
+      const [x, y] = free.splice(lab.randInt(0, free.length - 1), 1)[0];
+      Object.assign(p, { state: 'sleep', x: this.wx(x), z: this.wz(y), hx: this.wx(x), hz: this.wz(y), rot: lab.rand(0, 6), lead: null, fr: false, col: '#7c8299' });
+      st.pupBody.setColorAt(i, lab.color(p.col));
+    });
+    if (st.pupBody.instanceColor) st.pupBody.instanceColor.needsUpdate = true;
   },
 
   // ---------- телеметрия динамики: что делают игроки и волки вместе ----------
   // окружение — волки близко с двух противоположных сторон и идут на тебя; хвост — волки сбились в стаю и идут друг за другом
   watchDynamics(lab, dt) {
-    const st = lab.state, h = st.hero;
-    st.pinCool -= dt; st.tailCool -= dt; st.checkT -= dt;
+    const st = lab.state, h = st.hero, cfg = lab.cfg;
+    st.pinCool -= dt; st.tailCool -= dt; st.checkT -= dt; st.closeCool -= dt;
+    // на волосок (замедление из Pac-Man CE DX): волк в шаге и идёт на тебя — мир замирает на миг
+    if (Math.round(cfg.close) && st.closeCool <= 0 && !(st.fright > 0)) {
+      const [hx, hy] = this.posOf(h);
+      const near = st.wolves.some(w => {
+        if (w.state !== 'active' || w.fr) return false;
+        const d = this.near(lab, w, h), [x, y] = this.posOf(w);
+        return d < 1.35 && d > 0.75 && Math.sign(hx - x) * w.dx + Math.sign(hy - y) * w.dy > 0;
+      });
+      if (near) {
+        st.closeCool = 5; st.closeCalls++; lab.count('на волосок');
+        lab.slowmo(0.45, 0.35); lab.tone(70, 0.18, 'sine', 0.22, 50); lab.tone(70, 0.18, 'sine', 0.18, 50, 0.22);
+      }
+    }
     if (st.checkT > 0) return;
     st.checkT = 0.25;
     const [hx, hy] = this.posOf(h), sides = new Set(), act = st.wolves.filter(w => w.state === 'active' && !w.fr);
@@ -344,23 +546,30 @@ const GAME = {
     if (st.tailT >= 1.5 && st.tailCool <= 0) { st.tails++; st.tailCool = 4; st.tailT = 0; lab.count('хвост'); }
   },
 
-  // ---------- сыр-бонус под дольменом ----------
+  // ---------- сыр-бонус (как фрукт в Ms. Pac-Man): вкатывается из тоннеля и катится по лабиринту ----------
   spawnCheese(lab) {
-    const st = lab.state, m = st.cheeseSrc.createInstance('сыр');
-    m.position.set(this.wx(lab, this.CHEESE[0]), 0.35, this.wz(lab, this.CHEESE[1]));
-    st.cheese = { mesh: m, t: 9 }; lab.tone(660, 0.3, 'sine', 0.05, 990);
+    const st = lab.state, left = lab.chance(0.5);
+    const c = { tx: left ? 0 : st.W - 1, ty: 9, t: 0, dx: left ? 1 : -1, dy: 0, life: 11, mesh: st.cheeseMesh };
+    st.cheese = c; c.mesh.visible = true; this.place(lab, c, 0.45, 0);
+    lab.tone(660, 0.3, 'sine', 0.05, 990); lab.popup(lab.v3(this.wx(c.tx), 1.6, this.wz(9)), 'Сыр!', '#fff3a0', 20);
   },
   updateCheese(lab, dt) {
     const st = lab.state, c = st.cheese;
     if (!c) return;
-    c.t -= dt; c.mesh.rotation.y += dt * 2;
-    c.mesh.isVisible = c.t > 2 || Math.floor(c.t * 6) % 2 === 0;
-    const h = st.hero;
-    if (h.tx === this.CHEESE[0] && h.ty === this.CHEESE[1]) {
-      lab.addScore(300 * st.night, c.mesh.position, '#fff3a0'); lab.sfx.coin(); lab.count('сыр');
-      lab.burst(c.mesh.position, { count: 16, colors: ['#fff3c4', '#ffd23f'], speed: 5 });
-      c.mesh.dispose(); st.cheese = null;
-    } else if (c.t <= 0) { c.mesh.dispose(); st.cheese = null; }
+    c.life -= dt;
+    this.move(lab, c, 2.6 * dt, a => {
+      const back = [-a.dx, -a.dy], opts = this.DIRS.filter(d => this.open(lab, a.tx + d[0], a.ty + d[1]) && !(d[0] === back[0] && d[1] === back[1]));
+      const d = opts.length ? lab.pick(opts) : back; a.dx = d[0]; a.dy = d[1];
+    });
+    this.place(lab, c, 0.3 + Math.abs(Math.sin(lab.t * 7)) * 0.35, 0);
+    c.mesh.rotation.x += dt * 6;
+    c.mesh.visible = c.life > 2.5 || Math.floor(c.life * 6) % 2 === 0;
+    if (this.near(lab, c, st.hero) < 0.7) {
+      const at = c.mesh.position.clone();
+      lab.addScore(300 * st.night, at, '#fff3a0'); lab.sfx.coin(); lab.count('сыр'); st.cheeses++;
+      lab.burst(at, { count: 20, colors: ['#fff3c4', '#ffd23f'], speed: 6, up: 3 }); lab.ring([at.x, 0, at.z], { color: '#fff3a0', radius: 2 });
+      c.mesh.visible = false; st.cheese = null;
+    } else if (c.life <= 0) { c.mesh.visible = false; st.cheese = null; lab.burst(c.mesh.position, { count: 8, color: '#a89a70', speed: 2 }); }
   },
 
   // ---------- расстановка: пастушок внизу, Вожак у двери, остальные в дольмене ----------
@@ -368,194 +577,238 @@ const GAME = {
     const st = lab.state, cfg = lab.cfg;
     const h = st.hero;
     Object.assign(h, { tx: st.start[0], ty: st.start[1], t: 0, dx: -1, dy: 0 }); st.want = null;
-    h.mesh.rotation.y = -Math.PI / 2; this.place(lab, h, 0);
+    h.mesh.rotation.y = -Math.PI / 2; this.place(lab, h, 0, 0);
     st.fright = 0; st.mode = Math.round(cfg.secret) && cfg.scatterTime > 0 ? 'scatter' : 'chase'; st.phase = st.mode === 'scatter' ? 0 : 1;
-    st.modeT = st.mode === 'scatter' ? cfg.scatterTime : cfg.chaseTime; st.relT = 0;
+    st.modeT = st.mode === 'scatter' ? cfg.scatterTime : cfg.chaseTime; st.relT = 0; st.closeCool = 2;
+    if (st.heroTrail) { st.heroTrail.dispose(); st.heroTrail = null; }
     st.wolves.forEach((w, i) => {
-      Object.assign(w, { fr: false, t: 0, dx: -1, dy: 0, k: 0, want: null });
-      if (i === 0) { w.state = 'active'; w.tx = this.EXIT[0]; w.ty = this.EXIT[1]; this.place(lab, w, 0); }
-      else { w.state = 'home'; w.homeT = cfg.release * i; w.mesh.position.set(this.wx(lab, w.def.slot[0]), 0.15, this.wz(lab, w.def.slot[1])); w.mesh.rotation.y = Math.PI; }
-      this.skin(w);
+      Object.assign(w, { fr: false, t: 0, dx: -1, dy: 0, k: 0, want: null, look: null });
+      w.crumbs.length = 0;
+      if (w.eyeTrail) { w.eyeTrail.dispose(); w.eyeTrail = null; }
+      if (i === 0) { w.state = 'active'; w.tx = this.EXIT[0]; w.ty = this.EXIT[1]; this.place(lab, w, 0, 0); }
+      else { w.state = 'home'; w.homeT = cfg.release * i; w.mesh.position.set(this.wx(w.def.slot[0]), 0, this.wz(w.def.slot[1])); w.mesh.rotation.y = Math.PI; }
+      this.skin(lab, w);
     });
+    // после поимки разбуженные волчата снова засыпают на своих местах
+    st.pups.forEach((p, i) => { if (p.state === 'train') this.sleepPup(lab, p, i, true); });
   },
 
-  // ---------- лабиринт: стены пролётами, светлячки и факелы ----------
-  buildMaze(lab, scene) {
-    const B = BABYLON, st = lab.state, S = this.S;
-    const floor = B.MeshBuilder.CreateGround('тропа', { width: st.W * S, height: st.H * S }, scene);
-    floor.position.y = 0.01; floor.material = lab.mat('#1f2c3e'); lab.noShadow(floor);
-    // стена — каменная кладка с мхом поверху; соседние клетки «#» в строке собраны в один пролёт, все пролёты — в один меш
+  // ---------- лабиринт: каменная кладка с мхом, дольмен, светлячки и факелы ----------
+  buildMaze(lab) {
+    const T = lab.THREE, st = lab.state, S = this.S, [dx0, dy0, dx1, dy1] = this.DEN;
+    const inDen = (x, y) => x >= dx0 && x <= dx1 && y >= dy0 && y <= dy1;
+    lab.box(st.W * S, 0.04, st.H * S, '#24304a', { at: [0, 0.02, 0], shadow: false }); // тропа
+    // стена — кладка с мхом поверху: соседние «#» в строке — один пролёт, все пролёты — один меш на материал
+    st.wallMat = new T.MeshStandardMaterial({ color: '#6f6b84', roughness: 0.9, flatShading: true });
     const stone = [], moss = [];
     this.MAP.forEach((row, y) => {
       for (let x = 0; x < row.length;) {
-        if (row[x] !== '#') { x++; continue; }
-        let e = x; while (e < row.length && row[e] === '#') e++;
-        const len = e - x, cx = this.wx(lab, x + (len - 1) / 2), cz = this.wz(lab, y);
-        const b = B.MeshBuilder.CreateBox('кладка', { width: len * S - 0.12, height: 0.9, depth: S - 0.12 }, scene);
-        b.position.set(cx, 0.45, cz); stone.push(b);
-        const m = B.MeshBuilder.CreateBox('мох', { width: len * S - 0.3, height: 0.14, depth: S - 0.3 }, scene);
-        m.position.set(cx, 0.96, cz); moss.push(m);
+        if (row[x] !== '#' || inDen(x, y)) { x++; continue; }
+        let e = x; while (e < row.length && row[e] === '#' && !inDen(e, y)) e++;
+        const len = e - x, cx = this.wx(x + (len - 1) / 2), cz = this.wz(y);
+        stone.push(lab.box(len * S - 0.1, 0.9, S - 0.1, st.wallMat, { at: [cx, 0.45, cz], parent: null }));
+        moss.push(lab.box(len * S - 0.28, 0.16, S - 0.28, '#2f7a45', { at: [cx, 0.97, cz], parent: null }));
         x = e;
       }
     });
-    const walls = B.Mesh.MergeMeshes(stone, true, true); walls.material = lab.mat('#77738a');
-    const tops = B.Mesh.MergeMeshes(moss, true, true); tops.material = lab.mat('#357a46');
-    // дольмен — логово волков: низкие каменные плиты вокруг, лаз спереди и наклонная плита-крыша сзади; волков внутри видно
-    const dx = this.wx(lab, 9), dz = this.wz(lab, 9), P = [];
-    const slab = (w, h, d, x, y, z, rz) => { const m = B.MeshBuilder.CreateBox('плита', { width: w, height: h, depth: d }, scene); m.position.set(dx + x, y, dz + z); m.rotation.z = rz || 0; P.push(m); return m; };
-    slab(4.1, 0.75, 0.22, 0, 0.37, -0.7); // задняя
-    slab(0.22, 0.75, 1.6, -2.0, 0.37, 0); slab(0.22, 0.75, 1.6, 2.0, 0.37, 0); // боковые
-    slab(1.45, 0.75, 0.22, -1.32, 0.37, 0.7); slab(1.45, 0.75, 0.22, 1.32, 0.37, 0.7); // передние по бокам от лаза
-    slab(2.4, 0.2, 1.2, -1.0, 1.15, -1.05, 0.12); // плита-крыша прислонена сзади
-    const den = B.Mesh.MergeMeshes(P, true, true); den.material = lab.mat('#a39780');
-    const door = B.MeshBuilder.CreateBox('лаз', { width: 1.1, height: 0.12, depth: 0.24 }, scene);
-    door.position.set(dx, 0.7, dz + 0.7);
-    st.doorMat = lab.mat('#2a2018').clone('дверь'); door.material = st.doorMat;
-    [floor, walls, tops, den].forEach(m => m.freezeWorldMatrix());
-    // на мху поверх стен — кусты, камни и цветы: копии трёх исходников
-    const deco = [['куст', '#2f9a52', 0.7], ['куст', '#46b35e', 0.55], ['камень', '#8d8a9a', 0.4], ['цветок', '#ffd1f0', 0.18]].map(([n, c, d]) => {
-      const m = B.MeshBuilder.CreateSphere(n, { diameter: d, segments: 2 }, scene);
-      m.convertToFlatShadedMesh(); m.material = lab.mat(c, n === 'цветок' ? { glow: 0.6 } : undefined); m.isVisible = false; return m;
-    });
+    lab.merge(stone); lab.merge(moss);
+    // лес за краем лабиринта (клетки x) и кусты у выходов тоннеля: пастушок ныряет в тоннель и пропадает в зарослях
+    const bush = lab.instances(new T.IcosahedronGeometry(0.62, 0), lab.mat('#ffffff'), 64), bi = { n: 0 };
+    const addBush = (x, z, s, c) => { if (bi.n < 64) lab.place(bush, bi.n++, [x, 0.4 * s, z], { scale: [s, s * 0.8, s], rot: lab.rand(0, 6), color: c }); };
+    this.MAP.forEach((row, y) => row.split('').forEach((c, x) => { if (c === 'x') for (let k = 0; k < 2; k++) addBush(this.wx(x) + lab.rand(-0.4, 0.4), this.wz(y) + lab.rand(-0.4, 0.4), lab.rand(0.8, 1.2), lab.pick(['#1d5a36', '#24683d', '#16482c'])); }));
+    for (const side of [-1, 1]) for (let k = 0; k < 4; k++) addBush(side * (st.W / 2 + 0.3 + k * 0.5) * S, this.wz(9) + lab.rand(-0.5, 0.5), 1.3 + k * 0.15, lab.pick(['#163f28', '#1d5a36']));
+    // на мху поверх стен — кусты, камни и цветы-светляки: копии трёх исходников
+    const deco = [lab.instances(new T.IcosahedronGeometry(0.3, 0), lab.mat('#ffffff'), 90), lab.instances(new T.DodecahedronGeometry(0.2, 0), '#8d8a9a', 40), lab.instances(new T.OctahedronGeometry(0.08, 0), lab.mat('#ffc6ef', { glow: 0.9 }), 50)], dn = [0, 0, 0];
     this.MAP.forEach((row, y) => row.split('').forEach((c, x) => {
-      if (c !== '#' || !lab.chance(0.3)) return;
-      const m = lab.pick(deco).createInstance('украшение');
-      m.position.set(this.wx(lab, x) + lab.rand(-0.3, 0.3), 1.05, this.wz(lab, y) + lab.rand(-0.3, 0.3));
-      m.scaling.y = lab.rand(0.6, 1); m.rotation.y = lab.rand(0, 3);
+      if (c !== '#' || inDen(x, y) || !lab.chance(0.42)) return;
+      const k = lab.chance(0.6) ? 0 : lab.chance(0.5) ? 1 : 2;
+      if (dn[k] >= deco[k].count) return;
+      lab.place(deco[k], dn[k]++, [this.wx(x) + lab.rand(-0.3, 0.3), 1.08 + (k === 2 ? 0.1 : 0), this.wz(y) + lab.rand(-0.3, 0.3)], { scale: [1, lab.rand(0.6, 1), 1], rot: lab.rand(0, 3), color: k === 0 ? lab.pick(['#2f9a52', '#46b35e', '#2a7f47']) : undefined });
     }));
-    // исходники светлячка и факела — дальше только копии
-    st.dotSrc = B.MeshBuilder.CreateSphere('светлячок', { diameter: 0.24, segments: 3 }, scene);
-    st.dotMat = lab.mat('#d8ff6a', { glow: 1 }).clone('светлячки'); st.dotSrc.material = st.dotMat; st.dotSrc.isVisible = false; lab.noShadow(st.dotSrc);
-    const stand = B.MeshBuilder.CreateCylinder('шест', { height: 0.9, diameterTop: 0.1, diameterBottom: 0.16, tessellation: 6 }, scene);
-    stand.position.y = 0.45; stand.material = lab.mat('#6b4a2e');
-    const bowl = B.MeshBuilder.CreateCylinder('чаша', { height: 0.18, diameterTop: 0.42, diameterBottom: 0.2, tessellation: 8 }, scene);
-    bowl.position.y = 0.95; bowl.material = lab.mat('#3a3a44');
-    const flame = B.MeshBuilder.CreateCylinder('огонь', { height: 0.55, diameterTop: 0, diameterBottom: 0.36, tessellation: 6 }, scene);
-    flame.position.y = 1.3; flame.material = lab.mat('#ff9a3c', { glow: 1 });
-    st.torchSrc = B.Mesh.MergeMeshes([stand, bowl, flame], true, true, undefined, false, true);
-    st.torchSrc.isVisible = false;
-    // сыр — круг адыгейского сыра
-    const ch = B.MeshBuilder.CreateCylinder('сыр', { height: 0.3, diameter: 0.8, tessellation: 10 }, scene);
-    ch.material = lab.mat('#fff1c8', { glow: 0.25 }); ch.isVisible = false; st.cheeseSrc = ch;
+    lab.noShadow(deco[2]);
+    // дольмен — логово волков: плиты из песчаника вокруг, лаз в передней плите; крыши нет — волков внутри видно
+    const L = this.wx(dx0) - S / 2 + 0.15, R = this.wx(dx1) + S / 2 - 0.15, F = this.wz(dy0) - S / 2 + 0.2, B = this.wz(dy1) + S / 2 - 0.2, cx = this.wx(9);
+    const P = [], slab = (w, h, d, x, y, z, rot) => P.push(lab.box(w, h, d, '#b3a487', { at: [x, y, z], rot, parent: null }));
+    slab(R - L, 1.15, 0.3, (L + R) / 2, 0.58, B); // задняя
+    slab(0.3, 1.15, B - F, L, 0.58, (F + B) / 2); slab(0.3, 1.15, B - F, R, 0.58, (F + B) / 2); // боковые
+    slab(cx - 0.62 - L, 1.15, 0.3, (L + cx - 0.62) / 2, 0.58, F); slab(R - cx - 0.62, 1.15, 0.3, (R + cx + 0.62) / 2, 0.58, F); // передние по бокам от лаза
+    slab(1.3, 0.35, 0.3, cx, 1.0, F); // над лазом
+    lab.merge(P);
+    st.doorMat = new T.MeshStandardMaterial({ color: '#2a2018', emissive: '#000000', flatShading: true });
+    lab.box(1.1, 0.1, 0.34, st.doorMat, { at: [cx, 0.78, F], shadow: false });
+    // светлячки — одна пачка копий; факелы — шест, чаша, огонь и свой свет
+    st.dotMesh = lab.instances(new T.IcosahedronGeometry(0.12, 0), lab.mat('#d8ff6a', { unlit: true, glow: 1.6 }), 200, { shadow: false });
+    st.dotMesh.frustumCulled = false; st.zeroM = new T.Matrix4().makeScale(0, 0, 0);
+    st.torches = [];
+    const poles = [];
+    this.MAP.forEach((row, y) => row.split('').forEach((c, x) => {
+      if (c !== 'o') return;
+      const X = this.wx(x), Z = this.wz(y);
+      poles.push(lab.cyl(0.06, 0.09, 1.1, '#6b4a2e', { at: [X, 0.55, Z], parent: null, sides: 6 }), lab.cyl(0.24, 0.12, 0.2, '#3a3a44', { at: [X, 1.15, Z], parent: null, sides: 8 }));
+      const flame = lab.group({ at: [X, 1.25, Z] });
+      lab.cone(0.2, 0.55, '#ff8a2c', { parent: flame, at: [0, 0.27, 0], glow: 1.4, sides: 6, shadow: false });
+      lab.cone(0.1, 0.32, '#fff2a0', { parent: flame, at: [0, 0.2, 0], glow: 1.6, sides: 5, shadow: false });
+      const light = new T.PointLight('#ff9a4a', 9, 6.5, 1.6); light.position.set(X, 1.7, Z); lab.add(light);
+      st.torches.push({ x, y, flame, light, lit: true });
+    }));
+    lab.merge(poles);
+    // сыр — круг адыгейского сыра, катится колесом
+    st.cheeseMesh = lab.mesh(new T.CylinderGeometry(0.38, 0.38, 0.26, 12).rotateZ(Math.PI / 2), '#fff1c8', { glow: 0.25 });
+    st.cheeseMesh.rotation.order = 'YXZ'; st.cheeseMesh.visible = false; // ось колеса поперёк хода: катится вперёд
     this.MAP.forEach((row, y) => { const x = row.indexOf('P'); if (x >= 0) st.start = [x, y]; });
   },
   fillDots(lab) {
     const st = lab.state;
-    Object.values(st.dots || {}).forEach(d => d.mesh.dispose());
-    st.dots = {}; st.dotsLeft = 0;
+    st.dots = {}; st.dotsLeft = 0; st.dotList = []; st.angry = false;
+    if (st.wolves && st.wolves[0] && st.wolves[0].rage) { st.wolves[0].rage.dispose(); st.wolves[0].rage = null; }
     this.MAP.forEach((row, y) => row.split('').forEach((c, x) => {
       if (c !== '.' && c !== 'o') return;
-      const torch = c === 'o', mesh = (torch ? st.torchSrc : st.dotSrc).createInstance(torch ? 'факел' : 'светлячок');
-      mesh.position.set(this.wx(lab, x), torch ? 0 : 0.45, this.wz(lab, y)); if (torch) mesh.scaling.setAll(1.35);
-      st.dots[x + ',' + y] = { mesh, torch }; st.dotsLeft++;
+      const d = { x, y, torch: 0, i: -1, gone: false };
+      if (c === 'o') d.torch = st.torches.findIndex(t => t.x === x && t.y === y) + 1;
+      else { d.i = st.dotList.length; st.dotList.push(d); }
+      st.dots[x + ',' + y] = d; st.dotsLeft++;
     }));
+    st.torches.forEach(t => { t.flame.visible = true; t.light.visible = true; t.lit = true; });
+    for (let i = st.dotList.length; i < st.dotMesh.count; i++) this.hideDot(st, { i });
+    if (st.pups) this.placePups(lab);
   },
+  hideDot(st, d) { st.dotMesh.setMatrixAt(d.i, st.zeroM); st.dotMesh.instanceMatrix.needsUpdate = true; },
 
   // ---------- герои ----------
-  part(list, mesh, color, lab, o) { mesh.material = lab.mat(color, o); list.push(mesh); return mesh; },
-  buildHero(lab, scene) {
-    const B = BABYLON, st = lab.state, P = [];
-    const add = (m, c, o) => this.part(P, m, c, lab, o);
-    for (const x of [-0.13, 0.13]) add(B.MeshBuilder.CreateBox('нога', { width: 0.14, height: 0.4, depth: 0.16 }, scene), '#2b2230').position.set(x, 0.2, 0);
-    const coat = add(B.MeshBuilder.CreateCylinder('черкеска', { height: 0.62, diameterTop: 0.36, diameterBottom: 0.56, tessellation: 8 }, scene), '#8a2f35');
-    coat.position.y = 0.68;
-    add(B.MeshBuilder.CreateBox('пояс', { width: 0.44, height: 0.07, depth: 0.4 }, scene), '#e8c15a').position.y = 0.62;
-    add(B.MeshBuilder.CreateSphere('голова', { diameter: 0.34, segments: 6 }, scene), '#f1c9a0').position.y = 1.13;
-    add(B.MeshBuilder.CreateCylinder('папаха', { height: 0.24, diameterTop: 0.36, diameterBottom: 0.32, tessellation: 8 }, scene), '#ece6da').position.y = 1.35;
-    const arm = add(B.MeshBuilder.CreateBox('рука', { width: 0.1, height: 0.1, depth: 0.36 }, scene), '#8a2f35');
-    arm.position.set(0.2, 0.8, 0.2);
-    add(B.MeshBuilder.CreateBox('фонарь', { width: 0.18, height: 0.24, depth: 0.18 }, scene), '#ffd96b', { glow: 1 }).position.set(0.22, 0.7, 0.42);
-    P.forEach(m => m.convertToFlatShadedMesh());
-    const mesh = B.Mesh.MergeMeshes(P, true, true, undefined, false, true);
-    mesh.name = 'пастушок'; mesh.scaling.setAll(1.5);
-    const light = new B.PointLight('свет фонаря', new B.Vector3(0.22, 1.0, 0.5), scene);
-    light.diffuse = lab.color('#ffcf7a'); light.intensity = 0.9; light.range = 6; light.parent = mesh;
-    st.hero = { mesh, light, tx: 0, ty: 0, t: 0, dx: 0, dy: 0 };
+  buildHero(lab) {
+    const T = lab.THREE, st = lab.state;
+    const g = lab.group(), body = lab.group({ parent: g, scale: 1.6 }), P = [], part = m => (P.push(m), m), o = { parent: null };
+    part(lab.cyl(0.18, 0.3, 0.62, '#a3343c', Object.assign({ at: [0, 0.68, 0], sides: 8 }, o))); // черкеска
+    for (const s of [-1, 1]) for (let k = 0; k < 3; k++) part(lab.box(0.05, 0.035, 0.03, '#efe2c0', Object.assign({ at: [s * 0.1, 0.9 - k * 0.06, 0.155 + k * 0.012] }, o))); // газыри
+    part(lab.box(0.46, 0.07, 0.42, '#e8c15a', Object.assign({ at: [0, 0.6, 0] }, o))); // пояс
+    part(lab.ball(0.17, '#f1c9a0', Object.assign({ at: [0, 1.12, 0], detail: 1 }, o)));
+    for (const s of [-1, 1]) part(lab.box(0.035, 0.035, 0.02, '#1a1a22', Object.assign({ at: [s * 0.065, 1.14, 0.16] }, o)));
+    part(lab.cyl(0.2, 0.18, 0.17, '#f4efe4', Object.assign({ at: [0, 1.3, 0], sides: 9, glow: 0.12 }, o))); // папаха: белая, видна сверху в любом углу
+    part(lab.cyl(0.13, 0.2, 0.05, '#f4efe4', Object.assign({ at: [0, 1.4, 0], sides: 9, glow: 0.12 }, o)));
+    part(lab.box(0.12, 0.42, 0.12, '#a3343c', Object.assign({ at: [-0.24, 0.74, 0], rot: [0, 0, -0.12] }, o))); // левая рука
+    lab.merge(P, body);
+    const leg = (x) => { const piv = lab.group({ parent: body, at: [x, 0.4, 0] }); lab.box(0.13, 0.4, 0.16, '#2b2230', { parent: piv, at: [0, -0.2, 0.02] }); return piv; };
+    const legA = leg(-0.11), legB = leg(0.11);
+    // правая рука с фонарём качается на бегу
+    const arm = lab.group({ parent: body, at: [0.24, 0.92, 0] });
+    lab.box(0.11, 0.11, 0.38, '#a3343c', { parent: arm, at: [0, -0.1, 0.16], rot: [0.5, 0, 0] });
+    const lantern = lab.group({ parent: arm, at: [0, -0.22, 0.38] });
+    lab.box(0.18, 0.24, 0.18, '#ffd96b', { parent: lantern, glow: 1.2, shadow: false });
+    lab.box(0.22, 0.05, 0.22, '#3a3030', { parent: lantern, at: [0, 0.14, 0] });
+    const light = new T.PointLight('#ffcf7a', 16, 8, 1.3); light.position.set(0, 2.4, 0.5); g.add(light); // свет фонаря сверху: освещает коридор, а не слепит
+    // тёплое пятно света под ногами: пастушка видно в любом углу лабиринта
+    const halo = lab.mesh(new T.CircleGeometry(1.5, 20).rotateX(-Math.PI / 2), lab.mat('#4a3410', { unlit: true, add: true }), { parent: g, at: [0, 0.06, 0], shadow: false });
+    g.rotation.y = -Math.PI / 2;
+    st.hero = { g, mesh: g, body, legA, legB, arm, lantern, light, halo, baseLight: 16, tx: 0, ty: 0, t: 0, dx: 0, dy: 0 };
   },
-  wolfMesh(lab, scene, color, eye, name) {
-    const B = BABYLON, P = [];
-    const add = (m, c, o) => this.part(P, m, c, lab, o);
-    add(B.MeshBuilder.CreateBox('тело', { width: 0.44, height: 0.42, depth: 0.86 }, scene), color).position.y = 0.55;
-    const head = add(B.MeshBuilder.CreateBox('голова', { width: 0.38, height: 0.36, depth: 0.36 }, scene), color);
-    head.position.set(0, 0.78, 0.5);
-    add(B.MeshBuilder.CreateBox('морда', { width: 0.2, height: 0.16, depth: 0.24 }, scene), color).position.set(0, 0.7, 0.75);
-    add(B.MeshBuilder.CreateBox('нос', { width: 0.08, height: 0.07, depth: 0.06 }, scene), '#1a1a22').position.set(0, 0.75, 0.88);
-    for (const x of [-0.12, 0.12]) {
-      add(B.MeshBuilder.CreateCylinder('ухо', { height: 0.2, diameterTop: 0, diameterBottom: 0.14, tessellation: 4 }, scene), color).position.set(x, 1.03, 0.45);
-      add(B.MeshBuilder.CreateBox('глаз', { width: 0.08, height: 0.07, depth: 0.04 }, scene), eye, { glow: 1 }).position.set(x * 0.9, 0.84, 0.69);
-    }
-    for (const x of [-0.14, 0.14]) for (const z of [-0.28, 0.28]) add(B.MeshBuilder.CreateBox('лапа', { width: 0.12, height: 0.36, depth: 0.12 }, scene), color).position.set(x, 0.18, z);
-    const tail = add(B.MeshBuilder.CreateCylinder('хвост', { height: 0.5, diameterTop: 0.08, diameterBottom: 0.16, tessellation: 5 }, scene), color);
-    tail.rotation.x = -0.9; tail.position.set(0, 0.68, -0.6);
-    add(B.MeshBuilder.CreateBox('ошейник', { width: 0.46, height: 0.08, depth: 0.12 }, scene), eye, { glow: 0.6 }).position.set(0, 0.66, 0.3);
-    P.forEach(m => m.convertToFlatShadedMesh());
-    const mesh = B.Mesh.MergeMeshes(P, true, true, undefined, false, true);
-    mesh.name = name; return mesh;
+  // волк: неподвижные детали слиты по материалу, лапы парами и хвост — отдельно для бега рысью
+  wolfModel(lab, furMat, eyeMat) {
+    const o = x => Object.assign({ parent: null }, x), root = lab.group(), body = lab.group({ parent: root }), P = [];
+    P.push(lab.box(0.46, 0.4, 0.82, furMat, o({ at: [0, 0.56, -0.04], round: 0.08 })));
+    P.push(lab.box(0.52, 0.48, 0.3, furMat, o({ at: [0, 0.64, 0.26], round: 0.08 }))); // грудь-грива
+    P.push(lab.box(0.38, 0.34, 0.36, furMat, o({ at: [0, 0.82, 0.5], round: 0.06 })));
+    P.push(lab.box(0.2, 0.15, 0.24, furMat, o({ at: [0, 0.74, 0.74] })));
+    for (const s of [-1, 1]) P.push(lab.cone(0.085, 0.22, furMat, o({ at: [s * 0.12, 1.06, 0.45], sides: 4 })));
+    P.push(lab.box(0.09, 0.07, 0.06, '#15151c', o({ at: [0, 0.79, 0.87] })));
+    P.push(lab.box(0.5, 0.08, 0.14, '#f2efe6', o({ at: [0, 0.68, 0.38] }))); // светлый воротник
+    lab.merge(P, body);
+    const head = lab.group({ parent: body, at: [0, 0.86, 0.69] });
+    const glowEyes = lab.noShadow(lab.merge([-1, 1].map(s => lab.box(0.09, 0.065, 0.04, eyeMat, o({ at: [s * 0.1, 0, 0] }))), head).children[0]);
+    const legPair = (k) => { const piv = lab.group({ parent: body, at: [0, 0.4, 0] }), L = []; for (const [x, z] of [[-0.13 * k, 0.26], [0.13 * k, -0.3]]) L.push(lab.box(0.11, 0.38, 0.11, furMat, o({ at: [x, -0.19, z] }))); lab.merge(L, piv); return piv; };
+    const legA = legPair(1), legB = legPair(-1);
+    const tail = lab.group({ parent: body, at: [0, 0.68, -0.44] });
+    lab.cone(0.1, 0.5, furMat, { parent: tail, at: [0, 0.05, -0.2], rot: [-1.9, 0, 0], sides: 5 });
+    return { root, body, head, glowEyes, legA, legB, tail };
   },
-  buildWolves(lab, scene) {
-    const B = BABYLON, st = lab.state, n = Math.round(lab.cfg.wolves);
-    // испуганный волк один на всех: материал копии меняет цвет, когда факел гаснет
-    const scaredSrc = this.wolfMesh(lab, scene, '#3d5bff', '#ffffff', 'испуганный волк');
-    st.frMat = new B.StandardMaterial('испуг', scene); st.frMat.diffuseColor = lab.color('#3d5bff'); st.frMat.emissiveColor = lab.color('#1a2a99');
-    scaredSrc.material = st.frMat; scaredSrc.isVisible = false;
-    const eP = [];
-    for (const x of [-0.14, 0.14]) {
-      this.part(eP, B.MeshBuilder.CreateSphere('глаз', { diameter: 0.2, segments: 4 }, scene), '#ffffff', lab, { glow: 0.6 }).position.set(x, 0.6, 0);
-      this.part(eP, B.MeshBuilder.CreateBox('зрачок', { size: 0.09 }, scene), '#3d5bff', lab, { glow: 1 }).position.set(x, 0.6, 0.09);
-    }
-    const eyesSrc = B.Mesh.MergeMeshes(eP, true, true, undefined, false, true); eyesSrc.isVisible = false;
+  buildWolves(lab) {
+    const T = lab.THREE, st = lab.state, n = Math.round(lab.cfg.wolves);
+    // испуганный волк: общий материал, мигает белым, когда факел гаснет
+    st.frMat = new T.MeshStandardMaterial({ color: '#3d5bff', emissive: '#1a2a99', emissiveIntensity: 1, flatShading: true, roughness: 0.7 });
+    st.frEye = lab.mat('#ffffff', { glow: 1.2 });
     st.wolves = []; st.marks = [];
+    const cross = lab.addons.BufferGeometryUtils.mergeGeometries([new T.BoxGeometry(1, 0.04, 0.18).rotateY(Math.PI / 4), new T.BoxGeometry(1, 0.04, 0.18).rotateY(-Math.PI / 4)]);
     for (let i = 0; i < n; i++) {
-      const def = this.WOLVES[i];
-      const root = new B.TransformNode(def.name, scene); root.scaling.setAll(1.4);
-      const body = this.wolfMesh(lab, scene, def.color, def.eye, def.name); body.parent = root;
-      const scared = scaredSrc.createInstance('испуганный'); scared.parent = root;
-      const eyes = eyesSrc.createInstance('глаза'); eyes.parent = root;
-      st.wolves.push({ i, def, mesh: root, body, scared, eyes, human: i === 0 && Math.round(lab.cfg.vs) === 1, state: 'home', tx: 0, ty: 0, t: 0, dx: 0, dy: 0 });
+      const def = this.WOLVES[i], furMat = lab.mat(def.color), eyeMat = lab.mat(def.eye, { glow: 1.6 });
+      const m = this.wolfModel(lab, furMat, eyeMat);
+      m.root.scale.setScalar(1.45);
+      const fur = []; m.body.traverse(x => { if (x.isMesh && x.material === furMat) fur.push(x); });
+      // одни глаза — волк бежит обратно в дольмен
+      const ghost = lab.group({ parent: m.root, at: [0, 0.7, 0] });
+      for (const s of [-1, 1]) { lab.ball(0.12, '#ffffff', { parent: ghost, at: [s * 0.13, 0, 0], detail: 1, glow: 0.4, shadow: false }); lab.ball(0.06, '#3d5bff', { parent: ghost, at: [s * 0.13, 0, 0.09], detail: 0, glow: 1, shadow: false }); }
+      ghost.visible = false;
+      st.wolves.push(Object.assign(m, { i, def, mesh: m.root, fur, furMat, eyeMat, ghost, crumbs: [], human: i === 0 && Math.round(lab.cfg.vs) === 1, state: 'home', tx: 0, ty: 0, t: 0, dx: 0, dy: 0 }));
       // крестик цели: куда идёт волк (ручка «Показать, куда целится»)
-      const a = B.MeshBuilder.CreateBox('цель', { width: 0.9, height: 0.03, depth: 0.16 }, scene), b = a.clone('цель');
-      a.rotation.y = Math.PI / 4; b.rotation.y = -Math.PI / 4;
-      const mark = B.Mesh.MergeMeshes([a, b], true); mark.material = lab.mat(def.eye, { unlit: true, alpha: 0.85 }); lab.noShadow(mark); mark.setEnabled(false);
-      st.marks.push(mark);
+      const mark = lab.mesh(cross, lab.mat(def.eye, { unlit: true, alpha: 0.85, glow: 0.6 }), { shadow: false });
+      mark.visible = false; st.marks.push(mark);
     }
-    if (st.wolves[0] && st.wolves[0].human) lab.popup(lab.v3(0, 3, 6), 'Вожак — второй игрок', '#ff5a4a', 20);
+    if (st.wolves[0] && st.wolves[0].human) lab.popup(lab.v3(0, 3, -6), 'Вожак — второй игрок', '#ff5a4a', 20);
+  },
+  // волчата — две пачки копий на всех: тело (цвет копии — цвет ведущего волка) и светящиеся глаза
+  buildPups(lab) {
+    const T = lab.THREE, st = lab.state, U = lab.addons.BufferGeometryUtils, N = 16;
+    const part = (g, x, y, z) => g.translate(x, y, z);
+    const body = U.mergeGeometries([part(new T.BoxGeometry(0.4, 0.3, 0.56), 0, 0.32, 0), part(new T.BoxGeometry(0.3, 0.26, 0.28), 0, 0.46, 0.34), part(new T.BoxGeometry(0.14, 0.1, 0.14), 0, 0.42, 0.52),
+      part(new T.ConeGeometry(0.07, 0.16, 4), -0.09, 0.66, 0.32), part(new T.ConeGeometry(0.07, 0.16, 4), 0.09, 0.66, 0.32), part(new T.BoxGeometry(0.08, 0.18, 0.08), -0.12, 0.09, 0.18),
+      part(new T.BoxGeometry(0.08, 0.18, 0.08), 0.12, 0.09, 0.18), part(new T.BoxGeometry(0.08, 0.18, 0.08), -0.12, 0.09, -0.18), part(new T.BoxGeometry(0.08, 0.18, 0.08), 0.12, 0.09, -0.18),
+      part(new T.ConeGeometry(0.06, 0.3, 4).rotateX(-1.9), 0, 0.42, -0.36)].map(g => g.toNonIndexed()));
+    const eyes = U.mergeGeometries([part(new T.BoxGeometry(0.06, 0.05, 0.03), -0.07, 0.5, 0.49), part(new T.BoxGeometry(0.06, 0.05, 0.03), 0.07, 0.5, 0.49)]);
+    st.pupBody = lab.instances(body, lab.mat('#ffffff'), N); st.pupBody.frustumCulled = false;
+    st.pupEyes = lab.instances(eyes, lab.mat('#ffe680', { glow: 1.6 }), N, { shadow: false }); st.pupEyes.frustumCulled = false;
+    st.pupBody.setColorAt(0, lab.color('#7c8299'));
+    st.pupM = new T.Matrix4(); st.pupQ = new T.Quaternion(); st.pupS = new T.Vector3(); st.pupP = new T.Vector3(); st.pupUp = new T.Vector3(0, 1, 0);
+    st.pups = [];
+    for (let i = 0; i < N; i++) { st.pups.push({ state: 'gone', x: 0, z: 0, rot: 0 }); this.hidePup(lab, i); }
   },
 
   // ---------- ночь вокруг: лес, горы, луна ----------
   scenery(lab, scene) {
-    const B = BABYLON;
-    lab.light.hemi.intensity = 0.62; lab.light.hemi.diffuse = lab.color('#9fb4ff');
-    lab.ground({ w: 150, h: 150, color: '#16301f' });
-    const cone = (name, color) => {
-      const m = B.MeshBuilder.CreateCylinder(name, { height: 1, diameterTop: 0, diameterBottom: 1, tessellation: 6 }, scene);
-      m.convertToFlatShadedMesh(); m.material = lab.mat(color); m.isVisible = false; return m;
-    };
-    const rock = lab.noShadow(cone('гора', '#2c3656')), snow = lab.noShadow(cone('снег', '#c9d6ff'));
-    [[-36, 60, 26, 14], [-8, 68, 34, 17], [20, 62, 24, 12], [44, 56, 18, 10]].forEach(([x, z, h, r]) => {
-      const m = rock.createInstance('гора'); m.scaling.set(r * 2, h, r * 2); m.position.set(x, h / 2 - 0.5, z);
-      const c = snow.createInstance('снег'); c.scaling.set(r * 0.6, h * 0.28, r * 0.6); c.position.set(x, h * 0.86 - 0.5, z);
-    });
-    const crowns = ['#12402a', '#175236', '#1d5e3c'].map(c => cone('ель', c));
-    const trunk = B.MeshBuilder.CreateCylinder('ствол', { height: 0.7, diameter: 0.3, tessellation: 5 }, scene);
-    trunk.material = lab.mat('#4a3324'); trunk.isVisible = false;
-    for (let i = 0; i < 34; i++) {
-      const side = i % 2 ? 1 : -1, x = side * lab.rand(14.5, 26), z = lab.rand(-20, 22), h = lab.rand(2, 4.2);
-      trunk.createInstance('ствол').position.set(x, 0.35, z);
-      const cr = lab.pick(crowns).createInstance('ель'); cr.scaling.set(h * 0.65, h, h * 0.65); cr.position.set(x, 0.7 + h / 2, z);
+    const T = lab.THREE, F = this.field;
+    lab.light.hemi.intensity = 0.55; lab.light.hemi.color.set('#8fa6ff'); lab.light.hemi.groundColor.set('#1a2030');
+    lab.light.sun.color.set('#b9c8ff'); lab.light.sun.intensity = 0.9; // луна вместо солнца
+    lab.ground({ w: 160, h: 160, color: '#14301f', bumps: 3, flat: 0.3 });
+    // горы с ледниками вдали — один меш на цвет
+    const hills = [];
+    for (let i = 0; i < 8; i++) {
+      const x = -64 + i * 18 + lab.rand(-4, 4), z = -46 - lab.rand(0, 16), r = lab.rand(10, 17), h = lab.rand(16, 28);
+      hills.push(lab.cone(r, h, '#27304f', { at: [x, h / 2 - 1, z], sides: 6, rot: lab.rand(0, 3), parent: null }));
+      hills.push(lab.cone(r * 0.36, h * 0.36, '#c9d6ff', { at: [x, h - 1 - h * 0.18 + 0.05, z], sides: 6, rot: lab.rand(0, 3), parent: null }));
     }
-    for (let i = 0; i < 10; i++) { // ели и за дальним краем лабиринта
-      const x = lab.rand(-14, 14), z = lab.rand(18, 24), h = lab.rand(2.4, 4.4);
-      const cr = lab.pick(crowns).createInstance('ель'); cr.scaling.set(h * 0.65, h, h * 0.65); cr.position.set(x, h / 2, z);
+    lab.noShadow(lab.merge(hills));
+    // пихты — копии: кроны в два яруса и стволы
+    const N = 110, crown = lab.instances(new T.ConeGeometry(1, 2.4, 7), lab.mat('#ffffff'), N * 2), trunk = lab.instances(new T.CylinderGeometry(0.18, 0.24, 1, 6), '#4a3324', N);
+    for (let i = 0; i < N; i++) {
+      let x, z; do { x = lab.rand(-50, 50); z = lab.rand(-44, 34); } while (Math.abs(x) < F.w / 2 + 1.5 && Math.abs(z) < F.h / 2 + 1.5);
+      const s = lab.rand(0.9, 1.8), c = lab.pick(['#12402a', '#175236', '#1d5e3c']);
+      lab.place(trunk, i, [x, 0.5 * s, z], { scale: s });
+      lab.place(crown, i * 2, [x, 1.9 * s, z], { scale: [s * 1.2, s, s * 1.2], rot: lab.rand(0, 3), color: c });
+      lab.place(crown, i * 2 + 1, [x, 2.9 * s, z], { scale: [s * 0.85, s * 0.8, s * 0.85], rot: lab.rand(0, 3), color: c });
     }
-    const moon = B.MeshBuilder.CreateSphere('луна', { diameter: 7, segments: 8 }, scene);
-    moon.position.set(-30, 34, 70); moon.material = lab.mat('#fff4d6', { unlit: true }); lab.noShadow(moon);
-    const star = B.MeshBuilder.CreateBox('звезда', { size: 0.35 }, scene);
-    star.material = lab.mat('#ffffff', { unlit: true }); star.isVisible = false; lab.noShadow(star);
-    for (let i = 0; i < 40; i++) star.createInstance('звезда').position.set(lab.rand(-80, 80), lab.rand(26, 55), lab.rand(70, 90));
+    // луна и звёзды
+    lab.ball(5, '#fff4d6', { at: [-34, 40, -80], unlit: true, glow: 0.7, detail: 2, shadow: false });
+    const pts = [];
+    for (let i = 0; i < 320; i++) { const a = lab.rand(0, Math.PI * 2), e = lab.rand(0.12, 1.25); pts.push(Math.cos(a) * Math.cos(e) * 160, Math.sin(e) * 160, Math.sin(a) * Math.cos(e) * 160); }
+    const g = new T.BufferGeometry(); g.setAttribute('position', new T.Float32BufferAttribute(pts, 3));
+    scene.add(new T.Points(g, new T.PointsMaterial({ color: '#ffffff', size: 0.9, fog: false })));
   },
   animate(lab, dt) {
-    const st = lab.state, t = lab.t;
-    st.dotMat.emissiveColor = lab.color('#d8ff6a').scale(0.55 + 0.45 * Math.sin(t * 5)); // светлячки мерцают
-    st.hero.mesh.isVisible = !lab.blink();
+    const st = lab.state, t = lab.t, M = st.dotM || (st.dotM = new lab.THREE.Matrix4());
+    // светлячки парят и мерцают каждый в свою фазу
+    for (const d of st.dotList) {
+      if (d.gone) continue;
+      const k = 0.75 + 0.35 * Math.sin(t * 5 + d.x * 1.7 + d.y * 2.3);
+      M.makeScale(k, k, k).setPosition(this.wx(d.x) + Math.sin(t * 1.3 + d.y) * 0.07, 0.5 + Math.sin(t * 2.2 + d.x * 0.9 + d.y) * 0.1, this.wz(d.y) + Math.cos(t * 1.1 + d.x) * 0.07);
+      st.dotMesh.setMatrixAt(d.i, M);
+    }
+    st.dotMesh.instanceMatrix.needsUpdate = true;
+    // факелы горят и дрожат; с факелом в руках фонарь пастушка пылает
+    st.torches.forEach((tc, i) => {
+      if (!tc.lit) return;
+      const f = 0.85 + 0.15 * Math.sin(t * 17 + i * 3) + 0.08 * Math.sin(t * 31 + i);
+      tc.flame.scale.set(1, f, 1); tc.light.intensity = 8 * f;
+    });
+    const h = st.hero, fire = st.fright > 0;
+    if (st.dying <= 0) h.light.intensity = h.baseLight * (fire ? 1.6 + 0.2 * Math.sin(t * 20) : 1);
+    h.light.color.set(fire ? '#ff8a3c' : '#ffcf7a');
+    h.g.visible = st.dying > 0 || !lab.blink();
   },
 };
