@@ -1,8 +1,9 @@
 #!/usr/bin/env node
-// Автопроверка игры в настоящем браузере (Playwright + Chromium без окна).
+// Автопроверка игры в настоящем браузере (Playwright + Chromium без окна). Работает с обеими оболочками:
+// игры на three.js (engine: 'three', оболочка lab-three.js) и старые на Babylon.js (lab.js) — через window.__lab.
 // Запуск:  node portal/tools/check-game.js                    — все игры из portal/games/
 //          node portal/tools/check-game.js games/моя-игра.js  — одна игра (путь от portal/)
-//          node portal/tools/check-game.js --self             — ещё и проверка самой оболочки (физика, ловля ошибок)
+//          node portal/tools/check-game.js --self             — ещё и проверка самих оболочек (физика Babylon, ловля ошибок и строка)
 //          --headed — показать окно браузера, --quick — без «обезьяньего» прогона пресетов
 // Что проверяет: загрузка без ошибок, картинка не пустая, старт пробелом и геймпадом,
 // стартовое нажатие не засчитывается, ввод доходит до игры, панель ручек и пресеты,
@@ -54,20 +55,9 @@ async function checkOne(browser, base, item) {
   const errored = () => L('!!(window.__lab && window.__lab.errored)');
   const key = async (code, ms = 60) => { await page.keyboard.down(code); await sleep(ms); await page.keyboard.up(code); };
   // ждём N отрисованных кадров: без видеокарты кадров мало, обычные паузы ненадёжны
-  const frames = (n = 3) => page.evaluate(n => new Promise(r => {
-    const e = window.__lab.lab.engine; let c = 0;
-    const o = e.onEndFrameObservable.add(() => { if (++c >= n) { e.onEndFrameObservable.remove(o); r(); } });
-  }), n);
+  const frames = (n = 3) => page.evaluate(n => window.__lab.frames(n), n);
   const pad = async (fn, arg) => page.evaluate(fn, arg);
-  const pixels = () => page.evaluate(async () => {
-    const e = window.__lab.lab.engine, sc = window.__lab.scene;
-    sc.render();
-    const w = e.getRenderWidth(), h = e.getRenderHeight();
-    const px = await e.readPixels(0, 0, w, h);
-    const set = new Set(); let lit = 0, n = 0;
-    for (let i = 0; i < px.length; i += 4 * 61) { n++; set.add((px[i] >> 4) << 8 | (px[i + 1] >> 4) << 4 | (px[i + 2] >> 4)); if (px[i] + px[i + 1] + px[i + 2] > 60) lit++; }
-    return { colors: set.size, lit: Math.round(100 * lit / Math.max(1, n)) };
-  });
+  const pixels = () => page.evaluate(() => window.__lab.pixels());
   // «обезьяна»: случайно жмёт стрелки и кнопки, перезапускает после конца партии
   const monkey = async ms => {
     const codes = ['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Space', 'ShiftLeft'];
@@ -90,8 +80,8 @@ async function checkOne(browser, base, item) {
     pass('Загрузка без ошибок', loaded && !res.errors.length, res.errors[0] || (loaded ? '' : await L("document.querySelector('#errBox').innerText")));
     if (item.kind === 'broken') return await brokenChecks(page, res, pass, state, key);
     if (!loaded) return res;
-    const meta = await L("({ title: document.querySelector('#gTitle').textContent, btn: document.querySelector('#startBtn').textContent, knobs: Object.keys(window.__lab.DEFAULTS).length, babylon: BABYLON.Engine.Version })");
-    res.notes.title = meta.title; res.notes.babylon = meta.babylon;
+    const meta = await L("({ title: document.querySelector('#gTitle').textContent, btn: document.querySelector('#startBtn').textContent, knobs: Object.keys(window.__lab.DEFAULTS).length, engine: window.__lab.engine })");
+    res.notes.title = meta.title; res.notes.engine = meta.engine;
     pass('Заголовок игры на стартовом экране', meta.title && meta.title !== 'Загрузка…', meta.title);
     await sleep(600);
     await shot('1-menu');
@@ -130,13 +120,11 @@ async function checkOne(browser, base, item) {
     pass('6 секунд случайной игры без ошибок', !(await errored()) && !res.errors.length, res.errors[0] || '');
     if ((await state()) === 'over') { await key('Space'); await sleep(200); }
     await shot('2-play');
-    const fps = await L('Math.round(window.__lab.lab.engine.getFps())');
-    res.notes.fps = fps;
-    Object.assign(res.notes, await page.evaluate(() => new Promise(r => {
-      const sc = window.__lab.scene, si = new BABYLON.SceneInstrumentation(sc);
-      sc.onAfterRenderObservable.addOnce(() => sc.onAfterRenderObservable.addOnce(() => { r({ meshes: sc.meshes.length, draws: si.drawCallsCounter.current }); si.dispose(); }));
-    })));
-    pass('Вызовов отрисовки не больше 250 (копии через createInstance)', res.notes.draws <= 250, res.notes.draws);
+    res.notes.fps = (await L('window.__lab.info()')).fps;
+    await frames(2);
+    const info = await L('window.__lab.info()');
+    Object.assign(res.notes, { meshes: info.meshes, draws: info.draws, version: info.version });
+    pass(`Вызовов отрисовки не больше 250 (${meta.engine === 'three' ? 'копии InstancedMesh и lab.merge' : 'копии через createInstance'})`, res.notes.draws <= 250, res.notes.draws);
 
     // ручки геймдизайнера
     await key('Tab'); await sleep(200);
@@ -192,10 +180,12 @@ async function checkOne(browser, base, item) {
 async function brokenChecks(page, res, pass, state, key) {
   res.checks = []; res.ok = true; res.errors = [];
   await key('Space');
-  await page.waitForFunction('window.__lab.errored', null, { timeout: 5000 }).catch(() => {});
+  await page.waitForFunction('window.__lab.errored', null, { timeout: 20000 }).catch(() => {}); // без видеокарты секунда партии идёт долго
   const box = await page.evaluate("({ shown: !document.querySelector('#errBox').hidden, text: document.querySelector('#errBox').innerText })");
-  pass('Оболочка ловит ошибку в update и показывает строку', box.shown && /строка \d+/.test(box.text), box.text.split('\n')[0]);
-  await page.screenshot({ path: path.join(OUT, 'oshibka-1-error.png') });
+  const want = (fs.readFileSync(path.join(PORTAL, res.game), 'utf8').split('\n').findIndex(l => l.includes('намеренная ошибка')) + 1) || null;
+  const got = Number((/строка (\d+)/.exec(box.text) || [])[1]) || null;
+  pass('Оболочка ловит ошибку в update и показывает строку из кода игры', box.shown && got === want, `${box.text.split('\n')[0]} (ждали строку ${want})`);
+  await page.screenshot({ path: path.join(OUT, path.basename(res.game, '.js') + '-1-error.png') });
   await key('KeyR'); await sleep(300);
   pass('После ошибки игра не перезапускается сама по R', await page.evaluate('window.__lab.errored'), '');
   return res;
@@ -210,7 +200,7 @@ async function brokenChecks(page, res, pass, state, key) {
     args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist', '--autoplay-policy=no-user-gesture-required'],
   });
   const items = gameList();
-  if (flag('--self')) items.push({ src: 'tools/fixtures/fizika.js', kind: 'physics' }, { src: 'tools/fixtures/oshibka.js', kind: 'broken' });
+  if (flag('--self')) items.push({ src: 'tools/fixtures/fizika.js', kind: 'physics' }, { src: 'tools/fixtures/oshibka.js', kind: 'broken' }, { src: 'tools/fixtures/oshibka-three.js', kind: 'broken' });
   const report = [];
   let allOk = true;
   for (const it of items) {
@@ -218,7 +208,7 @@ async function brokenChecks(page, res, pass, state, key) {
     const r = await checkOne(browser, base, it);
     report.push(r);
     for (const c of r.checks) console.log(`  ${c.ok ? '✓' : '✗'} ${c.what}${c.detail ? ' — ' + c.detail : ''}`);
-    if (r.notes.fps != null) console.log(`  · кадров в секунду: ${r.notes.fps} (графика без видеокарты, на школьном ПК в разы больше), мешей: ${r.notes.meshes}, вызовов отрисовки: ${r.notes.draws}, сборка партии: ${r.notes.restartMs} мс`);
+    if (r.notes.fps != null) console.log(`  · ${r.notes.engine === 'three' ? 'three.js r' + r.notes.version : 'Babylon.js ' + r.notes.version}: кадров в секунду ${r.notes.fps} (графика без видеокарты, на школьном ПК в разы больше), мешей ${r.notes.meshes}, вызовов отрисовки ${r.notes.draws}, сборка партии ${r.notes.restartMs} мс`);
     if (!r.ok) allOk = false;
   }
   await browser.close();

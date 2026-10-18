@@ -4,6 +4,7 @@
 // Запуск: node portal/tools/playtest.js games/nlo-v-stanice.js [ещё игры…] [--seconds 90] [--json]
 //         без игр — все игры из portal/games/
 // Выводы — подсказки, а не ошибки: код выхода всегда 0, если игра загрузилась.
+// Работает с обеими оболочками: game.html сам открывает игру с engine: 'three' в three-game.html, бот у них общий (window.__lab.playtest).
 'use strict';
 const fs = require('fs');
 const path = require('path');
@@ -28,6 +29,7 @@ async function playOne(browser, base, src) {
   page.on('pageerror', e => errors.push(e.message));
   await page.goto(`${base}/engine/game.html?game=../${src}&seed=12345`);
   await page.waitForFunction(() => window.__lab && (window.__lab.ready || window.__lab.errored), null, { timeout: 60000 });
+  if (await page.evaluate(() => window.__lab.errored)) throw new Error(`${src}: игра не загрузилась — ` + await page.evaluate(() => document.querySelector('#errBox').innerText));
   const report = await page.evaluate(s => window.__lab.playtest({ seconds: s }), seconds);
   await page.close();
   return Object.assign(report, { pageErrors: errors });

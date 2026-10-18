@@ -4,6 +4,16 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>Лаборатория игр</title>
+<script>/* игра на three.js (engine: 'three' в объекте GAME) по той же ссылке открывается в новой оболочке three-game.html */
+(function () {
+  var g = new URLSearchParams(location.search).get('game');
+  if (!g || !/^[\w./-]+\.js$/.test(g) || g.indexOf('//') >= 0) return;
+  try {
+    var x = new XMLHttpRequest(); x.open('GET', g, false); x.send();
+    if (x.status === 200 && /\bengine\s*:\s*['"]three['"]/.test(x.responseText)) { window.__labMoved = true; location.replace('three-game.html' + location.search + location.hash); }
+  } catch (e) { /* игра остаётся в оболочке Babylon */ }
+})();
+</script>
 <style>
 :root{--bg:#0b1020;--panel:rgba(10,14,30,.94);--line:#2a3560;--accent:#7cf5a8;--accent-ink:#06140c;--text:#f2efe6;--muted:#9aa3c7;--danger:#ff5d6e;--warm:#ffb547;color-scheme:dark}
 [hidden]{display:none!important}

@@ -1,0 +1,3 @@
+three 0.170.0
+Источник: https://registry.npmjs.org/three/-/three-0.170.0.tgz (sha1 6087f97aab79e9e9312f9c89fcef6808642dfbb7)
+Скачано 2026-10-18 скриптом portal/tools/vendor-three.sh

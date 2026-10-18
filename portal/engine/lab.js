@@ -10,6 +10,7 @@
    ===================================================================== */
 (function () {
   'use strict';
+  if (window.__labMoved) return; // игра на three.js: страница уходит в three-game.html
   const B = window.BABYLON;
   const $ = s => document.querySelector(s);
   const SHELL_VERSION = '0.3';
@@ -1017,6 +1018,21 @@
     ready: false, lab, tele, session, get state() { return state; }, get paused() { return paused; }, get errored() { return errored; },
     get scene() { return scene; }, cfg, DEFAULTS,
     confirm, restart: () => restart(true), end: (k, t) => end(k || 'lose', t || 'Проверка'), togglePanel, playtest,
+    engine: 'babylon',
+    // то же, что у оболочки three.js: автопроверка работает с обеими
+    frames: (n = 1) => new Promise(r => { let c = 0; const o = engine.onEndFrameObservable.add(() => { if (++c >= n) { engine.onEndFrameObservable.remove(o); r(); } }); }),
+    info: () => new Promise(r => {
+      if (!scene) return r({ engine: 'babylon', version: B.Engine.Version, shell: SHELL_VERSION, draws: 0, meshes: 0, fps: Math.round(engine.getFps()) });
+      const sc = scene, si = new B.SceneInstrumentation(sc);
+      sc.onAfterRenderObservable.addOnce(() => sc.onAfterRenderObservable.addOnce(() => { r({ engine: 'babylon', version: B.Engine.Version, shell: SHELL_VERSION, draws: si.drawCallsCounter.current, meshes: sc.meshes.length, fps: Math.round(engine.getFps()) }); si.dispose(); }));
+    }),
+    async pixels() {
+      scene.render();
+      const w = engine.getRenderWidth(), h = engine.getRenderHeight(), px = await engine.readPixels(0, 0, w, h);
+      const set = new Set(); let lit = 0, n = 0;
+      for (let i = 0; i < px.length; i += 4 * 61) { n++; set.add((px[i] >> 4) << 8 | (px[i + 1] >> 4) << 4 | (px[i + 2] >> 4)); if (px[i] + px[i + 1] + px[i + 2] > 60) lit++; }
+      return { colors: set.size, lit: Math.round(100 * lit / Math.max(1, n)) };
+    },
   };
   // объект GAME может стоять в странице после lab.js — ждём, пока разберётся весь документ
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot); else boot();
