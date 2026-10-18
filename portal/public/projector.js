@@ -327,13 +327,14 @@ function drawGame() {
 }
 function killFrame() { if (P.tf) { P.tf.h.destroy(); P.tf = null; } P.frameFor = null; }
 // карта «крутится» как барабан: варианты колоды мелькают и останавливаются на вытянутом
-function spin(node, deck, final) {
+// барабан карты: мелькают имена из колоды, потом карта встаёт (face — как нарисовать итог, например «имя — особенность»)
+function spin(node, deck, final, face) {
   if (!deck.length) return;
   beep('dice');
   let n = 0;
   const t = setInterval(() => {
-    node.textContent = deck[Math.floor(Math.random() * deck.length)];
-    if (++n > 12) { clearInterval(t); node.textContent = final; node.parentNode.classList.add('landed'); beep('good'); }
+    node.textContent = Games.cardParts(deck[Math.floor(Math.random() * deck.length)])[0];
+    if (++n > 12) { clearInterval(t); node.textContent = ''; node.append(...(face ? face(final) : [final])); node.parentNode.classList.add('landed'); beep('good'); }
   }, 55);
 }
 async function draw(card) {
@@ -385,10 +386,10 @@ function drawWow(prev) {
     el('div', { id: 'pjWowCards' }), el('div', { id: 'pjWowLink' }), el('div', { id: 'pjWowCtrl', class: 'row' }), el('div', { id: 'pjWowGame', class: 'stack' }));
   }
   const ch = $('#pjWowCards'); ch.innerHTML = '';
-  ch.append(el('div', { class: 'pj-cards four' }, r.cards.map(c => {
+  ch.append(el('div', { class: 'pj-cards four', style: '--n:' + r.cards.length }, r.cards.map(c => {
     const text = w.cards[c.id], votes = (w.votes[c.id] || []).length;
-    const val = el('b', { class: 'cv' }, text || '?');
-    if (prev && text && prev.wow.cards[c.id] !== text) spin(val, decks[c.id] || [], text);
+    const val = el('b', { class: 'cv' }, Games.cardFace(text, c.parts));
+    if (prev && text && prev.wow.cards[c.id] !== text) spin(val, decks[c.id] || [], text, t => Games.cardFace(t, c.parts));
     return el('div', { class: 'pj-card' + (text ? ' on' : ''), 'data-card': c.id }, el('div', { class: 'eyebrow' }, c.label), val,
       votes ? el('div', { class: 'tag dice pj-votes' }, `перетянуть: ${votes}`) : null,
       !w.given && !busy ? el('button', { class: 'dicebtn', type: 'button', title: text ? 'Перетянуть карту' : 'Тянуть карту', 'aria-label': (text ? 'Перетянуть' : 'Тянуть') + ' карту «' + c.label + '»', onclick: () => wowDraw(c.id) }, '🎲') : null);
@@ -407,7 +408,7 @@ function drawWow(prev) {
     el('span', { class: 'muted small' }, `на связи: ${onl} из ${total}`)].filter(Boolean));
   const gh = $('#pjWowGame');
   if (P.job) return; // прогресс сборки рисует wowBuild()
-  const status = { cards: ready ? 'Карты на столе. Не нравится карта — голосуйте «перетянуть» у себя.' : 'Тяните карты: герой, действие, место и поворот.', building: '⚙ ИИ собирает игру класса прямо сейчас…', preview: w.given ? '✓ Игра у всех — играйте!' : 'Игра собрана. Проверим её здесь и раздадим классу.' }[w.status] || '';
+  const status = { cards: ready ? 'Карты на столе. Не нравится карта — голосуйте «перетянуть» у себя.' : 'Тяните карты: ' + r.cards.map(c => c.label.toLowerCase()).join(', ') + '.', building: '⚙ ИИ собирает игру класса прямо сейчас…', preview: w.given ? '✓ Игра у всех — играйте!' : 'Игра собрана. Проверим её здесь и раздадим классу.' }[w.status] || '';
   const gkey = r.game ? r.game.id + '/' + r.game.version : null;
   if (!gkey || P.wFrame && P.wFrame.gkey !== gkey) { if (P.wFrame) { P.wFrame.h.destroy(); P.wFrame = null; } gh.innerHTML = ''; }
   if (!gkey) { gh.append(el('p', { class: 'pj-sub', id: 'pjWowStatus' }, status)); return; }

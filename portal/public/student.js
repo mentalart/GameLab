@@ -416,7 +416,7 @@ STEPS.cards = ctx => {
       const mine = c.voters.includes(S.me.nick), fresh = c.text && prev[c.id] !== c.text;
       row.append(el('div', { class: 'wowcard' + (c.text ? ' up' : '') + (fresh ? ' flip' : ''), 'data-card': c.id },
         el('div', { class: 'wc-label' }, c.label),
-        el('div', { class: 'wc-text' }, c.text || '?'),
+        el('div', { class: 'wc-text' }, Games.cardFace(c.text, c.parts)),
         c.text && W.status === 'cards' ? el('button', { class: 'btn ghost small' + (mine ? ' on' : ''), type: 'button', 'aria-pressed': String(mine), onclick: () => vote(c.id) },
           `🔁 Перетянуть${c.voters.length ? ' · ' + c.voters.length : ''}`) : null));
       if (fresh && prev[c.id] !== undefined) flipped = true;
@@ -544,11 +544,17 @@ STEPS.choice = ctx => {
   return wrap;
 };
 
-// карточки квиза из игры класса: {hero} {action} {place} {twist} — карты, {secret} — секрет после шага «Найди секрет»
+// карточки квиза из игры класса: {hero} {action} {place} {threat} {twist} — карты, {heroName} {heroTrait} — имя и особенность карты «имя — особенность»,
+// {secret} — секрет после шага «Найди секрет»
 function wowItems(st) {
   if (!st.wowItems || !S.wow) return [];
   const vars = {};
-  S.wow.cards.forEach(c => { if (c.text) vars[c.id] = c.text; });
+  S.wow.cards.forEach(c => {
+    if (!c.text) return;
+    const [name, trait] = Games.cardParts(c.text);
+    vars[c.id] = c.text; vars[c.id + 'Name'] = name;
+    if (trait) vars[c.id + 'Trait'] = trait;
+  });
   const hunt = lessonSteps().find(x => x.type === 'secret'), sec = hunt && (ans(hunt.id).value || {}).secret;
   if (sec) vars.secret = sec.title;
   return st.wowItems.filter(it => [...it.text.matchAll(/\{(\w+)\}/g)].every(m => vars[m[1]]))

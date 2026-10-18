@@ -405,7 +405,7 @@ function drawWowCards() {
   r.cards.forEach(c => {
     const text = r.wow.cards[c.id], votes = (r.wow.votes[c.id] || []).length;
     row.append(el('div', { class: 'wowcard' + (text ? ' up' : ''), 'data-card': c.id },
-      el('div', { class: 'wc-label' }, c.label), el('div', { class: 'wc-text' }, text || '?'),
+      el('div', { class: 'wc-label' }, c.label), el('div', { class: 'wc-text' }, Games.cardFace(text, c.parts)),
       el('div', { class: 'row' }, el('button', { class: 'btn ghost small', type: 'button', onclick: () => wowAct('/api/teacher/wow/draw', { card: c.id }) }, text ? '🎲 Перетянуть' : '🎲 Тянуть'),
         votes ? el('span', { class: 'tag dice', title: (r.wow.votes[c.id] || []).join(', ') }, `перетянуть: ${votes}`) : null)));
   });
@@ -446,7 +446,7 @@ function drawWowBuild() {
   host.innerHTML = '';
   const ready = r.cards.every(c => r.wow.cards[c.id]);
   const box = el('div', { class: 'card stack' });
-  const statusLine = { cards: ready ? 'Карты на столе. Собирайте игру.' : 'Вытяните все четыре карты.', building: '⚙ ИИ собирает игру…', preview: r.wow.given ? '✓ Игра у учеников.' : 'Игра собрана. Проверьте её и раздайте классу.' }[r.wow.status] || '';
+  const statusLine = { cards: ready ? 'Карты на столе. Собирайте игру.' : 'Вытяните все карты.', building: '⚙ ИИ собирает игру…', preview: r.wow.given ? '✓ Игра у учеников.' : 'Игра собрана. Проверьте её и раздайте классу.' }[r.wow.status] || '';
   box.append(el('div', { class: 'row' }, el('h3', { class: 'grow' }, 'Игра класса'), el('span', { class: 'muted small' }, statusLine)));
   const prog = el('div');
   const buildBtn = el('button', { class: 'btn', type: 'button', disabled: !ready || r.wow.status === 'building' || W.busy ? true : null, onclick: async () => {

@@ -340,7 +340,7 @@ function demoProducerFix(plan, review, who) {
   return { igra, changes, demo: true };
 }
 
-/* ---------------- связка карт вау-старта: геймдизайнер сводит четыре карты в одну игру ---------------- */
+/* ---------------- связка карт вау-старта: геймдизайнер сводит пять карт в одну игру ---------------- */
 // поля связки: ключ и подпись — в таком порядке их видит учитель и получает программист
 const LINK_FIELDS = [['phrase', 'Фраза игры'], ['frame', 'Каркас и камера'], ['controls', 'Кнопки'], ['loop', 'Главный цикл'], ['risk', 'Риск и очки'],
   ['threats', 'Угрозы'], ['curve', 'Нарастание'], ['twist', 'Поворот × действие'], ['funny', 'Главный смешной момент']];
@@ -356,7 +356,7 @@ async function wowLink(cards, prev, who) {
   if (demo()) return demoLink(cards, who);
   const model = models().link;
   const t0 = Date.now();
-  const user = ['Карты:', `- Герой: ${cards.hero}`, `- Действие: ${cards.action}`, `- Место: ${cards.place}`, `- Поворот: ${cards.twist}`,
+  const user = ['Карты:', `- Герой: ${cards.hero}`, `- Действие: ${cards.action}`, `- Место: ${cards.place}`, `- Угроза: ${cards.threat || 'нет карты — придумай сам по месту'}`, `- Поворот: ${cards.twist}`,
     prev ? `\nУчитель попросил другую связку. Прошлая была: «${prev.phrase}»${prev.frame ? ` (${prev.frame})` : ''} — найди другое чтение карт, лучше в другом каркасе.` : ''].filter(Boolean).join('\n');
   try {
     const { text, entry } = await call('связка карт', who, model, [
@@ -372,12 +372,12 @@ async function wowLink(cards, prev, who) {
 function demoLink(cards, who) {
   log(Object.assign({ kind: 'связка карт', model: 'демо', ms: 0, ok: true, demo: true }, meta(who)));
   return {
-    phrase: `Ты — ${cards.hero}. Главное действие: ${cards.action}. Место: «${cards.place}». Поворот: ${cards.twist}. Цель — продержаться и набрать рекорд класса.`,
+    phrase: `Ты — ${cards.hero}. Главное действие: ${cards.action}. Место: «${cards.place}». Мешает: ${cards.threat || 'всё вокруг'}. Поворот: ${cards.twist}. Цель — продержаться и набрать рекорд класса.`,
     frame: 'Арена, изометрия: всё поле видно целиком, герой бегает по нему.',
     controls: `Движение — бегать, A — ${cards.action}, B не нужна.`,
     loop: `Каждые несколько секунд: ${cards.action} — и сразу видно, попал ли ты; промах стоит времени.`,
     risk: 'Действие рядом с опасностью даёт очки ×2.',
-    threats: 'Одни угрозы идут прямо, другие заходят сбоку; касание отнимает жизнь.',
+    threats: cards.threat ? `Главная угроза с карты: ${cards.threat}. К ней — мелкие помехи места; касание отнимает жизнь.` : 'Одни угрозы идут прямо, другие заходят сбоку; касание отнимает жизнь.',
     curve: 'К 30-й секунде — второй вид угроз, к 60-й — быстрее, к 90-й — всё вместе.',
     twist: `Поворот «${cards.twist}» меняет то, как работает главное действие: им можно и помешать себе, и выиграть.`,
     funny: 'Демо-режим: без ключа ИИ связка собрана по шаблону из карт.', model: 'демо', demo: true,
@@ -580,13 +580,13 @@ async function fix(code, error, who, onProgress, model) {
   }, who, onProgress, null, model);
 }
 
-// Общая игра урока (вау-старт): своя игра только из четырёх карт колоды безумных идей (без донора урока) + секретная механика из колоды секретов урока.
+// Общая игра урока (вау-старт): своя игра только из карт колоды безумных идей (без донора урока) + секретная механика из колоды секретов урока.
 // Секрет живёт в ручке secret и в скрытом счётчике телеметрии _secret. Без ключа — запасная игра урока.
 const wowFrame = wow => (wow.link && wow.link.frame) || ''; // каркас связки: по нему Claude получает один образец
 async function buildShared(wow, who, onProgress) {
   if (programmerDemo(who && who.lesson)) return demoShared(wow, who);
   const r = await program('общая игра', fill(userTemplate('wow'), {
-    'герой': wow.cards.hero, 'действие': wow.cards.action, 'место': wow.cards.place, 'поворот': wow.cards.twist, 'секрет': wow.secret, 'связка': linkText(wow.link),
+    'герой': wow.cards.hero, 'действие': wow.cards.action, 'место': wow.cards.place, 'угроза': wow.cards.threat || 'нет карты — придумай по месту', 'поворот': wow.cards.twist, 'секрет': wow.secret, 'связка': linkText(wow.link),
   }), who, onProgress, null, { frame: wowFrame(wow), newGame: true });
   if (!/\bsecret\s*:\s*\{/.test(r.code)) r.warnings = r.warnings.concat('нет ручки secret');
   if (!/_secret/.test(r.code)) r.warnings = r.warnings.concat('секрет не считается в телеметрии');

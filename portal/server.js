@@ -43,7 +43,7 @@ function studentLesson(les, cls) {
     return s;
   };
   const out = Object.assign({}, les, { checkpoints: les.checkpoints.map(cp => { const c = Object.assign({}, cp, { steps: cp.steps.map(step) }); delete c.teacher; return c; }) });
-  if (les.wow) out.wow = { formula: les.wow.formula, cards: les.wow.cards.map(c => ({ id: c.id, label: c.label })) };
+  if (les.wow) out.wow = { formula: les.wow.formula, cards: les.wow.cards.map(c => ({ id: c.id, label: c.label, parts: !!c.parts })) };
   return out;
 }
 function lesson(id) { return lessons().find(l => l.id === id) || null; }
@@ -757,7 +757,7 @@ function publicWow(cls, les) {
   const g = w.given && w.gameId ? store.getGame(w.gameId) : null;
   return {
     formula: les.wow.formula,
-    cards: les.wow.cards.map(c => ({ id: c.id, label: c.label, text: w.cards[c.id] || null, voters: w.votes[c.id] || [] })),
+    cards: les.wow.cards.map(c => ({ id: c.id, label: c.label, parts: !!c.parts, text: w.cards[c.id] || null, voters: w.votes[c.id] || [] })),
     status: w.given ? 'given' : w.status,
     link: acceptedLink(w) ? { phrase: w.link.phrase, loop: w.link.loop, twist: w.link.twist, funny: w.link.funny } : null,
     game: g && g.current ? { id: g.id, version: g.current, title: g.title, knob: w.knob } : null,
@@ -852,7 +852,7 @@ route('GET', '/api/teacher/wow', (ctx) => {
   const { cls, les, w } = needWow(ctx);
   const g = w.gameId ? store.getGame(w.gameId) : null, v = g && g.versions[g.current - 1];
   return {
-    wow: w, demo: ai.programmerDemo(les.id), chat: ai.manual(les.id), formula: les.wow.formula, cards: les.wow.cards.map(c => ({ id: c.id, label: c.label })),
+    wow: w, demo: ai.programmerDemo(les.id), chat: ai.manual(les.id), formula: les.wow.formula, cards: les.wow.cards.map(c => ({ id: c.id, label: c.label, parts: !!c.parts })),
     secrets: aiSecrets(les).map(x => ({ id: x.id, title: x.title, effect: x.effect, sound: !!x.sound })), secret: secretOf(les, w.secret), headphones: !!cls.headphones, built: w.gameId ? builtSecret(les, w) : null,
     game: g && v ? { id: g.id, version: g.current, title: g.title, model: v.model, warnings: v.warnings || [], fallback: !!v.fallback, attempts: v.attempts, kind: v.kind,
       playtest: v.playtest || null, from: v.from || null, before: v.from && g.versions[v.from - 1] ? g.versions[v.from - 1].playtest || null : null } : null,
@@ -886,7 +886,7 @@ route('POST', '/api/teacher/wow/headphones', (ctx) => {
   store.saveClass(cls);
   return { headphones: cls.headphones, secret: secretOf(les, w.secret) };
 });
-// связка от ИИ: геймдизайнер сводит четыре карты в одну игру; принятая связка уходит программисту вместе с картами
+// связка от ИИ: геймдизайнер сводит карты вау-старта в одну игру; принятая связка уходит программисту вместе с картами
 const cardsKey = w => JSON.stringify(w.cards);
 const acceptedLink = w => (w.link && w.link.accepted && w.link.cards === cardsKey(w) ? w.link : null);
 route('POST', '/api/teacher/wow/link', (ctx) => {
@@ -1002,7 +1002,9 @@ route('POST', '/api/teacher/wow/version', (ctx) => { // вернуть прош�
   g.current = n; store.saveGame(g); wowChanged(cls, les);
   return { version: n };
 });
-const wowTitle = (les, w) => `${cap(w.cards.hero || 'Герой')} ${w.cards.place || ''}`.trim();
+// название игры класса — имена карт без особенностей: «Пельмень-беглец на Луне»
+const cardName = t => String(t || '').split(' — ')[0];
+const wowTitle = (les, w) => `${cap(cardName(w.cards.hero) || 'Герой')} ${cardName(w.cards.place)}`.trim();
 route('POST', '/api/teacher/wow/build', (ctx) => {
   const { cls, les, w } = needWow(ctx);
   const missing = les.wow.cards.filter(c => !w.cards[c.id]);

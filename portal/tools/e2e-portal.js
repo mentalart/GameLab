@@ -408,8 +408,11 @@ async function wowStart(teacher, student, mode, shot) {
   await teacher.click('.tabs >> text=Вау-старт');
   await teacher.waitForSelector('#wowCards .wowcard');
   await teacher.click('#tab-wow >> text=🎲 Тянуть все карты');
-  await student.waitForSelector('#step-vau-karty .wowcard.up >> nth=3', { timeout: 10000 });
-  check('Карты, которые тянет учитель, появились у ученика сразу (SSE)', await student.locator('#step-vau-karty .wowcard.up').count() === 4);
+  const nCards = lesson1.wow.cards.length;
+  await student.waitForSelector(`#step-vau-karty .wowcard.up >> nth=${nCards - 1}`, { timeout: 10000 });
+  check(`Карты, которые тянет учитель, появились у ученика сразу (SSE): ${nCards}`, await student.locator('#step-vau-karty .wowcard.up').count() === nCards);
+  const face = (await student.textContent('#step-vau-karty .wowcard[data-card=hero] .wc-text')).trim();
+  check('Карта героя: имя крупно, особенность строкой ниже', await student.locator('#step-vau-karty .wowcard[data-card=hero] .ct').count() === 1, face);
   await student.click('#step-vau-karty [data-card=hero] >> text=Перетянуть');
   await teacher.waitForSelector('#wowCards >> text=перетянуть: 1', { timeout: 10000 });
   check('Учитель видит голос «перетянуть»', true);
@@ -426,11 +429,11 @@ async function wowStart(teacher, student, mode, shot) {
   await teacher.waitForSelector('#wowSecret >> text=выбор учителя', { timeout: 10000 });
   check('Учитель тайно заменил секрет', (await teacher.textContent('#wowSecret')).includes('Под конец игра злится'));
   await teacher.click('#wowSecret >> text=Скрыть');
-  // связка от ИИ: геймдизайнер сводит четыре карты в одну игру, учитель принимает — связку видят ученики, она уходит в сборку
+  // связка от ИИ: геймдизайнер сводит карты в одну игру, учитель принимает — связку видят ученики, она уходит в сборку
   await teacher.click('#wowLink >> text=🧠 Связка от ИИ');
   await teacher.waitForSelector('#wowLink .link-phrase', { timeout: 30000 });
   let phrase = (await teacher.textContent('#wowLink .link-phrase')).trim();
-  check('Связка от ИИ свела четыре карты: фраза игры', phrase.length > 20, phrase.slice(0, 90));
+  check('Связка от ИИ свела карты: фраза игры', phrase.length > 20, phrase.slice(0, 90));
   await teacher.click('#wowLink >> text=✓ Принять связку');
   await teacher.waitForSelector('#wowLink >> text=принята — уйдёт в сборку', { timeout: 10000 });
   // учитель правит связку руками: сохранённая правка сразу принята
@@ -452,6 +455,7 @@ async function wowStart(teacher, student, mode, shot) {
   const info = (await teacher.textContent('#wowBuild')).replace(/\s+/g, ' ');
   if (mode === 'mock') check('ИИ собрал игру класса с ручкой secret и скрытым счётчиком', !/нет ручки secret|не считается/.test(info) && !/запасная игра «/.test(info), info.slice(0, 120));
   if (mode === 'mock') check('Принятая связка ушла программисту вместе с картами', /Связка геймдизайнера — класс принял её/.test(mock.last.wowUser || '') && (mock.last.wowUser || '').includes(phrase));
+  if (mode === 'mock') { const threat = (await teacher.textContent('#wowCards [data-card=threat] .wc-text')).trim(); check('Карта угрозы ушла программисту с особенностью', /- Угроза: .+ — .+/.test(mock.last.wowUser || ''), threat); }
   if (mode === 'mock') check('Связка задаёт программисту каркас, кнопки и риск', /- Каркас и камера: Арена/.test(mock.last.wowUser || '') && /- Риск и очки: /.test(mock.last.wowUser || ''));
   else check('Без ключа собралась запасная игра урока', /запасная игра/.test(info), info.slice(0, 120));
   // бот-плейтестер сам прогоняет новую версию в рамке предпросмотра: три партии, отчёт сохраняется у версии
@@ -615,11 +619,11 @@ async function openProjector(base, code, teacher, errors, shot) {
 /* ---------- вау-старт урока 1 на проекторе: те же карты, игра у всех, секрета не видно ---------- */
 async function projectorWow(pj, teacher, shot) {
   await pj.click('#demoTab');
-  await pj.waitForFunction(() => document.querySelectorAll('.pj-card.on').length === 4, null, { timeout: 15000 });
+  await pj.waitForFunction(n => document.querySelectorAll('.pj-card.on').length === n, lesson1.wow.cards.length, { timeout: 15000 });
   await sleep(1000); // барабан карт докрутился
   const cards = await pj.$$eval('.pj-card .cv', bs => bs.map(b => b.textContent.trim()));
   const inPanel = await teacher.$$eval('#wowCards .wc-text', bs => bs.map(b => b.textContent.trim()));
-  check('Проектор: те же четыре карты, что у учителя', cards.join('|') === inPanel.join('|'), cards.join(' | '));
+  check('Проектор: те же карты, что у учителя', cards.join('|') === inPanel.join('|'), cards.join(' | '));
   await pj.waitForSelector('#pjWowGame iframe, #pjWowGame .veil', { timeout: 15000 });
   const text = await pj.textContent('#pj-demo');
   check('Проектор: принятая связка на экране', await pj.locator('#pjWowLink .link-phrase').count() === 1);

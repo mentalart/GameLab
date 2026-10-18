@@ -286,7 +286,7 @@ const Games = (() => {
   }
 
   /* ---------- вау-старт: связка карт от ИИ (панель учителя и проектор) ---------- */
-  // геймдизайнер сводит четыре карты в одну игру: фраза, главный цикл, поворот × действие, смешной момент.
+  // геймдизайнер сводит карты вау-старта в одну игру: фраза, главный цикл, поворот × действие, смешной момент.
   // Учитель принимает связку или просит другую; принятая уходит программисту вместе с картами. onChange — перерисовать вкладку.
   // строки связки под фразой игры (как LINK_FIELDS в lib/ai.js): ключ, подпись, подсказка для правки учителем
   const LINK_ROWS = [['frame', 'Каркас и камера', 'Арена, изометрия / Ловля / Бег навстречу / Вид сбоку / Тир'], ['controls', 'Кнопки', 'Движение — …, A — …, B — …'],
@@ -323,7 +323,7 @@ const Games = (() => {
     };
     const editBtn = label => el('button', { class: 'btn ghost', type: 'button', onclick: editForm }, label);
     if (!link) {
-      box.append(el('div', { class: 'row' }, el('div', { class: 'grow stack', style: 'gap:2px' }, el('b', {}, '🧠 Связка: как четыре карты становятся одной игрой'),
+      box.append(el('div', { class: 'row' }, el('div', { class: 'grow stack', style: 'gap:2px' }, el('b', {}, '🧠 Связка: как карты становятся одной игрой'),
         el('span', { class: 'muted small' }, 'Геймдизайнер сведёт карты в одну игру: фраза, каркас и камера, кнопки, цикл, риск, угрозы, нарастание, поворот, смешной момент. Принятая связка уйдёт программисту.')),
       el('div', { class: 'row' }, askBtn('🧠 Связка от ИИ'), editBtn('✎ Написать самому'))));
       return box;
@@ -414,5 +414,15 @@ const Games = (() => {
       el('div', {}, el('b', {}, 'Вопрос: '), valText(fb.question)));
   }
 
-  return { frames, frame, teacherFrame, bar, stopAll, card, scores, challenge, challengeStage, openChallenge, board, challengeEvent, linkBox, playtestBox, discovery, feedback };
+  /* ---------- карта колоды безумных идей ---------- */
+  // Карты героя, места и угрозы (parts) — «имя — особенность»: имя крупно, особенность — строкой ниже.
+  const cardParts = text => { const t = String(text || ''), i = t.indexOf(' — '); return i > 0 ? [t.slice(0, i), t.slice(i + 3)] : [t, '']; };
+  function cardFace(text, parts) {
+    if (!text) return ['?'];
+    if (!parts) return [text];
+    const [name, trait] = cardParts(text);
+    return trait ? [el('span', { class: 'cn' }, name), el('span', { class: 'ct' }, trait)] : [text];
+  }
+
+  return { cardParts, cardFace, frames, frame, teacherFrame, bar, stopAll, card, scores, challenge, challengeStage, openChallenge, board, challengeEvent, linkBox, playtestBox, discovery, feedback };
 })();
