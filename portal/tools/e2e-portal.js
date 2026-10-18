@@ -503,7 +503,7 @@ async function wowStart(teacher, student, mode, shot) {
   await teacher.click('#wowLink >> text=✎ Править');
   await teacher.waitForSelector('#wowLink textarea[data-link="phrase"]');
   const phrase0 = phrase;
-  phrase = phrase0 + ' Учитель добавил: козёл не тормозит.';
+  phrase = phrase0.slice(0, 350).trim() + ' Учитель добавил: козёл не тормозит.'; // поле правки — до 400 знаков, а фраза из колоды действий бывает длиннее
   await teacher.fill('#wowLink textarea[data-link="phrase"]', phrase);
   await teacher.click('#wowLink >> text=✓ Сохранить и принять');
   await teacher.waitForSelector('#wowLink >> text=принят — уйдёт в сборку', { timeout: 10000 });
