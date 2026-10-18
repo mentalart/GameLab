@@ -477,8 +477,8 @@ STEPS.secret = ctx => {
         el('div', { class: 'secret-reveal' },
           el('div', { class: 'eyebrow' }, 'Секрет игры класса'), el('h3', {}, a.secret.title), el('p', {}, a.secret.reveal),
           a.secret.effect ? el('span', { class: 'tag' }, a.secret.effect === 'помощник' ? 'помощник: незаметно помогает игроку' : 'нагнетатель: делает игру напряжённее') : null),
-        data.felt && data.felt.voted ? el('p', { class: 'concept' }, `В классе секрет почувствовали вслепую ${data.felt.felt} из ${data.felt.voted}.`) : null,
-        el('div', { class: 'compare' }, col(sk, true), col(ok, false)), marksBar(AB[sk].marks),
+        data.felt && data.felt.voted ? el('p', { class: 'concept' }, `В классе секрет почувствовали вслепую ${data.felt.felt} из ${data.felt.voted}.`) : '',
+        el('div', { class: 'compare' }, col(sk, true), col(ok, false)), marksBar(AB[sk].marks) || '',
         el('p', { class: 'concept' }, 'Открой ручки (Tab) в игре класса и покрути ручку «Секрет» от 0 до 1. Как меняется чувство игры?'));
       return;
     }
