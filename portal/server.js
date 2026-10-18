@@ -746,12 +746,17 @@ function drawFresh(seen, id, deck, cur) {
 const hashOf = t => [...String(t)].reduce((n, c) => (n * 31 + c.charCodeAt(0)) >>> 0, 7);
 function wowState(cls, les) {
   if (!les.wow) return null;
+  const fixed = fixedSecret(les);
   if (!cls.wow || cls.wow.lesson !== les.id) {
-    cls.wow = { lesson: les.id, cards: {}, votes: {}, secret: randFrom(diceSecrets(cls, les).map(x => x.id)), secretBy: 'кубик', status: 'cards', gameId: null, given: false };
+    cls.wow = { lesson: les.id, cards: {}, votes: {}, secret: fixed || randFrom(diceSecrets(cls, les).map(x => x.id)), secretBy: fixed ? 'урок' : 'кубик', status: 'cards', gameId: null, given: false };
     store.saveClass(cls);
+  } else if (fixed && cls.wow.secret !== fixed) { // класс начал урок до того, как секрет стал один: следующая сборка заложит секрет урока
+    cls.wow.secret = fixed; cls.wow.secretBy = 'урок'; store.saveClass(cls);
   }
   return cls.wow;
 }
+// один секрет игры класса на все классы (wow.classSecret): кубика и тайной замены у учителя нет
+const fixedSecret = les => (les.wow && les.wow.classSecret && les.wow.secrets.some(x => x.id === les.wow.classSecret) ? les.wow.classSecret : null);
 const aiSecrets = les => les.wow.secrets.filter(x => !x.fallbackOnly); // секреты для игры ИИ; fallbackOnly — только у запасной игры
 // секреты для кубика и карты секрета в Фабрике: со звуком (sound) — только если учитель отметил, что в классе наушники
 const diceSecrets = (cls, les) => { const all = aiSecrets(les), ok = all.filter(x => !x.sound || (cls && cls.headphones)); return ok.length ? ok : all; };
@@ -859,7 +864,7 @@ route('GET', '/api/teacher/wow', (ctx) => {
   const g = w.gameId ? store.getGame(w.gameId) : null, v = g && g.versions[g.current - 1];
   return {
     wow: w, demo: ai.programmerDemo(les.id), chat: ai.manual(les.id), formula: les.wow.formula, cards: les.wow.cards.map(c => ({ id: c.id, label: c.label, parts: !!c.parts })),
-    secrets: aiSecrets(les).map(x => ({ id: x.id, title: x.title, effect: x.effect, sound: !!x.sound })), secret: secretOf(les, w.secret), headphones: !!cls.headphones, built: w.gameId ? builtSecret(les, w) : null,
+    secrets: aiSecrets(les).map(x => ({ id: x.id, title: x.title, effect: x.effect, sound: !!x.sound })), secret: secretOf(les, w.secret), fixed: !!fixedSecret(les), headphones: !!cls.headphones, built: w.gameId ? builtSecret(les, w) : null,
     game: g && v ? { id: g.id, version: g.current, knob: w.knob || 'secret', title: g.title, model: v.model, warnings: v.warnings || [], fallback: !!v.fallback, attempts: v.attempts, kind: v.kind,
       playtest: v.playtest || null, from: v.from || null, before: v.from && g.versions[v.from - 1] ? g.versions[v.from - 1].playtest || null : null } : null,
     summary: wowSummary(cls, les),
@@ -878,6 +883,7 @@ route('POST', '/api/teacher/wow/draw', (ctx) => {
 });
 route('POST', '/api/teacher/wow/secret', (ctx) => { // без id — кубик, с id — тайный выбор учителя
   const { cls, les, w } = needWow(ctx);
+  if (fixedSecret(les)) throw Object.assign(new Error(`В этом уроке у игры класса один секрет: «${secretOf(les, fixedSecret(les)).title}»`), { status: 400 });
   if (ctx.body.id) { if (!aiSecrets(les).some(x => x.id === ctx.body.id)) throw Object.assign(new Error('Нет такого секрета'), { status: 400 }); w.secret = ctx.body.id; w.secretBy = 'учитель'; }
   else { w.secret = randFrom(diceSecrets(cls, les).map(x => x.id), w.secret); w.secretBy = 'кубик'; }
   store.saveClass(cls);
@@ -888,7 +894,7 @@ route('POST', '/api/teacher/wow/secret', (ctx) => { // без id — кубик,
 route('POST', '/api/teacher/wow/headphones', (ctx) => {
   const { cls, les, w } = needWow(ctx);
   cls.headphones = !!ctx.body.on;
-  if (!cls.headphones && secretOf(les, w.secret).sound && w.secretBy === 'кубик') w.secret = randFrom(diceSecrets(cls, les).map(x => x.id), w.secret);
+  if (!fixedSecret(les) && !cls.headphones && secretOf(les, w.secret).sound && w.secretBy === 'кубик') w.secret = randFrom(diceSecrets(cls, les).map(x => x.id), w.secret);
   store.saveClass(cls);
   return { headphones: cls.headphones, secret: secretOf(les, w.secret) };
 });

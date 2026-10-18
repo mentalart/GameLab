@@ -74,9 +74,8 @@ const Lab = (() => {
       const steps = m.cont ? el('div', { class: 'row' }, copyBtn('📋 Скопировать «Продолжи»'), open)
         : m.followUp ? el('div', { class: 'row' }, copyBtn('📋 Скопировать сообщение'), open)
         : el('ol', { class: 'qwen-steps' },
-          // Clear — задание из трёх частей без Babylon.js (ответ — страница HTML); автор сравнивает оба варианта
-          el('li', {}, el('div', { class: 'row' }, copyBtn(`📋 Скопировать задание (${size(m.chars)})`),
-            m.clear ? copyBtn(`📋 Скопировать задание — Clear (${size(m.clear)})`, true) : null)),
+          // одна кнопка (решение автора 18.10.2026): задание из трёх частей без Babylon.js (ответ — страница HTML); прежнее — только если его нет
+          el('li', {}, el('div', { class: 'row' }, m.clear ? copyBtn(`📋 Скопировать задание (${size(m.clear)})`, true) : copyBtn(`📋 Скопировать задание (${size(m.chars)})`))),
           el('li', {}, el('div', { class: 'row' }, open, el('span', { class: 'small muted' }, 'Новый чат на каждую игру, правки — в том же чате.'))),
           el('li', {}, 'Когда Qwen допишет, нажми в чате «Копировать» над блоком кода и вставь ответ ниже.'));
       dlg.append(el('div', { class: 'stack' },

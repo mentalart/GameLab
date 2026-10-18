@@ -457,7 +457,12 @@ function drawWowSecret() {
   const box = el('div', { class: 'secretbox' });
   box.append(el('div', { class: 'row' }, el('b', { class: 'grow' }, '🤫 Секрет игры — его видите только вы'),
     el('button', { class: 'btn ghost small', type: 'button', onclick: () => { W.showSecret = !W.showSecret; drawWowSecret(); } }, W.showSecret ? 'Скрыть' : 'Показать')));
-  if (W.showSecret) {
+  if (W.showSecret && r.fixed) { // урок с одним секретом игры класса: ни кубика, ни замены
+    box.append(el('div', {}, el('span', { class: 'tag own' }, 'секрет урока'), ' ', el('b', {}, r.secret.title)),
+      el('p', { class: 'small muted' }, 'В этом уроке у игры класса один секрет для всех классов: разбор отработан под него. Классу его не называйте — его ищут в «Найди секрет».'),
+      r.built && r.built.id !== r.secret.id ? el('p', { class: 'small', style: 'color:var(--warm)' }, `В собранной игре сейчас другой секрет: «${r.built.title}». Пересоберите игру, чтобы заложить секрет урока.`) : '',
+      r.demo ? el('p', { class: 'small muted' }, 'Демо-режим: без ключа ИИ собирается запасная игра урока, у неё свой секрет — ускорение волны.') : '');
+  } else if (W.showSecret) {
     const sel = el('select', { id: 'wowSecretSel', 'aria-label': 'Выбрать секрет' });
     r.secrets.forEach(x => sel.append(el('option', { value: x.id, selected: x.id === r.secret.id ? true : null }, `${x.title} (${x.effect})${x.sound ? ' · 🎧 слышно только в наушниках' : ''}`)));
     sel.addEventListener('change', () => wowAct('/api/teacher/wow/secret', { id: sel.value }));
@@ -468,6 +473,7 @@ function drawWowSecret() {
       r.demo ? el('p', { class: 'small muted' }, 'Демо-режим: без ключа ИИ собирается запасная игра урока, у неё свой секрет — ускорение волны.') : '');
   }
   // наушники: без них секреты со звуком не выпадают кубиком и не попадают в карту секрета Фабрики
+  if (!r.secrets.some(x => x.sound)) { host.append(box); return; } // секретов со звуком нет — отметка про наушники ни на что не влияет
   const hp = el('input', { type: 'checkbox', id: 'wowHeadphones', checked: r.headphones ? true : null });
   hp.addEventListener('change', () => wowAct('/api/teacher/wow/headphones', { on: hp.checked }, true));
   box.append(el('label', { class: 'row small', for: 'wowHeadphones', style: 'gap:8px;cursor:pointer' }, hp,

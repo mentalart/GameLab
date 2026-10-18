@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // Проверка урока 1 версии 2: программист — Qwen в чате chat.qwen.ai, игры собираются копированием задания и вставкой ответа.
-// Две кнопки задания на новую игру: прежнее (правила Лаб3D, ответ — объект GAME) и Clear (три части, ответ — страница HTML).
+// Одна кнопка «Скопировать задание» на новую игру: задание Clear из трёх частей, ответ — страница HTML.
 // Без ключа ИИ: сборка, оборванный ответ и «Продолжи», ответ без кода и сообщение в тот же чат, правки кусками обоих форматов,
 // мост portal.js (ручки, setCfg, «запустилась», отказ бота, телеметрия партии), игра класса у учителя, окно Qwen в браузере ученика,
 // правка в чате Qwen (договор, перенос в новый чат, конструктор просьбы, «Вставить новую версию из чата», сообщение «что пропало»).
@@ -162,7 +162,7 @@ const patch = (find, repl) => `<<<<<<< НАЙТИ\n${find}\n=======\n${repl}\n>>
     await pg.evaluate(() => { window.__res = null; Lab.job('/api/ai/build', {}).then(r => (window.__res = r), e => (window.__res = e.message)); });
     await pg.waitForSelector('dialog.qwen[open] button.clear:not([disabled])', { timeout: 10000 });
     const btns = await pg.$$eval('dialog.qwen button.btn:not(.ghost):not(.qwen-send)', b => b.map(x => x.textContent));
-    check('Окно Qwen: две кнопки задания (прежнее и Clear), ссылка на чат', btns.length === 2 && /Clear/.test(btns[1]) && !btns.some(x => /без правил/.test(x)) && !!(await pg.$('dialog.qwen a[href="https://chat.qwen.ai/"]')), btns.join(' | '));
+    check('Окно Qwen: одна кнопка «Скопировать задание» (три части, без Clear в подписи), ссылка на чат', btns.length === 1 && /^📋 Скопировать задание \(/.test(btns[0]) && !/Clear/.test(btns[0]) && !!(await pg.$('dialog.qwen a[href="https://chat.qwen.ai/"]')), btns.join(' | '));
     await pg.screenshot({ path: path.join(__dirname, '..', '.check', 'qwen-chat-dialog.png') }).catch(() => {});
     await pg.fill('dialog.qwen textarea', '```html\n' + PAGE + '\n```');
     await pg.click('dialog.qwen .qwen-send');
