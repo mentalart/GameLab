@@ -35,13 +35,15 @@ const SAMPLE2 = {
   about: 'ремейк-донор урока 2 по мотивам крестиков-ноликов — пошаговая игра на сетке\nКурсор по клеткам, ход бота перебором с ограничением глубины, матч из нескольких партий, режим «вдвоём за одним экраном», правило-секрет ручкой.',
 };
 
-// образец урока по id сценария (portal/lessons/<id>.js); уроки-проверки и уроки без sample — образец по умолчанию
-function lessonSample(lessonId) {
+// сценарий урока по id (portal/lessons/<id>.js); уроки-проверки из LAB_LESSONS — null
+function lessonModule(lessonId) {
   if (!lessonId || !/^[\w-]+$/.test(lessonId)) return null;
-  try {
-    const les = require(path.join(PORTAL, 'lessons', lessonId + '.js'));
-    return les.sample && les.sample.file ? les.sample : null;
-  } catch (e) { return null; }
+  try { return require(path.join(PORTAL, 'lessons', lessonId + '.js')); } catch (e) { return null; }
+}
+// образец урока по id сценария; уроки-проверки и уроки без sample — образец по умолчанию
+function lessonSample(lessonId) {
+  const les = lessonModule(lessonId);
+  return les && les.sample && les.sample.file ? les.sample : null;
 }
 
 // Игра класса для Claude: один образец того же каркаса, что выбрала связка (поле frame), вместо двух образцов урока.
@@ -66,10 +68,11 @@ function claudePrompt(opts) {
 }
 
 // opts: { lesson } — id урока, { sample } — { file, about }, { model } — модель программиста (Claude — свой промпт),
+// { short } — короткий промпт с одним образцом и для другой модели (программист в chat.qwen.ai, урок 1 версии 2),
 // { frame } — каркас из связки игры класса (строка, можно пустую): для Claude образец этого каркаса; строка — старый вызов: файл образца 1
 function systemPrompt(opts = {}) {
   if (typeof opts === 'string') opts = { example: opts };
-  if (isClaude(opts.model)) return claudePrompt(opts);
+  if (isClaude(opts.model) || opts.short) return claudePrompt(opts);
   const second = opts.sample || lessonSample(opts.lesson) || SAMPLE2;
   let text = between(read('ai/game-prompt.md'), '<!-- prompt:start -->', '<!-- prompt:end -->').split('{{BABYLON}}').join(babylonVersion());
   text = text.split('{{ПРИМЕР2_ЧТО}}').join(second.about || 'ремейк-донор урока');
@@ -84,13 +87,13 @@ function userTemplate(name) {
 
 // размер промпта для каждого урока из portal/lessons/: для Qwen и для Claude (со стандартом геймдизайна)
 function sizes() {
-  return fs.readdirSync(path.join(PORTAL, 'lessons')).filter(f => /^urok-\d+\.js$/.test(f)).sort().map(f => {
+  return fs.readdirSync(path.join(PORTAL, 'lessons')).filter(f => /^urok-\d+(-v\d+)?\.js$/.test(f)).sort().map(f => {
     const id = f.replace(/\.js$/, ''), s = lessonSample(id), text = systemPrompt({ lesson: id }), claude = systemPrompt({ lesson: id, model: 'claude' });
     return { lesson: id, sample: (s || SAMPLE2).file, chars: text.length, tokens: tokens(text), claudeTokens: tokens(claude) };
   });
 }
 
-module.exports = { FRAMES, frameOf, systemPrompt, userTemplate, babylonVersion, lessonSample, sizes, tokens, isClaude, SAMPLES, LIMIT };
+module.exports = { FRAMES, frameOf, systemPrompt, userTemplate, babylonVersion, lessonSample, lessonModule, sizes, tokens, isClaude, SAMPLES, LIMIT };
 
 if (require.main === module) {
   const args = process.argv.slice(2);

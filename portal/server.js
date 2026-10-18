@@ -18,16 +18,18 @@ const TYPES = {
 };
 
 /* ---------------- уроки ---------------- */
-// LAB_LESSONS — дополнительная папка сценариев (e2e-portal.js кладёт туда урок-проверку новых типов шагов)
+// LAB_LESSONS — дополнительная папка сценариев (e2e-portal.js кладёт туда урок-проверку новых типов шагов).
+// Версия урока — файл urok-NN-vK.js (поле version в сценарии): в меню учителя рядом с первой версией того же урока.
 const MODULES = require('./lessons/moduli');
 const answers = require('./lib/answers');
 const LESSON_DIRS = [path.join(PORTAL, 'lessons')].concat(process.env.LAB_LESSONS ? [path.resolve(process.env.LAB_LESSONS)] : []);
 function lessons() {
-  return LESSON_DIRS.flatMap(dir => { try { return fs.readdirSync(dir).filter(f => /^urok-\d+\.js$/.test(f)).map(f => path.join(dir, f)); } catch (e) { return []; } })
-    .sort((a, b) => path.basename(a).localeCompare(path.basename(b))).map(file => {
+  return LESSON_DIRS.flatMap(dir => { try { return fs.readdirSync(dir).filter(f => /^urok-\d+(-v\d+)?\.js$/.test(f)).map(f => path.join(dir, f)); } catch (e) { return []; } })
+    .map(file => {
       delete require.cache[require.resolve(file)];
+      if (/-v\d+\.js$/.test(file)) delete require.cache[require.resolve(file.replace(/-v\d+\.js$/, '.js'))]; // версия урока собирается из первой
       return require(file);
-    });
+    }).sort((a, b) => a.number - b.number || (a.version || 1) - (b.version || 1) || a.id.localeCompare(b.id));
 }
 // ученику — урок без колоды секретов: какой секрет в игре класса, он узнаёт только после своей догадки
 // и без ответа шага «Найди секрет» с hunt в сценарии: правильный вариант, ловушка и раскрытие приходят после догадки
@@ -49,11 +51,21 @@ function stepOf(les, stepId) { for (const cp of les.checkpoints) for (const s of
 
 /* ---------------- задания ИИ (идут долго, клиент опрашивает) ---------------- */
 const jobs = new Map();
+// Программист в chat.qwen.ai (урок с programmer: 'chat'): задание ждёт человека в состоянии waiting — progress.ask выдаёт
+// текст для чата, страница показывает окно «скопируй → вставь ответ», ответ приходит в /api/job/answer, и задание идёт дальше.
 function startJob(owner, kind, fn) {
   const job = { id: store.id(12), owner, kind, state: 'running', started: Date.now(), chars: 0, phase: '', result: null, error: null };
   jobs.set(job.id, job);
-  Promise.resolve().then(() => fn((chars, phase) => { job.chars = chars; if (phase) job.phase = phase; }))
+  const progress = (chars, phase) => { job.chars = chars; if (phase) job.phase = phase; };
+  progress.ask = q => new Promise((resolve, reject) => {
+    job.state = 'waiting';
+    job.manual = Object.assign({ step: ((job.manual && job.manual.step) || 0) + 1, answer: '', parts: 0, since: Date.now() }, q);
+    job.answer = text => { job.state = 'running'; job.manual.done = true; resolve(text); };
+    job.cancel = () => { job.state = 'running'; reject(new Error('Отменено: ответ из чата не вставлен')); };
+  });
+  Promise.resolve().then(() => fn(progress))
     .then(r => { job.state = 'done'; job.result = r; }, e => { job.state = 'error'; job.error = e.message; })
+    .then(() => { job.answer = job.cancel = null; })
     .finally(() => { job.ended = Date.now(); setTimeout(() => jobs.delete(job.id), 3600e3); });
   return job;
 }
@@ -192,10 +204,16 @@ function staticUnder(root, rel, res, extra) {
 // игры работают в рамке без своего происхождения (sandbox без allow-same-origin): им нужен CORS для wasm
 const CORS = { 'Access-Control-Allow-Origin': '*' };
 
+// страница без оболочки сама не говорит порталу «запустилась» и не сообщает об ошибке: короткий мостик в одну строку
+// (номера строк ошибок совпадают с кодом из чата) — иначе рамка через 25 секунд сочтёт игру упавшей
+const HTML_BRIDGE = '<script>(function(){var p=function(m){m.source="lab-game";try{parent.postMessage(m,"*")}catch(e){}};p({type:"ready",meta:{html:true}});addEventListener("error",function(e){p({type:"error",phase:"update",message:String(e.message||"ошибка"),line:e.lineno||null})})})();</script>';
+const htmlGame = code => (/<head[^>]*>/i.test(code) ? code.replace(/<head[^>]*>/i, m => m + HTML_BRIDGE) : code.replace(/<html[^>]*>/i, m => m + HTML_BRIDGE));
 function playPage(res, gameId, n) {
   const g = store.getGame(gameId);
   const code = g && store.versionCode(gameId, n || g.current);
   if (!code) return send(res, 404, 'Нет такой версии игры', 'text/plain; charset=utf-8');
+  // страница HTML из чата Qwen (урок 1, версия 2) — как есть, в той же песочнице
+  if (ai.isHtml(code)) return send(res, 200, htmlGame(code), 'text/html; charset=utf-8', Object.assign({ 'Content-Security-Policy': 'sandbox allow-scripts allow-pointer-lock' }, CORS));
   const html = fs.readFileSync(path.join(PORTAL, 'engine', 'game.html'), 'utf8')
     .replace('<head>', '<head>\n<base href="/engine/">')
     .replace('<!--GAME-->', () => '<script>\n' + code.replace(/<\/script/gi, '<\\/script') + '\n</script>'); // функцией: «$&» и «$'» в коде игры — не шаблоны замены
@@ -209,6 +227,7 @@ function downloadPage(res, gameId, n) {
   const g = store.getGame(gameId);
   const v = g && (Number(n) || g.current), code = g && store.versionCode(gameId, v);
   if (!code) return send(res, 404, 'Нет такой версии игры', 'text/plain; charset=utf-8');
+  if (ai.isHtml(code)) return send(res, 200, code, 'text/html; charset=utf-8', { 'Content-Security-Policy': 'sandbox allow-scripts allow-pointer-lock', 'Content-Disposition': `attachment; filename="igra.html"; filename*=UTF-8''${encodeURIComponent((g.title || 'igra') + ' v' + v + '.html')}` });
   if (/\bphysics\s*:\s*true/.test(code)) return send(res, 409, 'Эта игра с физикой: одним файлом она не запустится. Играй в неё в аркаде.', 'text/plain; charset=utf-8');
   if (!BABYLON_JS) BABYLON_JS = fs.readFileSync(path.join(PORTAL, 'engine', 'vendor', 'babylon', 'babylon.js'), 'utf8');
   const lab = fs.readFileSync(path.join(PORTAL, 'engine', 'lab.js'), 'utf8');
@@ -294,7 +313,7 @@ route('GET', '/api/me', (ctx) => {
   const { w, cls, les, s, st } = needStudent(ctx);
   s.seen = store.now(); store.saveStudent(w.class, s);
   const g = st.gameId ? store.getGame(st.gameId) : null;
-  return { nick: w.nick, class: { code: cls.code, name: cls.name, opened: cls.opened, authorMode: cls.authorMode }, lesson: studentLesson(les, cls), answers: st.answers, game: g, wow: les.wow ? publicWow(cls, les) : null, feedback: st.feedback || null, demo: ai.demo(), aiCalls: st.aiCalls, aiLimit: aiLimit(st), prevPlan: prevPlan(s, les), help: s.help || null };
+  return { nick: w.nick, class: { code: cls.code, name: cls.name, opened: cls.opened, authorMode: cls.authorMode }, lesson: studentLesson(les, cls), answers: st.answers, game: g, wow: les.wow ? publicWow(cls, les) : null, feedback: st.feedback || null, demo: ai.programmerDemo(les.id), chat: ai.manual(les.id), aiCalls: st.aiCalls, aiLimit: aiLimit(st), prevPlan: prevPlan(s, les), help: s.help || null };
 });
 
 route('POST', '/api/answer', (ctx) => {
@@ -833,7 +852,7 @@ route('GET', '/api/teacher/wow', (ctx) => {
   const { cls, les, w } = needWow(ctx);
   const g = w.gameId ? store.getGame(w.gameId) : null, v = g && g.versions[g.current - 1];
   return {
-    wow: w, demo: ai.demo(), formula: les.wow.formula, cards: les.wow.cards.map(c => ({ id: c.id, label: c.label })),
+    wow: w, demo: ai.programmerDemo(les.id), chat: ai.manual(les.id), formula: les.wow.formula, cards: les.wow.cards.map(c => ({ id: c.id, label: c.label })),
     secrets: aiSecrets(les).map(x => ({ id: x.id, title: x.title, effect: x.effect, sound: !!x.sound })), secret: secretOf(les, w.secret), headphones: !!cls.headphones, built: w.gameId ? builtSecret(les, w) : null,
     game: g && v ? { id: g.id, version: g.current, title: g.title, model: v.model, warnings: v.warnings || [], fallback: !!v.fallback, attempts: v.attempts, kind: v.kind,
       playtest: v.playtest || null, from: v.from || null, before: v.from && g.versions[v.from - 1] ? g.versions[v.from - 1].playtest || null : null } : null,
@@ -940,7 +959,7 @@ function cleanReport(r) {
 // разницу копий А и Б. Тогда в отчёте появляется находка, и панель учителя сама отправляет программисту правку по отчёту — один раз на игру.
 const SECRET_SILENT = 'Секрет ни разу не сработал за три партии бота: скрытый счётчик _secret молчит, и класс не почувствует разницу копий А и Б. Сделай секрет заметным уже в первой минуте партии при secret: 1 и вызывай lab.count(\'_secret\') каждый раз, когда он срабатывает.';
 route('POST', '/api/teacher/wow/playtest', (ctx) => {
-  const { w } = needWow(ctx);
+  const { les, w } = needWow(ctx);
   const g = w.gameId && store.getGame(w.gameId), n = Number(ctx.body.version), v = g && g.versions[n - 1];
   if (!v) throw Object.assign(new Error('Нет такой версии игры класса'), { status: 400 });
   v.playtest = cleanReport(ctx.body.report);
@@ -948,13 +967,13 @@ route('POST', '/api/teacher/wow/playtest', (ctx) => {
   if (silent) { v.playtest.secretSilent = true; v.playtest.findings.unshift(SECRET_SILENT); }
   store.saveGame(g);
   // автоправка — только если в этой игре ещё не было автоправки по секрету и ИИ доступен
-  const autoFix = silent && !ai.demo() && !w.given && !g.versions.some(x => x.autoFix);
+  const autoFix = silent && !ai.demo() && !ai.manual(les.id) && !w.given && !g.versions.some(x => x.autoFix);
   return { playtest: v.playtest, autoFix };
 });
 route('POST', '/api/teacher/wow/playtest-fix', (ctx) => {
   const { cls, les, w } = needWow(ctx);
-  if (ai.demo()) throw Object.assign(new Error('Без ключа ИИ программист не правит игру — попробуйте с ключом'), { status: 400 });
-  if (w.status === 'building') throw Object.assign(new Error('Игра уже собирается'), { status: 409 });
+  if (ai.programmerDemo(les.id)) throw Object.assign(new Error('Без ключа ИИ программист не правит игру — попробуйте с ключом'), { status: 400 });
+  if (w.status === 'building' && busyJob(w.jobId)) throw Object.assign(new Error('Игра уже собирается'), { status: 409 });
   if (w.given) throw Object.assign(new Error('Игра уже у класса — сначала заберите её'), { status: 409 });
   const g = w.gameId && store.getGame(w.gameId), n = g && g.current, v = g && g.versions[n - 1];
   if (!v || !v.playtest) throw Object.assign(new Error('Сначала дождитесь плейтеста бота'), { status: 400 });
@@ -967,10 +986,12 @@ route('POST', '/api/teacher/wow/playtest-fix', (ctx) => {
       const r = await ai.playtestFix(code, report, { cards: w.cards, link: acceptedLink(w) }, whoAI, progress);
       return wowVersion(cls.code, Object.assign(r, { knob: w.knob }), secretId, { kind: 'правка по плейтесту', from: n, autoFix: !!ctx.body.auto });
     } catch (e) {
-      const c2 = store.getClass(cls.code), w2 = wowState(c2, les); w2.status = 'preview'; store.saveClass(c2); wowChanged(c2, les);
+      const c2 = store.getClass(cls.code), w2 = wowState(c2, les);
+      if (w2.jobId === job.id) { w2.status = 'preview'; store.saveClass(c2); wowChanged(c2, les); } // отменённое задание не сбивает новую сборку
       throw e;
     }
   });
+  w.jobId = job.id; store.saveClass(cls);
   return { job: job.id };
 });
 route('POST', '/api/teacher/wow/version', (ctx) => { // вернуть прошлую версию игры класса (правка по плейтесту вышла хуже)
@@ -986,9 +1007,9 @@ route('POST', '/api/teacher/wow/build', (ctx) => {
   const { cls, les, w } = needWow(ctx);
   const missing = les.wow.cards.filter(c => !w.cards[c.id]);
   if (missing.length) throw Object.assign(new Error('Сначала вытяните карты: ' + missing.map(c => c.label).join(', ')), { status: 400 });
-  if (w.status === 'building') throw Object.assign(new Error('Игра уже собирается'), { status: 409 });
+  if (w.status === 'building' && busyJob(w.jobId)) throw Object.assign(new Error('Игра уже собирается'), { status: 409 });
   const fb = Object.assign({}, les.wow.fallback);
-  const secretId = ai.demo() ? fb.secret : w.secret; // без ключа собирается запасная игра — у неё свой секрет
+  const secretId = ai.programmerDemo(les.id) ? fb.secret : w.secret; // без ключа собирается запасная игра — у неё свой секрет
   const sec = secretOf(les, secretId);
   w.status = 'building'; w.given = false; store.saveClass(cls); wowChanged(cls, les);
   const whoAI = { class: cls.code, nick: 'учитель', lesson: les.id };
@@ -997,10 +1018,12 @@ route('POST', '/api/teacher/wow/build', (ctx) => {
       const r = await ai.buildShared({ cards: w.cards, secret: sec.prompt, link: acceptedLink(w), title: wowTitle(les, w), fallback: fb }, whoAI, progress);
       return wowVersion(cls.code, r, secretId);
     } catch (e) {
-      const c2 = store.getClass(cls.code), w2 = wowState(c2, les); w2.status = w2.gameId ? 'preview' : 'cards'; store.saveClass(c2); wowChanged(c2, les);
+      const c2 = store.getClass(cls.code), w2 = wowState(c2, les);
+      if (w2.jobId === job.id) { w2.status = w2.gameId ? 'preview' : 'cards'; store.saveClass(c2); wowChanged(c2, les); }
       throw e;
     }
   });
+  w.jobId = job.id; store.saveClass(cls);
   return { job: job.id };
 });
 route('POST', '/api/teacher/wow/fallback', (ctx) => {
@@ -1025,13 +1048,15 @@ function spend(code, lessonId) {
   const list = store.genlog().filter(e => e.class === code && e.lesson === lessonId && !e.demo);
   return { rub: Math.round(list.reduce((n, e) => n + (e.rub || 0), 0) * 100) / 100, calls: list.length, cap: ai.limits().rublesPerLesson || 0 };
 }
-function aiGuard(ctx) {
+// programmer — сборка, правка и починка игры: в уроке с программистом в chat.qwen.ai они бесплатны и не считаются в лимит
+function aiGuard(ctx, programmer) {
   const c = needStudent(ctx);
+  c.whoAI = { class: c.w.class, nick: c.w.nick, lesson: c.les.id, game: c.st.gameId || undefined };
+  if (programmer && ai.manual(c.les.id)) return c;
   const lim = ai.limits();
   if (c.st.aiCalls >= aiLimit(c.st)) throw Object.assign(new Error(`Лимит запросов к ИИ на урок исчерпан (${aiLimit(c.st)}). Попроси учителя добавить запросов.`), { status: 429 });
   if (lim.rublesPerLesson > 0 && spend(c.w.class, c.les.id).rub >= lim.rublesPerLesson) throw Object.assign(new Error(`Потолок расходов урока достигнут (${lim.rublesPerLesson} ₽)`), { status: 429 });
   c.st.aiCalls++; c.s.moved = store.now(); store.saveStudent(c.w.class, c.s);
-  c.whoAI = { class: c.w.class, nick: c.w.nick, lesson: c.les.id, game: c.st.gameId || undefined };
   return c;
 }
 function saveStudentField(code, nick, lessonId, fn) {
@@ -1077,7 +1102,7 @@ function addVersion(gameId, r, info) {
 }
 
 route('POST', '/api/ai/build', (ctx) => {
-  const c = aiGuard(ctx);
+  const c = aiGuard(ctx, true);
   const gaps = fillGaps(c.les, c.st, c.cls);
   if (gaps.count) store.saveStudent(c.w.class, c.s);
   const plan = buildPlan(c.les, c.st);
@@ -1107,14 +1132,14 @@ route('POST', '/api/ai/change', (ctx) => {
   if (!g || !g.current) throw Object.assign(new Error('Сначала собери игру'), { status: 400 });
   const limit = changeLimit(pre.les);
   if (limit && g.versions.filter(x => x.kind === 'правка').length >= limit) throw Object.assign(new Error(limit === 1 ? 'На этом уроке одна правка, она уже сделана' : `На этом уроке правок не больше ${limit}`), { status: 429 });
-  const c = aiGuard(ctx);
+  const c = aiGuard(ctx, true);
   const base = g.current, code = store.versionCode(g.id, base);
   const job = startJob(c.w.token, 'change', async (progress) => addVersion(g.id, await ai.change(code, request, c.whoAI, progress), { kind: 'правка', request, from: base }));
   return { job: job.id };
 });
 
 route('POST', '/api/ai/fix', (ctx) => {
-  const c = aiGuard(ctx);
+  const c = aiGuard(ctx, true);
   const g = c.st.gameId && store.getGame(c.st.gameId);
   const n = Number(ctx.body.version);
   const code = g && store.versionCode(g.id, n);
@@ -1198,13 +1223,45 @@ route('POST', '/api/game/current', (ctx) => {
 route('GET', '/api/job', (ctx) => {
   const job = jobs.get(ctx.url.searchParams.get('id'));
   if (!job || !ctx.who || job.owner !== ctx.who.token) throw Object.assign(new Error('Задание не найдено (сервер перезапускался?)'), { status: 404 });
-  return { state: job.state, kind: job.kind, seconds: Math.round((Date.now() - job.started) / 1000), chars: job.chars, phase: job.phase, result: job.result, error: job.error };
+  const m = job.state === 'waiting' && job.manual;
+  return { state: job.state, kind: job.kind, seconds: Math.round((Date.now() - job.started) / 1000), chars: job.chars, phase: job.phase, result: job.result, error: job.error,
+    manual: m ? { step: m.step, kind: m.kind, url: m.url, followUp: !!m.followUp, short: !!m.short, cont: m.parts > 0, parts: m.parts, chars: m.prompt.length } : null };
 });
+// программист в chat.qwen.ai: текст для чата (полный или без правил), вставленный ответ и отмена
+function waitingJob(ctx, id) {
+  const job = jobs.get(id);
+  if (!job || !ctx.who || job.owner !== ctx.who.token) throw Object.assign(new Error('Задание не найдено (сервер перезапускался?)'), { status: 404 });
+  if (job.state !== 'waiting') throw Object.assign(new Error('Задание уже не ждёт ответа'), { status: 409 });
+  return job;
+}
+// Игра учителя «собирается», пока её задание ждёт ответа из чата; если учитель перезагрузил страницу, окно для ответа пропало.
+// Новая сборка отменяет такое задание (и задание, потерянное при перезапуске сервера), а не отвечает «уже собирается».
+function busyJob(id) {
+  const j = id && jobs.get(id);
+  if (j && j.state === 'waiting') { j.cancel(); return false; }
+  return !!(j && j.state === 'running');
+}
+const CONTINUE = 'Ответ оборвался. Продолжи ровно с того места, где остановился: без повторов, без пояснений, тем же блоком кода.';
+route('GET', '/api/job/prompt', (ctx) => {
+  const m = waitingJob(ctx, ctx.url.searchParams.get('id')).manual;
+  return { step: m.step, text: m.parts ? CONTINUE : ctx.url.searchParams.get('short') && m.short ? m.short : m.prompt };
+});
+route('POST', '/api/job/answer', (ctx) => {
+  const job = waitingJob(ctx, ctx.body.id), m = job.manual;
+  const text = String(ctx.body.text || '').slice(0, 600000);
+  if (!text.trim()) throw Object.assign(new Error('Вставь ответ из чата'), { status: 400 });
+  const all = m.parts ? ai.joinParts(m.answer, text) : text;
+  // оборванный ответ: портал просит «Продолжи» в тот же чат и склеивает части (до 4 продолжений)
+  if (ai.truncated(all) && m.parts < 4) { m.answer = all; m.parts++; return { continue: true, parts: m.parts }; }
+  job.answer(all);
+  return { ok: true };
+});
+route('POST', '/api/job/cancel', (ctx) => { waitingJob(ctx, ctx.body.id).cancel(); return { ok: true }; });
 
 /* ---------- учитель ---------- */
 route('GET', '/api/teacher/classes', (ctx) => {
   needTeacher(ctx);
-  const les = lessons().map(l => ({ id: l.id, number: l.number, title: l.title, module: l.module || 0 }));
+  const les = lessons().map(l => ({ id: l.id, number: l.number, title: l.title, module: l.module || 0, version: l.version || null, chat: ai.manual(l.id) }));
   // модули курса и, если есть, «Проверочные уроки» (module: 0) — для уроков-проверок из LAB_LESSONS
   const modules = MODULES.concat(les.some(l => !l.module) ? [{ number: 0, title: 'Проверочные уроки' }] : []);
   return { classes: store.classes(), lessons: les, modules };
@@ -1431,6 +1488,7 @@ route('POST', '/api/teacher/compare', (ctx) => {
   const cls = store.getClass(ctx.body.code), s = cls && store.getStudent(cls.code, ctx.body.nick);
   if (!s) throw Object.assign(new Error('Нет ученика'), { status: 404 });
   const les = lesson(cls.lesson), st = store.lessonState(s, les.id);
+  if (ai.manual(les.id)) throw Object.assign(new Error('В этой версии урока программист работает только через chat.qwen.ai: сравнивать модели API нечем'), { status: 400 });
   const g = st.gameId && store.getGame(st.gameId);
   if (!g || !g.current) throw Object.assign(new Error('Ученик ещё не собрал игру'), { status: 400 });
   const model = String(ctx.body.model || '').trim().slice(0, 80);
@@ -1547,7 +1605,7 @@ function demoPlan(les, step, d) {
 route('POST', '/api/teacher/demo/build', (ctx) => {
   const { cls, les, step, d } = needDemo(ctx);
   if (DEMO_CARDS.some(c => !d.cards[c])) throw Object.assign(new Error('Сначала вытяните все три карты'), { status: 400 });
-  if (d.state === 'building') throw Object.assign(new Error('Игра уже собирается'), { status: 409 });
+  if (d.state === 'building' && busyJob(d.jobId)) throw Object.assign(new Error('Игра уже собирается'), { status: 409 });
   let g = d.gameId && store.getGame(d.gameId);
   if (!g) { g = store.createGame({ class: cls.code, nick: 'Учитель', lesson: les.id, teacher: true }); d.gameId = g.id; }
   const plan = demoPlan(les, step, d);
@@ -1563,10 +1621,12 @@ route('POST', '/api/teacher/demo/build', (ctx) => {
       const d2 = demoOf(cls.code, les.id); d2.state = 'ready'; store.saveDemo(cls.code, les.id, d2);
       return out;
     } catch (e) {
-      const d2 = demoOf(cls.code, les.id); d2.state = 'error'; d2.error = e.message; store.saveDemo(cls.code, les.id, d2);
+      const d2 = demoOf(cls.code, les.id);
+      if (d2.jobId === job.id) { d2.state = 'error'; d2.error = e.message; store.saveDemo(cls.code, les.id, d2); }
       throw e;
     } finally { demoChanged(cls.code, les.id); }
   });
+  d.jobId = job.id; store.saveDemo(cls.code, les.id, d);
   return { job: job.id };
 });
 // ученик: состояние вау-старта своего урока (игра — только когда учитель её открыл или вышло время)

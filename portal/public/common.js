@@ -18,16 +18,73 @@ const Lab = (() => {
     if (!res.ok) { const err = new Error(data.error || 'Ошибка ' + res.status); err.status = res.status; throw err; }
     return data;
   }
-  // задание ИИ: запуск и опрос до конца
+  // задание ИИ: запуск и опрос до конца. Задание ждёт человека (waiting) — программист в chat.qwen.ai: окно «скопируй → вставь ответ»
   async function job(path, body, onTick) {
     const { job: id } = await api(path, body);
-    for (;;) {
-      await new Promise(r => setTimeout(r, 1000));
-      const j = await api('/api/job?id=' + encodeURIComponent(id));
-      if (onTick) onTick(j);
-      if (j.state === 'done') return j.result;
-      if (j.state === 'error') throw new Error(j.error);
+    let chat = null;
+    try {
+      for (;;) {
+        await new Promise(r => setTimeout(r, 1000));
+        const j = await api('/api/job?id=' + encodeURIComponent(id));
+        if (j.state === 'waiting' && j.manual) { chat = chat || chatDialog(id); chat.show(j.manual); } else if (chat) { chat.close(); chat = null; }
+        if (onTick) onTick(j);
+        if (j.state === 'done') return j.result;
+        if (j.state === 'error') throw new Error(j.error);
+      }
+    } finally { if (chat) chat.close(); }
+  }
+  // Окно программиста в chat.qwen.ai (урок 1, версия 2): 1) скопировать задание, 2) открыть чат, 3) вставить ответ.
+  // Если ответ не подошёл — портал выдаёт следующее сообщение в тот же чат; если оборвался — просьбу «Продолжи» и склеивает части.
+  function chatDialog(id) {
+    const dlg = el('dialog', { class: 'qwen', 'aria-label': 'Программист — Qwen в чате' });
+    dlg.addEventListener('cancel', e => e.preventDefault()); // окно не закрывается случайным Esc: задание ждёт ответа
+    document.body.append(dlg); dlg.showModal();
+    let shown = '', busy = false;
+    const q = (short) => api('/api/job/prompt?id=' + encodeURIComponent(id) + (short ? '&short=1' : ''));
+    function copyBtn(label, short, cls) {
+      const b = el('button', { type: 'button', class: cls || 'btn', disabled: true }, label + ' …');
+      let text = '';
+      q(short).then(r => { text = r.text; b.disabled = false; b.textContent = label; }).catch(e => { b.textContent = e.message; });
+      b.addEventListener('click', () => { copy(text); beep('tick'); });
+      return b;
     }
+    function render(m) {
+      dlg.innerHTML = '';
+      const ta = el('textarea', { class: 'qwen-answer', rows: 7, placeholder: m.cont ? 'Вставь сюда продолжение ответа' : 'Вставь сюда ответ Qwen целиком', 'aria-label': 'Ответ из чата' });
+      const status = el('p', { class: 'small muted', 'aria-live': 'polite' });
+      const send = el('button', { type: 'button', class: 'btn qwen-send' }, m.cont ? 'Добавить продолжение' : 'Готово — загрузить игру');
+      send.addEventListener('click', async () => {
+        if (busy) return;
+        if (!ta.value.trim()) { status.textContent = 'Сначала вставь ответ из чата.'; ta.focus(); return; }
+        busy = true; send.disabled = true; status.textContent = 'Проверяю ответ…';
+        try {
+          const r = await api('/api/job/answer', { id, text: ta.value });
+          if (r.continue) { shown = ''; render(Object.assign({}, m, { cont: true, parts: r.parts })); shown = m.step + ':' + r.parts; beep('bad'); }
+          else { status.textContent = 'Ответ принят: портал проверяет код…'; }
+        } catch (e) { status.textContent = e.message; send.disabled = false; }
+        busy = false;
+      });
+      const cancel = el('button', { type: 'button', class: 'btn ghost' }, 'Отменить');
+      cancel.addEventListener('click', async () => { if (await ask('Отменить задание? Ответ из чата не попадёт в портал.', { ok: 'Отменить', cancel: 'Нет', danger: true })) api('/api/job/cancel', { id }).catch(() => {}); });
+      const open = el('a', { class: 'btn ghost', href: m.url, target: '_blank', rel: 'noopener noreferrer' }, 'Открыть chat.qwen.ai ↗');
+      const head = m.cont ? ['Ответ оборвался', 'Чат остановился на середине кода. Скопируй просьбу, отправь её в тот же чат и вставь продолжение ниже — портал склеит части сам.']
+        : m.followUp ? ['Ответ не подошёл', 'Портал проверил код и нашёл, что исправить. Скопируй сообщение, отправь его в тот же чат и вставь новый ответ ниже.']
+        : ['Задание для Qwen готово', 'Программист этого урока — Qwen в бесплатном чате. Скопируй задание, вставь его в новый чат, дождись ответа и вставь ответ сюда.'];
+      const steps = m.cont ? el('div', { class: 'row' }, copyBtn('📋 Скопировать «Продолжи»'), open)
+        : m.followUp ? el('div', { class: 'row' }, copyBtn('📋 Скопировать сообщение'), open)
+        : el('ol', { class: 'qwen-steps' },
+          el('li', {}, el('div', { class: 'row' }, copyBtn(`📋 Скопировать задание (${Math.round(m.chars / 1000)} тыс. знаков)`),
+            m.short ? copyBtn('Я в том же чате: без правил', true, 'btn ghost') : null)),
+          el('li', {}, el('div', { class: 'row' }, open, el('span', { class: 'small muted' }, 'Новый чат на каждую игру. Длинное задание чат может превратить во вложение — это нормально.'))),
+          el('li', {}, 'Когда Qwen допишет, нажми в чате «Копировать» над блоком кода и вставь ответ ниже.'));
+      dlg.append(el('div', { class: 'stack' },
+        el('div', { class: 'eyebrow' }, 'Программист — Qwen в чате' + (m.step > 1 ? ` · сообщение ${m.step}` : '') + (m.parts ? ` · часть ${m.parts + 1}` : '')),
+        el('h2', {}, head[0]), el('p', { class: 'muted' }, head[1]), steps, ta, status, el('div', { class: 'row' }, send, cancel)));
+    }
+    return {
+      show(m) { const key = m.step + ':' + m.parts; if (key !== shown && !busy) { shown = key; render(m); } },
+      close() { try { dlg.close(); } catch (e) { /* уже закрыто */ } dlg.remove(); },
+    };
   }
   function el(tag, attrs, ...kids) {
     const e = document.createElement(tag);

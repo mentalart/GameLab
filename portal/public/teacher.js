@@ -43,7 +43,9 @@ function drawLessonSel() {
   const list = moduleLessons(T.module), cur = T.overview && T.overview.class.lesson;
   if (!list.length) ls.append(el('option', { value: '' }, 'В этом модуле уроков пока нет'));
   else if (!list.some(l => l.id === cur)) ls.append(el('option', { value: '', selected: true }, 'Выберите урок модуля'));
-  list.forEach(l => ls.append(el('option', { value: l.id, selected: l.id === cur ? true : null }, `Урок ${l.number}. ${l.title}`)));
+  // у урока несколько версий (urok-01-v2.js): первая подписана «версия 1», у остальных номер версии в названии
+  const twins = n => list.filter(x => x.number === n).length > 1;
+  list.forEach(l => ls.append(el('option', { value: l.id, selected: l.id === cur ? true : null }, `Урок ${l.number}. ${l.title}` + (!l.version && twins(l.number) ? ' · версия 1: API' : ''))));
 }
 async function selectClass(code) {
   T.code = code;

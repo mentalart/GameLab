@@ -551,3 +551,10 @@ dialog.ask::backdrop{background:rgba(5,8,18,.6)}
 .pj-big{font-size:34px;font-weight:900;color:var(--warm)}
 .bugform{display:flex;flex-direction:column;gap:6px;padding:10px 12px;border:1px dashed var(--line2);border-radius:10px}
 .dice-text{background:#2a1f0c!important;border-color:#6b4d1a!important}
+
+/* окно программиста в chat.qwen.ai (урок 1, версия 2) */
+dialog.qwen{width:min(640px,calc(100% - 32px));max-height:calc(100vh - 32px);overflow:auto;background:var(--panel);color:var(--text);border:1px solid var(--line2);border-radius:var(--r);padding:20px}
+dialog.qwen::backdrop{background:rgba(5,8,18,.7)}
+dialog.qwen h2{margin:0}
+.qwen-steps{margin:0;padding-left:22px;display:grid;gap:10px}
+.qwen-answer{width:100%;box-sizing:border-box;font:12px/1.4 ui-monospace,Consolas,monospace}
