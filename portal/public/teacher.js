@@ -12,7 +12,7 @@ async function boot() {
   if (!T.classes.find(c => c.code === T.code)) T.code = T.classes[0] ? T.classes[0].code : null;
   drawClassSel();
   await selectClass(T.code);
-  T.timer = setInterval(refresh, 3000);
+  T.timer = setInterval(() => refresh(false, true), 3000);
 }
 async function loadClasses() {
   const r = await api('/api/teacher/classes');
@@ -54,7 +54,7 @@ async function selectClass(code) {
   if (!code) { $('#tab-lesson').innerHTML = ''; $('#tab-lesson').append(el('div', { class: 'card' }, 'Создайте класс слева: получите код, по которому ученики войдут в урок.')); return; }
   await refresh(true);
 }
-async function refresh(full) {
+async function refresh(full, poll) {
   if (!T.code) return;
   let o;
   try { o = await api('/api/teacher/overview?code=' + T.code); } catch (e) { if (full) toast(e.message, 'err'); return; }
@@ -67,7 +67,7 @@ async function refresh(full) {
     drawModuleSel();
   }
   const sw = $('#authorSw'); sw.classList.toggle('on', !!o.class.authorMode); sw.setAttribute('aria-checked', String(!!o.class.authorMode));
-  drawLesson();
+  if (!(poll && T.scriptEdit)) drawLesson(); // открытую правку сценария опрос не перерисовывает
 }
 
 /* ---------- вкладка «Урок»: живой урок ---------- */
@@ -101,11 +101,15 @@ function drawLesson() {
   const finished = c => o.students.filter(s => c.steps.every(st => s.doneSteps.includes(st.id))).length;
   // сценарий учителя (teacher в сценарии урока): у текущего чекпоинта — раскрыт, у остальных — по клику
   const curCp = (o.class.timer && cps.find(c => c.id === o.class.timer.cp && opened.includes(c.id))) || cps.filter(c => opened.includes(c.id)).pop() || cps[0];
+  if (T.scriptEdit && T.scriptEdit.lesson !== o.lesson.id) T.scriptEdit = null;
   const script = c => {
     if (!c.teacher) return null;
-    const t = c.teacher, rows = [['Скажите', t.say], ['Спросите класс', t.ask], ['Смотрите', t.watch], ['Дальше, когда', t.next]].filter(r => r[1]);
-    const d = el('details', { class: 'tscript', open: c.id === curCp.id ? true : null }, el('summary', {}, '📋 Сценарий учителя'),
-      el('dl', {}, rows.flatMap(([k, v]) => [el('dt', {}, k), el('dd', {}, v)])));
+    const t = c.teacher, rows = SCRIPT_ROWS.map(([f, k]) => [k, t[f]]).filter(r => r[1]);
+    const edit = T.scriptEdit && T.scriptEdit.cp === c.id ? T.scriptEdit : null;
+    const d = el('details', { class: 'tscript', open: c.id === curCp.id || edit ? true : null }, el('summary', {}, '📋 Сценарий учителя'),
+      edit ? scriptForm(c, edit) : el('dl', {}, rows.flatMap(([k, v]) => [el('dt', {}, k), el('dd', {}, v)])),
+      !edit && o.class.authorMode ? el('div', { class: 'row', style: 'margin-top:6px' }, el('button', { class: 'btn ghost small', type: 'button', 'data-script-edit': c.id,
+        onclick: () => { T.scriptEdit = { lesson: o.lesson.id, cp: c.id, draft: Object.fromEntries(SCRIPT_ROWS.map(([f]) => [f, t[f] || ''])) }; drawLesson(); } }, '✎ Править текст')) : null);
     d.addEventListener('toggle', () => { T.scriptOpen = T.scriptOpen || {}; T.scriptOpen[c.id] = d.open; });
     if (T.scriptOpen && c.id in T.scriptOpen) d.open = T.scriptOpen[c.id];
     return d;
@@ -155,6 +159,36 @@ function drawLesson() {
   }
   tickTimers();
   scrollTo(0, keepScroll);
+}
+// «Сценарий учителя» правится в режиме автора: «Сохранить в урок» пишет текст в файл урока на сервере (portal/lessons/…),
+// и он становится частью портала. Пока форма открыта, опрос раз в 3 секунды урок не перерисовывает, чтобы не сбить ввод.
+const SCRIPT_ROWS = [['say', 'Скажите'], ['ask', 'Спросите класс'], ['watch', 'Смотрите'], ['next', 'Дальше, когда']];
+function scriptForm(c, edit) {
+  const fit = ta => { ta.style.height = 'auto'; ta.style.height = ta.scrollHeight + 2 + 'px'; };
+  const areas = SCRIPT_ROWS.map(([f, k]) => {
+    const ta = el('textarea', { rows: '2', 'data-script-field': f, 'aria-label': k, oninput: e => { edit.draft[f] = e.target.value; fit(e.target); } });
+    ta.value = edit.draft[f];
+    requestAnimationFrame(() => fit(ta));
+    return [el('dt', {}, k), el('dd', {}, ta)];
+  });
+  const save = async btn => {
+    const fields = {};
+    for (const [f] of SCRIPT_ROWS) if (edit.draft[f].trim() !== (c.teacher[f] || '').trim()) fields[f] = edit.draft[f];
+    if (!Object.keys(fields).length) { T.scriptEdit = null; drawLesson(); return; }
+    btn.disabled = true;
+    try {
+      const r = await api('/api/teacher/script', { lesson: edit.lesson, cp: c.id, fields });
+      T.scriptEdit = null;
+      toast(`Сценарий сохранён в ${r.file}: он попадёт в репозиторий со следующим коммитом`, 'ok', 6000);
+      await refresh(true);
+    } catch (e) { btn.disabled = false; toast(e.message, 'err'); }
+  };
+  return el('div', { class: 'stack', style: 'gap:6px' },
+    el('dl', { class: 'tscript-edit' }, areas.flat()),
+    el('p', { class: 'small muted' }, 'Текст запишется в файл урока и станет частью портала для всех классов. Пустое поле не показывается.'),
+    el('div', { class: 'row' },
+      el('button', { class: 'btn small', type: 'button', 'data-script-save': c.id, onclick: e => save(e.currentTarget) }, 'Сохранить в урок'),
+      el('button', { class: 'btn ghost small', type: 'button', onclick: () => { T.scriptEdit = null; drawLesson(); } }, 'Отмена')));
 }
 // шпаргалка чекпоинта: по каждому шагу — один вопрос, который учитель задаёт у парты, и признак, что ученик буксует.
 // Показывается у чекпоинтов без своего «Сценария учителя»; у шага может быть свой teacher: { ask, watch } — он важнее общего по типу шага

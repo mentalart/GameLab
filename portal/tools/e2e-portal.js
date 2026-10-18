@@ -702,6 +702,31 @@ async function liveLesson(code, mode, teacher, pj, shot) {
   await teacher.click('#students tr[data-nick="Тестер"] >> text=+10');
   await teacher.waitForFunction(() => /из 50/.test((document.querySelector('#students tr[data-nick="Тестер"]') || {}).textContent), null, { timeout: 8000 });
   check('Учитель добавил ученику 10 запросов: лимит 50', true);
+  await scriptEdit(teacher, shot);
+}
+
+/* ---------- режим автора: правка «Сценария учителя» пишется в файл урока ---------- */
+async function scriptEdit(teacher, shot) {
+  const file = path.join(__dirname, '..', 'lessons', 'urok-01.js'), orig = fs.readFileSync(file, 'utf8');
+  const text = 'Проверка правки: «кавычки», \'апостроф\'\nи вторая строка';
+  try {
+    await teacher.click('#authorSw');
+    // сценарий не текущего чекпоинта свёрнут; урок перерисовывается опросом, поэтому кнопка жмётся внутри ожидания
+    await teacher.waitForFunction(() => { const b = document.querySelector('[data-script-edit=vau]'); if (!b) return false; b.closest('details').open = true; b.click(); return true; }, null, { timeout: 8000 });
+    await teacher.waitForSelector('[data-script-field=say]', { timeout: 8000 });
+    await teacher.fill('[data-script-field=say]', text);
+    await sleep(3500); // опрос панели раз в 3 секунды не должен сбить открытую правку
+    check('Правка сценария: опрос панели не сбивает ввод', await teacher.$eval('[data-script-field=say]', t => t.value) === text);
+    await shot(teacher, '7c-script-edit');
+    await teacher.click('[data-script-save=vau]');
+    await teacher.waitForFunction(t => [...document.querySelectorAll('details.tscript dd')].some(d => d.textContent === t), text, { timeout: 8000 });
+    delete require.cache[require.resolve(file)];
+    check('Правка сценария записана в файл урока и видна в панели', require(file).checkpoints.find(c => c.id === 'vau').teacher.say === text && fs.readFileSync(file, 'utf8') !== orig);
+  } finally {
+    fs.writeFileSync(file, orig);
+    delete require.cache[require.resolve(file)];
+    if (await teacher.$('#authorSw.on')) await teacher.click('#authorSw');
+  }
 }
 
 /* ---------- сравнение моделей на одном замысле (в карточке ученика) ---------- */

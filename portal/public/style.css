@@ -504,7 +504,9 @@ details.tscript{margin-top:8px;border:1px solid var(--line2);border-radius:10px;
 details.tscript summary{cursor:pointer;font-weight:700}
 details.tscript dl{display:grid;grid-template-columns:auto minmax(0,1fr);gap:6px 12px;margin:8px 0 0}
 details.tscript dt{color:var(--muted);font-weight:700}
-details.tscript dd{margin:0}
+details.tscript dd{margin:0;white-space:pre-line}
+details.tscript dl.tscript-edit dt{padding-top:6px}
+details.tscript textarea{width:100%;min-height:44px;resize:vertical;font:inherit;white-space:pre-wrap}
 /* эксперимент с ручкой и «Сохранить мой баланс» */
 .balance{gap:10px}
 .exp-stage{display:flex;flex-direction:column;gap:6px;padding:10px 12px;border-radius:10px;border:1px solid var(--line);background:var(--bg2);opacity:.75}

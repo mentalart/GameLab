@@ -22,14 +22,17 @@ const TYPES = {
 // Версия урока — файл urok-NN-vK.js (поле version в сценарии): в меню учителя рядом с первой версией того же урока.
 const MODULES = require('./lessons/moduli');
 const answers = require('./lib/answers');
+const lessonEdit = require('./lib/lesson-edit');
 const LESSON_DIRS = [path.join(PORTAL, 'lessons')].concat(process.env.LAB_LESSONS ? [path.resolve(process.env.LAB_LESSONS)] : []);
+const lessonFiles = new Map(); // id урока → его файл: туда пишется правка «Сценария учителя» из панели
+function loadLesson(file) {
+  delete require.cache[require.resolve(file)];
+  if (/-v\d+\.js$/.test(file)) delete require.cache[require.resolve(file.replace(/-v\d+\.js$/, '.js'))]; // версия урока собирается из первой
+  return require(file);
+}
 function lessons() {
   return LESSON_DIRS.flatMap(dir => { try { return fs.readdirSync(dir).filter(f => /^urok-\d+(-v\d+)?\.js$/.test(f)).map(f => path.join(dir, f)); } catch (e) { return []; } })
-    .map(file => {
-      delete require.cache[require.resolve(file)];
-      if (/-v\d+\.js$/.test(file)) delete require.cache[require.resolve(file.replace(/-v\d+\.js$/, '.js'))]; // версия урока собирается из первой
-      return require(file);
-    }).sort((a, b) => a.number - b.number || (a.version || 1) - (b.version || 1) || a.id.localeCompare(b.id));
+    .map(file => { const l = loadLesson(file); lessonFiles.set(l.id, file); return l; }).sort((a, b) => a.number - b.number || (a.version || 1) - (b.version || 1) || a.id.localeCompare(b.id));
 }
 // ученику — урок без колоды секретов: какой секрет в игре класса, он узнаёт только после своей догадки
 // и без ответа шага «Найди секрет» с hunt в сценарии: правильный вариант, ловушка и раскрытие приходят после догадки
@@ -1299,6 +1302,15 @@ route('POST', '/api/teacher/class/update', (ctx) => {
   return cls;
 });
 // таймер чекпоинта: заново, +минуты, другой чекпоинт, стоп
+// «Сценарий учителя» правится в режиме автора и пишется в файл урока (lib/lesson-edit.js): правка сразу каноничная и уходит в репозиторий с коммитом
+route('POST', '/api/teacher/script', (ctx) => {
+  needTeacher(ctx);
+  const les = lesson(ctx.body.lesson);
+  if (!les) throw Object.assign(new Error('Нет урока'), { status: 404 });
+  const file = lessonFiles.get(les.id);
+  const r = lessonEdit.saveTeacherScript(file, { cp: ctx.body.cp, fields: ctx.body.fields }, loadLesson);
+  return { ok: true, changed: r.changed, file: path.relative(path.join(PORTAL, '..'), file).split(path.sep).join('/') };
+});
 route('POST', '/api/teacher/timer', (ctx) => {
   needTeacher(ctx);
   const cls = store.getClass(ctx.body.code);
