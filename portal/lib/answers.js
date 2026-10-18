@@ -13,10 +13,10 @@ function answerText(step, a, game) {
   switch (step.type) {
     case 'play': case 'teacher-demo': return v.rounds ? `партий ${v.rounds}, лучший счёт ${v.best || 0}` : (a.done ? 'сыграно' : '');
     case 'cards': return a.done ? 'карты на столе' : '';
-    case 'abtest': return v.A ? `секрет в игре ${v.side === 'A' ? 'А' : 'Б'}; голос: ${v.vote ? (v.vote === 'same' ? 'разницы нет' : 'напряжённее ' + (v.vote === 'A' ? 'А' : 'Б')) : 'нет'}${v.vote && v.vote === v.side ? ' — почувствовал' : ''}; партий А ${v.A.rounds}, Б ${v.B.rounds}` : '';
+    case 'abtest': return v.A ? `спрятанная механика в игре ${v.side === 'A' ? 'А' : 'Б'}; голос: ${v.vote ? (v.vote === 'same' ? 'разницы нет' : 'напряжённее ' + (v.vote === 'A' ? 'А' : 'Б')) : 'нет'}${v.vote && v.vote === v.side ? ' — почувствовал' : ''}; партий А ${v.A.rounds}, Б ${v.B.rounds}` : '';
     case 'secret': return v.guess ? `догадка: ${v.guess} — ${v.correct ? 'угадал' : v.trap ? 'ловушка: это было на картах' : 'не угадал'}` : '';
     case 'rounds': case 'sort': return v.total ? quizLine(v) : '';
-    case 'blindpair': return v.vote ? (step.mode === 'secret' ? `«${v.title}» (автор ${v.author}): напряжённее — ${v.vote === 'same' ? 'разницы нет' : v.felt ? 'с секретом, почувствовал' : 'без секрета'}`
+    case 'blindpair': return v.vote ? (step.mode === 'secret' ? `«${v.title}» (автор ${v.author}): напряжённее — ${v.vote === 'same' ? 'разницы нет' : v.felt ? 'со спрятанной механикой, почувствовал' : 'без спрятанной механики'}`
       : `«${v.title}» (автор ${v.author}): хочется вернуться — ${v.vote === 'same' ? 'разницы нет' : v.juicy ? 'в сочную' : 'в сухую'}`) : '';
     case 'listen': return v.total ? quizLine(v) : '';
     case 'vote': return v.votes ? 'голоса отданы, сыграно игр: ' + Object.keys(v.played || {}).length : '';
@@ -71,7 +71,7 @@ function classAnswers(les, students, gameOf) {
 }
 
 // разбор прототипа (урок 1, чекпоинт 5): приборы и главная находка
-const TOOL_NAMES = { curve: 'кривая', sort: 'своеволие ИИ', secret: 'секрет', lamps: 'лампочки' };
+const TOOL_NAMES = { curve: 'кривая', sort: 'своеволие ИИ', secret: 'спрятанная механика', lamps: 'лампочки' };
 function razborText(v) {
   const tools = Object.entries(v.tools || {}).filter(([, t]) => t && t.done).map(([k]) => TOOL_NAMES[k] || k);
   if (!tools.length && !(v.findings || []).length) return '';

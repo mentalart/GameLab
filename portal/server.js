@@ -34,10 +34,10 @@ function lessons() {
   return LESSON_DIRS.flatMap(dir => { try { return fs.readdirSync(dir).filter(f => /^urok-\d+(-v\d+)?\.js$/.test(f)).map(f => path.join(dir, f)); } catch (e) { return []; } })
     .map(file => { const l = loadLesson(file); lessonFiles.set(l.id, file); return l; }).sort((a, b) => a.number - b.number || (a.version || 1) - (b.version || 1) || a.id.localeCompare(b.id));
 }
-// ученику — урок без колоды секретов: какой секрет в игре класса, он узнаёт только после своей догадки
-// и без ответа шага «Найди секрет» с hunt в сценарии: правильный вариант, ловушка и раскрытие приходят после догадки
+// ученику — урок без колоды спрятанных механик: какая спрятанная механика в игре класса, он узнаёт только после своей догадки
+// и без ответа шага «Найди спрятанную механику» с hunt в сценарии: правильный вариант, ловушка и раскрытие приходят после догадки
 const publicHunt = h => ({ question: h.question, options: h.options, compare: h.compare, after: h.after });
-// Поле Фабрики с secrets: true — карта секрета своей игры: колода — названия секретов урока (без fallbackOnly, со звуком — только при наушниках).
+// Поле Фабрики с secrets: true — карта спрятанной механики своей игры: колода — названия спрятанных механик урока (без fallbackOnly, со звуком — только при наушниках).
 // Сценарий учителя у чекпоинта (teacher) ученику не нужен.
 function studentLesson(les, cls) {
   const step = s => {
@@ -99,7 +99,7 @@ function buildPlan(les, st) {
   const prod = A(P.producer);
   const forks = ((prod.result && prod.result.forks) || []).map((f, i) => ({ question: f.question, answer: (prod.choices || {})[i] })).filter(f => f.answer);
   const all = [facFields, dec, igra].flatMap(o => Object.values(o));
-  // карта секрета (поле secret Фабрики): секрет из колоды урока — его задание программисту, свои слова — как есть
+  // карта спрятанной механики (поле secret Фабрики): спрятанная механика из колоды урока — её задание программисту, свои слова — как есть
   const secText = fieldText(facFields.secret), secDef = secText && les.wow ? les.wow.secrets.find(x => x.title === secText) : null;
   return {
     title: fieldText(facFields.title) || 'Моя игра',
@@ -716,7 +716,7 @@ route('GET', '/api/playtest/mine', (ctx) => {
   const g = st.gameId && store.getGame(st.gameId);
   return { game: g && g.current ? gameCard(w.class, g, w.nick) : null, discovery: g && g.current ? discovery(g) : null, feedback: st.feedback || null, blind: g ? blindSecret(w.class, g) : null, juice: g && g.current ? blindVotes(w.class, g) : null };
 });
-// слепая пара с секретом (шаг blindpair, mode: 'secret'): сколько соседей проголосовали за мою игру и сколько почувствовали секрет
+// слепая пара со спрятанной механикой (шаг blindpair, mode: 'secret'): сколько соседей проголосовали за мою игру и сколько почувствовали спрятанную механику
 function blindSecret(code, g) {
   const les = lesson(g.lesson);
   const steps = les ? les.checkpoints.flatMap(c => c.steps).filter(x => x.type === 'blindpair' && x.mode === 'secret') : [];
@@ -729,8 +729,8 @@ function blindSecret(code, g) {
   return { voted, felt };
 }
 
-/* ---------- вау-старт: карты безумных идей, секрет, общая игра урока ---------- */
-// Состояние живёт в классе (cls.wow) для текущего урока. Секрет и его раскрытие ученики получают только после своей догадки.
+/* ---------- вау-старт: карты безумных идей, спрятанная механика, общая игра урока ---------- */
+// Состояние живёт в классе (cls.wow) для текущего урока. Спрятанная механика и её раскрытие ученики получают только после своей догадки.
 const randFrom = (list, not) => { const l = list.filter(x => x !== not); return l.length ? l[Math.floor(Math.random() * l.length)] : not; };
 const cap = t => (t ? t[0].toUpperCase() + t.slice(1) : t);
 // колода без повторов: карта не выпадает снова, пока класс не вытянет всю колоду; потом колода тасуется заново.
@@ -753,18 +753,18 @@ function wowState(cls, les) {
   if (!cls.wow || cls.wow.lesson !== les.id) {
     cls.wow = { lesson: les.id, cards: {}, votes: {}, secret: fixed || randFrom(diceSecrets(cls, les).map(x => x.id)), secretBy: fixed ? 'урок' : 'кубик', status: 'cards', gameId: null, given: false };
     store.saveClass(cls);
-  } else if (fixed && cls.wow.secret !== fixed) { // класс начал урок до того, как секрет стал один: следующая сборка заложит секрет урока
+  } else if (fixed && cls.wow.secret !== fixed) { // класс начал урок до того, как спрятанная механика стала одной: следующая сборка заложит спрятанную механику урока
     cls.wow.secret = fixed; cls.wow.secretBy = 'урок'; store.saveClass(cls);
   }
   return cls.wow;
 }
-// один секрет игры класса на все классы (wow.classSecret): кубика и тайной замены у учителя нет
+// одна спрятанная механика игры класса на все классы (wow.classSecret): кубика и тайной замены у учителя нет
 const fixedSecret = les => (les.wow && les.wow.classSecret && les.wow.secrets.some(x => x.id === les.wow.classSecret) ? les.wow.classSecret : null);
-const aiSecrets = les => les.wow.secrets.filter(x => !x.fallbackOnly); // секреты для игры ИИ; fallbackOnly — только у запасной игры
-// секреты для кубика и карты секрета в Фабрике: со звуком (sound) — только если учитель отметил, что в классе наушники
+const aiSecrets = les => les.wow.secrets.filter(x => !x.fallbackOnly); // спрятанные механики для игры ИИ; fallbackOnly — только у запасной игры
+// спрятанные механики для кубика и карты спрятанной механики в Фабрике: со звуком (sound) — только если учитель отметил, что в классе наушники
 const diceSecrets = (cls, les) => { const all = aiSecrets(les), ok = all.filter(x => !x.sound || (cls && cls.headphones)); return ok.length ? ok : all; };
 const secretOf = (les, id) => les.wow.secrets.find(x => x.id === id) || les.wow.secrets[0];
-const builtSecret = (les, w) => secretOf(les, w.builtSecret || w.secret); // секрет, который лежит в собранной игре
+const builtSecret = (les, w) => secretOf(les, w.builtSecret || w.secret); // спрятанная механика, которая лежит в собранной игре
 function publicWow(cls, les) {
   const w = wowState(cls, les);
   if (!w) return null;
@@ -778,7 +778,7 @@ function publicWow(cls, les) {
   };
 }
 const wowChanged = (cls, les) => broadcast(cls.code, 'wow', publicWow(cls, les));
-// варианты шага «Найди секрет»: настоящий секрет, два чужих из колоды и ловушка — поворот с карты (он был в замысле, значит, не секрет)
+// варианты шага «Найди спрятанную механику»: настоящая спрятанная механика, две чужие из колоды и ловушка — поворот с карты (он был в замысле, значит, не спрятанная механика)
 function huntOptions(cls, les, w) {
   const sec = builtSecret(les, w), h = hashOf(cls.code + sec.id);
   const others = aiSecrets(les).filter(x => x.id !== sec.id).sort((a, b) => hashOf(h + a.id) - hashOf(h + b.id)).slice(0, 2);
@@ -790,13 +790,13 @@ const wowSteps = les => {
   const all = les.checkpoints.flatMap(c => c.steps);
   return { on: all.find(x => x.type === 'play' && x.shared && !x.secretOff && !x.lupa), off: all.find(x => x.type === 'play' && x.shared && x.secretOff), ab: all.find(x => x.type === 'abtest'), hunt: all.find(x => x.type === 'secret' && !x.hunt) };
 };
-// сводка для учителя: рекорды с секретом и без, сколько раз сработал секрет, кто угадал
+// сводка для учителя: рекорды со спрятанной механикой и без, сколько раз сработала спрятанная механика, кто угадал
 function wowSummary(cls, les) {
   const S = wowSteps(les);
   const rows = store.students(cls.code).map(s => {
     const st = (s.lessons || {})[les.id] || { answers: {} };
     const A = step => (step && st.answers[step.id] && st.answers[step.id].value) || {};
-    // слепой тест А/Б: «с секретом» — копия, где он работал; иначе — партии шагов play с секретом и без
+    // слепой тест А/Б: «со спрятанной механикой» — копия, где она работала; иначе — партии шагов play со спрятанной механикой и без
     const ab = A(S.ab), on = ab.A ? ab[ab.side] : A(S.on), off = ab.A ? ab[ab.side === 'A' ? 'B' : 'A'] : A(S.off), g = A(S.hunt);
     return { nick: s.nick, onRounds: on.rounds || 0, onBest: on.best || 0, hits: on.secret || 0, offRounds: off.rounds || 0, offBest: off.best || 0, guess: g.guess || null, correct: !!g.correct, trap: !!g.trap,
       vote: ab.vote || null, felt: !!ab.vote && ab.vote === ab.side };
@@ -825,7 +825,7 @@ route('POST', '/api/wow/vote', (ctx) => { // голос «перетянуть �
   store.saveClass(cls); wowChanged(cls, les);
   return { voters: w.votes[card.id] };
 });
-// шаг «Найди секрет» с hunt в сценарии: варианты и ответ — из шага, игры класса не нужно
+// шаг «Найди спрятанную механику» с hunt в сценарии: варианты и ответ — из шага, игры класса не нужно
 const huntStep = (les, id) => { const f = id && stepOf(les, id); return f && f.step.type === 'secret' && f.step.hunt ? f.step : null; };
 route('GET', '/api/wow/hunt', (ctx) => {
   const { cls, les, st } = needStudent(ctx);
@@ -834,7 +834,7 @@ route('GET', '/api/wow/hunt', (ctx) => {
   const w = wowState(cls, les);
   if (!w || !w.gameId) return { options: [] };
   const S = wowSteps(les), sum = wowSummary(cls, les);
-  // сколько в классе почувствовали секрет вслепую (слепой тест А/Б) — в раскрытии секрета
+  // сколько в классе почувствовали спрятанную механику вслепую (слепой тест А/Б) — в раскрытии спрятанной механики
   return { options: huntOptions(cls, les, w).options, answer: (S.hunt && st.answers[S.hunt.id] && st.answers[S.hunt.id].value) || null, felt: { felt: sum.felt, voted: sum.voted } };
 });
 route('POST', '/api/wow/guess', (ctx) => {
@@ -891,14 +891,14 @@ route('POST', '/api/teacher/wow/draw', (ctx) => {
 });
 route('POST', '/api/teacher/wow/secret', (ctx) => { // без id — кубик, с id — тайный выбор учителя
   const { cls, les, w } = needWow(ctx);
-  if (fixedSecret(les)) throw Object.assign(new Error(`В этом уроке у игры класса один секрет: «${secretOf(les, fixedSecret(les)).title}»`), { status: 400 });
-  if (ctx.body.id) { if (!aiSecrets(les).some(x => x.id === ctx.body.id)) throw Object.assign(new Error('Нет такого секрета'), { status: 400 }); w.secret = ctx.body.id; w.secretBy = 'учитель'; }
+  if (fixedSecret(les)) throw Object.assign(new Error(`В этом уроке у игры класса одна спрятанная механика: «${secretOf(les, fixedSecret(les)).title}»`), { status: 400 });
+  if (ctx.body.id) { if (!aiSecrets(les).some(x => x.id === ctx.body.id)) throw Object.assign(new Error('Нет такой спрятанной механики'), { status: 400 }); w.secret = ctx.body.id; w.secretBy = 'учитель'; }
   else { w.secret = randFrom(diceSecrets(cls, les).map(x => x.id), w.secret); w.secretBy = 'кубик'; }
   store.saveClass(cls);
   return { secret: secretOf(les, w.secret), secretBy: w.secretBy };
 });
-// наушники в классе: без них секреты со звуком (sound) не выпадают кубиком и не попадают в карту секрета Фабрики.
-// Сняли отметку, а кубик уже выбрал звуковой секрет — кубик перебрасывается; выбор учителя остаётся.
+// наушники в классе: без них спрятанные механики со звуком (sound) не выпадают кубиком и не попадают в карту спрятанной механики Фабрики.
+// Сняли отметку, а кубик уже выбрал звуковую спрятанную механику — кубик перебрасывается; выбор учителя остаётся.
 route('POST', '/api/teacher/wow/headphones', (ctx) => {
   const { cls, les, w } = needWow(ctx);
   cls.headphones = !!ctx.body.on;
@@ -970,35 +970,35 @@ function cleanReport(r) {
     strategy: x.strategy, seconds: Math.round(num(x.seconds, 600) * 10) / 10, over: !!x.over, endText: cleanStr(x.endText, 120), score: Math.round(num(x.score, 1e9)), hurts: Math.round(num(x.hurts, 999)),
     hurtsAt: (Array.isArray(x.hurtsAt) ? x.hurtsAt : []).slice(0, 10).map(t => Math.round(num(t, 600) * 10) / 10), offscreen: x.offscreen == null ? null : Math.round(num(x.offscreen, 100)),
     flat: Math.round(num(x.flat, 600)), presses: { a: Math.round(num(x.presses && x.presses.a)), b: Math.round(num(x.presses && x.presses.b)) }, error: x.error ? cleanStr(x.error, 300) : null,
-    secret: Math.round(num(x.custom && x.custom._secret) * 10) / 10, // сколько раз сработал секрет (скрытый счётчик _secret)
-    // секунды срабатываний секрета: когда он сработал впервые и сколько раз (отметки не чаще 4 в секунду)
+    secret: Math.round(num(x.custom && x.custom._secret) * 10) / 10, // сколько раз сработала спрятанная механика (скрытый счётчик _secret)
+    // секунды срабатываний спрятанной механики: когда она сработала впервые и сколько раз (отметки не чаще 4 в секунду)
     secretFirst: Array.isArray(x.secretAt) && x.secretAt.length ? Math.round(num(x.secretAt[0], 600) * 10) / 10 : null,
     secretMarks: Array.isArray(x.secretAt) ? Math.min(300, x.secretAt.length) : 0,
   });
   const results = (Array.isArray(r.results) ? r.results : []).filter(x => x && STRATS.includes(x.strategy)).slice(0, 3).map(clean);
-  // off — партия новичка в копии «Без секрета» (ручка секрета = 0) в том же мире: её сравнивают с партией новичка с секретом
+  // off — партия новичка в копии «Без спрятанной механики» (ручка спрятанной механики = 0) в том же мире: её сравнивают с партией новичка со спрятанной механикой
   const off = r.off && typeof r.off === 'object' && r.off.strategy === 'random' ? clean(r.off) : null;
   return { at: store.now(), seconds: Math.round(num(r.seconds, 600)), seed: Math.round(num(r.seed, 4294967295)), hero: !!r.hero, results, off,
     findings: (Array.isArray(r.findings) ? r.findings : []).slice(0, 12).map(f => cleanStr(f, 400)).filter(Boolean) };
 }
-// Бот проверяет и секрет (разбор геймдизайнера 17.10.2026): если за три партии счётчик _secret ни разу не сработал, класс не почувствует
+// Бот проверяет и спрятанную механику (разбор геймдизайнера 17.10.2026): если за три партии счётчик _secret ни разу не сработал, класс не почувствует
 // разницу копий А и Б. Тогда в отчёте появляется находка, и панель учителя сама отправляет программисту правку по отчёту — один раз на игру.
-const SECRET_SILENT = 'Секрет ни разу не сработал за три партии бота: скрытый счётчик _secret молчит, и класс не почувствует разницу копий А и Б. Секрет должен впервые сработать до 15-й секунды партии при secret: 1; вызывай lab.count(\'_secret\') каждый раз, когда он срабатывает.';
-// Бот проверяет и силу секрета (решение автора 18.10.2026): когда сработал впервые, как часто срабатывает и различаются ли копии
-// с секретом и без у новичка — по показателям из поля bot секрета в колоде урока. Слабый секрет класс не заметит за одну партию в копию.
+const SECRET_SILENT = 'Спрятанная механика ни разу не сработала за три партии бота: скрытый счётчик _secret молчит, и класс не почувствует разницу копий А и Б. Спрятанная механика должна впервые сработать до 15-й секунды партии при secret: 1; вызывай lab.count(\'_secret\') каждый раз, когда он срабатывает.';
+// Бот проверяет и силу спрятанной механики (решение автора 18.10.2026): когда сработала впервые, как часто срабатывает и различаются ли копии
+// со спрятанной механикой и без у новичка — по показателям из поля bot спрятанной механики в колоде урока. Слабая спрятанная механика класс не заметит за одну партию в копию.
 const SECRET_FIRST = 15, SECRET_RATE = 4;
 const BOT_METRIC = { hurts: 'урон', seconds: 'длина партии, с', score: 'очки' };
 function secretWeak(sec, pt) {
   const rs = pt.results.filter(x => !x.error), out = [];
-  if (!rs.length || rs.every(x => !x.secret)) return out; // молчащий секрет — находка SECRET_SILENT
+  if (!rs.length || rs.every(x => !x.secret)) return out; // молчащая спрятанная механика — находка SECRET_SILENT
   const firsts = rs.map(x => x.secretFirst).filter(t => t != null), first = firsts.length ? Math.min(...firsts) : null;
-  if (first != null && first > SECRET_FIRST) out.push(`Секрет впервые сработал только на ${Math.round(first)}-й секунде партии бота, а нужно до ${SECRET_FIRST}-й: класс играет по одной партии в каждую копию. Сделай так, чтобы секрет срабатывал с первых секунд.`);
+  if (first != null && first > SECRET_FIRST) out.push(`Спрятанная механика впервые сработала только на ${Math.round(first)}-й секунде партии бота, а нужно до ${SECRET_FIRST}-й: класс играет по одной партии в каждую копию. Сделай так, чтобы спрятанная механика срабатывала с первых секунд.`);
   const rate = Math.max(...rs.map(x => (x.seconds >= 10 ? x.secretMarks / x.seconds * 60 : 0)));
-  if (rate < SECRET_RATE) out.push(`Секрет срабатывает ${String(Math.round(rate * 10) / 10).replace('.', ',')} раза в минуту, а нужно не меньше ${SECRET_RATE}: за партию его не заметить. Пусть он срабатывает чаще, а эффект будет крупнее.`);
+  if (rate < SECRET_RATE) out.push(`Спрятанная механика срабатывает ${String(Math.round(rate * 10) / 10).replace('.', ',')} раза в минуту, а нужно не меньше ${SECRET_RATE}: за партию его не заметить. Пусть он срабатывает чаще, а эффект будет крупнее.`);
   const spec = (sec && sec.bot) || {}, on = rs.find(x => x.strategy === 'random'), off = pt.off;
   if (spec.differs && on && off && !off.error) {
     const diff = k => { const a = on[k] || 0, b = off[k] || 0, m = Math.max(a, b); return m ? Math.abs(a - b) / m : 0; };
-    if (!spec.differs.some(k => diff(k) >= (spec.by || 0.2))) out.push(`Копии с секретом и без почти не различаются у новичка: ${spec.differs.map(k => `${BOT_METRIC[k] || k} ${on[k]} и ${off[k]}`).join(', ')}. Нужна разница хотя бы ${Math.round((spec.by || 0.2) * 100)}%: сделай эффект секрета сильнее и убери из игры без секрета всё, что на него похоже.`);
+    if (!spec.differs.some(k => diff(k) >= (spec.by || 0.2))) out.push(`Копии со спрятанной механикой и без почти не различаются у новичка: ${spec.differs.map(k => `${BOT_METRIC[k] || k} ${on[k]} и ${off[k]}`).join(', ')}. Нужна разница хотя бы ${Math.round((spec.by || 0.2) * 100)}%: сделай эффект спрятанной механики сильнее и убери из игры без спрятанной механики всё, что на неё похоже.`);
   }
   return out;
 }
@@ -1009,11 +1009,11 @@ route('POST', '/api/teacher/wow/playtest', (ctx) => {
   v.playtest = cleanReport(ctx.body.report);
   const silent = w.knob === 'secret' && v.playtest.results.length > 0 && v.playtest.results.every(x => !x.secret && !x.error);
   if (silent) { v.playtest.secretSilent = true; v.playtest.findings.unshift(SECRET_SILENT); }
-  const weak = silent || w.knob !== 'secret' ? [] : secretWeak(builtSecret(les, w), v.playtest); // у запасной игры свой проверенный секрет
-  v.playtest.secretWeak = weak.length > 0; // панель учителя: «секрет заметный» или «секрет слабый»
+  const weak = silent || w.knob !== 'secret' ? [] : secretWeak(builtSecret(les, w), v.playtest); // у запасной игры своя проверенная спрятанная механика
+  v.playtest.secretWeak = weak.length > 0; // панель учителя: «спрятанная механика заметная» или «спрятанная механика слабая»
   if (weak.length) v.playtest.findings.unshift(...weak);
   store.saveGame(g);
-  // автоправка — только если в этой игре ещё не было автоправки по секрету и ИИ доступен
+  // автоправка — только если в этой игре ещё не было автоправки по спрятанной механике и ИИ доступен
   const autoFix = (silent || weak.length > 0) && w.knob === 'secret' && !ai.demo() && !ai.manual(les.id) && !w.given && !g.versions.some(x => x.autoFix);
   return { playtest: v.playtest, autoFix };
 });
@@ -1041,9 +1041,9 @@ route('POST', '/api/teacher/wow/playtest-fix', (ctx) => {
   w.jobId = job.id; store.saveClass(cls);
   return { job: job.id };
 });
-// Проверка секрета без бота (урок 1, чекпоинт 5, 18.10.2026): в игру-страницу из чата бот не играет, поэтому секрет проверяют живые партии —
+// Проверка спрятанной механики без бота (урок 1, чекпоинт 5, 18.10.2026): в игру-страницу из чата бот не играет, поэтому спрятанную механику проверяют живые партии —
 // учителя в предпросмотре и класса в слепом тесте. Молчит — учитель отправляет правку в тот же чат Qwen; игра остаётся у класса.
-const SECRET_SILENT_CHAT = 'Секрет ни разу не сработал в партиях: скрытый счётчик молчит, и класс не почувствует разницу копий А и Б. Сделай секрет заметным уже в первой минуте партии при ручке secret = 1 и вызывай portal.count(\'_secret\') (в игре GAME — lab.count(\'_secret\')) каждый раз, когда он срабатывает.';
+const SECRET_SILENT_CHAT = 'Спрятанная механика ни разу не сработала в партиях: скрытый счётчик молчит, и класс не почувствует разницу копий А и Б. Сделай спрятанную механику заметной уже в первой минуте партии при ручке secret = 1 и вызывай portal.count(\'_secret\') (в игре GAME — lab.count(\'_secret\')) каждый раз, когда он срабатывает.';
 route('POST', '/api/teacher/wow/secret-fix', (ctx) => {
   const { cls, les, w } = needWow(ctx);
   if (ai.programmerDemo(les.id)) throw Object.assign(new Error('Без ключа ИИ программист не правит игру — попробуйте с ключом'), { status: 400 });
@@ -1054,7 +1054,7 @@ route('POST', '/api/teacher/wow/secret-fix', (ctx) => {
   const whoAI = { class: cls.code, nick: 'учитель', lesson: les.id };
   const job = startJob(ctx.who.token, 'wow', async (progress) => {
     const r = await ai.change(code, SECRET_SILENT_CHAT, whoAI, progress);
-    const out = wowVersion(cls.code, Object.assign(r, { knob: w.knob }), secretId, { kind: 'правка: секрет молчал', from: n, request: SECRET_SILENT_CHAT });
+    const out = wowVersion(cls.code, Object.assign(r, { knob: w.knob }), secretId, { kind: 'правка: спрятанная механика молчала', from: n, request: SECRET_SILENT_CHAT });
     if (given) { const c2 = store.getClass(cls.code), w2 = wowState(c2, les); w2.given = true; store.saveClass(c2); wowChanged(c2, les); }
     return out;
   });
@@ -1077,7 +1077,7 @@ route('POST', '/api/teacher/wow/build', (ctx) => {
   if (missing.length) throw Object.assign(new Error('Сначала вытяните карты: ' + missing.map(c => c.label).join(', ')), { status: 400 });
   if (w.status === 'building' && busyJob(w.jobId)) throw Object.assign(new Error('Игра уже собирается'), { status: 409 });
   const fb = Object.assign({}, les.wow.fallback);
-  const secretId = ai.programmerDemo(les.id) ? fb.secret : w.secret; // без ключа собирается запасная игра — у неё свой секрет
+  const secretId = ai.programmerDemo(les.id) ? fb.secret : w.secret; // без ключа собирается запасная игра — у неё своя спрятанная механика
   const sec = secretOf(les, secretId);
   w.status = 'building'; w.given = false; store.saveClass(cls); wowChanged(cls, les);
   const whoAI = { class: cls.code, nick: 'учитель', lesson: les.id };
@@ -1181,7 +1181,7 @@ route('POST', '/api/ai/build', (ctx) => {
     const r = await ai.build(plan, Object.assign({}, c.whoAI, { game: g.id, build }), progress);
     // название, донор и три решения — подпись игры в аркаде класса; замысел — для сравнения моделей на том же замысле
     const g2 = store.getGame(g.id); g2.title = plan.title; g2.donor = plan.donorTitle || c.les.donor; g2.decisions = plan.decisions; g2.plan = plan;
-    // ручка секрета своей игры (карта секрета): по ней слепая пара выключает секрет; в демо — секрет запасной игры урока
+    // ручка спрятанной механики своей игры (карта спрятанной механики): по ней слепая пара выключает спрятанную механику; в демо — спрятанная механика запасной игры урока
     g2.knob = !plan.secret ? null : r.demo ? ((c.les.wow && c.les.wow.fallback && c.les.wow.fallback.knob) || null) : /\bsecret\s*:\s*\{/.test(r.code) ? 'secret' : null;
     store.saveGame(g2);
     return Object.assign(addVersion(g.id, r, { kind: 'сборка', build }), { filled: gaps.filled, filledCount: gaps.count });
@@ -1462,8 +1462,8 @@ route('GET', '/api/teacher/overview', (ctx) => {
   const votes = Object.fromEntries(les.checkpoints.flatMap(c => c.steps).filter(x => x.type === 'vote').map(x => [x.id, voteTally(cls.code, les, x)])); // выставка джема
   return { class: cls, lesson: les, students, stepsDone, votes, spend: spend(cls.code, les.id), limits: ai.limits(), stuckSec: STUCK_SEC, now: new Date().toISOString() };
 });
-// живые ответы класса для проектора (вкладка «Ответы класса»): шаги выбора полосками без имён, слепой тест А/Б и слепая пара с секретом —
-// сколько почувствовали секрет. Считаются только отправленные ответы (шаг готов).
+// живые ответы класса для проектора (вкладка «Ответы класса»): шаги выбора полосками без имён, слепой тест А/Б и слепая пара со спрятанной механикой —
+// сколько почувствовали спрятанную механику. Считаются только отправленные ответы (шаг готов).
 const valOf = v => (v && typeof v === 'object' ? v.text || '' : v || '');
 route('GET', '/api/teacher/poll', (ctx) => {
   needTeacher(ctx);
@@ -1482,7 +1482,7 @@ route('GET', '/api/teacher/poll', (ctx) => {
     } else if (x.type === 'abtest' || (x.type === 'blindpair' && x.mode === 'secret')) {
       const list = done(x.id).filter(v => v.vote), felt = x.type === 'abtest' ? list.filter(v => v.vote === v.side).length : list.filter(v => v.felt).length, same = list.filter(v => v.vote === 'same').length;
       steps.push({ cp: cp.id, id: x.id, title: x.title, kind: 'secret', n: list.length,
-        bars: [{ label: 'Почувствовали секрет', n: felt }, { label: 'Выбрали копию без секрета', n: list.length - felt - same }, { label: 'Разницы нет', n: same }] });    // разбор прототипа (урок 1, чекпоинт 5): «Совпало?», находки разбора (главные — словами), «Ближе к чувству?» — проектор и карточка учителя
+        bars: [{ label: 'Почувствовали спрятанную механику', n: felt }, { label: 'Выбрали копию без спрятанной механики', n: list.length - felt - same }, { label: 'Разницы нет', n: same }] });    // разбор прототипа (урок 1, чекпоинт 5): «Совпало?», находки разбора (главные — словами), «Ближе к чувству?» — проектор и карточка учителя
     } else if (x.type === 'ownplay' && x.match) {
       const list = all.map(a => (a[x.id] || {}).value || {}).filter(v => v.match);
       steps.push({ cp: cp.id, id: x.id, title: x.match.question, kind: 'choice', n: list.length, bars: x.match.options.map(o => ({ label: o, n: list.filter(v => v.match === o).length })) });

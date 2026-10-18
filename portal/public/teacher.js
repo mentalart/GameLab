@@ -408,8 +408,8 @@ function feedbackEditor(nick, fb, hasGame) {
 }
 
 /* ---------- вкладка «Вау-старт» ---------- */
-// Учитель тянет карты при классе, кубик выбирает секрет (учитель может тайно заменить), ИИ собирает общую игру, учитель раздаёт её классу.
-// Вкладку можно держать на проекторе: секрет скрыт, пока учитель его не откроет. Пока вкладка открыта, голоса и сводка обновляются сами.
+// Учитель тянет карты при классе, кубик выбирает спрятанную механику (учитель может тайно заменить), ИИ собирает общую игру, учитель раздаёт её классу.
+// Вкладку можно держать на проекторе: спрятанная механика скрыта, пока учитель её не откроет. Пока вкладка открыта, голоса и сводка обновляются сами.
 const W = { data: null, showSecret: false, gameKey: null, preview: null, busy: false };
 async function drawWow(full) {
   const host = $('#tab-wow');
@@ -422,7 +422,7 @@ async function drawWow(full) {
     host.append(el('div', { class: 'row' },
       el('div', { class: 'grow stack', style: 'gap:2px' }, el('div', { class: 'eyebrow' }, 'Чекпоинт 1 · колода безумных идей'), el('h2', {}, r.formula)),
       el('button', { class: 'btn', type: 'button', onclick: () => wowAct('/api/teacher/wow/draw', { card: 'all' }) }, '🎲 Тянуть все карты')),
-      el('p', { class: 'muted small' }, 'Карты появляются у учеников сразу. Ученики голосуют «перетянуть» — число голосов видно под картой. Вкладку можно показывать на проекторе: секрет скрыт.'),
+      el('p', { class: 'muted small' }, 'Карты появляются у учеников сразу. Ученики голосуют «перетянуть» — число голосов видно под картой. Вкладку можно показывать на проекторе: спрятанная механика скрыта.'),
       el('div', { id: 'wowCards' }), el('div', { id: 'wowLink' }), el('div', { id: 'wowSecret' }), el('div', { id: 'wowBuild' }), el('div', { id: 'wowSummary' }));
     W.gameKey = null;
   }
@@ -455,29 +455,29 @@ function drawWowLink() {
 function drawWowSecret() {
   const r = W.data, host = $('#wowSecret'); host.innerHTML = '';
   const box = el('div', { class: 'secretbox' });
-  box.append(el('div', { class: 'row' }, el('b', { class: 'grow' }, '🤫 Секрет игры — его видите только вы'),
+  box.append(el('div', { class: 'row' }, el('b', { class: 'grow' }, '🤫 Спрятанная механика игры — её видите только вы'),
     el('button', { class: 'btn ghost small', type: 'button', onclick: () => { W.showSecret = !W.showSecret; drawWowSecret(); } }, W.showSecret ? 'Скрыть' : 'Показать')));
-  if (W.showSecret && r.fixed) { // урок с одним секретом игры класса: ни кубика, ни замены
-    box.append(el('div', {}, el('span', { class: 'tag own' }, 'секрет урока'), ' ', el('b', {}, r.secret.title)),
-      el('p', { class: 'small muted' }, 'В этом уроке у игры класса один секрет для всех классов: разбор отработан под него. Классу его не называйте — его ищут в «Найди секрет».'),
-      r.built && r.built.id !== r.secret.id ? el('p', { class: 'small', style: 'color:var(--warm)' }, `В собранной игре сейчас другой секрет: «${r.built.title}». Пересоберите игру, чтобы заложить секрет урока.`) : '',
-      r.demo ? el('p', { class: 'small muted' }, 'Демо-режим: без ключа ИИ собирается запасная игра урока, у неё свой секрет — ускорение волны.') : '');
+  if (W.showSecret && r.fixed) { // урок с одной спрятанной механикой игры класса: ни кубика, ни замены
+    box.append(el('div', {}, el('span', { class: 'tag own' }, 'спрятанная механика урока'), ' ', el('b', {}, r.secret.title)),
+      el('p', { class: 'small muted' }, 'В этом уроке у игры класса одна спрятанная механика для всех классов: разбор отработан под неё. Классу её не называйте — её ищут в «Найди спрятанную механику».'),
+      r.built && r.built.id !== r.secret.id ? el('p', { class: 'small', style: 'color:var(--warm)' }, `В собранной игре сейчас другая спрятанная механика: «${r.built.title}». Пересоберите игру, чтобы заложить спрятанную механику урока.`) : '',
+      r.demo ? el('p', { class: 'small muted' }, 'Демо-режим: без ключа ИИ собирается запасная игра урока, у неё своя спрятанная механика — ускорение волны.') : '');
   } else if (W.showSecret) {
-    const sel = el('select', { id: 'wowSecretSel', 'aria-label': 'Выбрать секрет' });
+    const sel = el('select', { id: 'wowSecretSel', 'aria-label': 'Выбрать спрятанную механику' });
     r.secrets.forEach(x => sel.append(el('option', { value: x.id, selected: x.id === r.secret.id ? true : null }, `${x.title} (${x.effect})${x.sound ? ' · 🎧 слышно только в наушниках' : ''}`)));
     sel.addEventListener('change', () => wowAct('/api/teacher/wow/secret', { id: sel.value }));
     box.append(el('div', {}, el('span', { class: 'tag ' + (r.wow.secretBy === 'кубик' ? 'dice' : 'own') }, r.wow.secretBy === 'кубик' ? '[кубик]' : 'выбор учителя'), ' ', el('b', {}, r.secret.title)),
-      el('div', { class: 'row' }, el('div', { class: 'grow' }, sel), el('button', { class: 'btn ghost small', type: 'button', onclick: () => wowAct('/api/teacher/wow/secret', {}) }, '🎲 Другой секрет')),
-      r.secret.sound && !r.headphones ? el('p', { class: 'small', style: 'color:var(--warm)' }, '🎧 Этот секрет слышно только в наушниках, а в классе их нет — класс его не почувствует.') : '',
-      r.built && r.built.id !== r.secret.id ? el('p', { class: 'small', style: 'color:var(--warm)' }, `В собранной игре сейчас другой секрет: «${r.built.title}». Пересоберите игру, чтобы заложить новый.`) : '',
-      r.demo ? el('p', { class: 'small muted' }, 'Демо-режим: без ключа ИИ собирается запасная игра урока, у неё свой секрет — ускорение волны.') : '');
+      el('div', { class: 'row' }, el('div', { class: 'grow' }, sel), el('button', { class: 'btn ghost small', type: 'button', onclick: () => wowAct('/api/teacher/wow/secret', {}) }, '🎲 Другая спрятанная механика')),
+      r.secret.sound && !r.headphones ? el('p', { class: 'small', style: 'color:var(--warm)' }, '🎧 Эту спрятанную механику слышно только в наушниках, а в классе их нет — класс её не почувствует.') : '',
+      r.built && r.built.id !== r.secret.id ? el('p', { class: 'small', style: 'color:var(--warm)' }, `В собранной игре сейчас другая спрятанная механика: «${r.built.title}». Пересоберите игру, чтобы заложить новую.`) : '',
+      r.demo ? el('p', { class: 'small muted' }, 'Демо-режим: без ключа ИИ собирается запасная игра урока, у неё своя спрятанная механика — ускорение волны.') : '');
   }
-  // наушники: без них секреты со звуком не выпадают кубиком и не попадают в карту секрета Фабрики
-  if (!r.secrets.some(x => x.sound)) { host.append(box); return; } // секретов со звуком нет — отметка про наушники ни на что не влияет
+  // наушники: без них спрятанные механики со звуком не выпадают кубиком и не попадают в карту спрятанной механики Фабрики
+  if (!r.secrets.some(x => x.sound)) { host.append(box); return; } // спрятанных механик со звуком нет — отметка про наушники ни на что не влияет
   const hp = el('input', { type: 'checkbox', id: 'wowHeadphones', checked: r.headphones ? true : null });
   hp.addEventListener('change', () => wowAct('/api/teacher/wow/headphones', { on: hp.checked }, true));
   box.append(el('label', { class: 'row small', for: 'wowHeadphones', style: 'gap:8px;cursor:pointer' }, hp,
-    el('span', {}, '🎧 В классе наушники — можно секреты со звуком (иначе кубик их не тянет, и в Фабрике их нет)')));
+    el('span', {}, '🎧 В классе наушники — можно спрятанные механики со звуком (иначе кубик их не тянет, и в Фабрике их нет)')));
   host.append(box);
 }
 function drawWowBuild() {
@@ -501,7 +501,7 @@ function drawWowBuild() {
     W.busy = false; drawWow(true);
   } }, r.game ? '↻ Собрать заново' : '⚙ Собрать с ИИ');
   box.append(el('div', { class: 'row' }, buildBtn,
-    el('button', { class: 'btn ghost small', type: 'button', onclick: async () => { if (await Lab.ask('Взять запасную игру урока вместо сборки ИИ? Её секрет — ускорение волны.', { ok: 'Взять запасную' })) wowAct('/api/teacher/wow/fallback', {}, true); } }, 'Запасная игра'),
+    el('button', { class: 'btn ghost small', type: 'button', onclick: async () => { if (await Lab.ask('Взять запасную игру урока вместо сборки ИИ? Её спрятанная механика — ускорение волны.', { ok: 'Взять запасную' })) wowAct('/api/teacher/wow/fallback', {}, true); } }, 'Запасная игра'),
     el('span', { class: 'muted small' }, r.demo ? 'Демо-режим: соберётся запасная игра урока с названием по картам.' : 'Полная 3D-игра пишется 5–20 минут. Пока ИИ пишет, класс играет в донора.')), prog);
   if (r.game) {
     const g = r.game;
@@ -510,26 +510,26 @@ function drawWowBuild() {
     // бот-плейтестер: новая версия без отчёта прогоняется сразу, в рамке предпросмотра — учитель видит партии бота в ускоренном времени
     const bot = el('div', { class: 'stack', id: 'wowBot' }), botLine = el('div', { class: 'small muted', 'aria-live': 'polite' });
     const runBot = () => { W.botFor = g.id + '/' + g.version; botLine.textContent = '🤖 Бот-плейтестер запускает игру…'; if (W.preview.ready) sendBot(); else W.preview.start(); };
-    // compare — ещё партия новичка в копии без секрета: сервер сравнивает копии и отмечает слабый секрет
+    // compare — ещё партия новичка в копии без спрятанной механики: сервер сравнивает копии и отмечает слабую спрятанную механику
     const sendBot = () => { W.preview.post({ type: 'playtest', options: { seconds: window.LAB_PLAYTEST_SECONDS || 90, compare: { knob: g.knob || 'secret' } } }); };
-    // проверка секрета живыми партиями: в игру-страницу из чата бот не играет — секрет считают партии учителя в предпросмотре
+    // проверка спрятанной механики живыми партиями: в игру-страницу из чата бот не играет — спрятанную механику считают партии учителя в предпросмотре
     const selfKey = g.id + '/' + g.version;
     if (!W.self || W.self.key !== selfKey) W.self = { key: selfKey, rounds: 0, hits: 0 };
     const selfLine = el('div', { class: 'small', 'aria-live': 'polite' });
     const drawSelf = () => {
       selfLine.innerHTML = '';
       if (r.wow.knob !== 'secret' || !W.self.rounds) return;
-      selfLine.append(el('span', { class: 'muted' }, `Ваши партии в предпросмотре: ${W.self.rounds}, секрет сработал ${W.self.hits} раз. `));
-      if (W.self.rounds >= 2 && !W.self.hits) selfLine.append(secretFixBox('Секрет молчит в ваших партиях: класс не почувствует разницу копий А и Б.'));
+      selfLine.append(el('span', { class: 'muted' }, `Ваши партии в предпросмотре: ${W.self.rounds}, спрятанная механика сработала ${W.self.hits} раз. `));
+      if (W.self.rounds >= 2 && !W.self.hits) selfLine.append(secretFixBox('Спрятанная механика молчит в ваших партиях: класс не почувствует разницу копий А и Б.'));
     };
     W.preview = Games.frame({ src: () => `/play/${g.id}/${g.version}`, key: () => 'wow:' + g.id, label: 'Проверить игру',
       onOver: m => { if (W.self.key !== selfKey) return; W.self.rounds++; W.self.hits += Number(((m.tele || {}).custom || {})._secret) || 0; drawSelf(); },
       onReady: () => { if (W.botFor === g.id + '/' + g.version) sendBot(); },
-      onPlaytestStep: m => { botLine.textContent = `🤖 Бот играет: ${({ idle: 'пассивный', mash: 'торопыга', random: 'новичок' })[m.strategy] || m.strategy}${m.off ? ' без секрета' : ''}, ${m.t} из ${m.seconds} с`; },
+      onPlaytestStep: m => { botLine.textContent = `🤖 Бот играет: ${({ idle: 'пассивный', mash: 'торопыга', random: 'новичок' })[m.strategy] || m.strategy}${m.off ? ' без спрятанной механики' : ''}, ${m.t} из ${m.seconds} с`; },
       onPlaytest: async m => {
         if (W.botFor !== g.id + '/' + g.version) return;
         W.botFor = null;
-        if (m.error) { botLine.textContent = '🤖 Бот не смог сыграть: ' + m.error + (r.wow.knob === 'secret' ? '. Секрет проверят живые партии: сыграйте 2 партии в предпросмотре — портал посчитает срабатывания.' : ''); return; }
+        if (m.error) { botLine.textContent = '🤖 Бот не смог сыграть: ' + m.error + (r.wow.knob === 'secret' ? '. Спрятанную механику проверят живые партии: сыграйте 2 партии в предпросмотре — портал посчитает срабатывания.' : ''); return; }
         let res = null;
         try { res = await api('/api/teacher/wow/playtest', { code: T.code, version: g.version, report: m.report }); } catch (e) { toast(e.message, 'err'); }
         if (res && res.autoFix && !W.busy) { autoFixSecret(); return; }
@@ -565,26 +565,26 @@ function drawWowBuild() {
   }
   host.append(box);
 }
-// секрет игры класса молчит или слабый (поздно, редко, копии почти не различаются): бот сам отправляет программисту правку по отчёту (один раз на игру)
+// спрятанная механика игры класса молчит или слабая (поздно, редко, копии почти не различаются): бот сам отправляет программисту правку по отчёту (один раз на игру)
 async function autoFixSecret() {
   W.busy = true;
   const line = $('#wowBot') && $('#wowBot').querySelector('[aria-live]');
-  toast('🤖 Бот: секрет не заметить за партию — отправляю программисту на исправление', 'err', 8000);
+  toast('🤖 Бот: спрятанную механику не заметить за партию — отправляю программисту на исправление', 'err', 8000);
   try {
-    await Lab.job('/api/teacher/wow/playtest-fix', { code: T.code, auto: true }, j => { if (line) line.textContent = `🛠 Секрет слабый: программист правит игру по отчёту бота… ${j.seconds} с`; });
-    toast('Программист поправил секрет — бот проверит игру снова', 'ok');
+    await Lab.job('/api/teacher/wow/playtest-fix', { code: T.code, auto: true }, j => { if (line) line.textContent = `🛠 Спрятанная механика слабая: программист правит игру по отчёту бота… ${j.seconds} с`; });
+    toast('Программист поправил спрятанную механику — бот проверит игру снова', 'ok');
   } catch (e) { toast(e.message, 'err', 8000); }
   W.busy = false; drawWow(true);
 }
-// секрет игры класса молчит в живых партиях: правка уходит программисту (в уроке с Qwen в чате — окном Qwen в тот же чат), игра остаётся у класса
+// спрятанная механика игры класса молчит в живых партиях: правка уходит программисту (в уроке с Qwen в чате — окном Qwen в тот же чат), игра остаётся у класса
 function secretFixBox(why) {
-  const btn = el('button', { class: 'btn warm small', type: 'button', 'data-secret-fix': '1' }, '🛠 Отправить программисту: секрет молчит');
+  const btn = el('button', { class: 'btn warm small', type: 'button', 'data-secret-fix': '1' }, '🛠 Отправить программисту: спрятанная механика молчит');
   btn.addEventListener('click', async () => {
     if (W.busy) return;
     W.busy = true; btn.disabled = true;
     try {
-      await Lab.job('/api/teacher/wow/secret-fix', { code: T.code }, j => { btn.textContent = `🛠 Программист чинит секрет… ${j.seconds} с`; });
-      toast('Секрет поправлен: новая версия игры класса', 'ok');
+      await Lab.job('/api/teacher/wow/secret-fix', { code: T.code }, j => { btn.textContent = `🛠 Программист чинит спрятанную механику… ${j.seconds} с`; });
+      toast('Спрятанная механика поправлена: новая версия игры класса', 'ok');
     } catch (e) { toast(e.message, 'err', 8000); }
     W.busy = false; drawWow(true);
   });
@@ -592,15 +592,15 @@ function secretFixBox(why) {
 }
 function drawWowSummary() {
   const r = W.data, s = r.summary, host = $('#wowSummary'); host.innerHTML = '';
-  const box = el('div', { class: 'card stack' }, el('h3', {}, 'Чекпоинт 2 · как секрет влияет на игру'));
+  const box = el('div', { class: 'card stack' }, el('h3', {}, 'Чекпоинт 2 · как спрятанная механика влияет на игру'));
   if (!s.rows.length) { box.append(el('p', { class: 'muted' }, 'Пока никто не сыграл в игру класса.')); host.append(box); return; }
   const onRounds = s.rows.reduce((n, x) => n + x.onRounds, 0);
-  if (r.wow.knob === 'secret' && r.game && onRounds >= 3 && !s.hits) box.append(secretFixBox(`Секрет ни разу не сработал за ${onRounds} партий класса с секретом.`));
+  if (r.wow.knob === 'secret' && r.game && onRounds >= 3 && !s.hits) box.append(secretFixBox(`Спрятанная механика ни разу не сработала за ${onRounds} партий класса со спрятанной механикой.`));
   box.append(el('div', { class: 'compare' },
-    el('div', {}, el('div', { class: 'eyebrow' }, 'С секретом'), el('b', {}, `средний лучший счёт ${s.onAvg}`), el('div', { class: 'small muted' }, `секрет сработал ${s.hits} раз за все партии класса`)),
-    el('div', {}, el('div', { class: 'eyebrow' }, 'Без секрета'), el('b', {}, `средний лучший счёт ${s.offAvg}`), el('div', { class: 'small muted' }, `угадали секрет: ${s.correct} из ${s.guessed}, попались в ловушку карт: ${s.trap}` + (s.voted ? ` · слепой тест: почувствовали секрет ${s.felt} из ${s.voted}` : '')))),
+    el('div', {}, el('div', { class: 'eyebrow' }, 'Со спрятанной механикой'), el('b', {}, `средний лучший счёт ${s.onAvg}`), el('div', { class: 'small muted' }, `спрятанная механика сработала ${s.hits} раз за все партии класса`)),
+    el('div', {}, el('div', { class: 'eyebrow' }, 'Без спрятанной механики'), el('b', {}, `средний лучший счёт ${s.offAvg}`), el('div', { class: 'small muted' }, `угадали спрятанную механику: ${s.correct} из ${s.guessed}, попались в ловушку карт: ${s.trap}` + (s.voted ? ` · слепой тест: почувствовали спрятанную механику ${s.felt} из ${s.voted}` : '')))),
   el('div', { class: 'tablewrap' }, el('table', {},
-    el('thead', {}, el('tr', {}, ['Ник', 'С секретом: партий / лучший', 'Сработал', 'Без секрета: партий / лучший', 'Слепой тест', 'Догадка'].map(h => el('th', {}, h)))),
+    el('thead', {}, el('tr', {}, ['Ник', 'Со спрятанной механикой: партий / лучший', 'Сработала', 'Без спрятанной механики: партий / лучший', 'Слепой тест', 'Догадка'].map(h => el('th', {}, h)))),
     el('tbody', {}, s.rows.map(x => el('tr', {}, el('td', {}, el('b', {}, x.nick)), el('td', {}, `${x.onRounds} / ${x.onBest}`), el('td', {}, String(x.hits)), el('td', {}, `${x.offRounds} / ${x.offBest}`),
       el('td', {}, x.vote ? el('span', { class: 'tag ' + (x.felt ? 'ok' : '') }, x.felt ? 'почувствовал' : x.vote === 'same' ? 'разницы нет' : 'мимо') : '—'),
       el('td', {}, x.guess ? [x.guess + ' ', el('span', { class: 'tag ' + (x.correct ? 'ok' : x.trap ? 'dice' : '') }, x.correct ? 'угадал' : x.trap ? 'ловушка' : 'мимо')] : '—')))))));

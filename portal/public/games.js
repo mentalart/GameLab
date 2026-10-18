@@ -11,8 +11,8 @@ const Games = (() => {
   // score: false — партии не записываются (рамки учителя на проекторе и в карточке ученика).
   // data — данные для игры (lab.data), например мелодия из секвенсора; уходят до cfg
   // challenge — под игрой есть кнопка вызова (оболочка пишет о ней на экране конца партии), ghost — призрак соперника { nick, score, line }.
-  // reveal — название секрета: оболочка зажигает лупу на каждом срабатывании _secret (урок 1). pair — имя пары рамок, которые идут
-  // одновременно (проектор «Секрет рядом»): запуск одной не останавливает другую. onShow — ход и итог показа бота (botShow).
+  // reveal — название спрятанной механики: оболочка зажигает лупу на каждом срабатывании _secret (урок 1). pair — имя пары рамок, которые идут
+  // одновременно (проектор «Спрятанная механика рядом»): запуск одной не останавливает другую. onShow — ход и итог показа бота (botShow).
   function frame({ src, key, info, cfg, data, label, onReady, onOver, onScore, onAgain, onError, onPlaytest, onPlaytestStep, onPoster, onShow, autostart, score = true, challenge, ghost, reveal, pair }) {
     const box = el('div', { class: 'gamebox' });
     const veil = el('div', { class: 'veil' });
@@ -354,13 +354,13 @@ const Games = (() => {
       return el('div', { class: 'botrow', 'data-bot': x.strategy }, el('span', { class: 'bi' }, b[0]), el('b', {}, b[1]), el('span', { class: 'muted small' }, b[2]),
         el('span', { class: 'grow' }), el('span', {}, `${Math.round(x.seconds)} с`), el('span', {}, `очки ${x.score}`), el('span', {}, `урон ${x.hurts}`),
         x.offscreen != null ? el('span', { class: x.offscreen >= 15 ? 'tag err' : 'muted small' }, `за кадром ${x.offscreen}%`) : null,
-        report.secretSilent != null || x.secret ? el('span', { class: x.secret ? 'muted small' : 'tag err', title: 'Сколько раз сработал секрет игры (скрытый счётчик _secret)' }, `секрет: ${x.secret || 0}`) : null);
+        report.secretSilent != null || x.secret ? el('span', { class: x.secret ? 'muted small' : 'tag err', title: 'Сколько раз сработала спрятанная механика игры (скрытый счётчик _secret)' }, `спрятанная механика: ${x.secret || 0}`) : null);
     })));
-    // копия без секрета: та же партия новичка с выключенным секретом и вывод «секрет заметный / слабый»
-    if (report.off) box.append(el('div', { class: 'botrow', 'data-bot': 'off' }, el('span', { class: 'bi' }, (BOT.random || ['🎲'])[0]), el('b', {}, 'Новичок без секрета'), el('span', { class: 'muted small' }, 'та же партия, ручка секрета 0'),
+    // копия без спрятанной механики: та же партия новичка с выключенной спрятанной механикой и вывод «спрятанная механика заметная / слабая»
+    if (report.off) box.append(el('div', { class: 'botrow', 'data-bot': 'off' }, el('span', { class: 'bi' }, (BOT.random || ['🎲'])[0]), el('b', {}, 'Новичок без спрятанной механики'), el('span', { class: 'muted small' }, 'та же партия, ручка спрятанной механики 0'),
       el('span', { class: 'grow' }), el('span', {}, `${Math.round(report.off.seconds)} с`), el('span', {}, `очки ${report.off.score}`), el('span', {}, `урон ${report.off.hurts}`)));
     if (report.secretWeak != null) box.append(el('p', { class: 'small', 'data-secret': report.secretSilent || report.secretWeak ? 'weak' : 'ok' },
-      report.secretSilent ? '🔍 Секрет молчит: класс не почувствует разницу копий.' : report.secretWeak ? '🔍 Секрет слабый: его не заметить за одну партию.' : '🔍 Секрет заметный: срабатывает рано и часто, копии различаются.'));
+      report.secretSilent ? '🔍 Спрятанная механика молчит: класс не почувствует разницу копий.' : report.secretWeak ? '🔍 Спрятанная механика слабая: её не заметить за одну партию.' : '🔍 Спрятанная механика заметная: срабатывает рано и часто, копии различаются.'));
     if (report.findings.length) box.append(el('ul', { class: 'botfind' }, report.findings.map(f => el('li', {}, f))));
     return box;
   }

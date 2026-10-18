@@ -351,7 +351,7 @@ td.warn{color:var(--warm);font-weight:700}
 .pj-progress{padding:40px}
 .pj-progress p{font-size:clamp(18px,2vw,26px)}
 
-/* --- вау-старт: колода безумных идей, секрет игры класса --- */
+/* --- вау-старт: колода безумных идей, спрятанная механика игры класса --- */
 .wowcards{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px}
 @media (max-width:760px){.wowcards{grid-template-columns:repeat(2,minmax(0,1fr))}}
 .wowcard{min-height:150px;border-radius:14px;padding:14px;display:flex;flex-direction:column;gap:10px;background:repeating-linear-gradient(135deg,var(--panel2) 0 10px,var(--bg2) 10px 20px);border:2px dashed var(--line2)}
@@ -596,7 +596,7 @@ svg.curve .pick{fill:var(--violet);stroke:var(--text);stroke-width:2}
 .chatbox{border:1px solid var(--line);border-radius:var(--r);padding:12px;background:var(--bg2)}
 .pastebox>summary{cursor:pointer;color:var(--info);font-weight:600}
 .pastebox[open]>summary{margin-bottom:8px}
-/* проектор «Секрет рядом»: две копии игры класса рядом */
+/* проектор «Спрятанная механика рядом»: две копии игры класса рядом */
 .pj-pair-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:12px}
 .pj-pair-side{display:flex;flex-direction:column;gap:8px;min-width:0}
 .pj-pair-side[data-side=on] h2{color:var(--accent)}

@@ -1,25 +1,25 @@
 #!/usr/bin/env node
 // Сквозная проверка портала в браузере: учитель и ученик проходят урок 1 целиком.
-// Вау-старт: учитель тянет карты, ученик голосует, учитель тайно меняет секрет, собирает и раздаёт игру класса; «Найди секрет» и сводка.
+// Вау-старт: учитель тянет карты, ученик голосует, учитель тайно меняет спрятанную механику, собирает и раздаёт игру класса; «Найди спрятанную механику» и сводка.
 // Два прогона: с подставным ИИ (mock-ai.js: продюсер, сборка с ошибкой → автопочинка, правка) и в демо-режиме без ключа.
 // В прогоне с ИИ — «Играем вместе»: второй ученик собирает игру, оба играют в игры друг друга, бьют рекорд автора,
 // бросают вызов на зерне, оставляют плейтест; учитель пишет отзыв; аркада класса и личная аркада, скрытие игры.
 // Срез 3: проектор (код, таймер, кто закончил шаг), вау-старт teacher-demo (карты, сборка при всех, автопочинка, «открыть всем»),
 // фильтр «застряли», лимиты и «+10 запросов», сравнение моделей, отчёт журнала генераций и CSV, статусы заметок и Markdown;
-// Урок 2 в обоих прогонах: донор с ручками из шага, варианты игры, «Найди секрет» донора, квиз-раунды «Игра или не игра?»,
+// Урок 2 в обоих прогонах: донор с ручками из шага, варианты игры, «Найди спрятанную механику» донора, квиз-раунды «Игра или не игра?»,
 // сортировщик на 8 лотков, Фабрика с донором на выбор и его колодами, черновик ИГРА по правилам донора, сборка, дуэль вдвоём.
-// Урок 3 в обоих прогонах: «Ночной лабиринт», предсказание динамики против телеметрии, «Найди секрет», квиз «Угадай охотника по следу»,
+// Урок 3 в обоих прогонах: «Ночной лабиринт», предсказание динамики против телеметрии, «Найди спрятанную механику», квиз «Угадай охотника по следу»,
 // квиз MDA, Фабрика MDA с колодами урока, образец урока в промпте программиста, демо-сборка урока, дуэль с Вожаком (ручка vs), предсказание в плейтесте.
-// Урок 4 в обоих прогонах: «Каменный стакан» и его секрет (мешок и предпросмотр), квиз «Собери цикл», Фабрика под донора,
+// Урок 4 в обоих прогонах: «Каменный стакан» и его спрятанная механика (мешок и предпросмотр), квиз «Собери цикл», Фабрика под донора,
 // образец урока в промпте программиста и демо-игра урока, релиз модуля с чек-листом, дуэль двух стаканов по ручке duo.
 // Данные и настройки — во временной папке, настоящий portal/config.json и portal/data/ не трогаются.
-// Урок 5 в обоих прогонах: «Тур над Хаджохом», сырой прыжок и «Найди секрет», лаборатория прыжка, слепой турнир по одной ручке,
+// Урок 5 в обоих прогонах: «Тур над Хаджохом», сырой прыжок и «Найди спрятанную механику», лаборатория прыжка, слепой турнир по одной ручке,
 // образец урока в промпте программиста и демо-игра урока, спидран с призраком лучшей попытки.
-// Урок 6 в обоих прогонах: «Ледолом» и 12 переключателей сочности оболочки 0.3, сухой «Ледолом» и «Найди секрет», квиз «Сухая или сочная?»,
+// Урок 6 в обоих прогонах: «Ледолом» и 12 переключателей сочности оболочки 0.3, сухой «Ледолом» и «Найди спрятанную механику», квиз «Сухая или сочная?»,
 // образец урока и демо-игра, кооператив двух лопат, слепая проба игры соседа (сухая и сочная копии).
-// Урок 7 в обоих прогонах: «Шаг в такт» на одних часах и без секрета, предсказание «что будет без звука», квиз «Угадай по звуку»,
+// Урок 7 в обоих прогонах: «Шаг в такт» на одних часах и без спрятанной механики, предсказание «что будет без звука», квиз «Угадай по звуку»,
 // секвенсор мелодии: своя мелодия уходит в ремейк (lab.data) и в черновик ИГРА, образец урока, ритм-дуэль.
-// Урок 8 в обоих прогонах: «Башня до неба» с окном «идеально» и без секрета, квиз «Какой это приём?», джем с донором Stack из колоды «одна кнопка»,
+// Урок 8 в обоих прогонах: «Башня до неба» с окном «идеально» и без спрятанной механики, квиз «Какой это приём?», джем с донором Stack из колоды «одна кнопка»,
 // образец урока, две башни вдвоём, релиз модуля 2; с подставным ИИ — выставка: соседка собирает игру джема, голоса в номинациях,
 // итоги класса и кнопочный турнир на проекторе.
 // Запуск: node portal/tools/e2e-portal.js [--headed] [--from=5]   Снимки — в portal/.check/portal-*.png
@@ -44,7 +44,7 @@ const mock = require('./mock-ai');
 const ai = require('../lib/ai');
 const portal = require('../server');
 const lesson1 = require('../lessons/urok-01');
-const SECRET1 = lesson1.wow.secrets.find(x => x.id === lesson1.wow.classSecret).title; // один секрет игры класса урока 1
+const SECRET1 = lesson1.wow.secrets.find(x => x.id === lesson1.wow.classSecret).title; // одна спрятанная механика игры класса урока 1
 const lesson2 = require('../lessons/urok-02');
 const lesson3 = require('../lessons/urok-03');
 const lesson4 = require('../lessons/urok-04');
@@ -90,7 +90,7 @@ async function playRound(frame, { score = 0, hold = null, page = null, restart =
 }
 // сортировщик квиза: ждём, пока сменится карточка или квиз кончится, а не паузу на анимацию
 const nextItem = (page, step, prev) => page.waitForFunction(([s, p]) => { const e = document.querySelector(s + ' .item'); return !!document.querySelector(s + '.done') || !e || e.textContent.trim() !== p; }, [step, prev], { timeout: 15000 });
-// «null» текстом на странице: нативный append превращает null в слово (так было под картами вау-старта и в секрете у учителя)
+// «null» текстом на странице: нативный append превращает null в слово (так было под картами вау-старта и в спрятанной механике у учителя)
 const nullText = p => p.evaluate(() => {
   const w = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
   for (let n; (n = w.nextNode());) if (/^\s*(null|undefined)\s*$/.test(n.nodeValue) && n.parentElement && n.parentElement.offsetParent !== null) return n.parentElement.outerHTML.replace(/\s+/g, ' ').slice(0, 160);
@@ -173,7 +173,7 @@ async function run(browser, base, mode) {
   await student.click('#step-vau-predict >> text=Ответить');
   await student.waitForSelector('#step-vau-predict.done');
 
-  // проектор: код класса и таймер открытого чекпоинта; вау-старт — карты при классе, общая игра с секретом
+  // проектор: код класса и таймер открытого чекпоинта; вау-старт — карты при классе, общая игра со спрятанной механикой
   const pj = await openProjector(base, code, teacher, errors, shot);
   await wowStart(teacher, student, mode, shot);
   await projectorWow(pj, teacher, shot);
@@ -201,7 +201,7 @@ async function run(browser, base, mode) {
   await student.click('#step-fabrika >> text=Замысел готов');
   await student.waitForSelector('#step-fabrika.done');
   const diceTags = await student.locator('#step-fabrika .tag.dice').count(), cardTags = await student.locator('#step-fabrika .tag.card').count();
-  check('Кубик заполнил поля [кубик], карта секрета взята картой', diceTags >= 4 && cardTags === 1 && (await student.inputValue('#f-fabrikasecret')) === secretCard, `кубик: ${diceTags}, карт: ${cardTags}, секрет: ${secretCard}`);
+  check('Кубик заполнил поля [кубик], карта спрятанной механики взята картой', diceTags >= 4 && cardTags === 1 && (await student.inputValue('#f-fabrikasecret')) === secretCard, `кубик: ${diceTags}, карт: ${cardTags}, спрятанная механика: ${secretCard}`);
   await student.click('#step-resheniya .field:has(#f-resheniyafeeling) .dicebtn');
   check('Кубик «Чувства» даёт пример и не пишет за ученика', (await student.inputValue('#f-resheniyafeeling')) === '' && /^Например: .+ А у тебя\?$/.test((await student.textContent('#step-resheniya .hint.example')).trim()));
   await student.fill('#f-resheniyafeeling', 'Страшно, когда шершни уже у ульев');
@@ -458,7 +458,7 @@ async function run(browser, base, mode) {
   await tctx.close(); await sctx.close();
 }
 
-/* ---------- вау-старт: карты при классе, сборка общей игры с секретом, раздача ---------- */
+/* ---------- вау-старт: карты при классе, сборка общей игры со спрятанной механикой, раздача ---------- */
 async function wowStart(teacher, student, mode, shot) {
   await teacher.click('.tabs >> text=Вау-старт');
   await teacher.waitForSelector('#wowCards .wowcard');
@@ -482,15 +482,15 @@ async function wowStart(teacher, student, mode, shot) {
   check('Угроза и поворот — из колоды жанра на карте действия', byGenre('threat', c1) && byGenre('twist', c1), c1.action.split(' — ')[0]);
   const c2 = await teacher.evaluate(async c => (await Lab.api('/api/teacher/wow/draw', { code: c, card: 'action' })).wow.cards, wcode);
   check('Новое действие перетянуло угрозу и поворот под свой жанр', c2.action !== c1.action && byGenre('threat', c2) && byGenre('twist', c2) && c2.hero === c1.hero && c2.place === c1.place, c2.action.split(' — ')[0]);
-  // секрет скрыт, пока учитель его не откроет; в уроке 1 он один на все классы — ни кубика, ни замены
-  check('Секрет скрыт у учителя, пока он его не откроет', !(await teacher.textContent('#wowSecret')).includes(SECRET1));
+  // спрятанная механика скрыта, пока учитель её не откроет; в уроке 1 она одна на все классы — ни кубика, ни замены
+  check('Спрятанная механика скрыта у учителя, пока он её не откроет', !(await teacher.textContent('#wowSecret')).includes(SECRET1));
   await teacher.click('#wowSecret >> text=Показать');
-  await teacher.waitForSelector('#wowSecret >> text=секрет урока');
+  await teacher.waitForSelector('#wowSecret >> text=спрятанная механика урока');
   const secText = await teacher.textContent('#wowSecret');
-  check('Учитель видит один секрет урока, без кубика и замены', secText.includes(SECRET1) && await teacher.locator('#wowSecretSel').count() === 0 && !/Другой секрет|\[кубик\]/.test(secText), secText.replace(/\s+/g, ' ').slice(0, 120));
-  check('Секрет у учителя без слова «null»', !(await nullText(teacher)));
+  check('Учитель видит одну спрятанную механику урока, без кубика и замены', secText.includes(SECRET1) && await teacher.locator('#wowSecretSel').count() === 0 && !/Другая спрятанная механика|\[кубик\]/.test(secText), secText.replace(/\s+/g, ' ').slice(0, 120));
+  check('Спрятанная механика у учителя без слова «null»', !(await nullText(teacher)));
   const swap = await teacher.evaluate(async c => { try { await Lab.api('/api/teacher/wow/secret', { code: c, id: 'yarost' }); return 200; } catch (e) { return e.status; } }, (await teacher.textContent('#classCode')).trim());
-  check('Сервер не даёт заменить секрет урока', swap === 400, 'ответ ' + swap);
+  check('Сервер не даёт заменить спрятанную механику урока', swap === 400, 'ответ ' + swap);
   await teacher.click('#wowSecret >> text=Скрыть');
   // связка от ИИ: геймдизайнер сводит карты в одну игру, учитель принимает — связку видят ученики, она уходит в сборку
   await teacher.click('#wowLink >> text=🧠 Документ от ИИ');
@@ -524,8 +524,8 @@ async function wowStart(teacher, student, mode, shot) {
   // бот-плейтестер сам прогоняет новую версию в рамке предпросмотра: три партии, отчёт сохраняется у версии
   await teacher.waitForSelector('#wowBot .botbox', { timeout: 180000 });
   const botRows = await teacher.locator('#wowBot .botrow').count(), botText = (await teacher.textContent('#wowBot')).replace(/\s+/g, ' ');
-  check('Бот-плейтестер сыграл три партии новой версии и копию без секрета', botRows === 4 && /Пассивный.*Торопыга.*Новичок.*Новичок без секрета/.test(botText), botText.slice(0, 200));
-  check('Бот сравнил копии с секретом и без и оценил секрет', await teacher.locator('#wowBot [data-secret]').count() === 1, (await teacher.textContent('#wowBot [data-secret]').catch(() => '')).trim().slice(0, 120));
+  check('Бот-плейтестер сыграл три партии новой версии и копию без спрятанной механики', botRows === 4 && /Пассивный.*Торопыга.*Новичок.*Новичок без спрятанной механики/.test(botText), botText.slice(0, 200));
+  check('Бот сравнил копии со спрятанной механикой и без и оценил спрятанную механику', await teacher.locator('#wowBot [data-secret]').count() === 1, (await teacher.textContent('#wowBot [data-secret]').catch(() => '')).trim().slice(0, 120));
   if (mode === 'mock') {
     const found = await teacher.locator('#wowBot .botfind li').count();
     check('Бот нашёл, что править, и предлагает правку программисту', found > 0 && await teacher.locator('#wowBot >> text=Пусть программист поправит по отчёту').count() === 1, `находок ${found}`);
@@ -544,10 +544,10 @@ async function wowStart(teacher, student, mode, shot) {
   check('Игра класса роздана: шаг карт закрыт', true);
 }
 
-/* ---------- чекпоинт «Секрет»: та же игра без секрета, «Найди секрет», квиз с карточками игры класса ---------- */
+/* ---------- чекпоинт «Спрятанная механика»: та же игра без спрятанной механики, «Найди спрятанную механику», квиз с карточками игры класса ---------- */
 async function secretHunt(teacher, student, mode, shot) {
-  await student.click('.cp >> text=Секрет');
-  // слепой тест: две копии игры класса, в одной ручка секрета выключена; в копии с секретом он срабатывает 5 раз
+  await student.click('.cp >> text=Спрятанная механика');
+  // слепой тест: две копии игры класса, в одной ручка спрятанной механики выключена; в копии со спрятанной механикой она срабатывает 5 раз
   const knob = mode === 'mock' ? 'secret' : 'speedup', seen = {};
   for (const k of ['A', 'B']) {
     await student.click(`#step-secret-ab .ab-${k}`);
@@ -559,10 +559,10 @@ async function secretHunt(teacher, student, mode, shot) {
     await sleep(300);
     await f.evaluate(on => { if (on) { window.__lab.lab.t = 4; window.__lab.lab.count('_secret', 5); window.__lab.lab.t = 9; window.__lab.lab.count('_secret'); } window.__lab.lab.score = on ? 70 : 20; window.__lab.end('lose', 'Проверка'); }, seen[k] === 1);
     await sleep(400);
-    if (k === 'A') check('Скрытый счётчик секрета не виден игроку на экране конца партии', !/_secret/.test(await f.evaluate(() => document.body.innerText)));
+    if (k === 'A') check('Скрытый счётчик спрятанной механики не виден игроку на экране конца партии', !/_secret/.test(await f.evaluate(() => document.body.innerText)));
   }
   const side = seen.A === 1 ? 'A' : 'B';
-  check('Слепой тест: в одной копии секрет есть, в другой выключен', (seen.A === 1) !== (seen.B === 1) && [seen.A, seen.B].includes(0), `А: ${knob} = ${seen.A}, Б: ${knob} = ${seen.B}`);
+  check('Слепой тест: в одной копии спрятанная механика есть, в другой выключена', (seen.A === 1) !== (seen.B === 1) && [seen.A, seen.B].includes(0), `А: ${knob} = ${seen.A}, Б: ${knob} = ${seen.B}`);
   await student.click(`#step-secret-ab .opt >> text=В игре ${side === 'A' ? 'А' : 'Б'}`);
   await student.waitForSelector('#step-secret-ab.done');
   // «Совпало?»: напоминание ответа с вау-старта
@@ -574,48 +574,48 @@ async function secretHunt(teacher, student, mode, shot) {
   await student.waitForSelector('#step-secret-hunt .opt');
   const options = await student.locator('#step-secret-hunt .opt').allTextContents();
   const twist = (await teacher.textContent('#wowCards [data-card=twist] .wc-text')).trim(); // вкладка учителя скрыта, но карты в ней остались
-  // в прогоне с ИИ ученик попадается в ловушку карт, в демо — угадывает секрет запасной игры
+  // в прогоне с ИИ ученик попадается в ловушку карт, в демо — угадывает спрятанную механику запасной игры
   const pick = mode === 'mock' ? options.find(o => o.toLowerCase() === twist.toLowerCase()) : 'Волна ускоряется, когда врагов становится меньше';
-  check('«Найди секрет»: 4 варианта, среди них ловушка с карты', options.length === 4 && options.some(o => o.toLowerCase() === twist.toLowerCase()) && (mode === 'demo' || options.includes(SECRET1)), options.join(' | '));
+  check('«Найди спрятанную механику»: 4 варианта, среди них ловушка с карты', options.length === 4 && options.some(o => o.toLowerCase() === twist.toLowerCase()) && (mode === 'demo' || options.includes(SECRET1)), options.join(' | '));
   await student.click(`#step-secret-hunt .opt >> text=${pick}`);
-  await student.click('#step-secret-hunt >> text=Это секрет!');
+  await student.click('#step-secret-hunt >> text=Это спрятанная механика!');
   await student.waitForSelector('#step-secret-hunt.done');
   const reveal = (await student.textContent('#step-secret-hunt')).replace(/\s+/g, ' ');
-  if (mode === 'mock') check('Ловушка распознана, секрет раскрыт: «разгон», счётчик из партий', /Ловушка/.test(reveal) && reveal.includes(SECRET1) && /сработал 6 раз/.test(reveal), reveal.slice(0, 160));
-  else check('Секрет угадан и раскрыт', /Угадал/.test(reveal) && /Нисикадо/.test(reveal), reveal.slice(0, 120));
-  check('Раскрытие: слепой тест угадан, моменты секрета на полоске партии', /секрет был именно там/.test(reveal) && await student.locator('#step-secret-hunt .marks i').count() >= 2, `отметок: ${await student.locator('#step-secret-hunt .marks i').count()}`);
+  if (mode === 'mock') check('Ловушка распознана, спрятанная механика раскрыта: «разгон», счётчик из партий', /Ловушка/.test(reveal) && reveal.includes(SECRET1) && /сработала 6 раз/.test(reveal), reveal.slice(0, 160));
+  else check('Спрятанная механика угадана и раскрыта', /Угадал/.test(reveal) && /Нисикадо/.test(reveal), reveal.slice(0, 120));
+  check('Раскрытие: слепой тест угадан, моменты спрятанной механики на полоске партии', /спрятанная механика была именно там/.test(reveal) && await student.locator('#step-secret-hunt .marks i').count() >= 2, `отметок: ${await student.locator('#step-secret-hunt .marks i').count()}`);
   await shot(student, '2a-secret', true);
-  // «Посмотри на секрет»: та же игра с лупой — оболочка зажигает её на каждом срабатывании, кнопки силы секрета 0 · 1 · 2
+  // «Посмотри на спрятанную механику»: та же игра с лупой — оболочка зажигает её на каждом срабатывании, кнопки силы спрятанной механики 0 · 1 · 2
   await student.waitForSelector('#step-secret-lupa .donor-card h3', { timeout: 10000 });
   const lupaTitle = (await student.textContent('#step-secret-lupa .donor-card h3')).trim();
-  check('Лупа открылась после «Найди секрет» с названием секрета', mode === 'mock' ? lupaTitle === SECRET1 : lupaTitle.length > 3, lupaTitle);
+  check('Лупа открылась после «Найди спрятанную механику» с названием спрятанной механики', mode === 'mock' ? lupaTitle === SECRET1 : lupaTitle.length > 3, lupaTitle);
   await student.click('#step-secret-lupa .veil button');
   const lf = await gameFrame(student, '/play/', 0);
   await sleep(600); // reveal приходит после ready
   const lupa0 = await lf.evaluate(() => window.__lab.lupa);
-  check('Лупа в игре: значок с названием секрета, рекордов нет', !!lupa0 && lupa0.title === lupaTitle && lupa0.n === 0 && await student.locator('#step-secret-lupa .seg .opt').count() >= 2, JSON.stringify(lupa0));
-  // сила секрета: ручка меняется до партии (новые значения ручек перезапускают партию)
+  check('Лупа в игре: значок с названием спрятанной механики, рекордов нет', !!lupa0 && lupa0.title === lupaTitle && lupa0.n === 0 && await student.locator('#step-secret-lupa .seg .opt').count() >= 2, JSON.stringify(lupa0));
+  // сила спрятанной механики: ручка меняется до партии (новые значения ручек перезапускают партию)
   await student.click('#step-secret-lupa .seg .opt >> nth=0');
   await sleep(300);
-  check('Кнопка «Секрет 0» выключила ручку секрета', await lf.evaluate(kn => window.__lab.cfg[kn], knob) === 0);
+  check('Кнопка «Спрятанная механика 0» выключила ручку спрятанной механики', await lf.evaluate(kn => window.__lab.cfg[kn], knob) === 0);
   await student.click('#step-secret-lupa .seg .opt >> nth=1');
   await sleep(300);
   await lf.evaluate(() => window.__lab.confirm());
   await sleep(300);
   await lf.evaluate(() => { window.__lab.lab.count('_secret'); window.__lab.lab.t += 1; window.__lab.lab.count('_secret'); });
   const lupa1 = await lf.evaluate(() => ({ l: window.__lab.lupa, on: document.querySelector('#lupa').classList.contains('on'), text: document.querySelector('#lupa').textContent }));
-  check('Срабатывание секрета зажигает лупу и считает', lupa1.l.n === 2 && lupa1.on && /× 2/.test(lupa1.text), lupa1.text);
+  check('Срабатывание спрятанной механики зажигает лупу и считает', lupa1.l.n === 2 && lupa1.on && /× 2/.test(lupa1.text), lupa1.text);
   await lf.evaluate(() => { window.__lab.lab.score = 10; window.__lab.end('lose', 'Проверка'); });
   await student.waitForSelector('#step-secret-lupa.done', { timeout: 10000 });
   const lupaDone = (await student.textContent('#step-secret-lupa')).replace(/\s+/g, ' ');
-  check('Лупа: партия засчитана, строка «лупа загорелась»', /лупа загорелась 2 раз \(сила секрета 1\)/.test(lupaDone), (lupaDone.match(/За эту партию[^.]*/) || [lupaDone.slice(-120)])[0]);
+  check('Лупа: партия засчитана, строка «лупа загорелась»', /лупа загорелась 2 раз \(сила спрятанной механики 1\)/.test(lupaDone), (lupaDone.match(/За эту партию[^.]*/) || [lupaDone.slice(-120)])[0]);
   await student.click('#step-secret-seen .opt >> nth=0');
   await student.click('#step-secret-seen >> text=Ответить');
   await student.waitForSelector('#step-secret-seen.done');
   await student.click('#step-secret-feel .opt >> nth=0');
   await student.click('#step-secret-feel >> text=Ответить');
   await student.click('#step-secret-story >> text=Понятно');
-  // квиз: постоянные карточки + карточки из игры класса (карты и раскрытый секрет)
+  // квиз: постоянные карточки + карточки из игры класса (карты и раскрытая спрятанная механика)
   const quiz = lesson1.checkpoints.find(c => c.id === 'secret').steps.find(s => s.id === 'secret-quiz');
   const binOf = text => {
     const it = quiz.items.find(x => x.text === text);
@@ -639,7 +639,7 @@ async function secretHunt(teacher, student, mode, shot) {
   check('Квиз: результат отправлен учителю, кнопки «Скопировать» у ученика нет', await student.locator('#step-secret-quiz >> text=✓ Результат отправлен учителю').count() === 1 && await student.locator('#step-secret-quiz >> text=Скопировать').count() === 0);
   // вкладка «Ответы»: ответ квиза у учителя, разбор по карточкам, CSV
   await teacher.click('.tabs >> text=Ответы');
-  await teacher.click('#tab-answers >> text=2. Игра класса и секрет');
+  await teacher.click('#tab-answers >> text=2. Игра класса и спрятанная механика');
   await teacher.waitForSelector('#answers tbody tr', { timeout: 10000 });
   const ansText = await teacher.textContent('#tab-answers');
   check('Ответы: квиз ученика у учителя и разбор по карточкам', new RegExp(`верно ${all} из ${all}`).test(ansText) && /какие карточки труднее всего/.test(ansText), (ansText.match(/верно \d+ из \d+/) || [''])[0]);
@@ -651,7 +651,7 @@ async function secretHunt(teacher, student, mode, shot) {
   await teacher.click('.tabs >> text=Вау-старт');
   await teacher.waitForSelector('#wowSummary td .tag', { timeout: 10000 }); // ждём свежую сводку с догадкой: старая осталась во вкладке с прошлого раза
   const sum = (await teacher.textContent('#wowSummary')).replace(/\s+/g, ' ');
-  check('Учитель видит сводку секрета: партии, срабатывания, догадки, слепой тест', /сработал 6 раз/.test(sum) && /почувствовали секрет 1 из 1/.test(sum) && (mode === 'mock' ? /ловушка/.test(sum) : /угадал/.test(sum)), sum.slice(0, 200));
+  check('Учитель видит сводку спрятанной механики: партии, срабатывания, догадки, слепой тест', /сработала 6 раз/.test(sum) && /почувствовали спрятанную механику 1 из 1/.test(sum) && (mode === 'mock' ? /ловушка/.test(sum) : /угадал/.test(sum)), sum.slice(0, 200));
   await shot(teacher, '2b-wow-summary');
   await teacher.click('.tabs >> text=Урок');
 }
@@ -669,17 +669,17 @@ async function projectorPoll(pj, shot) {
   const poll = (await pj.textContent('#pj-poll')).replace(/\s+/g, ' ');
   check('Проектор «Ответы класса»: голоса шага полосками, без имён', poll.includes(predicted) && !/Тестер/.test(poll), poll.slice(0, 160));
   await pj.click('#pj-poll .chipbtn >> text=копия А или копия Б');
-  await pj.waitForSelector('#pj-poll >> text=Секрет почувствовали вслепую 1 из 1', { timeout: 10000 });
-  check('Проектор: сколько почувствовали секрет игры класса вслепую', true);
+  await pj.waitForSelector('#pj-poll >> text=Спрятанную механику почувствовали вслепую 1 из 1', { timeout: 10000 });
+  check('Проектор: сколько почувствовали спрятанную механику игры класса вслепую', true);
   await shot(pj, 'p3-poll');
   await pj.click('.pj-tabs >> text=Урок');
 }
-/* ---------- проектор: «Секрет рядом» — две копии игры класса, бот играет обе одними нажатиями ---------- */
+/* ---------- проектор: «Спрятанная механика рядом» — две копии игры класса, бот играет обе одними нажатиями ---------- */
 async function projectorPair(pj, mode, shot) {
-  check('Вкладка «Секрет рядом» есть на проекторе урока 1', await pj.locator('.pj-tabs >> text=Секрет рядом').isVisible());
-  await pj.click('.pj-tabs >> text=Секрет рядом');
+  check('Вкладка «Спрятанная механика рядом» есть на проекторе урока 1', await pj.locator('.pj-tabs >> text=Спрятанная механика рядом').isVisible());
+  await pj.click('.pj-tabs >> text=Спрятанная механика рядом');
   await pj.waitForSelector('#pjPairRun', { timeout: 10000 });
-  check('Название секрета скрыто до запуска показа', !/«/.test(await pj.textContent('#pj-pair h1')));
+  check('Название спрятанной механики скрыто до запуска показа', !/«/.test(await pj.textContent('#pj-pair h1')));
   await pj.click('#pjPairRun');
   await pj.waitForFunction(() => [...document.querySelectorAll('#pj-pair .pj-pair-side')].every(x => /Бот играет: \d+ из 60/.test(x.textContent)), null, { timeout: 40000 });
   const sides = [];
@@ -689,8 +689,8 @@ async function projectorPair(pj, mode, shot) {
   }
   const knob = mode === 'mock' ? 'secret' : 'speedup';
   const off = sides.find(x => x.cfg[knob] === 0), on = sides.find(x => x.cfg[knob] !== 0);
-  check('«Секрет рядом»: бот играет обе копии, слева секрет выключен, справа лупа', sides.length === 2 && !!off && !!on && !off.lupa && !!on.lupa, JSON.stringify(sides.map(x => ({ [knob]: x.cfg[knob], lupa: x.lupa && x.lupa.title }))));
-  check('После запуска на проекторе видно название секрета', /«.+»/.test(await pj.textContent('#pj-pair h1')));
+  check('«Спрятанная механика рядом»: бот играет обе копии, слева спрятанная механика выключена, справа лупа', sides.length === 2 && !!off && !!on && !off.lupa && !!on.lupa, JSON.stringify(sides.map(x => ({ [knob]: x.cfg[knob], lupa: x.lupa && x.lupa.title }))));
+  check('После запуска на проекторе видно название спрятанной механики', /«.+»/.test(await pj.textContent('#pj-pair h1')));
   await shot(pj, 'p2b-pair');
   await pj.click('.pj-tabs >> text=Урок');
   await sleep(500);
@@ -729,7 +729,7 @@ async function openProjector(base, code, teacher, errors, shot) {
   return pj;
 }
 
-/* ---------- вау-старт урока 1 на проекторе: те же карты, игра у всех, секрета не видно ---------- */
+/* ---------- вау-старт урока 1 на проекторе: те же карты, игра у всех, спрятанной механики не видно ---------- */
 async function projectorWow(pj, teacher, shot) {
   await pj.click('#demoTab');
   await pj.waitForFunction(n => document.querySelectorAll('.pj-card.on').length === n, lesson1.wow.cards.length, { timeout: 15000 });
@@ -740,7 +740,7 @@ async function projectorWow(pj, teacher, shot) {
   await pj.waitForSelector('#pjWowGame iframe, #pjWowGame .veil', { timeout: 15000 });
   const text = await pj.textContent('#pj-demo');
   check('Проектор: принятая связка на экране', await pj.locator('#pjWowLink .link-phrase').count() === 1);
-  check('Проектор: игра класса роздана, секрета на экране нет', /Игра у всех/.test(text) && !lesson1.wow.secrets.some(x => text.includes(x.title)));
+  check('Проектор: игра класса роздана, спрятанной механики на экране нет', /Игра у всех/.test(text) && !lesson1.wow.secrets.some(x => text.includes(x.title)));
   await shot(pj, 'p2-wow');
   // туда и обратно по вкладкам: на проекторе по-прежнему одна рамка игры класса
   await pj.click('.pj-tabs >> text=Урок');
@@ -798,7 +798,7 @@ async function liveLesson(code, mode, teacher, pj, shot) {
   // проектор: таймер нового чекпоинта и сколько закончили шаги
   await sleep(2300);
   const pjText = await pj.textContent('.pj-cp');
-  check('Проектор: после «Открыть все» таймер у первого нового чекпоинта, видно, кто закончил шаги', /секрет/i.test(await pj.textContent('.pj-cp h1')) && /[1-9] из [12]/.test(pjText), pjText.replace(/\s+/g, ' ').slice(0, 120));
+  check('Проектор: после «Открыть все» таймер у первого нового чекпоинта, видно, кто закончил шаги', /спрятанная механика/i.test(await pj.textContent('.pj-cp h1')) && /[1-9] из [12]/.test(pjText), pjText.replace(/\s+/g, ' ').slice(0, 120));
   await shot(pj, 'p4-progress');
   // «застрял»: нет движения 5+ минут (двигаем время прямо в данных ученика)
   const s = store.getStudent(code, 'Тестер');
@@ -867,7 +867,7 @@ async function fixtureLesson(mode, teacher, student, pj, shot) {
   await demoStart(mode, teacher, student, pj, shot);
 }
 
-/* ---------- урок 2: донор и одно правило, секрет донора, квизы, Фабрика с донором на выбор, сборка, дуэль ---------- */
+/* ---------- урок 2: донор и одно правило, спрятанная механика донора, квизы, Фабрика с донором на выбор, сборка, дуэль ---------- */
 const step2 = id => lesson2.checkpoints.flatMap(c => c.steps).find(s => s.id === id);
 // эксперимент с ручкой (уроки 2–8): партия как есть → ручка и предсказание → партия с ручкой → сравнение → «Оставить эти числа» — версия «баланс» без ИИ
 async function experimentRound(student, shot) {
@@ -930,8 +930,8 @@ async function lessonTwo(mode, teacher, student, shot) {
   await student.waitForSelector('#step-donor-hook.done');
   await shot(student, '20-u2-donor');
 
-  // одно правило: варианты игры кнопками, секрет считается скрытым счётчиком
-  await student.click('.cp >> text=Секрет');
+  // одно правило: варианты игры кнопками, спрятанная механика считается скрытым счётчиком
+  await student.click('.cp >> text=Спрятанная механика');
   await student.click('#step-secret-play .seg .opt >> nth=1');
   await student.click('#step-secret-play .veil button');
   gf = await gameFrame(student, 'kamni-mudreca', 0);
@@ -942,19 +942,19 @@ async function lessonTwo(mode, teacher, student, shot) {
   await gf.evaluate(() => { window.__lab.lab.count('_secret', 4); window.__lab.lab.count('победы', 1); window.__lab.lab.score = 150; window.__lab.end('win', 'Проверка'); });
   await student.waitForSelector('#step-secret-play.done', { timeout: 10000 });
 
-  // «Найди секрет» донора: ответ — с сервера только после догадки
+  // «Найди спрятанную механику» донора: ответ — с сервера только после догадки
   const hunt = step2('secret-hunt').hunt;
   const me = await student.evaluate(async () => JSON.stringify(await (await fetch('/api/me', { headers: { 'x-lab-token': Lab.token.get() } })).json()));
-  check('Ответ «Найди секрет» не уходит ученику заранее', me.includes(hunt.question) && !me.includes('"trapText"') && !me.includes(hunt.reveal.slice(0, 30)));
+  check('Ответ «Найди спрятанную механику» не уходит ученику заранее', me.includes(hunt.question) && !me.includes('"trapText"') && !me.includes(hunt.reveal.slice(0, 30)));
   await student.waitForSelector('#step-secret-hunt .opt');
   const pick = mode === 'mock' ? hunt.trap : hunt.right;
   await student.click(`#step-secret-hunt .opt >> text=${pick}`);
   await student.click('#step-secret-hunt >> text=Ответить');
   await student.waitForSelector('#step-secret-hunt.done');
   const reveal = (await student.textContent('#step-secret-hunt')).replace(/\s+/g, ' ');
-  check(mode === 'mock' ? 'Секрет донора: ловушка «мудрец поддавался» распознана' : 'Секрет донора угадан: неопределённость исхода',
+  check(mode === 'mock' ? 'Спрятанная механика донора: ловушка «мудрец поддавался» распознана' : 'Спрятанная механика донора угадана: неопределённость исхода',
     (mode === 'mock' ? /Ловушка! Мудрец не поддавался/.test(reveal) : /Точно!/.test(reveal)) && /Неопределённость исхода/.test(reveal), reveal.slice(0, 120));
-  check('Сравнение: классика и одно правило, счётчики телеметрии и секрет', /ничьи 3/.test(reveal) && /победы 1/.test(reveal) && /секрет сработал 4 раз/.test(reveal), (reveal.match(/С одним правилом.*?Классика[^О]*/) || [''])[0].slice(0, 160));
+  check('Сравнение: классика и одно правило, счётчики телеметрии и спрятанная механика', /ничьи 3/.test(reveal) && /победы 1/.test(reveal) && /спрятанная механика сработала 4 раз/.test(reveal), (reveal.match(/С одним правилом.*?Классика[^О]*/) || [''])[0].slice(0, 160));
   await shot(student, '21-u2-secret', true);
   await student.click('#step-secret-story >> text=Понятно');
 
@@ -1061,7 +1061,7 @@ async function lessonTwo(mode, teacher, student, shot) {
   await shot(student, '24-u2-duel');
 }
 
-/* ---------- урок 3: донор Pac-Man, предсказание динамики, секрет донора, квиз по следу, MDA, Фабрика MDA, сборка, дуэль ---------- */
+/* ---------- урок 3: донор Pac-Man, предсказание динамики, спрятанная механика донора, квиз по следу, MDA, Фабрика MDA, сборка, дуэль ---------- */
 const step3 = id => lesson3.checkpoints.flatMap(c => c.steps).find(s => s.id === id);
 async function lessonThree(mode, teacher, student, shot) {
   await teacher.click('.tabs >> text=Урок');
@@ -1073,10 +1073,10 @@ async function lessonThree(mode, teacher, student, shot) {
   await student.waitForFunction(() => /Урок 3/.test(document.querySelector('#lessonTitle').textContent), null, { timeout: 15000 });
   check('Урок 3 открылся у ученика', /Урок 3/.test(await student.textContent('#lessonTitle')));
 
-  // донор: «Ночной лабиринт» с секретом, счётчики динамики копятся в шаге
+  // донор: «Ночной лабиринт» со спрятанной механикой, счётчики динамики копятся в шаге
   await student.click('#step-donor-play .veil button');
   let gf = await gameFrame(student, 'nochnoy-labirint', 0);
-  check('Донор урока 3: «Ночной лабиринт» с секретом', await gf.evaluate(() => window.__lab.cfg.secret === 1 && GAME.donor === 'Pac-Man'));
+  check('Донор урока 3: «Ночной лабиринт» со спрятанной механикой', await gf.evaluate(() => window.__lab.cfg.secret === 1 && GAME.donor === 'Pac-Man'));
   await gf.evaluate(() => window.__lab.confirm());
   await sleep(600);
   check('Волки выходят из дольмена и ходят по лабиринту', await gf.evaluate(() => window.__lab.lab.state.wolves.length === 4 && window.__lab.lab.state.wolves[0].state === 'active'));
@@ -1088,7 +1088,7 @@ async function lessonThree(mode, teacher, student, shot) {
   await shot(student, '30-u3-donor');
 
   // предсказание динамики → партия с одним правилом → сравнение с телеметрией шага
-  await student.click('.cp >> text=Секрет');
+  await student.click('.cp >> text=Спрятанная механика');
   const pred = step3('secret-predict'), tail = pred.options.find(o => o.counter === 'хвост');
   await student.click(`#step-secret-predict .opt >> text=${tail.text}`);
   await student.click('#step-secret-predict >> text=🔮 Записать предсказание');
@@ -1096,7 +1096,7 @@ async function lessonThree(mode, teacher, student, shot) {
   await student.click('#step-secret-play .veil button');
   gf = await gameFrame(student, 'nochnoy-labirint', 0);
   await gf.waitForFunction(() => window.__lab.cfg.secret === 0, null, { timeout: 5000 }).catch(() => {});
-  check('Партия «одно правило»: секрет выключен из шага', await gf.evaluate(() => window.__lab.cfg.secret === 0));
+  check('Партия «одно правило»: спрятанная механика выключена из шага', await gf.evaluate(() => window.__lab.cfg.secret === 0));
   await gf.evaluate(() => window.__lab.confirm());
   await sleep(300);
   await gf.evaluate(() => { const l = window.__lab.lab; l.count('хвост', 6); l.count('окружения', 1); l.score = 400; window.__lab.end('lose', 'Проверка'); });
@@ -1108,20 +1108,20 @@ async function lessonThree(mode, teacher, student, shot) {
   await student.waitForSelector('#step-secret-predict.done');
   await shot(student, '31-u3-predict');
 
-  // «Найди секрет» донора: ответ только после догадки, сравнение четырёх характеров и одного правила
+  // «Найди спрятанную механику» донора: ответ только после догадки, сравнение четырёх характеров и одного правила
   const hunt = step3('secret-hunt').hunt;
   const me = await student.evaluate(async () => JSON.stringify(await (await fetch('/api/me', { headers: { 'x-lab-token': Lab.token.get() } })).json()));
-  check('Ответ «Найди секрет» урока 3 не уходит ученику заранее', me.includes(hunt.question) && !me.includes(hunt.reveal.slice(0, 30)));
+  check('Ответ «Найди спрятанную механику» урока 3 не уходит ученику заранее', me.includes(hunt.question) && !me.includes(hunt.reveal.slice(0, 30)));
   await student.waitForSelector('#step-secret-hunt .opt');
   await student.click(`#step-secret-hunt .opt >> text=${mode === 'mock' ? hunt.trap : hunt.right}`);
   await student.click('#step-secret-hunt >> text=Ответить');
   await student.waitForSelector('#step-secret-hunt.done');
   const reveal = (await student.textContent('#step-secret-hunt')).replace(/\s+/g, ' ');
-  check(mode === 'mock' ? 'Секрет урока 3: ловушка «волки быстрее» распознана' : 'Секрет урока 3 угадан: четыре характера',
+  check(mode === 'mock' ? 'Спрятанная механика урока 3: ловушка «волки быстрее» распознана' : 'Спрятанная механика урока 3 угадана: четыре характера',
     (mode === 'mock' ? /Ловушка! Скорость волков/.test(reveal) : /Точно!/.test(reveal)) && /Четыре характера и передышка/.test(reveal), reveal.slice(0, 120));
   // к счётчикам из проверки добавляется то, что волки успели сами за партию, поэтому — «не меньше»
   const num = re => Number((re.exec(reveal) || [])[1] || -1), offPart = reveal.slice(reveal.indexOf('Одно правило'));
-  check('Сравнение: окружения и хвост с секретом и без, секрет сработал', num(/Четыре характера.*?окружения (\d+)/) >= 5 && Number((/хвост (\d+)/.exec(offPart) || [])[1] || -1) >= 6 && num(/секрет сработал (\d+) раз/) >= 40, reveal.slice(reveal.indexOf('Четыре характера'), reveal.indexOf('Четыре характера') + 160));
+  check('Сравнение: окружения и хвост со спрятанной механикой и без, спрятанная механика сработала', num(/Четыре характера.*?окружения (\d+)/) >= 5 && Number((/хвост (\d+)/.exec(offPart) || [])[1] || -1) >= 6 && num(/спрятанная механика сработала (\d+) раз/) >= 40, reveal.slice(reveal.indexOf('Четыре характера'), reveal.indexOf('Четыре характера') + 160));
   await student.click('#step-secret-story >> text=Понятно');
 
   // квиз «Угадай охотника по следу»: лабиринт на холсте, ответы цифрами и стрелками с пробелом, после ответа — цель охотника
@@ -1216,7 +1216,7 @@ async function lessonThree(mode, teacher, student, shot) {
   check('Плейтест урока 3 показывает предсказание динамики автора', (await student.textContent('#step-pleytest')).includes(dyn));
 }
 
-/* ---------- урок 4: «Каменный стакан», секрет «мешок и предпросмотр», квиз «Собери цикл», Фабрика, образец урока для ИИ, релиз модуля, дуэль ---------- */
+/* ---------- урок 4: «Каменный стакан», спрятанная механика «мешок и предпросмотр», квиз «Собери цикл», Фабрика, образец урока для ИИ, релиз модуля, дуэль ---------- */
 const step4 = id => lesson4.checkpoints.flatMap(c => c.steps).find(s => s.id === id);
 async function lessonFour(mode, teacher, student, shot) {
   await teacher.click('.tabs >> text=Урок');
@@ -1240,12 +1240,12 @@ async function lessonFour(mode, teacher, student, shot) {
   await student.click('#step-donor-hook >> text=Ответить');
   await student.waitForSelector('#step-donor-hook.done');
 
-  // тот же стакан без секрета: ручки из шага выключают мешок и предпросмотр
-  await student.click('.cp >> text=Секрет');
+  // тот же стакан без спрятанной механики: ручки из шага выключают мешок и предпросмотр
+  await student.click('.cp >> text=Спрятанная механика');
   await student.click('#step-secret-play .veil button');
   gf = await gameFrame(student, 'kamennyi-stakan', 0);
   await gf.waitForFunction(() => window.__lab.cfg.bag === 0 && window.__lab.cfg.preview === 0, null, { timeout: 5000 }).catch(() => {});
-  check('Без секрета: мешок и предпросмотр выключены ручками шага', await gf.evaluate(() => window.__lab.cfg.bag === 0 && window.__lab.cfg.preview === 0));
+  check('Без спрятанной механики: мешок и предпросмотр выключены ручками шага', await gf.evaluate(() => window.__lab.cfg.bag === 0 && window.__lab.cfg.preview === 0));
   await gf.evaluate(() => window.__lab.confirm());
   await sleep(300);
   await gf.evaluate(() => { window.__lab.lab.count('засухи', 2); window.__lab.lab.count('линии', 1); window.__lab.lab.score = 90; window.__lab.end('lose', 'Проверка'); });
@@ -1253,15 +1253,15 @@ async function lessonFour(mode, teacher, student, shot) {
 
   const hunt = step4('secret-hunt').hunt;
   const me = await student.evaluate(async () => JSON.stringify(await (await fetch('/api/me', { headers: { 'x-lab-token': Lab.token.get() } })).json()));
-  check('Урок 4: ответ «Найди секрет» не уходит ученику заранее', me.includes(hunt.question) && !me.includes(hunt.reveal.slice(0, 30)));
+  check('Урок 4: ответ «Найди спрятанную механику» не уходит ученику заранее', me.includes(hunt.question) && !me.includes(hunt.reveal.slice(0, 30)));
   await student.waitForSelector('#step-secret-hunt .opt');
   await student.click(`#step-secret-hunt .opt >> text=${mode === 'mock' ? hunt.trap : hunt.right}`);
   await student.click('#step-secret-hunt >> text=Ответить');
   await student.waitForSelector('#step-secret-hunt.done');
   const reveal = (await student.textContent('#step-secret-hunt')).replace(/\s+/g, ' ');
-  check(mode === 'mock' ? 'Секрет урока 4: ловушка «падали медленнее» распознана' : 'Секрет урока 4 угадан: мешок и предпросмотр',
+  check(mode === 'mock' ? 'Спрятанная механика урока 4: ловушка «падали медленнее» распознана' : 'Спрятанная механика урока 4 угадана: мешок и предпросмотр',
     (mode === 'mock' ? /Ловушка! Скорость не менялась/.test(reveal) : /Точно!/.test(reveal)) && /Предпросмотр и «мешок»/.test(reveal), reveal.slice(0, 120));
-  check('Сравнение: линии и засухи с мешком и без, мешок сработал', /линии 3/.test(reveal) && /засухи 2/.test(reveal) && /секрет сработал [1-9]\d* раз/.test(reveal), (reveal.match(/С мешком.*?вслепую[^О]*/) || [''])[0].slice(0, 200));
+  check('Сравнение: линии и засухи с мешком и без, мешок сработал', /линии 3/.test(reveal) && /засухи 2/.test(reveal) && /спрятанная механика сработала [1-9]\d* раз/.test(reveal), (reveal.match(/С мешком.*?вслепую[^О]*/) || [''])[0].slice(0, 200));
   await shot(student, '30-u4-secret', true);
   await student.click('#step-secret-story >> text=Понятно');
 
@@ -1391,7 +1391,7 @@ async function lessonFour(mode, teacher, student, shot) {
   await student.click('#step-duel .veil button');
   gf = await gameFrame(student, 'kamennyi-stakan', 0);
   await gf.waitForFunction(() => window.__lab.cfg.bag === 0 && window.__lab.cfg.vs === 1, null, { timeout: 5000 }).catch(() => {});
-  check('Дуэль без секрета: вариант кнопкой', await gf.evaluate(() => window.__lab.cfg.bag === 0 && window.__lab.cfg.preview === 0 && window.__lab.cfg.vs === 1));
+  check('Дуэль без спрятанной механики: вариант кнопкой', await gf.evaluate(() => window.__lab.cfg.bag === 0 && window.__lab.cfg.preview === 0 && window.__lab.cfg.vs === 1));
   await shot(student, '34-u4-duel');
 
   // открытие: самооценка модуля
@@ -1455,10 +1455,10 @@ async function lessonFive(mode, teacher, student, shot) {
   await openLesson(teacher, student, 2, 'urok-05', 'Урок 5');
   check('Урок 5 открылся у ученика: модуль 2', /Урок 5 · Прыжок, который хочется повторять/.test(await student.textContent('#lessonTitle')));
 
-  // донор: «Тур над Хаджохом» как задумано — прыжок с секретом
+  // донор: «Тур над Хаджохом» как задумано — прыжок со спрятанной механикой
   await student.click('#step-donor-play .veil button');
   let gf = await gameFrame(student, 'tur-nad-hadzhohom', 0);
-  check('Донор урока 5: обби с камерой сбоку и прыжком с секретом', await gf.evaluate(() => window.__lab.cfg.secret === 1 && window.__lab.cfg.coyote > 0 && GAME.LEVEL.length > 10));
+  check('Донор урока 5: обби с камерой сбоку и прыжком со спрятанной механикой', await gf.evaluate(() => window.__lab.cfg.secret === 1 && window.__lab.cfg.coyote > 0 && GAME.LEVEL.length > 10));
   await gf.evaluate(() => window.__lab.confirm());
   await gf.locator('#cv').focus();
   await student.keyboard.down('ArrowRight'); await sleep(700); await student.keyboard.press('Space'); await sleep(700); await student.keyboard.up('ArrowRight');
@@ -1471,11 +1471,11 @@ async function lessonFive(mode, teacher, student, shot) {
   await student.waitForSelector('#step-donor-hook.done');
 
   // сырой прыжок: ручка secret из шага, нажатие чуть позже края «проглочено»
-  await student.click('.cp >> text=Секрет');
+  await student.click('.cp >> text=Спрятанная механика');
   await student.click('#step-secret-play .veil button');
   gf = await gameFrame(student, 'tur-nad-hadzhohom', 0);
   await gf.waitForFunction(() => window.__lab.cfg.secret === 0, null, { timeout: 5000 }).catch(() => {});
-  check('Сырой прыжок: секрет выключен ручкой шага', await gf.evaluate(() => window.__lab.cfg.secret === 0));
+  check('Сырой прыжок: спрятанная механика выключена ручкой шага', await gf.evaluate(() => window.__lab.cfg.secret === 0));
   await gf.evaluate(() => window.__lab.confirm());
   await sleep(300);
   // тур за краем первой скалы: прыжок через 0,05 с после края без койота не случается
@@ -1484,7 +1484,7 @@ async function lessonFive(mode, teacher, student, shot) {
     const before = L.state.jumps; L.p1.pressed.a = true; GAME.control(L, h, L.p1, 0.016); L.p1.pressed.a = false;
     return { jumped: L.state.jumps - before, lost: L.state.lost };
   });
-  check('Без секрета нажатие чуть позже края проглочено', edge.jumped === 0 && edge.lost === 1, JSON.stringify(edge));
+  check('Без спрятанной механики нажатие чуть позже края проглочено', edge.jumped === 0 && edge.lost === 1, JSON.stringify(edge));
   await gf.evaluate(() => { window.__lab.lab.count('потерянные нажатия', 2); window.__lab.lab.score = 300; window.__lab.end('lose', 'Проверка'); });
   await student.waitForSelector('#step-secret-play.done', { timeout: 10000 });
 
@@ -1494,9 +1494,9 @@ async function lessonFive(mode, teacher, student, shot) {
   await student.click('#step-secret-hunt >> text=Ответить');
   await student.waitForSelector('#step-secret-hunt.done');
   const reveal = (await student.textContent('#step-secret-hunt')).replace(/\s+/g, ' ');
-  check(mode === 'mock' ? 'Секрет урока 5: ловушка «прыгал выше» распознана' : 'Секрет урока 5 угадан: отзывчивость',
+  check(mode === 'mock' ? 'Спрятанная механика урока 5: ловушка «прыгал выше» распознана' : 'Спрятанная механика урока 5 угадана: отзывчивость',
     (mode === 'mock' ? /Ловушка! Высота не менялась/.test(reveal) : /Точно!/.test(reveal)) && /Отзывчивость/.test(reveal), reveal.slice(0, 120));
-  check('Сравнение: потерянные нажатия с секретом и без', /Сырой прыжок/.test(reveal) && /потерянные нажатия 3/.test(reveal), (reveal.match(/Прыжок с секретом.*?Сырой прыжок[^О]*/) || [''])[0].slice(0, 200));
+  check('Сравнение: потерянные нажатия со спрятанной механикой и без', /Сырой прыжок/.test(reveal) && /потерянные нажатия 3/.test(reveal), (reveal.match(/Прыжок со спрятанной механикой.*?Сырой прыжок[^О]*/) || [''])[0].slice(0, 200));
   await student.click('#step-secret-story >> text=Понятно');
 
   // лаборатория прыжка: пресеты кнопками
@@ -1577,13 +1577,13 @@ async function lessonSix(mode, teacher, student, shot) {
   check('Оболочка 0.3: 12 переключателей сочности в ручках, все включены', juice.n === 12 && juice.on === 12 && juice.pitch === 2 && juice.finale === 1, JSON.stringify(juice));
   const dry = await gf.evaluate(() => {
     window.__lab.togglePanel(true);
-    [...document.querySelectorAll('#presets button')].find(b => b.textContent === 'Без секрета').click();
+    [...document.querySelectorAll('#presets button')].find(b => b.textContent === 'Без спрятанной механики').click();
     const off = Object.keys(window.__lab.cfg).filter(k => k.startsWith('j_') && window.__lab.cfg[k] === 0).length, shake = window.__lab.cfg.shake;
     [...document.querySelectorAll('#presets button')].find(b => b.textContent === 'Как задумано').click();
     window.__lab.togglePanel(false);
     return { off, shake, back: Object.keys(window.__lab.cfg).filter(k => k.startsWith('j_') && window.__lab.cfg[k] === 1).length };
   });
-  check('Пресет «Без секрета» выключает все 12, «Как задумано» включает обратно', dry.off === 12 && dry.shake === 1 && dry.back === 12, JSON.stringify(dry));
+  check('Пресет «Без спрятанной механики» выключает все 12, «Как задумано» включает обратно', dry.off === 12 && dry.shake === 1 && dry.back === 12, JSON.stringify(dry));
   await gf.evaluate(() => window.__lab.confirm());
   await sleep(300);
   await gf.evaluate(() => { window.__lab.lab.count('удары', 12); window.__lab.lab.count('кирпичи', 8); window.__lab.lab.score = 700; window.__lab.end('lose', 'Проверка'); });
@@ -1593,7 +1593,7 @@ async function lessonSix(mode, teacher, student, shot) {
   await student.waitForSelector('#step-donor-hook.done');
 
   // сухой «Ледолом»: переключатели из шага, оболочка глушит эффекты в самих lab.shake, lab.burst, lab.tone
-  await student.click('.cp >> text=Секрет');
+  await student.click('.cp >> text=Спрятанная механика');
   await student.click('#step-secret-play .veil button');
   gf = await gameFrame(student, 'ledolom', 0);
   await gf.waitForFunction(() => window.__lab.cfg.j_shake === 0, null, { timeout: 5000 }).catch(() => {});
@@ -1609,7 +1609,7 @@ async function lessonSix(mode, teacher, student, shot) {
   await student.click('#step-secret-hunt >> text=Ответить');
   await student.waitForSelector('#step-secret-hunt.done');
   const reveal = (await student.textContent('#step-secret-hunt')).replace(/\s+/g, ' ');
-  check(mode === 'mock' ? 'Секрет урока 6: ловушка «хычин летал быстрее» распознана' : 'Секрет урока 6 угадан: сочность',
+  check(mode === 'mock' ? 'Спрятанная механика урока 6: ловушка «хычин летал быстрее» распознана' : 'Спрятанная механика урока 6 угадана: сочность',
     (mode === 'mock' ? /Ловушка! Скорость не менялась/.test(reveal) : /Точно!/.test(reveal)) && /Сочность: игра отзывается/.test(reveal) && /удары 12/.test(reveal) && /удары 9/.test(reveal), reveal.slice(0, 120));
   await student.click('#step-secret-story >> text=Понятно');
 
@@ -1694,14 +1694,14 @@ async function lessonSeven(mode, teacher, student, shot) {
   await student.click('#step-donor-hook >> text=Ответить');
   await student.waitForSelector('#step-donor-hook.done');
 
-  // без секрета: музыка на своих часах, кувшины сдвинуты, щелчка нет
-  await student.click('.cp >> text=Секрет');
+  // без спрятанной механики: музыка на своих часах, кувшины сдвинуты, щелчка нет
+  await student.click('.cp >> text=Спрятанная механика');
   await student.click('#step-secret-play .veil button');
   gf = await gameFrame(student, 'shag-v-takt', 0);
   await gf.waitForFunction(() => window.__lab.cfg.secret === 0, null, { timeout: 5000 }).catch(() => {});
   await sleep(300);
   const off = await gf.evaluate(() => { const st = window.__lab.lab.state; return { secret: window.__lab.cfg.secret, cues: st.evts.filter(e => e.kind === 'cue').length, obs: st.obs.length }; });
-  check('Без секрета: щелчков нет, кувшины те же', off.secret === 0 && off.cues === 0 && off.obs === on.obs, JSON.stringify(off));
+  check('Без спрятанной механики: щелчков нет, кувшины те же', off.secret === 0 && off.cues === 0 && off.obs === on.obs, JSON.stringify(off));
   await gf.evaluate(() => window.__lab.confirm());
   await sleep(300);
   await gf.evaluate(() => { const L = window.__lab.lab; L.count('идеально', 1); L.count('хорошо', 3); L.count('мимо', 6); L.score = 200; window.__lab.end('lose', 'Проверка'); });
@@ -1712,7 +1712,7 @@ async function lessonSeven(mode, teacher, student, shot) {
   await student.click('#step-secret-hunt >> text=Ответить');
   await student.waitForSelector('#step-secret-hunt.done');
   const reveal = (await student.textContent('#step-secret-hunt')).replace(/\s+/g, ' ');
-  check(mode === 'mock' ? 'Секрет урока 7: ловушка «танцор бежал медленнее» распознана' : 'Секрет урока 7 угадан: одни часы',
+  check(mode === 'mock' ? 'Спрятанная механика урока 7: ловушка «танцор бежал медленнее» распознана' : 'Спрятанная механика урока 7 угадана: одни часы',
     (mode === 'mock' ? /Ловушка! Темп не менялся/.test(reveal) : /Точно!/.test(reveal)) && /Одни часы: звук предупреждает/.test(reveal) && /идеально 9/.test(reveal) && /мимо 6/.test(reveal), reveal.slice(0, 120));
   await student.click('#step-secret-story >> text=Понятно');
 
@@ -1807,15 +1807,15 @@ async function lessonEight(mode, teacher, student, shot, { browser, base, code, 
   await student.click('#step-donor-hook >> text=Ответить');
   await student.waitForSelector('#step-donor-hook.done');
 
-  // без секрета: тот же промах отрезается
-  await student.click('.cp >> text=Секрет');
+  // без спрятанной механики: тот же промах отрезается
+  await student.click('.cp >> text=Спрятанная механика');
   await student.click('#step-secret-play .veil button');
   gf = await gameFrame(student, 'bashnya-do-neba', 0);
   await gf.waitForFunction(() => window.__lab.cfg.secret === 0, null, { timeout: 5000 }).catch(() => {});
   await gf.evaluate(() => window.__lab.confirm());
   await sleep(300);
   const off = await placeSlab(gf, 0.06);
-  check('Без секрета: промах 6 см отрезан, плита уже', off.perfect === 0 && Math.abs(off.w - (size - 0.06)) < 1e-6, JSON.stringify(off));
+  check('Без спрятанной механики: промах 6 см отрезан, плита уже', off.perfect === 0 && Math.abs(off.w - (size - 0.06)) < 1e-6, JSON.stringify(off));
   await gf.evaluate(() => { const L = window.__lab.lab; L.count('плиты', 4); L.score = 40; window.__lab.end('lose', 'Проверка'); });
   await student.waitForSelector('#step-secret-play.done', { timeout: 10000 });
   const hunt = step8('secret-hunt').hunt;
@@ -1824,7 +1824,7 @@ async function lessonEight(mode, teacher, student, shot, { browser, base, code, 
   await student.click('#step-secret-hunt >> text=Ответить');
   await student.waitForSelector('#step-secret-hunt.done');
   const reveal = (await student.textContent('#step-secret-hunt')).replace(/\s+/g, ' ');
-  check(mode === 'mock' ? 'Секрет урока 8: ловушка «плиты ехали медленнее» распознана' : 'Секрет урока 8 угадан: окно «идеально»',
+  check(mode === 'mock' ? 'Спрятанная механика урока 8: ловушка «плиты ехали медленнее» распознана' : 'Спрятанная механика урока 8 угадана: окно «идеально»',
     (mode === 'mock' ? /Ловушка! Скорость не менялась/.test(reveal) : /Точно!/.test(reveal)) && /Окно «идеально»: игра прощает/.test(reveal) && /плиты 12/.test(reveal) && /плиты 5/.test(reveal), reveal.slice(0, 120));
   await student.click('#step-secret-story >> text=Понятно');
 
@@ -1957,7 +1957,7 @@ async function together(browser, base, code, teacher, student, errors, shot) {
   let nown = await gameFrame(nb, '/play/', 0);
   const nbFeel = await nb.inputValue('#f-resheniyafeeling');
   check('«Собрать сейчас»: пустые поля замысла дописал сервер и показал их ученице', nbFeel.length > 3 && await nb.locator('#step-resheniya .tag.dice').count() === 3 && (await nb.textContent('#step-igra .preview-igra')).includes('Тучи над Фиштом'), nbFeel);
-  check('Карта секрета ученицы ушла программисту', /Секретная механика — её выбрал ученик/.test(mock.last.newUser || ''));
+  check('Карта спрятанной механики ученицы ушла программисту', /Спрятанная механика — её выбрал ученик/.test(mock.last.newUser || ''));
   await nown.evaluate(() => window.__lab.confirm());
   await nb.waitForFunction(() => document.querySelectorAll('#step-sborka .ver').length >= 2, null, { timeout: 30000 });
   nown = await gameFrame(nb, '/play/', 0);
@@ -1996,7 +1996,7 @@ async function together(browser, base, code, teacher, student, errors, shot) {
   await student.click('#step-pleytest >> text=Отправить автору');
   await student.waitForSelector('#step-pleytest.done');
   check('Плейтест-карточка отправлена автору', true);
-  // слепая пара с секретом: копии игры соседки с ручкой secret и без
+  // слепая пара со спрятанной механикой: копии игры соседки с ручкой secret и без
   const bp = {};
   for (const k of ['A', 'B']) {
     await student.click(`#step-slepaya .ab-${k}`);
@@ -2007,10 +2007,10 @@ async function together(browser, base, code, teacher, student, errors, shot) {
     await playRound(f, { score: 10 });
     await sleep(400);
   }
-  check('Слепая пара: копии соседки с секретом и без', (bp.A === 0) !== (bp.B === 0), `А: ${bp.A}, Б: ${bp.B}`);
+  check('Слепая пара: копии соседки со спрятанной механикой и без', (bp.A === 0) !== (bp.B === 0), `А: ${bp.A}, Б: ${bp.B}`);
   await student.click(`#step-slepaya .opt >> text=В игре ${bp.A === 0 ? 'Б' : 'А'}`);
   await student.waitForSelector('#step-slepaya.done');
-  check('Слепая пара: раскрытие «почувствовал секрет соседа»', /Ты почувствовал секрет соседа вслепую/.test(await student.textContent('#step-slepaya')));
+  check('Слепая пара: раскрытие «почувствовал спрятанную механику соседа»', /Ты почувствовал спрятанную механику соседа вслепую/.test(await student.textContent('#step-slepaya')));
   await student.locator('#step-pleytest').scrollIntoViewIfNeeded();
   await shot(student, '10-playtest', true);
 
@@ -2032,7 +2032,7 @@ async function together(browser, base, code, teacher, student, errors, shot) {
   check('Открытие плейтеста: партии чужих игроков и «ещё раз»', /2\s*партий сыграли чужие/.test(disc) && /1\s*раз чужие игроки сами нажали «ещё раз»/.test(disc), disc.slice(0, 90));
   check('Открытие плейтеста: доминирующая кнопка — «→»', /держали → вправо/.test(disc), (disc.match(/держали[^.]*/) || [''])[0]);
   check('Автор видит карточку плейтеста соседа', disc.includes('Хочется видеть, откуда летят тучи'));
-  check('Автор видит слепую пару: свой секрет почувствовали 1 из 1', /твой секрет почувствовали 1 из 1/.test((await nb.textContent('#step-pleytest')).replace(/\s+/g, ' ')));
+  check('Автор видит слепую пару: свою спрятанную механику почувствовали 1 из 1', /твою спрятанную механику почувствовали 1 из 1/.test((await nb.textContent('#step-pleytest')).replace(/\s+/g, ' ')));
 
   // учитель: отзыв «одно понятие + один вопрос», ученик видит его на шаге без перезагрузки
   await teacher.click('.tabs >> text=Урок');

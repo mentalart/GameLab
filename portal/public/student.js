@@ -104,7 +104,7 @@ function save(stepId, value, done, now) {
   // замысел изменился: шаг ИГРА в том же чекпоинте пересобирает черновик (событие 'plan')
   const plan = S.lesson.plan || {};
   if (stepId === plan.factory || stepId === plan.decisions) S.hooks.forEach(h => h('plan', stepId));
-  if (done) S.hooks.forEach(h => h('answered', stepId)); // шаг закрыт: лупа ждёт ответа «Найди секрет»
+  if (done) S.hooks.forEach(h => h('answered', stepId)); // шаг закрыт: лупа ждёт ответа «Найди спрятанную механику»
   if (done != null) S.hooks.forEach(h => h('answer', stepId)); // шаг закрыт или открыт: зависимые шаги (правка с findingsFrom) перерисовываются
 }
 // перед сборкой: все ответы, которые ещё ждут отправки, уходят на сервер — замысел собирается из них
@@ -300,10 +300,10 @@ STEPS['teacher-demo'] = ctx => {
   return host;
 };
 
-// общая игра класса из вау-старта: появляется, когда учитель её раздаст. secretOff — партия с выключенным секретом.
-// Скрытый счётчик _secret из телеметрии показывает, сколько раз сработал секрет.
-// lupa — «Посмотри на секрет» после «Найди секрет»: копия с секретом, оболочка зажигает лупу на каждом срабатывании,
-// кнопки силы секрета 0 · 1 · 2 (2 — если ручка игры это позволяет); партии не идут в рекорды класса.
+// общая игра класса из вау-старта: появляется, когда учитель её раздаст. secretOff — партия с выключенной спрятанной механикой.
+// Скрытый счётчик _secret из телеметрии показывает, сколько раз сработала спрятанная механика.
+// lupa — «Посмотри на спрятанную механику» после «Найди спрятанную механику»: копия со спрятанной механикой, оболочка зажигает лупу на каждом срабатывании,
+// кнопки силы спрятанной механики 0 · 1 · 2 (2 — если ручка игры это позволяет); партии не идут в рекорды класса.
 const huntSecret = () => { const h = lessonSteps().find(x => x.type === 'secret' && !x.hunt); return h ? (ans(h.id).value || {}).secret || null : null; };
 function sharedPlay(ctx) {
   const st = ctx.step;
@@ -321,9 +321,9 @@ function sharedPlay(ctx) {
       return;
     }
     if (st.lupa && !sec) {
-      host.append(el('div', { class: 'locked-msg card' }, el('h3', {}, 'Сначала найди секрет'),
-        el('p', { style: 'margin-top:6px' }, 'Лупа откроется, когда ты ответишь в шаге «Найди секрет».'),
-        el('div', {}, el('button', { class: 'btn ghost small', type: 'button', onclick: () => { shown = null; draw(); if (!huntSecret()) toast('Сначала ответь в шаге «Найди секрет»'); } }, '🔍 Открыть лупу'))));
+      host.append(el('div', { class: 'locked-msg card' }, el('h3', {}, 'Сначала найди спрятанную механику'),
+        el('p', { style: 'margin-top:6px' }, 'Лупа откроется, когда ты ответишь в шаге «Найди спрятанную механику».'),
+        el('div', {}, el('button', { class: 'btn ghost small', type: 'button', onclick: () => { shown = null; draw(); if (!huntSecret()) toast('Сначала ответь в шаге «Найди спрятанную механику»'); } }, '🔍 Открыть лупу'))));
       return;
     }
     let v = Object.assign({ rounds: 0, best: 0, secret: 0 }, ctx.value);
@@ -331,32 +331,32 @@ function sharedPlay(ctx) {
     v.game = key;
     const status = el('b', {});
     const show = () => { status.textContent = `Партий: ${v.rounds} · лучший счёт: ${v.best}` + (st.minRounds && v.rounds < st.minRounds ? ` · нужно партий: ${st.minRounds}` : ''); };
-    let power = 1; // лупа: сила секрета кнопками
+    let power = 1; // лупа: сила спрятанной механики кнопками
     cur = Games.frame({
-      src: () => `/play/${g.id}/${g.version}`, key: () => 'wow:' + g.id, cfg: st.secretOff && g.knob ? { [g.knob]: 0 } : null, label: st.lupa ? 'Играть с лупой' : st.secretOff ? 'Играть без секрета' : 'Играть в игру класса',
+      src: () => `/play/${g.id}/${g.version}`, key: () => 'wow:' + g.id, cfg: st.secretOff && g.knob ? { [g.knob]: 0 } : null, label: st.lupa ? 'Играть с лупой' : st.secretOff ? 'Играть без спрятанной механики' : 'Играть в игру класса',
       challenge: !st.lupa, score: !st.lupa, reveal: sec ? sec.title : null,
       onReady: meta => { if (st.lupa) drawPower(meta); },
       onOver: m => {
         const hits = Number(((m.tele || {}).custom || {})._secret) || 0;
         v = Object.assign(v, { rounds: v.rounds + 1, best: Math.max(v.best, m.score || 0), secret: v.secret + hits });
         show(); ctx.save(v, ctx.done || v.rounds >= (st.minRounds || 1));
-        if (st.lupa) { lupaLine.textContent = `За эту партию лупа загорелась ${hits} раз (сила секрета ${power}).`; return; }
+        if (st.lupa) { lupaLine.textContent = `За эту партию лупа загорелась ${hits} раз (сила спрятанной механики ${power}).`; return; }
         chHost.innerHTML = ''; chHost.append(Games.challenge({ id: g.id, version: g.version }, m));
       },
       onError: err => cur.message(el('div', { class: 'stack', style: 'align-items:center' }, el('b', {}, 'Игра класса упала: ' + (err.message || 'ошибка')), el('p', { class: 'muted small' }, 'Скажи учителю — он пересоберёт игру или возьмёт запасную.'))),
     });
     show();
-    const chHost = el('div'), powerHost = el('div', { class: 'seg', role: 'radiogroup', 'aria-label': 'Сила секрета' }), lupaLine = el('p', { class: 'small muted', 'aria-live': 'polite' });
-    // кнопки силы секрета: ручка игры knob, «2» — только если её максимум это позволяет
+    const chHost = el('div'), powerHost = el('div', { class: 'seg', role: 'radiogroup', 'aria-label': 'Сила спрятанной механики' }), lupaLine = el('p', { class: 'small muted', 'aria-live': 'polite' });
+    // кнопки силы спрятанной механики: ручка игры knob, «2» — только если её максимум это позволяет
     function drawPower(meta) {
       const c = ((meta && meta.config) || {})[g.knob] || {}, max = Number(c.max) || 1;
       powerHost.innerHTML = '';
-      [[0, 'Секрет 0 · нет'], [1, 'Секрет 1 · как было'], [2, 'Секрет 2 · вдвое сильнее']].filter(([k]) => k <= max).forEach(([k, label]) => powerHost.append(el('button', {
+      [[0, 'Спрятанная механика 0 · нет'], [1, 'Спрятанная механика 1 · как было'], [2, 'Спрятанная механика 2 · вдвое сильнее']].filter(([k]) => k <= max).forEach(([k, label]) => powerHost.append(el('button', {
         type: 'button', class: 'opt' + (power === k ? ' on' : ''), 'aria-pressed': String(power === k),
         onclick: () => { power = k; cur.post({ type: 'setCfg', cfg: { [g.knob]: k } }); beep('tick'); drawPower(meta); } }, label)));
     }
     host.append(el('div', { class: 'donor-card' }, el('div', { class: 'ico' }, st.lupa ? '🔍' : '🃏'), el('div', {},
-      el('div', { class: 'eyebrow' }, st.lupa ? 'Игра класса · секрет с лупой' : st.secretOff ? 'Игра класса · секрет выключен' : 'Игра класса'), el('h3', {}, st.lupa ? sec.title : g.title || 'Игра класса'),
+      el('div', { class: 'eyebrow' }, st.lupa ? 'Игра класса · спрятанная механика с лупой' : st.secretOff ? 'Игра класса · спрятанная механика выключена' : 'Игра класса'), el('h3', {}, st.lupa ? sec.title : g.title || 'Игра класса'),
       el('p', { class: 'muted small' }, st.lupa ? sec.reveal : S.wow.cards.map(c => c.text).filter(Boolean).join(' · ')))),
     cur.box, Games.bar(cur, status), st.lupa ? powerHost : '', st.lupa ? lupaLine : '', chHost,
     el('div', {}, el('button', { class: 'btn ghost small', type: 'button', onclick: () => { if (!v.rounds) { toast('Сначала сыграй хотя бы одну партию'); return; } ctx.save(v, true); } }, 'Готово, дальше')));
@@ -365,9 +365,9 @@ function sharedPlay(ctx) {
   draw();
   return host;
 }
-// abtest: слепой тест на игре класса — две одинаковые на вид копии «А» и «Б», в одной секрет выключен (ручка knob = 0).
-// В какой копии секрет, решает хеш ника и игры: у соседей по-разному, у одного ученика — всегда одинаково.
-// По партии в каждую (minRounds), потом голос «где напряжённее». Счёт, время, урон и моменты срабатывания секрета (marks) копятся по копиям.
+// abtest: слепой тест на игре класса — две одинаковые на вид копии «А» и «Б», в одной спрятанная механика выключена (ручка knob = 0).
+// В какой копии спрятанная механика, решает хеш ника и игры: у соседей по-разному, у одного ученика — всегда одинаково.
+// По партии в каждую (minRounds), потом голос «где напряжённее». Счёт, время, урон и моменты срабатывания спрятанной механики (marks) копятся по копиям.
 const hashStr = t => [...String(t)].reduce((n, c) => (n * 31 + c.charCodeAt(0)) >>> 0, 7);
 STEPS.abtest = ctx => {
   const st = ctx.step, need = st.minRounds || 1;
@@ -393,14 +393,14 @@ STEPS.abtest = ctx => {
         x.rounds++; x.best = Math.max(x.best, m.score || 0); x.time += Number(t.time) || 0; x.hurts += Number(t.hurts) || 0;
         x.secret += Number((t.custom || {})._secret) || 0;
         const mk = (t.marks || {})._secret || [];
-        if (mk.length) x.marks = { len: Number(t.time) || 0, at: mk.slice(0, 200) }; // моменты секрета последней партии, где он сработал
+        if (mk.length) x.marks = { len: Number(t.time) || 0, at: mk.slice(0, 200) }; // моменты спрятанной механики последней партии, где она сработала
         ctx.save(v); status.textContent = `Игра ${pick === 'A' ? 'А' : 'Б'} · лучший счёт ${x.best}`;
         tabs.querySelector('.ab-' + pick + ' .small').textContent = ` · партий ${x.rounds}` + (x.rounds < need ? ` из ${need}` : ' ✓');
         if (!ready && v.A.rounds >= need && v.B.rounds >= need) draw();
       },
       onError: err => cur.message(el('b', {}, 'Игра класса упала: ' + (err.message || 'ошибка') + '. Скажи учителю.')),
     });
-    const ask = voted ? el('p', { class: 'verdict good' }, `Твой ответ: ${v.vote === 'same' ? 'разницы нет' : 'напряжённее в игре ' + (v.vote === 'A' ? 'А' : 'Б')}. В какой копии был секрет, узнаешь в следующем шаге.`)
+    const ask = voted ? el('p', { class: 'verdict good' }, `Твой ответ: ${v.vote === 'same' ? 'разницы нет' : 'напряжённее в игре ' + (v.vote === 'A' ? 'А' : 'Б')}. В какой копии была спрятанная механика, узнаешь в следующем шаге.`)
       : ready ? el('div', { class: 'stack' }, el('div', { class: 'eyebrow' }, st.question || 'В какой игре было напряжённее?'),
         el('div', { class: 'opts' }, [['A', 'В игре А'], ['B', 'В игре Б'], ['same', 'Разницы нет']].map(([k, label]) => el('button', { type: 'button', class: 'opt', onclick: () => { v.vote = k; beep('good'); ctx.save(v, true, true); draw(); } }, label))))
         : el('p', { class: 'muted' }, `Сыграй хотя бы ${need === 1 ? 'одну партию' : need + ' партии'} в каждую копию — потом появится вопрос.`);
@@ -410,12 +410,12 @@ STEPS.abtest = ctx => {
   draw();
   return host;
 };
-// полоска партии с моментами, когда сработал секрет
+// полоска партии с моментами, когда сработала спрятанная механика
 function marksBar(m) {
   if (!m || !m.at || !m.len) return null;
-  const bar = el('div', { class: 'marks', title: `Секрет срабатывал ${m.at.length} раз за ${Math.round(m.len)} с партии` });
+  const bar = el('div', { class: 'marks', title: `Спрятанная механика срабатывала ${m.at.length} раз за ${Math.round(m.len)} с партии` });
   m.at.forEach(t => bar.append(el('i', { style: `left:${Math.min(100, 100 * t / m.len)}%` })));
-  return el('div', { class: 'stack', style: 'gap:4px' }, el('div', { class: 'small muted' }, `Когда срабатывал секрет в одной партии: ${m.at.length} раз за ${Math.round(m.len)} с`), bar,
+  return el('div', { class: 'stack', style: 'gap:4px' }, el('div', { class: 'small muted' }, `Когда срабатывала спрятанная механика в одной партии: ${m.at.length} раз за ${Math.round(m.len)} с`), bar,
     el('div', { class: 'row small muted' }, el('span', {}, 'начало'), el('span', { class: 'grow' }), el('span', {}, 'конец партии')));
 }
 function wowStatusText(W) {
@@ -459,9 +459,9 @@ STEPS.cards = ctx => {
   return host;
 };
 
-// найди секрет: варианты с сервера (настоящий, два чужих из колоды и ловушка с карты), раскрытие только после догадки
+// найди спрятанную механику: варианты с сервера (настоящая, две чужие из колоды и ловушка с карты), раскрытие только после догадки
 const lessonSteps = () => S.lesson.checkpoints.flatMap(c => c.steps);
-// hunt в шаге — секрет донора без игры класса: варианты, сравнение и подписи из сценария, ответ и раскрытие — с сервера после догадки
+// hunt в шаге — спрятанная механика донора без игры класса: варианты, сравнение и подписи из сценария, ответ и раскрытие — с сервера после догадки
 const stepById = id => lessonSteps().find(x => x.id === id);
 STEPS.secret = ctx => {
   const host = el('div', { class: 'stack' });
@@ -480,30 +480,30 @@ STEPS.secret = ctx => {
       const grid = el('div', { class: 'opts', role: 'radiogroup' });
       data.options.forEach(o => grid.append(el('button', { type: 'button', class: 'opt' + (pick === o ? ' on' : ''), 'aria-pressed': String(pick === o), onclick: () => { pick = o; beep('tick'); draw(); } }, o)));
       host.append(el('div', { class: 'eyebrow' }, H ? H.question : 'Что было спрятано в коде игры класса?'), grid,
-        el('div', {}, el('button', { class: 'btn', type: 'button', onclick: guess }, H ? 'Ответить' : 'Это секрет!')));
+        el('div', {}, el('button', { class: 'btn', type: 'button', onclick: guess }, H ? 'Ответить' : 'Это спрятанная механика!')));
       return;
     }
-    const verdict = a.correct ? ['good', H ? '🎯 Точно! Ты назвал секрет донора.' : '🎯 Угадал! Ты почувствовал секрет, не видя его.']
-      : a.trap ? ['bad', a.trapText || 'Ловушка! Это было на картах, а значит, не секрет. Проверяй, а не верь: то, что заказал сам, игра не прятала.']
-        : ['bad', 'Не угадал: секрет был другим. Зато теперь ты знаешь, что искать.'];
+    const verdict = a.correct ? ['good', H ? '🎯 Точно! Ты назвал спрятанную механику донора.' : '🎯 Угадал! Ты почувствовал спрятанную механику, не видя её.']
+      : a.trap ? ['bad', a.trapText || 'Ловушка! Это было на картах, а значит, не спрятанная механика. Проверяй, а не верь: то, что заказал сам, игра не прятала.']
+        : ['bad', 'Не угадал: спрятанная механика была другой. Зато теперь ты знаешь, что искать.'];
     const C = H && H.compare;
     const ab = !H && lessonSteps().find(x => x.type === 'abtest'), AB = ab && ans(ab.id).value;
     if (AB && AB.A) {
       const sk = AB.side, ok = sk === 'A' ? 'B' : 'A', L = k => (k === 'A' ? 'А' : 'Б');
-      const felt = AB.vote === sk ? ['good', `Ты выбрал игру ${L(sk)} — и секрет был именно там. Ты его почувствовал, не видя!`]
-        : AB.vote === 'same' ? ['bad', `Ты не заметил разницы, а секрет был в игре ${L(sk)}. Попробуй сыграть ещё раз и сравнить.`]
-          : AB.vote ? ['bad', `Ты выбрал игру ${L(ok)}, а секрет был в игре ${L(sk)}. Бывает: напряжение делает не только секрет.`] : null;
+      const felt = AB.vote === sk ? ['good', `Ты выбрал игру ${L(sk)} — и спрятанная механика была именно там. Ты её почувствовал, не видя!`]
+        : AB.vote === 'same' ? ['bad', `Ты не заметил разницы, а спрятанная механика была в игре ${L(sk)}. Попробуй сыграть ещё раз и сравнить.`]
+          : AB.vote ? ['bad', `Ты выбрал игру ${L(ok)}, а спрятанная механика была в игре ${L(sk)}. Бывает: напряжение делает не только спрятанная механика.`] : null;
       const avg = x => (x.rounds ? Math.round(x.time / x.rounds) : 0);
-      const col = (k, withSecret) => el('div', {}, el('div', { class: 'eyebrow' }, `Игра ${L(k)} · ${withSecret ? 'с секретом' : 'без секрета'}`),
+      const col = (k, withSecret) => el('div', {}, el('div', { class: 'eyebrow' }, `Игра ${L(k)} · ${withSecret ? 'со спрятанной механикой' : 'без спрятанной механики'}`),
         el('b', {}, `лучший счёт ${AB[k].best}`),
-        el('div', { class: 'small muted' }, [`партий ${AB[k].rounds}`, `в среднем ${avg(AB[k])} с`, `урона ${AB[k].hurts}`].concat(withSecret ? [`секрет сработал ${AB[k].secret} раз`] : []).join(' · ')));
+        el('div', { class: 'small muted' }, [`партий ${AB[k].rounds}`, `в среднем ${avg(AB[k])} с`, `урона ${AB[k].hurts}`].concat(withSecret ? [`спрятанная механика сработала ${AB[k].secret} раз`] : []).join(' · ')));
       host.append(el('p', { class: 'verdict ' + verdict[0] }, verdict[1]), felt ? el('p', { class: 'verdict ' + felt[0] }, felt[1]) : '',
         el('div', { class: 'secret-reveal' },
-          el('div', { class: 'eyebrow' }, 'Секрет игры класса'), el('h3', {}, a.secret.title), el('p', {}, a.secret.reveal),
+          el('div', { class: 'eyebrow' }, 'Спрятанная механика игры класса'), el('h3', {}, a.secret.title), el('p', {}, a.secret.reveal),
           a.secret.effect ? el('span', { class: 'tag' }, a.secret.effect === 'помощник' ? 'помощник: незаметно помогает игроку' : 'нагнетатель: делает игру напряжённее') : null),
-        data.felt && data.felt.voted ? el('p', { class: 'concept' }, `В классе секрет почувствовали вслепую ${data.felt.felt} из ${data.felt.voted}.`) : '',
+        data.felt && data.felt.voted ? el('p', { class: 'concept' }, `В классе спрятанную механику почувствовали вслепую ${data.felt.felt} из ${data.felt.voted}.`) : '',
         el('div', { class: 'compare' }, col(sk, true), col(ok, false)), marksBar(AB[sk].marks) || '',
-        el('p', { class: 'concept' }, lessonSteps().some(x => x.lupa) ? 'Ниже — та же игра с лупой: она загорается каждый раз, когда срабатывает секрет. Поймай этот момент.' : 'Открой ручки (Tab) в игре класса и покрути ручку «Секрет». Как меняется чувство игры?'));
+        el('p', { class: 'concept' }, lessonSteps().some(x => x.lupa) ? 'Ниже — та же игра с лупой: она загорается каждый раз, когда срабатывает спрятанная механика. Поймай этот момент.' : 'Открой ручки (Tab) в игре класса и покрути ручку «Спрятанная механика». Как меняется чувство игры?'));
       return;
     }
     const on = C ? stepById(C.on) : lessonSteps().find(x => x.type === 'play' && x.shared && !x.secretOff && !x.lupa);
@@ -512,17 +512,17 @@ STEPS.secret = ctx => {
     // строка сравнения: лучший счёт, партии и счётчики телеметрии из шага play (compare.show — их имена)
     const line = (step, withSecret) => {
       const x = V(step), cs = (C && C.show) || [];
-      return [`партий ${x.rounds || 0}`].concat(cs.map(k => `${k} ${(x.custom || {})[k] || 0}`), withSecret ? [`секрет сработал ${x.secret || 0} раз`] : []).join(' · ');
+      return [`партий ${x.rounds || 0}`].concat(cs.map(k => `${k} ${(x.custom || {})[k] || 0}`), withSecret ? [`спрятанная механика сработала ${x.secret || 0} раз`] : []).join(' · ');
     };
     host.append(el('p', { class: 'verdict ' + verdict[0] }, verdict[1]),
       el('div', { class: 'secret-reveal' },
-        el('div', { class: 'eyebrow' }, H ? 'Секрет донора' : 'Секрет игры класса'), el('h3', {}, a.secret.title),
+        el('div', { class: 'eyebrow' }, H ? 'Спрятанная механика донора' : 'Спрятанная механика игры класса'), el('h3', {}, a.secret.title),
         el('p', {}, a.secret.reveal),
         a.secret.effect ? el('span', { class: 'tag' }, a.secret.effect === 'помощник' ? 'помощник: незаметно помогает игроку' : a.secret.effect === 'нагнетатель' ? 'нагнетатель: делает игру напряжённее' : a.secret.effect) : null),
       el('div', { class: 'compare' },
-        el('div', {}, el('div', { class: 'eyebrow' }, (C && C.onLabel) || 'С секретом'), el('b', {}, `лучший счёт ${V(on).best || 0}`), el('div', { class: 'small muted' }, line(on, true))),
-        el('div', {}, el('div', { class: 'eyebrow' }, (C && C.offLabel) || 'Без секрета'), el('b', {}, `лучший счёт ${V(off).best || 0}`), el('div', { class: 'small muted' }, line(off, false)))),
-      el('p', { class: 'concept' }, (H && H.after) || 'Открой ручки (Tab) в игре выше и покрути ручку «Секрет» от 0 до 1. Как меняется чувство игры?'));
+        el('div', {}, el('div', { class: 'eyebrow' }, (C && C.onLabel) || 'Со спрятанной механикой'), el('b', {}, `лучший счёт ${V(on).best || 0}`), el('div', { class: 'small muted' }, line(on, true))),
+        el('div', {}, el('div', { class: 'eyebrow' }, (C && C.offLabel) || 'Без спрятанной механики'), el('b', {}, `лучший счёт ${V(off).best || 0}`), el('div', { class: 'small muted' }, line(off, false)))),
+      el('p', { class: 'concept' }, (H && H.after) || 'Открой ручки (Tab) в игре выше и покрути ручку «Спрятанная механика» от 0 до 1. Как меняется чувство игры?'));
   }
   async function guess() {
     if (!pick) { toast('Выбери вариант'); return; }
@@ -569,7 +569,7 @@ STEPS.choice = ctx => {
 };
 
 // карточки квиза из игры класса: {hero} {action} {place} {threat} {twist} — карты, {heroName} {heroTrait} — имя и особенность карты «имя — особенность»,
-// {secret} — секрет после шага «Найди секрет»
+// {secret} — спрятанная механика после шага «Найди спрятанную механику»
 function wowItems(st) {
   if (!st.wowItems || !S.wow) return [];
   const vars = {};
@@ -1567,7 +1567,7 @@ const WORKSHOP_PRESETS = [
 const RAZBOR_TOOLS = {
   curve: { icon: '📈', title: 'Кривая партии', hint: 'Линза эмоций: где в партии было сильнее всего — и там ли, где ты задумал?' },
   sort: { icon: '🧩', title: 'Найди, где ИИ своевольничал', hint: 'Что ты просил, а что программист решил сам? Решай, что оставить.' },
-  secret: { icon: '🤫', title: 'Мой секрет: включён и выключен', hint: 'Сработал ли секрет и почувствуешь ли ты разницу?' },
+  secret: { icon: '🤫', title: 'Моя спрятанная механика: включена и выключена', hint: 'Сработала ли спрятанная механика и почувствуешь ли ты разницу?' },
   lamps: { icon: '💡', title: 'Игра или иллюстрация', hint: 'Пять лампочек критерия курса и «видно = правда».' },
 };
 const LAMPS = [
@@ -1591,7 +1591,7 @@ function lineFacts(line) {
   const gain = (a, b) => (line[Math.min(n - 1, b)] - line[Math.max(0, a)]) / Math.max(1, b - a);
   return { flat, growing: n >= 9 ? gain(n - third - 1, n - 1) > gain(0, third) : null };
 }
-// SVG полоски партии: счёт по секундам, пустые отрезки, моменты секрета; prev — прошлая партия бледной линией, mark — отмеченная секунда
+// SVG полоски партии: счёт по секундам, пустые отрезки, моменты спрятанной механики; prev — прошлая партия бледной линией, mark — отмеченная секунда
 function curveSvg(line, { marks = [], prev = null, mark = null, onPick } = {}) {
   const W = 600, H = 120, P = 8;
   const len = Math.max(line.length - 1, prev ? prev.length - 1 : 0, 1), max = Math.max(1, ...line, ...(prev || []));
@@ -1608,7 +1608,7 @@ function curveSvg(line, { marks = [], prev = null, mark = null, onPick } = {}) {
     svg.style.cursor = 'crosshair';
     svg.addEventListener('click', e => { const r = svg.getBoundingClientRect(); const t = Math.round(Math.max(0, Math.min(len, ((e.clientX - r.left) / r.width * W - P) / (W - 2 * P) * len))); onPick(Math.min(line.length - 1, t)); });
   }
-  return el('div', { class: 'curvebox' }, svg, el('div', { class: 'row small muted' }, el('span', {}, '0 с'), el('span', { class: 'grow', style: 'text-align:center' }, 'зелёная — счёт · жёлтые полосы — 8+ секунд без очков · голубые штрихи — сработал секрет'), el('span', {}, `${len} с`)));
+  return el('div', { class: 'curvebox' }, svg, el('div', { class: 'row small muted' }, el('span', {}, '0 с'), el('span', { class: 'grow', style: 'text-align:center' }, 'зелёная — счёт · жёлтые полосы — 8+ секунд без очков · голубые штрихи — сработала спрятанная механика'), el('span', {}, `${len} с`)));
 }
 STEPS.razbor = ctx => {
   const st = ctx.step, tools = (st.tools || Object.keys(RAZBOR_TOOLS)).filter(t => RAZBOR_TOOLS[t]), required = st.required || tools;
@@ -1687,10 +1687,10 @@ STEPS.razbor = ctx => {
         if (c.moment == null) { box.append(el('p', { class: 'concept' }, 'Нажми на кривую там, где тебе было сильнее всего.')); return box; }
         // что было рядом с отмеченной секундой
         const t = c.moment, f = lineFacts(line), near = [];
-        if ((c.marks || []).some(x => Math.abs(x - t) <= 2)) near.push('сработал секрет');
+        if ((c.marks || []).some(x => Math.abs(x - t) <= 2)) near.push('сработала спрятанная механика');
         const inFlat = f.flat.find(([a, b]) => t >= a && t <= b); if (inFlat) near.push(`очки не росли с ${inFlat[0]} по ${inFlat[1]} с`);
         const jump = (line[Math.min(line.length - 1, t + 2)] || 0) - (line[Math.max(0, t - 2)] || 0); if (jump > 0) near.push(`+${jump} очков за 4 секунды`);
-        box.append(el('p', {}, el('b', {}, `${t} с: `), near.length ? 'рядом — ' + near.join(', ') + '.' : 'рядом ничего особенного: ни секрета, ни всплеска очков.'));
+        box.append(el('p', {}, el('b', {}, `${t} с: `), near.length ? 'рядом — ' + near.join(', ') + '.' : 'рядом ничего особенного: ни спрятанной механики, ни всплеска очков.'));
         const emos = ['😬 Напряжённо', '😄 Весело', '🤩 Вау', '😤 Обидно', '😴 Скучно', '🤔 Непонятно'];
         box.append(el('div', { class: 'row', style: 'gap:6px' }, emos.map(e => el('button', { type: 'button', class: 'chipbtn' + (c.emotion === e ? ' on' : ''), onclick: () => { c.emotion = e; save(); drawTool(); } }, e))));
         if (!c.emotion) return box;
@@ -1769,35 +1769,35 @@ STEPS.razbor = ctx => {
       over(m) {
         const c = v.tools.secret; if (!c.stage) return;
         const t = m.tele || {}, r = { hits: Number((t.custom || {})._secret) || 0, time: Math.round(t.time || 0), score: Math.round(m.score || 0), at: (t.marks || {})._secret || [] };
-        if (c.stage === 'on') { c.on = r; c.stage = 'off'; og.h.post({ type: 'setCfg', cfg: { secret: 0 } }); toast('Теперь партия без секрета', 'ok'); }
+        if (c.stage === 'on') { c.on = r; c.stage = 'off'; og.h.post({ type: 'setCfg', cfg: { secret: 0 } }); toast('Теперь партия без спрятанной механики', 'ok'); }
         else if (c.stage === 'off') { c.off = r; c.stage = 'feel'; og.h.post({ type: 'setCfg', cfg: { secret: conf.secret ? conf.secret.value : 1 } }); }
       },
       draw() {
-        const c = v.tools.secret, box = el('div', { class: 'stack', style: 'gap:8px' }), title = plan.secret || 'секрет';
+        const c = v.tools.secret, box = el('div', { class: 'stack', style: 'gap:8px' }), title = plan.secret || 'спрятанная механика';
         if (!conf.secret) {
-          box.append(el('p', {}, Object.keys(conf).length ? 'В игре нет ручки secret: секрет нельзя выключить и проверить.' : 'Запусти игру — прибор прочитает её ручки.'));
-          if (Object.keys(conf).length) box.append(offer({ key: 'nosecretknob', label: 'Нет ручки секрета', text: `Сделай секрет «${title}» ручкой secret (0 — выключен, 1 — включён) и вызывай portal.count('_secret') каждый раз, когда он срабатывает`, kind: 'ask' }),
+          box.append(el('p', {}, Object.keys(conf).length ? 'В игре нет ручки secret: спрятанная механика нельзя выключить и проверить.' : 'Запусти игру — прибор прочитает её ручки.'));
+          if (Object.keys(conf).length) box.append(offer({ key: 'nosecretknob', label: 'Нет ручки спрятанной механики', text: `Сделай спрятанную механику «${title}» ручкой secret (0 — выключена, 1 — включена) и вызывай portal.count('_secret') каждый раз, когда он срабатывает`, kind: 'ask' }),
             el('button', { type: 'button', class: 'btn ghost small', onclick: () => finish('secret') }, 'Понятно, дальше'));
           return box;
         }
         if (!c.stage) {
-          box.append(el('p', {}, `Твой секрет: «${title}». Сыграй две партии: первую как задумано, вторую без секрета — портал сам выключит его.`),
-            el('div', {}, el('button', { type: 'button', class: 'btn', 'data-secret': 'start', onclick: () => { c.stage = 'on'; og.h.post({ type: 'setCfg', cfg: { secret: conf.secret.value || 1 } }); save(); drawTool(); } }, '▶ Начать: партия с секретом')));
+          box.append(el('p', {}, `Твоя спрятанная механика: «${title}». Сыграй две партии: первую как задумано, вторую без спрятанной механики — портал сам выключит её.`),
+            el('div', {}, el('button', { type: 'button', class: 'btn', 'data-secret': 'start', onclick: () => { c.stage = 'on'; og.h.post({ type: 'setCfg', cfg: { secret: conf.secret.value || 1 } }); save(); drawTool(); } }, '▶ Начать: партия со спрятанной механикой')));
           return box;
         }
         const row = (label, r) => el('tr', {}, el('td', {}, label), el('td', {}, r ? String(r.hits) : '…'), el('td', {}, r ? r.time + ' с' : '…'), el('td', {}, r ? String(r.score) : '…'));
-        box.append(el('div', { class: 'tablewrap' }, el('table', {}, el('thead', {}, el('tr', {}, ['', 'секрет сработал', 'партия', 'счёт'].map(h => el('th', {}, h)))), el('tbody', {}, row('с секретом', c.on), row('без секрета', c.off)))));
+        box.append(el('div', { class: 'tablewrap' }, el('table', {}, el('thead', {}, el('tr', {}, ['', 'спрятанная механика сработала', 'партия', 'счёт'].map(h => el('th', {}, h)))), el('tbody', {}, row('со спрятанной механикой', c.on), row('без спрятанной механики', c.off)))));
         if (c.on && c.on.time) box.append(marksBar({ at: c.on.at, len: c.on.time }));
-        if (c.stage === 'on' || c.stage === 'off') { box.append(el('p', { class: 'concept' }, c.stage === 'on' ? 'Партия 1 из 2: секрет включён. Играй как обычно.' : 'Партия 2 из 2: секрет выключен.')); return box; }
+        if (c.stage === 'on' || c.stage === 'off') { box.append(el('p', { class: 'concept' }, c.stage === 'on' ? 'Партия 1 из 2: спрятанная механика включена. Играй как обычно.' : 'Партия 2 из 2: спрятанная механика выключена.')); return box; }
         const seg = el('div', { class: 'seg' }, [['yes', 'Да, разница есть'], ['no', 'Нет, разницы не чувствую']].map(([k, label]) => el('button', { type: 'button', class: 'opt' + (c.feel === k ? ' on' : ''), 'data-secret': k, onclick: () => { c.feel = k; save(); drawTool(); } }, label)));
         box.append(el('label', { class: 'lbl' }, 'Почувствовал разницу между партиями?'), seg);
         if (!c.feel) return box;
         const offers = [];
-        if (!c.on.hits) offers.push({ key: 'secret-zero', label: 'Секрет молчит', text: `Секрет «${title}» не сработал ни разу за партию: сделай, чтобы он срабатывал уже в первой минуте`, kind: 'ask' });
-        else if (c.on.time && c.on.hits / c.on.time * 60 > 20) offers.push({ key: 'secret-loud', label: 'Секрет видно', text: `Секрет «${title}» срабатывает всё время — его видно, а секрет игрок должен чувствовать, но не замечать`, kind: 'ask' });
-        if (c.feel === 'no' && c.on.hits) offers.push({ key: 'secret-weak', label: 'Секрет слабый', text: 'Ручка «Секрет»: разницы не чувствую — сделать секрет сильнее', kind: 'knob', knob: 'secret' });
-        box.append(...(offers.length ? offers.map(offer) : [el('p', { class: 'small muted' }, 'Секрет работает и чувствуется. Сосед будет искать его вслепую в «Играем вместе».')]),
-          el('div', {}, el('button', { type: 'button', class: 'btn small' + (c.done ? ' ghost' : ''), 'data-done': 'secret', onclick: () => finish('secret') }, c.done ? '✓ Секрет проверен' : 'Секрет проверен')),
+        if (!c.on.hits) offers.push({ key: 'secret-zero', label: 'Спрятанная механика молчит', text: `Спрятанная механика «${title}» не сработала ни разу за партию: сделай, чтобы она срабатывала уже в первой минуте`, kind: 'ask' });
+        else if (c.on.time && c.on.hits / c.on.time * 60 > 20) offers.push({ key: 'secret-loud', label: 'Спрятанную механику видно', text: `Спрятанная механика «${title}» срабатывает всё время — её видно, а спрятанную механику игрок должен чувствовать, но не замечать`, kind: 'ask' });
+        if (c.feel === 'no' && c.on.hits) offers.push({ key: 'secret-weak', label: 'Спрятанная механика слабая', text: 'Ручка «Спрятанная механика»: разницы не чувствую — сделать спрятанную механику сильнее', kind: 'knob', knob: 'secret' });
+        box.append(...(offers.length ? offers.map(offer) : [el('p', { class: 'small muted' }, 'Спрятанная механика работает и чувствуется. Сосед будет искать её вслепую в «Играем вместе».')]),
+          el('div', {}, el('button', { type: 'button', class: 'btn small' + (c.done ? ' ghost' : ''), 'data-done': 'secret', onclick: () => finish('secret') }, c.done ? '✓ Спрятанная механика проверена' : 'Спрятанная механика проверена')),
           el('button', { type: 'button', class: 'btn ghost small', onclick: () => { Object.assign(c, { stage: null, on: null, off: null, feel: null }); save(); drawTool(); } }, '↻ Проверить заново'));
         return box;
       },
@@ -1910,7 +1910,7 @@ function chatWorkshop({ v, save, what, feel, keepDeck, onDone }) {
   } }, '+ ' + t))) : null;
   box.append(
     el('div', { class: 'eyebrow' }, '1. Один раз за чат — договор с Qwen'),
-    el('p', { class: 'small muted' }, 'Договор напоминает Qwen правила портала: ручки, конец партии, секрет, геймпад. Отправь его в тот чат, где Qwen собрал игру, один раз.'),
+    el('p', { class: 'small muted' }, 'Договор напоминает Qwen правила портала: ручки, конец партии, спрятанная механика, геймпад. Отправь его в тот чат, где Qwen собрал игру, один раз.'),
     el('div', { class: 'row' }, copyFromBtn(v.pact ? '✓ Договор скопирован · ещё раз' : '📋 Скопировать договор', '/api/chat/pact', () => { v.pact = true; save(); }),
       copyFromBtn('🧳 Чат потерялся? Перенести игру в новый чат', '/api/chat/move', () => { v.pact = true; save(); })),
     el('div', { class: 'eyebrow' }, '2. Просьба программисту'),
@@ -2211,9 +2211,9 @@ STEPS.playtest = ctx => {
     const pred = (st.predict || []).map(p => [p.label, valText((((ans(p.step).value || {}).fields) || {})[p.field])]).filter(p => p[1]);
     if (r.game && pred.length) mineHost.append(el('div', { class: 'secret-reveal' }, el('div', { class: 'eyebrow' }, st.predictTitle || 'Твоё предсказание из Фабрики — совпало с тем, что делали соседи?'),
       el('ul', {}, pred.map(([label, text]) => el('li', {}, el('b', {}, label + ': '), text)))));
-    // слепая пара с секретом: сколько соседей почувствовали секрет автора вслепую
+    // слепая пара со спрятанной механикой: сколько соседей почувствовали спрятанную механику автора вслепую
     if (r.game && r.blind && r.blind.voted) mineHost.append(el('p', { class: 'verdict ' + (r.blind.felt * 2 >= r.blind.voted ? 'good' : 'bad') },
-      `Слепая пара: твой секрет почувствовали ${r.blind.felt} из ${r.blind.voted}.` + (r.blind.felt * 2 >= r.blind.voted ? ' Секрет работает!' : ' Секрет пока слабый — усиль его правкой или ручкой «Секрет».')));
+      `Слепая пара: твою спрятанную механику почувствовали ${r.blind.felt} из ${r.blind.voted}.` + (r.blind.felt * 2 >= r.blind.voted ? ' Спрятанная механика работает!' : ' Спрятанная механика пока слабая — усиль её правкой или ручкой «Спрятанная механика».')));
     mineHost.append(Games.feedback(r.feedback));
   }
   const cardHost = el('div');
@@ -2407,8 +2407,8 @@ STEPS.blind = ctx => {
 // blindpair: слепая проба игры соседа — две одинаковые на вид копии «А» и «Б», в одной выключены все 12 переключателей сочности
 // оболочки (ручки j_…). В какой копии сухо, решает хеш ника и игры. По партии в каждую (minRounds), потом голос «куда хочется вернуться».
 // about — id шага arcade: берётся игра соседа оттуда, иначе — сосед по кругу.
-// mode: 'secret' — вместо сочности выключается секрет автора (ручка knob его игры, обычно secret = 0): голос «где напряжённее»,
-// автор в плейтесте видит, сколько соседей почувствовали его секрет вслепую (урок 1)
+// mode: 'secret' — вместо сочности выключается спрятанная механика автора (ручка knob его игры, обычно secret = 0): голос «где напряжённее»,
+// автор в плейтесте видит, сколько соседей почувствовали его спрятанную механику вслепую (урок 1)
 const DRY = Object.fromEntries(['hitstop', 'shake', 'squash', 'burst', 'flash', 'whiten', 'popup', 'sound', 'pitch', 'vibrate', 'glow', 'slowmo'].map(k => ['j_' + k, 0]));
 STEPS.blindpair = ctx => {
   const st = ctx.step, need = st.minRounds || 1;
@@ -2435,9 +2435,9 @@ STEPS.blindpair = ctx => {
     if (v.game !== g.id) v = { game: g.id, title: g.title, author: g.nick, dry: hashStr(S.me.nick + g.id) % 2 ? 'B' : 'A', A: 0, B: 0, vote: null };
     const name = k => (k === 'A' ? 'А' : 'Б'), ready = v.A >= need && v.B >= need;
     const secretMode = st.mode === 'secret';
-    if (secretMode && !g.knob) { // игру собрали без карты секрета: сравнивать нечего
+    if (secretMode && !g.knob) { // игру собрали без карты спрятанной механики: сравнивать нечего
       host.append(el('div', { class: 'donor-card' }, el('div', { class: 'ico' }, '🕹'), el('div', {}, el('div', { class: 'eyebrow' }, `Игра соседа · автор ${g.nick}`), el('h3', {}, g.title || 'Игра'))),
-        el('p', { class: 'muted' }, 'В этой игре нет ручки секрета: её собрали без карты секрета. Слепую пару пропускаем.'),
+        el('p', { class: 'muted' }, 'В этой игре нет ручки спрятанной механики: её собрали без карты спрятанной механики. Слепую пару пропускаем.'),
         el('div', {}, el('button', { class: 'btn', type: 'button', onclick: () => { ctx.save({ game: g.id, title: g.title, author: g.nick, noSecret: true }, true, true); } }, 'Дальше')));
       return;
     }
@@ -2452,8 +2452,8 @@ STEPS.blindpair = ctx => {
     const juicy = v.dry === 'A' ? 'B' : 'A';
     const ask = secretMode ? (v.vote ? el('div', { class: 'stack' },
       el('p', { class: 'verdict ' + (v.vote === juicy ? 'good' : 'bad') }, v.vote === 'same' ? 'Ты не почувствовал разницы.' : `Тебе было напряжённее в игре ${name(v.vote)}.`),
-      el('div', { class: 'secret-reveal' }, el('div', { class: 'eyebrow' }, 'Раскрытие'), el('h3', {}, `Секрет был в игре ${name(juicy)}`),
-        el('p', {}, v.vote === juicy ? 'Ты почувствовал секрет соседа вслепую. Значит, его решение работает!' : v.vote === 'same' ? 'Секрет соседа ты не почувствовал. Подскажи ему в плейтесте: может, секрет слишком слабый?' : 'Ты выбрал копию без секрета. Бывает: напряжение делает не только секрет.')),
+      el('div', { class: 'secret-reveal' }, el('div', { class: 'eyebrow' }, 'Раскрытие'), el('h3', {}, `Спрятанная механика была в игре ${name(juicy)}`),
+        el('p', {}, v.vote === juicy ? 'Ты почувствовал спрятанную механику соседа вслепую. Значит, его решение работает!' : v.vote === 'same' ? 'Спрятанную механику соседа ты не почувствовал. Подскажи ему в плейтесте: может, спрятанная механика слишком слабая?' : 'Ты выбрал копию без спрятанной механики. Бывает: напряжение делает не только спрятанная механика.')),
       st.after ? el('p', { class: 'concept' }, st.after) : null)
       : ready ? el('div', { class: 'stack' }, el('div', { class: 'eyebrow' }, st.question || 'В какой копии было напряжённее?'),
         el('div', { class: 'opts' }, [['A', 'В игре А'], ['B', 'В игре Б'], ['same', 'Разницы нет']].map(([k, label]) => el('button', { type: 'button', class: 'opt', onclick: () => { v.vote = k; v.felt = k === juicy; beep('good'); ctx.save(v, true, true); draw(); } }, label))))
@@ -2776,16 +2776,16 @@ function stepSummary(step) {
   const a = ans(step.id), v = a.value || {};
   const f = x => valText(x) + (x && x.dice ? ' [кубик]' : '');
   switch (step.type) {
-    case 'play': return `партий ${v.rounds || 0}, лучший счёт ${v.best || 0}` + (step.shared && S.wow && S.wow.game ? ` (игра класса «${S.wow.game.title}»${step.secretOff ? ', секрет выключен' : step.lupa ? ', с лупой' : ''})` : '');
+    case 'play': return `партий ${v.rounds || 0}, лучший счёт ${v.best || 0}` + (step.shared && S.wow && S.wow.game ? ` (игра класса «${S.wow.game.title}»${step.secretOff ? ', спрятанная механика выключена' : step.lupa ? ', с лупой' : ''})` : '');
     case 'cards': return S.wow ? S.wow.cards.map(c => `${c.label}: ${c.text || '—'}`).join('; ') : '—';
-    case 'abtest': return v.A ? `секрет в игре ${v.side === 'A' ? 'А' : 'Б'}; голос: ${v.vote ? (v.vote === 'same' ? 'разницы нет' : 'напряжённее ' + (v.vote === 'A' ? 'А' : 'Б')) : 'нет'}; партий А ${v.A.rounds}, Б ${v.B.rounds}; секрет сработал ${v[v.side].secret} раз` : 'не играл';
-    case 'secret': return v.secret ? `догадка: ${v.guess} — ${v.correct ? 'угадал' : v.trap ? 'ловушка: это было на картах' : 'не угадал'}; секрет: ${v.secret.title}` : 'не отвечал';
+    case 'abtest': return v.A ? `спрятанная механика в игре ${v.side === 'A' ? 'А' : 'Б'}; голос: ${v.vote ? (v.vote === 'same' ? 'разницы нет' : 'напряжённее ' + (v.vote === 'A' ? 'А' : 'Б')) : 'нет'}; партий А ${v.A.rounds}, Б ${v.B.rounds}; спрятанная механика сработала ${v[v.side].secret} раз` : 'не играл';
+    case 'secret': return v.secret ? `догадка: ${v.guess} — ${v.correct ? 'угадал' : v.trap ? 'ловушка: это было на картах' : 'не угадал'}; спрятанная механика: ${v.secret.title}` : 'не отвечал';
     case 'teacher-demo': return `партий ${v.rounds || 0}, лучший счёт ${v.best || 0}`;
     case 'rounds': return v.total ? `верно ${v.correct} из ${v.total}, очки ${v.score}, серия ${v.bestStreak}` + ((v.mistakes || []).length ? '; ошибки: ' + v.mistakes.join('; ') : '') : 'не пройден';
     case 'choice': return [(v.selected || []).join('; '), valText(v.own) ? 'свои слова: ' + f(v.own) : ''].filter(Boolean).join(' · ') || '—';
     case 'cycle': return v.total ? `без ошибок ${v.perfect} из ${v.total}, очки ${v.score}, серия ${v.bestStreak}` + ((v.mistakes || []).length ? '; трудно: ' + v.mistakes.join('; ') : '') : 'не пройден';
     case 'release': return v.released ? `выпущена версия 1.0: «${v.released.title}» (урок ${v.released.lesson}, v${v.released.version}); что изменено: ${f(v.note)}` : `не выпущена; отмечено пунктов: ${Object.values(v.checks || {}).filter(Boolean).length}`;
-    case 'blindpair': if (step.mode === 'secret' && v.game) return v.noSecret ? `игра «${v.title}» (автор ${v.author}) без секрета` : `игра «${v.title}» (автор ${v.author}); секрет был в ${v.dry === 'A' ? 'Б' : 'А'}; напряжённее: ${v.vote ? (v.vote === 'same' ? 'разницы нет' : v.vote === 'A' ? 'в А' : 'в Б') : '—'}${v.felt ? ' — почувствовал секрет' : ''}`;
+    case 'blindpair': if (step.mode === 'secret' && v.game) return v.noSecret ? `игра «${v.title}» (автор ${v.author}) без спрятанной механики` : `игра «${v.title}» (автор ${v.author}); спрятанная механика была в ${v.dry === 'A' ? 'Б' : 'А'}; напряжённее: ${v.vote ? (v.vote === 'same' ? 'разницы нет' : v.vote === 'A' ? 'в А' : 'в Б') : '—'}${v.felt ? ' — почувствовал спрятанную механику' : ''}`;
       return v.game ? `игра «${v.title}» (автор ${v.author}); сухой была ${v.dry === 'A' ? 'А' : 'Б'}; хочется вернуться: ${v.vote ? (v.vote === 'same' ? 'разницы нет' : v.vote === 'A' ? 'в А' : 'в Б') : '—'}${v.vote && v.juicy ? ' — в сочную' : ''}` : 'не играл';
     case 'vote': return v.votes ? 'голоса: ' + Object.values(v.votes).length + ', сыграно игр: ' + Object.keys(v.played || {}).length : `сыграно игр: ${Object.keys(v.played || {}).length}`;
     case 'listen': return v.total ? `верно ${v.correct} из ${v.total}, очки ${v.score}` + ((v.mistakes || []).length ? '; перепутал: ' + v.mistakes.join('; ') : '') : 'не пройден';

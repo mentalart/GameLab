@@ -201,7 +201,7 @@ const SHELL_KNOBS = {
   quality: { value: 1, min: 0, max: 2, step: 1, label: 'Качество графики', names: ['быстро', 'обычно', 'красиво'], restart: true },
 };
 // 12 переключателей сочности (урок 6): каждый эффект оболочки можно выключить в любой игре, механика остаётся той же.
-// Пресеты игры могут их менять (пресет «Без секрета» выключает все), «Как задумано» включает обратно.
+// Пресеты игры могут их менять (пресет «Без спрятанной механики» выключает все), «Как задумано» включает обратно.
 const JUICE = [['hitstop', 'Стоп-кадр на ударе'], ['shake', 'Тряска камеры'], ['squash', 'Сжатие и растяжение'], ['burst', 'Частицы'],
   ['flash', 'Вспышка экрана'], ['whiten', 'Вспышка попадания'], ['popup', 'Всплывающие очки и надписи'], ['sound', 'Звук'],
   ['pitch', 'Звук выше с каждым ударом подряд'], ['vibrate', 'Вибрация геймпада'], ['glow', 'Свечение'], ['slowmo', 'Замедление в решающий момент']];
@@ -313,7 +313,7 @@ const lab = {
 
   // интерфейс и телеметрия
   hud(key, text) { if (text == null) delete hudLines[key]; else hudLines[key] = String(text); },
-  // имя с «_» — скрытый счётчик: уходит порталу, на экран конца партии не попадает; его моменты (секунда партии) копятся в marks для раскрытия секрета
+  // имя с «_» — скрытый счётчик: уходит порталу, на экран конца партии не попадает; его моменты (секунда партии) копятся в marks для раскрытия спрятанной механики
   count(name, n = 1) {
     tele.custom[name] = (tele.custom[name] || 0) + n;
     if (name === '_secret') lupaHit();
@@ -931,14 +931,14 @@ function showRecord() {
   const txt = classRecord ? `Рекорд класса: ${classRecord.score}${classRecord.nick ? ' — ' + classRecord.nick : ''}` : '';
   ['#startRecord', '#overRecord'].forEach(s => { $(s).hidden = !txt; $(s).textContent = txt; });
 }
-// лупа секрета: портал присылает reveal с названием секрета (урок 1, шаг «Посмотри на секрет» и «Секрет рядом» на проекторе).
+// лупа спрятанной механики: портал присылает reveal с названием спрятанной механики (урок 1, шаг «Посмотри на спрятанную механику» и «Спрятанная механика рядом» на проекторе).
 // Каждый lab.count('_secret') зажигает значок и тихо щёлкает; у постоянного эффекта значок горит, пока счётчик идёт. Бот-плейтестер лупу не зажигает.
 let lupa = null;
 function setLupa(title) {
   const box = $('#lupa');
   lupa = title ? { title: String(title).slice(0, 80), n: 0, until: 0 } : null;
   box.hidden = !lupa;
-  if (lupa) { box.querySelector('span').textContent = 'Секрет: ' + lupa.title; box.querySelector('b').textContent = ''; }
+  if (lupa) { box.querySelector('span').textContent = 'Спрятанная механика: ' + lupa.title; box.querySelector('b').textContent = ''; }
 }
 function lupaHit() {
   if (!lupa || (bot && !bot.show)) return;
@@ -1129,7 +1129,7 @@ function botStep(b) {
   if (lab.t >= b.nextLook) { b.nextLook = lab.t + 0.25; const v = heroOnScreen(); if (v !== null) { b.looks++; if (!v) b.off++; } }
 }
 const botWait = () => new Promise(r => setTimeout(r, 0));
-// realtime — показ на проекторе («Секрет рядом»): те же шаги BOT_DT, что в плейтесте, только в темпе настоящего времени
+// realtime — показ на проекторе («Спрятанная механика рядом»): те же шаги BOT_DT, что в плейтесте, только в темпе настоящего времени
 async function botRound(strategy, seconds, seed, onStep, realtime) {
   const b = bot = { strategy, rng: mulberry32((seed ^ (strategy.length * 7919)) >>> 0), until: 0, dir: [0, 0], aT: 0, bT: 0, nextLook: 0, looks: 0, off: 0, hurtsAt: [], end: null, show: !!realtime };
   fixedSeed = seed; buildRound(false); freshPreview = false;
@@ -1155,7 +1155,7 @@ async function botRound(strategy, seconds, seed, onStep, realtime) {
   return {
     strategy, seconds: Math.round(lab.t * 10) / 10, over: !!b.end, endText: b.end ? b.end.text : '', score: Math.round(lab.score), hurts: tele.hurts, hurtsAt: b.hurtsAt.slice(0, 20),
     presses: { a: tele.presses.a, b: tele.presses.b }, offscreen: b.looks ? Math.round(100 * b.off / b.looks) : null, flat, line: tele.line.slice(0, 200), custom: cu,
-    secretAt: (tele.marks._secret || []).slice(0, 300), // секунды срабатываний секрета: портал проверяет, когда он сработал впервые и как часто
+    secretAt: (tele.marks._secret || []).slice(0, 300), // секунды срабатываний спрятанной механики: портал проверяет, когда она сработала впервые и как часто
     error: errored ? (($('#errBox') || {}).textContent || 'ошибка').trim().slice(0, 300) : null,
   };
 }
@@ -1183,7 +1183,7 @@ function botFindings(rs, seconds) {
   }
   return out;
 }
-// compare: { knob } — ещё одна партия новичка с ручкой knob = 0 (копия «Без секрета»): портал сравнивает её с партией новичка с секретом
+// compare: { knob } — ещё одна партия новичка с ручкой knob = 0 (копия «Без спрятанной механики»): портал сравнивает её с партией новичка со спрятанной механикой
 async function playtest(o = {}) {
   if (!G || bot) throw new Error(bot ? 'Плейтест уже идёт' : 'Игра ещё не загружена');
   const strategies = (o.strategies || ['idle', 'mash', 'random']).filter(s => BOT_NAMES[s]), seconds = Math.max(10, Math.min(300, Number(o.seconds) || 90));

@@ -59,7 +59,7 @@ const patch = (find, repl) => `<<<<<<< НАЙТИ\n${find}\n=======\n${repl}\n>>
     const full = await prompt(s, job), clear = await prompt(s, job, true);
     check('Прежнее задание: правила Лаб3D, образец, просьба автора и памятка', /const GAME = \{/.test(full) && full.includes(ai.CHAT.phrase) && /джойстика \(геймпада\)/.test(full));
     check('Clear: три части без Babylon и образцов', clear.startsWith(ai.CHAT.phrase) && /# Замысел геймдизайнера/.test(clear) && /# Что нужно порталу/.test(clear)
-      && /portal\.knobs/.test(clear) && /getGamepads/.test(clear) && !/Babylon|BABYLON|const GAME/.test(clear) && clear.length < 7500, `${clear.length} знаков`); // +1500: секрет по шагам (howto), решение автора 18.10.2026
+      && /portal\.knobs/.test(clear) && /getGamepads/.test(clear) && !/Babylon|BABYLON|const GAME/.test(clear) && clear.length < 7500, `${clear.length} знаков`); // +1500: спрятанная механика по шагам (howto), решение автора 18.10.2026
     // ответ оборвался: портал просит продолжение и склеивает части
     const answer = 'Вот игра:\n```js\n' + SAMPLE.trim() + '\n```\nГотово!';
     const cut = answer.indexOf('update(lab, dt)');
@@ -117,7 +117,7 @@ const patch = (find, repl) => `<<<<<<< НАЙТИ\n${find}\n=======\n${repl}\n>>
     // правка в чате Qwen (урок 1, чекпоинт 5): договор, перенос в новый чат, конструктор просьбы, «Вставить новую версию из чата»
     await call(s, '/api/game/current', { version: vHtml + 3 });
     const pact = (await call(s, '/api/chat/pact')).text;
-    check('Договор с Qwen: целиком или куски, ручки, секрет, portal.notes', /Договорились/.test(pact) && /НАЙТИ/.test(pact) && /portal\.knobs/.test(pact) && /_secret/.test(pact) && /portal\.notes/.test(pact) && !/<title>/.test(pact));
+    check('Договор с Qwen: целиком или куски, ручки, спрятанная механика, portal.notes', /Договорились/.test(pact) && /НАЙТИ/.test(pact) && /portal\.knobs/.test(pact) && /_secret/.test(pact) && /portal\.notes/.test(pact) && !/<title>/.test(pact));
     const move = (await call(s, '/api/chat/move')).text;
     check('Перенос в новый чат: правила портала, код текущей версии и договор', /Что нужно порталу/.test(move) && /<title>Правка 2<\/title>/.test(move) && /Договорились/.test(move), `${move.length} знаков`);
     const askText = (await call(s, '/api/chat/ask', { what: 'Враги  быстрее к концу', why: 'Чтобы игрок почувствовал: страшно', keep: 'Управление' })).text;
@@ -136,7 +136,7 @@ const patch = (find, repl) => `<<<<<<< НАЙТИ\n${find}\n=======\n${repl}\n>>
     const tj = (await call(t, '/api/teacher/wow/build', { code: cls.code })).job;
     j = await poll(t, tj, ['waiting']);
     const tClear = await prompt(t, tj, true);
-    check('Игра класса: Clear с картами и секретом', j.manual.clear > 0 && tClear.startsWith(ai.CHAT.phrase) && /# Гейм дизайн документ/.test(tClear) && /_secret/.test(tClear) && !/lab\./.test(tClear));
+    check('Игра класса: Clear с картами и спрятанной механикой', j.manual.clear > 0 && tClear.startsWith(ai.CHAT.phrase) && /# Гейм дизайн документ/.test(tClear) && /_secret/.test(tClear) && !/lab\./.test(tClear));
     const tj2 = (await call(t, '/api/teacher/wow/build', { code: cls.code })).job;
     j = await poll(t, tj, ['error']);
     check('Повторная сборка отменяет ждущее задание', /Отменено/.test(j.error) && tj2 !== tj);
@@ -196,7 +196,7 @@ const patch = (find, repl) => `<<<<<<< НАЙТИ\n${find}\n=======\n${repl}\n>>
     const tele = await tp.evaluate(() => { portal.over(); const o = window.__sent.find(m => m.type === 'over'); return o && { score: o.score, tele: o.tele }; });
     await tp.close();
     const T = (tele || {}).tele || {};
-    check('Мост: телеметрия партии — время, нажатия, удержание, урон, счёт по секундам, секунда секрета',
+    check('Мост: телеметрия партии — время, нажатия, удержание, урон, счёт по секундам, секунда спрятанной механики',
       tele && tele.score === 8 && T.time >= 2 && T.presses.a === 1 && T.presses.left === 1 && T.hold.left >= 1 && T.hurts === 1 && T.line.length >= 3 && T.line[0] === 3 && T.line[T.line.length - 1] === 8 && (T.marks._secret || []).some(x => x >= 1),
       JSON.stringify(tele && { score: tele.score, time: T.time, presses: T.presses, hold: T.hold, hurts: T.hurts, line: T.line, marks: T.marks }));
     const gp = await browser.newPage();

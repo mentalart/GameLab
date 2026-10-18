@@ -1,6 +1,6 @@
 // «НЛО в станице» — ремейк-донор урока 1 по мотивам механики Space Invaders.
 // Образец контракта GAME для Qwen: игра целиком на обычном Babylon.js + объект lab оболочки.
-// Секрет донора: волна ускоряется с каждым сбитым — ручка «Секрет: ускорение от числа сбитых».
+// Спрятанная механика донора: волна ускоряется с каждым сбитым — ручка «Спрятанная механика: ускорение от числа сбитых».
 // Выстрел собран по правилам стреляющего героя: заряд, ядро, след, искры сквозь врага, реакция врага, звук, последствия, очки.
 // Золотое НЛО — сильный враг со своей атакой: заряжается и бьёт веером, путь каждого снаряда виден заранее.
 const GAME = {
@@ -24,7 +24,7 @@ const GAME = {
   ],
   config: {
     baseStep: { value: 0.7, min: 0.15, max: 1.5, step: 0.05, label: 'Шаг волны в начале, с' },
-    speedup: { value: 1, min: 0, max: 1, step: 0.05, label: 'Секрет: ускорение от числа сбитых', hint: '0 — волна не ускоряется, 1 — как в оригинале' },
+    speedup: { value: 1, min: 0, max: 1, step: 0.05, label: 'Спрятанная механика: ускорение от числа сбитых', hint: '0 — волна не ускоряется, 1 — как в оригинале' },
     stepDown: { value: 0.9, min: 0.3, max: 2, step: 0.1, label: 'Шаг вниз у края, м' },
     fireEvery: { value: 1.4, min: 0.3, max: 4, step: 0.1, label: 'НЛО стреляют раз в, с' },
     telegraph: { value: 0.5, min: 0, max: 1.2, step: 0.05, label: 'Предупреждение перед выстрелом, с' },
@@ -43,7 +43,7 @@ const GAME = {
   },
   presets: {
     'Новичок': { baseStep: 0.95, fireEvery: 2.2, telegraph: 0.8, bombSpeed: 5.5, rows: 2, lives: 5, bossHP: 6 },
-    'Без секрета': { speedup: 0 },
+    'Без спрятанной механики': { speedup: 0 },
     'Безумие': { baseStep: 0.35, fireEvery: 0.6, telegraph: 0.3, bombSpeed: 11, fireRate: 5, bossFan: 7, bossAt: 5 },
   },
 
@@ -132,7 +132,7 @@ const GAME = {
     if (st.bossKills) notes.push(`Золотых НЛО сбито: ${st.bossKills}`);
     else if (st.boss) notes.push(`Золотое НЛО выдержало ${st.boss.max - st.boss.hp} попаданий из ${st.boss.max}`);
     else if (st.closest < 99) notes.push(`Ближе всего НЛО подошли к станице на ${Math.max(0, st.closest).toFixed(1)} м`);
-    if (lab.cfg.speedup === 0) notes.push('Секрет выключен: волна не ускорялась. Заметил разницу?');
+    if (lab.cfg.speedup === 0) notes.push('Спрятанная механика выключена: волна не ускорялась. Заметил разницу?');
     return notes;
   },
 
@@ -375,7 +375,7 @@ const GAME = {
   killSaucer(lab, s) {
     const st = lab.state;
     s.alive = false; st.alive--; lab.count('сбито');
-    if (lab.cfg.speedup > 0 && st.alive > 0) lab.count('_secret'); // секрет сработал: волна стала быстрее (скрытый счётчик для урока)
+    if (lab.cfg.speedup > 0 && st.alive > 0) lab.count('_secret'); // спрятанная механика сработала: волна стала быстрее (скрытый счётчик для урока)
     const pos = s.mesh.position.clone();
     this.impact(lab, pos, [st.rowColors[s.row % st.rowColors.length], '#ffffff', '#ffd23f']);
     this.hit(lab); this.points(lab, s.points, pos);

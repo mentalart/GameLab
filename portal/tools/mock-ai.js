@@ -42,10 +42,10 @@ function answer(messages, model) {
     last.playtestUser = user;
     return "Правлю два места.\n<<<<<<< НАЙТИ\n  players: 1,\n=======\n  notes: ['Правка по плейтесту (подставной ИИ): бездействие теперь наказано'],\n  players: 1,\n>>>>>>> ЗАМЕНИТЬ\n";
   }
-  if (/^Игра класса\. /.test(user)) { // общая игра урока: секрет образца переименован в ручку secret
+  if (/^Игра класса\. /.test(user)) { // общая игра урока: спрятанная механика образца переименована в ручку secret
     const hero = (/Герой: (.+)/.exec(user) || [])[1] || 'Герой';
-    const shared = SAMPLE.replace(/speedup/g, 'secret').replace(/label: 'Секрет: ускорение от числа сбитых', hint: '[^']*'/, "label: 'Секрет', hint: '0 — выключен, 1 — как задумано'")
-      .replace(/\n.*Секрет выключен: волна не ускорялась.*\n/, '\n');
+    const shared = SAMPLE.replace(/speedup/g, 'secret').replace(/label: 'Спрятанная механика: ускорение от числа сбитых', hint: '[^']*'/, "label: 'Спрятанная механика', hint: '0 — выключена, 1 — как задумано'")
+      .replace(/\n.*Спрятанная механика выключена: волна не ускорялась.*\n/, '\n');
     return '```js\n' + shared.replace(/title: '[^']*'/, 'title: ' + JSON.stringify(hero.trim() + ' против волны')) + '```';
   }
   const patchAsked = /Формат ответа для этой правки другой/.test(user);
@@ -62,8 +62,8 @@ function answer(messages, model) {
     if (last.changeTries[last.changeTries.length - 1] === 'куски') return '<<<<<<< НАЙТИ\nтакой строки в игре нет\n=======\nconst x = 1;\n>>>>>>> ЗАМЕНИТЬ\n';
   }
   if (/просит одно изменение/.test(user)) return '```js\n' + SAMPLE.replace("  donor: 'Space Invaders',", "  donor: 'Space Invaders',\n  notes: ['Правка ученика выполнена (подставной ИИ)'],") + '```';
-  // карта секрета ученика: ручка секрета образца становится ручкой secret, как у игры класса
-  const own = /Секретная механика — её выбрал ученик/.test(user) ? BROKEN.replace(/speedup/g, 'secret') : BROKEN;
+  // карта спрятанной механики ученика: ручка спрятанной механики образца становится ручкой secret, как у игры класса
+  const own = /Спрятанная механика — её выбрал ученик/.test(user) ? BROKEN.replace(/speedup/g, 'secret') : BROKEN;
   return '```js\n' + named(own).replace("  donor: 'Space Invaders',", "  donor: 'Space Invaders',\n  notes: ['Решил сам: добавил золотую тарелку-бонус', 'Решил сам: стога-укрытия из сена'],") + '```';
 }
 

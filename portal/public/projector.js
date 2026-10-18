@@ -1,9 +1,9 @@
 // Проектор учителя (/projector?code=КОД): крупно код класса, открытый чекпоинт с таймером и сколько учеников закончили каждый шаг.
 // Вкладка «Вау-старт»: учитель тянет карты колоды безумных идей и при всех собирает игру с ИИ. Для урока с колодой wow (урок 1) —
-// карты, голоса «перетянуть», сборка и раздача общей игры класса; секрет на проектор не выводится. Для шага teacher-demo — его карты и таймер.
+// карты, голоса «перетянуть», сборка и раздача общей игры класса; спрятанная механика на проектор не выводится. Для шага teacher-demo — его карты и таймер.
 // Вкладка «Ответы класса»: голоса шагов выбора и слепых тестов полосками без имён, в реальном времени.
-// Вкладка «Секрет рядом» (урок 1, после «Найди секрет»): две копии игры класса рядом, в одном мире; бот-новичок играет обе одними нажатиями
-// в настоящем времени — слева без секрета, справа с секретом и лупой. Копии расходятся только из-за секрета.
+// Вкладка «Спрятанная механика рядом» (урок 1, после «Найди спрятанную механику»): две копии игры класса рядом, в одном мире; бот-новичок играет обе одними нажатиями
+// в настоящем времени — слева без спрятанной механики, справа со спрятанной механикой и лупой. Копии расходятся только из-за спрятанной механики.
 // Вкладка «Мир дня»: учитель даёт всему классу один мир одной из игр урока, таблица мира растёт на проекторе.
 // Вкладка «Финал»: стена аркады урока — игры урока с рекордами, игра класса, лидер мира дня и провал дня (самый смешной баг урока).
 // Вкладка «Выставка и турнир» (урок с шагом vote): лидеры номинаций и кнопочный турнир в игре-победителе номинации step.tournament.
@@ -117,7 +117,7 @@ async function refreshPoll() {
     return el('div', { class: 'card stack pj-pollcard' }, el('div', { class: 'row' }, el('h2', { class: 'grow' }, x.title), el('span', { class: 'pj-sub' }, `ответили: ${x.n}`)),
       el('div', { class: 'bars' }, x.bars.map(b => el('div', { class: 'barrow' }, el('span', { class: 'bl' }, b.label),
         el('span', { class: 'bt' }, el('i', { style: `width:${Math.round(100 * b.n / max)}%` })), el('b', {}, String(b.n))))),
-      x.kind === 'secret' && x.n ? el('p', { class: 'concept' }, `Секрет почувствовали вслепую ${x.bars[0].n} из ${x.n}.`) : null,
+      x.kind === 'secret' && x.n ? el('p', { class: 'concept' }, `Спрятанную механику почувствовали вслепую ${x.bars[0].n} из ${x.n}.`) : null,
       (x.own || []).length ? el('div', { class: 'pj-own' }, x.own.map(t => el('span', { class: 'tag' }, '«' + t + '»'))) : null);
   })));
 }
@@ -370,7 +370,7 @@ async function build() {
   await refreshDemo();
 }
 
-/* ---------- «Секрет рядом»: две копии игры класса, бот играет обе в настоящем времени ---------- */
+/* ---------- «Спрятанная механика рядом»: две копии игры класса, бот играет обе в настоящем времени ---------- */
 const PAIR_SECONDS = 60, PAIR_SEED = 4242;
 async function refreshPair() {
   let r;
@@ -380,12 +380,12 @@ async function refreshPair() {
   if (P.pair && P.pair.gkey === gkey) return; // рамки уже стоят: не сбивать показ
   if (P.pair) { P.pair.frames.forEach(f => f.h.destroy()); P.pair = null; }
   host.innerHTML = '';
-  if (!gkey) { host.append(el('div', { class: 'card' }, el('h2', {}, 'Секрет рядом'), el('p', { class: 'pj-sub' }, 'Сначала соберите игру класса во вкладке «Вау-старт».'))); return; }
+  if (!gkey) { host.append(el('div', { class: 'card' }, el('h2', {}, 'Спрятанная механика рядом'), el('p', { class: 'pj-sub' }, 'Сначала соберите игру класса во вкладке «Вау-старт».'))); return; }
   const knob = g.knob || 'secret';
   const side = (withSecret) => {
-    const res = el('p', { class: 'pj-sub', 'aria-live': 'polite' }, withSecret ? 'Лупа загорается каждый раз, когда срабатывает секрет.' : 'Та же игра с выключенным секретом.');
+    const res = el('p', { class: 'pj-sub', 'aria-live': 'polite' }, withSecret ? 'Лупа загорается каждый раз, когда срабатывает спрятанная механика.' : 'Та же игра с выключенной спрятанной механикой.');
     const f = { res, withSecret, done: null };
-    f.h = Games.frame({ src: () => `/play/${g.id}/${g.version}`, key: () => 'pair:' + g.id, label: withSecret ? 'С секретом' : 'Без секрета', score: false, pair: 'secret',
+    f.h = Games.frame({ src: () => `/play/${g.id}/${g.version}`, key: () => 'pair:' + g.id, label: withSecret ? 'Со спрятанной механикой' : 'Без спрятанной механики', score: false, pair: 'secret',
       cfg: withSecret ? null : { [knob]: 0 }, reveal: withSecret ? sec.title : null,
       onReady: () => f.h.post({ type: 'botShow', options: { seconds: PAIR_SECONDS, seed: PAIR_SEED, strategy: 'random', mute: !withSecret } }),
       onShow: m => {
@@ -394,20 +394,20 @@ async function refreshPair() {
         f.done = m.result; drawResult();
       },
       onError: err => f.h.message(el('b', {}, 'Игра упала: ' + (err.message || 'ошибка'))) });
-    f.box = el('div', { class: 'pj-pair-side', 'data-side': withSecret ? 'on' : 'off' }, el('h2', {}, withSecret ? '🔍 С секретом' : 'Без секрета'), f.h.box, res);
+    f.box = el('div', { class: 'pj-pair-side', 'data-side': withSecret ? 'on' : 'off' }, el('h2', {}, withSecret ? '🔍 Со спрятанной механикой' : 'Без спрятанной механики'), f.h.box, res);
     return f;
   };
   const off = side(false), on = side(true);
   function line(x) { return `${x.seconds} с · очки ${x.score} · урон ${x.hurts}`; }
   function drawResult() {
-    [off, on].forEach(f => { if (f.done) f.res.textContent = line(f.done) + (f.withSecret ? ` · секрет сработал ${f.done.secret} раз` : ''); });
+    [off, on].forEach(f => { if (f.done) f.res.textContent = line(f.done) + (f.withSecret ? ` · спрятанная механика сработала ${f.done.secret} раз` : ''); });
     if (off.done && on.done) beep('done');
   }
-  const head = el('h1', { class: 'grow' }, 'Секрет рядом'); // название секрета — только после запуска: вкладку могли открыть до разгадки
-  const run = el('button', { class: 'btn warm', type: 'button', id: 'pjPairRun', onclick: () => { head.textContent = 'Секрет рядом: «' + sec.title + '»'; off.done = on.done = null; off.h.start(); on.h.start(); } }, `▶ Бот играет обе копии (${PAIR_SECONDS} с)`);
+  const head = el('h1', { class: 'grow' }, 'Спрятанная механика рядом'); // название спрятанной механики — только после запуска: вкладку могли открыть до разгадки
+  const run = el('button', { class: 'btn warm', type: 'button', id: 'pjPairRun', onclick: () => { head.textContent = 'Спрятанная механика рядом: «' + sec.title + '»'; off.done = on.done = null; off.h.start(); on.h.start(); } }, `▶ Бот играет обе копии (${PAIR_SECONDS} с)`);
   P.pair = { gkey, frames: [off, on] };
   host.append(el('div', { class: 'row' }, head, run),
-    el('p', { class: 'pj-sub' }, 'Один мир, одни и те же нажатия бота-новичка. Копии расходятся только из-за секрета. Показывайте после шага «Найди секрет».'),
+    el('p', { class: 'pj-sub' }, 'Один мир, одни и те же нажатия бота-новичка. Копии расходятся только из-за спрятанной механики. Показывайте после шага «Найди спрятанную механику».'),
     el('div', { class: 'pj-pair-grid' }, off.box, on.box));
 }
 

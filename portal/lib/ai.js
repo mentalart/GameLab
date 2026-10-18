@@ -221,7 +221,7 @@ const CHAT = {
     'Обязательно для портала:',
     '- управление и с клавиатуры, и с джойстика (геймпада): ввод только через lab.p1 / lab.p2 (left right up down a b, оси x и y), кнопки описаны в controls — тогда оболочка сама покажет кнопки геймпада и тача;',
     '- ручки геймдизайнера: каждое важное число — в config (value, min, max, step, label), в коде lab.cfg.имя; пресет «Новичок» и 1–2 своих в presets;',
-    '- если в задании есть секрет — отдельная ручка secret (0 — выключен, 1 — включён) и lab.count(\'_secret\') каждый раз, когда секрет срабатывает;',
+    '- если в задании есть спрятанная механика — отдельная ручка secret (0 — выключена, 1 — включена) и lab.count(\'_secret\') каждый раз, когда спрятанная механика срабатывает;',
     '- lab.hero(герой) в start, очки через lab.addScore, урон через lab.hurt, конец партии через оболочку, lab.count для ключевых событий, overNote;',
     '- decisions — три решения ученика, notes — что ты решил сам; своё название, без чужих брендов;',
     '- без document, window, fetch, localStorage, setTimeout, setInterval и Math.random (случайность — lab.rand).',
@@ -238,10 +238,10 @@ const fullTask = (who, user, popts) => `${systemPrompt(Object.assign({ lesson: w
 const chatTpl = name => promptSection('chat-prompt.md', `<!-- chat:${name}:start -->`, `<!-- chat:${name}:end -->`);
 // пустое поле замысла fill превращает в «—»: такие строки в задании для чата не нужны
 const chatTask = middle => [CHAT.phrase, middle.replace(/^—\r?\n/gm, '').replace(/\n—\s*$/, '').trim(), chatTpl('portal')].join('\n\n');
-// секрет в задании Clear: без API оболочки Лаб3D (звук секрета «ритм» игра пишет сама)
-// [база] — что из обычных правил игры делает только секрет (поле base колоды секретов урока): без него копия «Без секрета» содержит тот же эффект
-const SECRET_BASE = 'всё, что в остальных правилах похоже на этот секрет.';
-// [как] — пошаговый геймплей секрета (поле howto колоды): Qwen по одному эффекту собирал секрет невнятно
+// спрятанная механика в задании Clear: без API оболочки Лаб3D (звук спрятанной механики «ритм» игра пишет сама)
+// [база] — что из обычных правил игры делает только спрятанная механика (поле base колоды спрятанных механик урока): без неё копия «Без спрятанной механики» содержит тот же эффект
+const SECRET_BASE = 'всё, что в остальных правилах похоже на эту спрятанную механику.';
+// [как] — пошаговый геймплей спрятанной механики (поле howto колоды): Qwen по одному эффекту собирал спрятанную механику невнятно
 const chatSecret = (prompt, base, howto) => (prompt ? '\n' + fill(chatTpl('secret'), { 'секрет': prompt.replace(/\s*\(lab\.tone[^)]*\)/, ' (низкий тон через Web Audio)').replace(/lab\.count/g, 'portal.count'), 'база': base || SECRET_BASE, 'как': howto || '' }).replace(/\n{3,}/g, '\n\n') : '');
 // замечания проверки к игре из чата: то, без чего портал работает хуже
 function chatWarnings(code, secret) {
@@ -251,7 +251,7 @@ function chatWarnings(code, secret) {
   if (!/portal\.knobs\s*\(/.test(code)) w.push('нет portal.knobs: нет ручек');
   if (!/getGamepads/.test(code)) w.push('нет геймпада');
   if (/\b(localStorage|sessionStorage|alert\s*\(|confirm\s*\(|prompt\s*\()/.test(code)) w.push('localStorage или alert: в песочнице не работают');
-  if (secret && !/_secret/.test(code)) w.push('секрет не считается в portal.count');
+  if (secret && !/_secret/.test(code)) w.push('спрятанная механика не считается в portal.count');
   return w;
 }
 // Один круг с чатом: портал выдаёт текст, человек вставляет ответ (progress.ask, см. startJob в server.js), портал проверяет код.
@@ -330,7 +330,7 @@ const REPAIRABLE = [
   [/нет portal\.knobs/, 'ручки геймдизайнера (portal.knobs с пресетом «Новичок»)'],
   [/нет portal\.over/, 'конец партии portal.over(очки) — без него не пишутся рекорды'],
   [/нет геймпада/, 'управление с джойстика (navigator.getGamepads каждый кадр)'],
-  [/секрет не считается/, "portal.count('_secret') каждый раз, когда срабатывает секрет"],
+  [/спрятанная механика не считается/, "portal.count('_secret') каждый раз, когда срабатывает спрятанная механика"],
 ];
 function chatRepair(warnings) {
   const lost = REPAIRABLE.filter(([re]) => (warnings || []).some(w => re.test(w))).map(([, t]) => t);
@@ -384,7 +384,7 @@ function producerSystem(lessonTitle) {
 }
 function planText(plan) {
   return [
-    `Название: ${plan.title}`, `Донор: ${plan.donor}`, `Твист: ${plan.twist}`, `Мир: ${plan.world}`, plan.secret ? `Секрет (карта секрета): ${plan.secret.title}` : '', `Уровень: ${plan.level}`,
+    `Название: ${plan.title}`, `Донор: ${plan.donor}`, `Твист: ${plan.twist}`, `Мир: ${plan.world}`, plan.secret ? `Спрятанная механика (карта спрятанной механики): ${plan.secret.title}` : '', `Уровень: ${plan.level}`,
     plan.details.length ? 'Детали:\n' + plan.details.join('\n') : '',
     `Чувство: ${plan.decisions.feeling}`, `Честность: ${plan.decisions.honesty}`, `Выбор: ${plan.decisions.choice}`,
     `И — идея и чувство: ${plan.igra.i}`, `Г — глагол и кнопки: ${plan.igra.g}`, `Р — правила: ${plan.igra.r}`, `А — атмосфера: ${plan.igra.a}`,
@@ -540,12 +540,12 @@ function demoProducer(plan, who, lesson) {
 function draftInput(d) {
   const x = d.discovery || {};
   return [
-    `Урок: ${d.lesson}`, `Игра: «${d.title}»`, `Ученик задумал чувство: ${d.feeling || '—'}`, d.secret ? `Его секрет: ${d.secret}` : '',
+    `Урок: ${d.lesson}`, `Игра: «${d.title}»`, `Ученик задумал чувство: ${d.feeling || '—'}`, d.secret ? `Его спрятанная механика: ${d.secret}` : '',
     `Партий соседей: ${x.rounds || 0}, игроков: ${x.players || 0}, нажали «ещё раз»: ${x.again || 0}`,
     x.dominant ? `Дольше всего держали: ${x.dominant.name} — ${Math.round(x.dominant.share * 100)}% времени партии` : '',
     Object.keys(x.emotions || {}).length ? 'Эмоции соседей: ' + Object.entries(x.emotions).map(([e, n]) => `${e} ×${n}`).join(', ') : '',
     ...(x.cards || []).slice(0, 6).map(c => `Карточка соседа: нравится — ${c.like && c.like.text || '—'}; хочется — ${c.want && c.want.text || '—'}; а что если — ${c.whatif && c.whatif.text || '—'}`),
-    d.blind && d.blind.voted ? `Слепая пара: секрет почувствовали ${d.blind.felt} из ${d.blind.voted}` : '',
+    d.blind && d.blind.voted ? `Слепая пара: спрятанную механику почувствовали ${d.blind.felt} из ${d.blind.voted}` : '',
     'Колода понятий урока:', ...d.concepts.map(c => '- ' + c), 'Колода вопросов урока:', ...d.questions.map(q => '- ' + q),
   ].filter(Boolean).join('\n');
 }
@@ -555,7 +555,7 @@ function ruleDraft(d) {
   const C = d.concepts, Q = d.questions;
   let concept, question, why;
   if (x.dominant && x.dominant.share >= 0.6) { concept = find(C, /доминир/i); question = find(Q, /цена/i); why = `соседи ${Math.round(x.dominant.share * 100)}% партии держали ${x.dominant.name}`; }
-  else if (d.blind && d.blind.voted && d.blind.felt * 2 < d.blind.voted) { concept = find(C, /секрет/i); question = find(Q, /ручка|чувство/i); why = `секрет почувствовали только ${d.blind.felt} из ${d.blind.voted}`; }
+  else if (d.blind && d.blind.voted && d.blind.felt * 2 < d.blind.voted) { concept = find(C, /спрятанн/i); question = find(Q, /ручка|чувство/i); why = `спрятанную механику почувствовали только ${d.blind.felt} из ${d.blind.voted}`; }
   else if (em['😴 Скучно']) { concept = find(C, /нараст/i); question = find(Q, /последней секунде|чувство/i); why = 'соседям было скучно'; }
   else if (em['😤 Обидно']) { concept = find(C, /честност/i); question = find(Q, /опасност/i); why = 'соседям было обидно проигрывать'; }
   else if (em['🤔 Непонятно']) { concept = find(C, /цель/i); question = find(Q, /чаще всего|задумал/i); why = 'соседям было непонятно'; }
@@ -583,7 +583,7 @@ async function feedbackDraft(d, who) {
 }
 
 /* ---------------- программист ---------------- */
-// карта секрета (урок 1): секрет своей игры в ручке secret — правила те же, что у игры класса (шаблон user:secret)
+// карта спрятанной механики (урок 1): спрятанная механика своей игры в ручке secret — правила те же, что у игры класса (шаблон user:secret)
 function newGameMessage(plan) {
   const secret = plan.secret ? fill(userTemplate('secret'), { 'секрет': plan.secret.prompt, 'база': plan.secret.base || SECRET_BASE }) + '\n\n' : '';
   return fill(userTemplate('new').replace('[секрет своей игры]\n', secret), {
@@ -701,8 +701,8 @@ async function fix(code, error, who, onProgress, model) {
   }, who, onProgress, null, model);
 }
 
-// Общая игра урока (вау-старт): своя игра только из карт колоды безумных идей (без донора урока) + секретная механика из колоды секретов урока.
-// Секрет живёт в ручке secret и в скрытом счётчике телеметрии _secret. Без ключа — запасная игра урока.
+// Общая игра урока (вау-старт): своя игра только из карт колоды безумных идей (без донора урока) + спрятанная механика из колоды спрятанных механик урока.
+// Спрятанная механика живёт в ручке secret и в скрытом счётчике телеметрии _secret. Без ключа — запасная игра урока.
 // каркас связки: по нему Claude получает один образец; если в строке связки каркаса не узнать — каркас жанра с карты действия
 const wowFrame = wow => { const t = (wow.link && wow.link.frame) || '', g = (wow.genre && wow.genre.frame) || ''; return t && FRAMES.some(f => f.re.test(t)) ? t : g || t; };
 async function buildShared(wow, who, onProgress) {
@@ -712,7 +712,7 @@ async function buildShared(wow, who, onProgress) {
     'герой': wow.cards.hero, 'действие': wow.cards.action, 'место': wow.cards.place, 'угроза': wow.cards.threat || 'нет карты — придумай по месту', 'поворот': wow.cards.twist, 'секрет': wow.secret, 'база': wow.base || SECRET_BASE, 'связка': linkText(wow.link),
   }), who, onProgress, null, { frame: wowFrame(wow) });
   if (!/\bsecret\s*:\s*\{/.test(r.code)) r.warnings = r.warnings.concat('нет ручки secret');
-  if (!/_secret/.test(r.code)) r.warnings = r.warnings.concat('секрет не считается в телеметрии');
+  if (!/_secret/.test(r.code)) r.warnings = r.warnings.concat('спрятанная механика не считается в телеметрии');
   return Object.assign(r, { knob: 'secret' });
 }
 // правка игры класса по отчёту бота-плейтестера: та же модель и тот же образец каркаса, что у сборки
@@ -720,8 +720,8 @@ const BOT_LABELS = { idle: 'Пассивный (ничего не жмёт)', ma
 function playtestRounds(report) {
   return report.results.map(x => `- ${BOT_LABELS[x.strategy] || x.strategy}: ${x.seconds} с, очки ${x.score}, урон ${x.hurts}` + (x.hurtsAt && x.hurtsAt.length ? ` (на ${x.hurtsAt.slice(0, 4).join(', ')} с)` : '')
     + (x.offscreen != null ? `, герой за кадром ${x.offscreen}% времени` : '') + (x.flat ? `, дольше всего без очков — ${x.flat} с` : '') + (x.over ? `, конец партии: «${x.endText}»` : ', дожил до конца') + (x.error ? `, ошибка: ${x.error}` : '')
-    + (x.secretFirst != null ? `, секрет впервые на ${x.secretFirst} с, отметок секрета ${x.secretMarks}` : '')).join('\n')
-    + (report.off ? `\n- ${BOT_LABELS.random} в копии без секрета (secret = 0): ${report.off.seconds} с, очки ${report.off.score}, урон ${report.off.hurts}` : '');
+    + (x.secretFirst != null ? `, спрятанная механика впервые на ${x.secretFirst} с, отметок спрятанной механики ${x.secretMarks}` : '')).join('\n')
+    + (report.off ? `\n- ${BOT_LABELS.random} в копии без спрятанной механики (secret = 0): ${report.off.seconds} с, очки ${report.off.score}, урон ${report.off.hurts}` : '');
 }
 async function playtestFix(code, report, wow, who, onProgress) {
   if (manual(who && who.lesson)) return Object.assign(await chatChange(code, 'исправь игру по отчёту бота-плейтестера:\n' + report.findings.map(f => '- ' + f).join('\n'), who, onProgress, 'правка по плейтесту'), { knob: 'secret' });
@@ -729,10 +729,10 @@ async function playtestFix(code, report, wow, who, onProgress) {
     'код': code.trim(), 'связка': linkText(wow.link), 'секунд': String(report.seconds), 'партии': playtestRounds(report), 'выводы': report.findings.map(f => '- ' + f).join('\n'),
   }, who, onProgress, { frame: wowFrame(wow) });
   if (!/\bsecret\s*:\s*\{/.test(r.code)) r.warnings = r.warnings.concat('нет ручки secret');
-  if (!/_secret/.test(r.code)) r.warnings = r.warnings.concat('секрет не считается в телеметрии');
+  if (!/_secret/.test(r.code)) r.warnings = r.warnings.concat('спрятанная механика не считается в телеметрии');
   return r;
 }
-// запасная общая игра: ремейк урока с названием по картам; его секрет — свой (ручка из fallback.knob)
+// запасная общая игра: ремейк урока с названием по картам; его спрятанная механика — своя (ручка из fallback.knob)
 function demoShared(wow, who) {
   const fb = wow.fallback;
   let code = fs.readFileSync(path.join(PORTAL, fb.game), 'utf8');

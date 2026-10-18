@@ -4,7 +4,7 @@
        — ручки геймдизайнера: cfg.speed — текущее значение; панель ручек (Tab или Select на геймпаде) рисует мост;
      portal.paused — открыта панель ручек, игра стоит;
      portal.over(очки) — конец партии (рекорд класса и плейтест), portal.again() — новая партия,
-     portal.count('событие') — счётчик партии (_secret — сработал секрет), portal.onRecord = (рекорд, мой) => {} — рекорд класса,
+     portal.count('событие') — счётчик партии (_secret — сработала спрятанная механика), portal.onRecord = (рекорд, мой) => {} — рекорд класса,
      portal.score(очки) — текущий счёт (из него полоска партии по секундам), portal.hurt() — герою нанесён урон,
      portal.notes(['что программист решил сам', ...]) — записи программиста для шага «Найди, где ИИ своевольничал» (портал читает их из кода).
      portal.input — 'pad' или 'keys': чем игрок управляет сейчас. Подписи кнопок игра пишет парой <span class="keys-only">Пробел</span><span class="pad-only">A</span>,
@@ -52,7 +52,7 @@
     again: function () { isOver = false; reset(); send({ type: 'again' }); },
     count: function (name) {
       name = String(name); counts[name] = (counts[name] || 0) + 1; if (name === '_secret') lupaHit();
-      if (name.charAt(0) === '_') { var m = tele.marks[name] = tele.marks[name] || []; if (m.length < 200) m.push(Math.round(t * 10) / 10); } // секунда партии — для полоски секрета
+      if (name.charAt(0) === '_') { var m = tele.marks[name] = tele.marks[name] || []; if (m.length < 200) m.push(Math.round(t * 10) / 10); } // секунда партии — для полоски спрятанной механики
     },
     score: function (n) { score = Math.round(Number(n) || 0); },
     hurt: function () { tele.hurts++; },
@@ -151,7 +151,7 @@
     requestAnimationFrame(pad);
   })();
 
-  // лупа секрета (урок 1, «Посмотри на секрет»): портал присылает reveal с названием, каждый portal.count('_secret') зажигает значок
+  // лупа спрятанной механики (урок 1, «Посмотри на спрятанную механику»): портал присылает reveal с названием, каждый portal.count('_secret') зажигает значок
   var lupa = null;
   function lupaHit() {
     if (!lupa) return;
@@ -164,7 +164,7 @@
     if (!title || !document.body) return;
     var box = document.createElement('div');
     box.style.cssText = 'position:fixed;top:10px;left:50%;transform:translateX(-50%);z-index:2147483646;pointer-events:none;padding:6px 14px;border-radius:999px;background:rgba(0,0,0,.65);border:2px solid #ffffff33;color:#f2efe6;font:700 15px system-ui,sans-serif;opacity:.45;transition:opacity .25s';
-    box.textContent = '🔍 Секрет: ' + String(title).slice(0, 80);
+    box.textContent = '🔍 Спрятанная механика: ' + String(title).slice(0, 80);
     box.append(document.createElement('b'));
     document.body.append(box); lupa = { box: box, n: 0, t: 0 };
   }
