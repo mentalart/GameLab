@@ -565,7 +565,11 @@ async function secretHunt(teacher, student, mode, shot) {
 async function projectorPoll(pj, shot) {
   await pj.click('.pj-tabs >> text=Ответы класса');
   await pj.waitForSelector('#pj-poll .pj-pollchips', { timeout: 10000 });
-  await pj.click('#pj-poll .chipbtn >> text=Что почувствует игрок?');
+  // проектор пересобирает вкладку, когда приходят новые ответы: щелчок по старой кнопке может пропасть, поэтому до трёх попыток
+  for (let i = 0; i < 3; i++) {
+    await pj.click('#pj-poll .chipbtn >> text=Что почувствует игрок?');
+    if (await pj.waitForSelector('#pj-poll .pj-pollcard h2 >> text=Что почувствует игрок?', { timeout: 3000 }).then(() => true, () => false)) break;
+  }
   await pj.waitForSelector('#pj-poll .pj-pollcard >> text=ответили: 1', { timeout: 10000 });
   const poll = (await pj.textContent('#pj-poll')).replace(/\s+/g, ' ');
   check('Проектор «Ответы класса»: голоса шага полосками, без имён', poll.includes(predicted) && !/Тестер/.test(poll), poll.slice(0, 160));
