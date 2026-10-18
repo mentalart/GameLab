@@ -85,10 +85,10 @@ const Games = (() => {
   }
   function stopAll() { frames.slice().forEach(f => f.destroy()); }
 
-  /* ---------- рамка игры учителя: вау-старт на проекторе и сравнение моделей ---------- */
+  /* ---------- рамка игры учителя: вау-старт на проекторе ---------- */
   // get() — игра { id, current, versions }, set(g) — новая версия после починки. Упала — программист чинит сам (до 2 попыток),
-  // запуск отмечается для отчёта «с первой попытки». demo() — портал без ключа: тогда не чиним.
-  function teacherFrame({ get, set, label, autostart, demo, onOver }) {
+  // починка — сообщение Qwen в тот же чат; запуск отмечается для отчёта «с первой попытки».
+  function teacherFrame({ get, set, label, autostart, onOver }) {
     let tries = 0, fixing = false;
     const status = el('div', { class: 'small muted', 'aria-live': 'polite' });
     const g = () => get();
@@ -97,10 +97,10 @@ const Games = (() => {
       onReady: () => { status.textContent = `Версия ${g().current} запущена.`; api('/api/teacher/game/ran', { game: g().id, version: g().current }).catch(() => {}); },
       onError: async err => {
         const n = g().current;
-        if (tries >= 2 || (demo && demo())) {
+        if (tries >= 2) {
           api('/api/teacher/game/fix', { game: g().id, version: n, error: err, report: true }).catch(() => {});
           h.message(el('div', { class: 'stack', style: 'align-items:center' }, el('b', {}, 'Игра упала: ' + (err.message || 'ошибка')),
-            el('p', { class: 'muted small' }, demo && demo() ? 'В демо-режиме программист не чинит ошибки.' : 'Программист не смог починить за 2 попытки.'),
+            el('p', { class: 'muted small' }, 'Программист не смог починить за 2 попытки.'),
             el('button', { class: 'btn ghost small', type: 'button', onclick: () => { tries = 0; h.start(); } }, '↻ Попробовать ещё раз')));
           return;
         }

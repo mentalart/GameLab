@@ -10,7 +10,7 @@
 'use strict';
 const { el, api, toast, beep } = Lab;
 const $ = s => document.querySelector(s);
-const P = { cup: [], cupFrame: null, cupKey: null, code: null, o: null, skew: 0, tab: 'lesson', isDemo: false, d: null, info: null, job: null, frameFor: null, tf: null, keys: {}, w: null, wKey: null, wFrame: null };
+const P = { cup: [], cupFrame: null, cupKey: null, code: null, o: null, skew: 0, tab: 'lesson', d: null, info: null, job: null, frameFor: null, tf: null, keys: {}, w: null, wKey: null, wFrame: null };
 const mmss = sec => { const s = Math.max(0, Math.round(sec)); return String(Math.floor(s / 60)).padStart(2, '0') + ':' + String(s % 60).padStart(2, '0'); };
 const serverNow = () => Date.now() + P.skew;
 const CARDS = [['hero', 'Герой'], ['place', 'Место'], ['twist', 'Поворот']];
@@ -19,7 +19,6 @@ async function boot() {
   const q = new URLSearchParams(location.search);
   try { P.code = q.get('code') || localStorage.getItem('lab:teacher:class'); } catch (e) { P.code = q.get('code'); }
   if (!P.code) { $('#pj-lesson').append(el('div', { class: 'card' }, 'Сначала создайте класс в панели учителя.')); return; }
-  try { P.isDemo = (await api('/api/info')).demo; } catch (e) { /* без разницы */ }
   if (['demo', 'day', 'poll', 'final', 'pair'].includes(q.get('tab'))) P.tab = q.get('tab');
   await refresh();
   setInterval(refresh, 2000);
@@ -321,7 +320,7 @@ function drawGame() {
     killFrame(); host.innerHTML = '';
     P.frameFor = key;
     P.tf = Games.teacherFrame({
-      get: () => P.d.game, label: 'Играть в игру класса', autostart: true, demo: () => P.isDemo,
+      get: () => P.d.game, label: 'Играть в игру класса', autostart: true,
       set: g => { P.d.game = Object.assign({}, P.d.game, { current: g.current, versions: g.versions }); P.frameFor = g.id + ':' + g.current; },
     });
     host.append(P.tf.h.box, Games.bar(P.tf.h, P.tf.status), el('div', { class: 'row', id: 'pjOpenCtrl' }));
@@ -456,7 +455,7 @@ function drawWow(prev) {
     el('span', { class: 'muted small' }, `на связи: ${onl} из ${total}`)].filter(Boolean));
   const gh = $('#pjWowGame');
   if (P.job) return; // прогресс сборки рисует wowBuild()
-  const status = { cards: ready ? 'Карты на столе. Не нравится карта — голосуйте «перетянуть» у себя.' : 'Тяните карты: ' + r.cards.map(c => c.label.toLowerCase()).join(', ') + '.', building: '⚙ ИИ собирает игру класса прямо сейчас…', preview: w.given ? '✓ Игра у всех — играйте!' : 'Игра собрана. Проверим её здесь и раздадим классу.' }[w.status] || '';
+  const status = { cards: ready ? 'Карты на столе. Не нравится карта — голосуйте «перетянуть» у себя.' : 'Тяните карты: ' + r.cards.map(c => c.label.toLowerCase()).join(', ') + '.', building: '⚙ Qwen собирает игру класса прямо сейчас…', preview: w.given ? '✓ Игра у всех — играйте!' : 'Игра собрана. Проверим её здесь и раздадим классу.' }[w.status] || '';
   const gkey = r.game ? r.game.id + '/' + r.game.version : null;
   if (!gkey || P.wFrame && P.wFrame.gkey !== gkey) { if (P.wFrame) { P.wFrame.h.destroy(); P.wFrame = null; } gh.innerHTML = ''; }
   if (!gkey) { gh.append(el('p', { class: 'pj-sub', id: 'pjWowStatus' }, status)); return; }
@@ -485,11 +484,11 @@ async function wowBuild() {
   if (P.job) return;
   if (P.wFrame) { P.wFrame.h.destroy(); P.wFrame = null; }
   const gh = $('#pjWowGame'); gh.innerHTML = '';
-  const p = el('p', {}, 'ИИ собирает игру класса при всех…');
+  const p = el('p', {}, 'Qwen собирает игру класса при всех…');
   gh.append(el('div', { class: 'progress pj-progress' }, el('div', { class: 'spinner' }), p, el('p', { class: 'muted small' }, 'Пока ИИ пишет — спросите класс: что почувствует игрок?')));
   P.job = true; P.wKey = null;
   try {
-    await Lab.job('/api/teacher/wow/build', { code: P.code }, j => { p.textContent = `ИИ собирает игру класса… ${mmss(j.seconds)}` + (j.chars ? ` · ${j.chars.toLocaleString('ru-RU')} символов кода` : '') + (j.phase === 'синтаксис' ? ' · чинит опечатку' : ''); });
+    await Lab.job('/api/teacher/wow/build', { code: P.code }, j => { p.textContent = `Qwen собирает игру класса… ${mmss(j.seconds)}` + (j.chars ? ` · ${j.chars.toLocaleString('ru-RU')} символов кода` : '') + (j.phase === 'синтаксис' ? ' · чинит опечатку' : ''); });
     beep('done'); toast('Игра класса собрана!', 'ok');
   } catch (e) { toast(e.message, 'err', 8000); }
   P.job = null; P.wKey = null; gh.innerHTML = '';

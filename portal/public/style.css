@@ -262,7 +262,6 @@ td.warn{color:var(--warm);font-weight:700}
 .chipbtn.st-work.on{background:#2a1f0c;border-color:var(--warm);color:var(--warm)}
 .chipbtn.st-done.on{background:var(--accent);color:var(--accent-ink)}
 .nstatus{gap:4px}
-.cmpbox .seg .opt{flex:1 1 220px}
 .btn kbd{font:11px ui-monospace,monospace;opacity:.7;border:1px solid currentColor;border-radius:5px;padding:0 5px}
 
 /* --- шаг teacher-demo: «смотри на проектор» --- */

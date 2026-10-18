@@ -33,19 +33,19 @@ const Lab = (() => {
       }
     } finally { if (chat) chat.close(); }
   }
-  // Окно программиста в chat.qwen.ai (урок 1, версия 2): 1) скопировать задание, 2) открыть чат, 3) вставить ответ.
+  // Окно программиста в chat.qwen.ai (программист всех уроков): 1) скопировать задание, 2) открыть чат, 3) вставить ответ.
   // Если ответ не подошёл — портал выдаёт следующее сообщение в тот же чат; если оборвался — просьбу «Продолжи» и склеивает части.
   function chatDialog(id) {
     const dlg = el('dialog', { class: 'qwen', 'aria-label': 'Программист — Qwen в чате' });
     dlg.addEventListener('cancel', e => e.preventDefault()); // окно не закрывается случайным Esc: задание ждёт ответа
     document.body.append(dlg); dlg.showModal();
     let shown = '', busy = false;
-    const q = clear => api('/api/job/prompt?id=' + encodeURIComponent(id) + (clear ? '&clear=1' : ''));
+    const q = () => api('/api/job/prompt?id=' + encodeURIComponent(id));
     const size = n => (n / 1000).toFixed(1).replace('.', ',') + ' тыс. знаков';
-    function copyBtn(label, clear) {
-      const b = el('button', { type: 'button', class: 'btn' + (clear ? ' clear' : ''), disabled: true }, label + ' …');
+    function copyBtn(label) {
+      const b = el('button', { type: 'button', class: 'btn', disabled: true }, label + ' …');
       let text = '';
-      q(clear).then(r => { text = r.text; b.disabled = false; b.textContent = label; }).catch(e => { b.textContent = e.message; });
+      q().then(r => { text = r.text; b.disabled = false; b.textContent = label; }).catch(e => { b.textContent = e.message; });
       b.addEventListener('click', () => { copy(text); beep('tick'); });
       return b;
     }
@@ -70,12 +70,11 @@ const Lab = (() => {
       const open = el('a', { class: 'btn ghost', href: m.url, target: '_blank', rel: 'noopener noreferrer' }, 'Открыть chat.qwen.ai ↗');
       const head = m.cont ? ['Ответ оборвался', 'Чат остановился на середине кода. Скопируй просьбу, отправь её в тот же чат и вставь продолжение ниже — портал склеит части сам.']
         : m.followUp ? ['Ответ не подошёл', 'Портал проверил код и нашёл, что исправить. Скопируй сообщение, отправь его в тот же чат и вставь новый ответ ниже.']
-        : ['Задание для Qwen готово', 'Программист этого урока — Qwen в бесплатном чате. Скопируй задание, вставь его в новый чат, дождись ответа и вставь ответ сюда.'];
+        : ['Задание для Qwen готово', 'Программист — Qwen в бесплатном чате. Скопируй задание, вставь его в новый чат, дождись ответа и вставь ответ сюда.'];
       const steps = m.cont ? el('div', { class: 'row' }, copyBtn('📋 Скопировать «Продолжи»'), open)
         : m.followUp ? el('div', { class: 'row' }, copyBtn('📋 Скопировать сообщение'), open)
         : el('ol', { class: 'qwen-steps' },
-          // одна кнопка (решение автора 18.10.2026): задание из трёх частей без Babylon.js (ответ — страница HTML); прежнее — только если его нет
-          el('li', {}, el('div', { class: 'row' }, m.clear ? copyBtn(`📋 Скопировать задание (${size(m.clear)})`, true) : copyBtn(`📋 Скопировать задание (${size(m.chars)})`))),
+          el('li', {}, el('div', { class: 'row' }, copyBtn(`📋 Скопировать задание (${size(m.chars)})`))),
           el('li', {}, el('div', { class: 'row' }, open, el('span', { class: 'small muted' }, 'Новый чат на каждую игру, правки — в том же чате.'))),
           el('li', {}, 'Когда Qwen допишет, нажми в чате «Копировать» над блоком кода и вставь ответ ниже.'));
       dlg.append(el('div', { class: 'stack' },

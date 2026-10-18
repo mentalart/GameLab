@@ -44,9 +44,7 @@ function drawLessonSel() {
   const list = moduleLessons(T.module), cur = T.overview && T.overview.class.lesson;
   if (!list.length) ls.append(el('option', { value: '' }, 'В этом модуле уроков пока нет'));
   else if (!list.some(l => l.id === cur)) ls.append(el('option', { value: '', selected: true }, 'Выберите урок модуля'));
-  // у урока несколько версий (urok-01-v2.js): первая подписана «версия 1», у остальных номер версии в названии
-  const twins = n => list.filter(x => x.number === n).length > 1;
-  list.forEach(l => ls.append(el('option', { value: l.id, selected: l.id === cur ? true : null }, `Урок ${l.number}. ${l.title}` + (!l.version && twins(l.number) ? ' · версия 1: API' : ''))));
+  list.forEach(l => ls.append(el('option', { value: l.id, selected: l.id === cur ? true : null }, `Урок ${l.number}. ${l.title}`)));
 }
 async function selectClass(code) {
   T.code = code;
@@ -314,64 +312,12 @@ async function openStudent(nick) {
         el('span', { class: 'muted' }, `${v.model || ''}${v.attempts > 1 ? ', попыток ' + v.attempts : ''}`),
         v.n === r.game.current ? el('span', { class: 'tag ok' }, 'текущая') : null,
         v.error ? el('span', { class: 'tag err', title: v.error.message }, 'ошибка: ' + v.error.message) : null))));
-      body.append(compareBox(nick, r));
     } else body.append(el('p', { class: 'muted' }, 'Игра ещё не собрана.'));
     if (r.discovery) body.append(el('h3', {}, 'Плейтест: игра глазами класса'), Games.discovery(r.discovery));
     body.append(feedbackEditor(nick, r.feedback, !!(r.game && r.game.current)));
     if (!$('#studentDlg').open) $('#studentDlg').showModal();
   } catch (e) { toast(e.message, 'err'); }
 }
-// сравнение моделей на одном замысле: пересобрать другой моделью и открыть обе версии в одной рамке по очереди
-function compareBox(nick, r) {
-  const box = el('div', { class: 'card stack cmpbox' });
-  const first = r.game.versions.find(v => v.kind === 'сборка') || r.game.versions[0];
-  const variants = [{ label: `Ученик · ${first.model || '—'}`, game: r.game, own: true }].concat(r.compares.map(g => ({ label: `Учитель · ${g.model}`, game: g, own: false })));
-  const sel = el('select', { id: 'cmpModel', 'aria-label': 'Модель для сравнения' });
-  (r.models || []).map(m => m.id).concat(r.codeModel ? [r.codeModel] : []).filter((m, i, a) => a.indexOf(m) === i).forEach(m => sel.append(el('option', { value: m, selected: m !== first.model && !sel.querySelector('[selected]') ? true : null }, m)));
-  const custom = el('input', { type: 'text', id: 'cmpCustom', placeholder: 'или id модели', style: 'max-width:200px' });
-  const prog = el('div');
-  const go = el('button', { class: 'btn', type: 'button' }, '⚖ Пересобрать другой моделью');
-  go.addEventListener('click', async () => {
-    const model = custom.value.trim() || sel.value;
-    go.disabled = true; prog.innerHTML = '';
-    const p = el('p', {}, `${model} собирает тот же замысел…`);
-    prog.append(el('div', { class: 'progress' }, el('div', { class: 'spinner' }), p));
-    try {
-      await Lab.job('/api/teacher/compare', { code: T.code, nick, model }, j => { p.textContent = `${model} собирает тот же замысел… ${j.seconds} с` + (j.chars ? ` · ${j.chars.toLocaleString('ru-RU')} символов` : ''); });
-      toast('Пересборка готова — сравните версии', 'ok'); openStudent(nick);
-    } catch (e) { toast(e.message, 'err', 8000); prog.innerHTML = ''; go.disabled = false; }
-  });
-  box.append(el('h3', {}, 'Сравнение моделей на этом замысле'),
-    el('p', { class: 'muted small' }, 'Тот же замысел ученика пишет другая модель. Пересборка — отдельная игра: у ученика и в аркаде её нет, в отчёт журнала генераций она попадает с пометкой «сравнение».'),
-    el('div', { class: 'row' }, sel, custom, go), prog);
-  if (variants.length > 1) {
-    const stage = el('div', { class: 'stack' });
-    const tabs = el('div', { class: 'seg' });
-    const show = k => {
-      tabs.querySelectorAll('button').forEach((b, i) => b.classList.toggle('on', i === k));
-      stage.innerHTML = '';
-      const vr = variants[k];
-      let g = vr.game;
-      if (vr.own) { // игра ученика: просто запускаем, без починки и без записи партий
-        const h = Games.frame({ src: () => `/play/${g.id}/${g.current}`, key: () => 'teacher:' + g.id, score: false, label: 'Играть', autostart: true,
-          onError: err => h.message(el('b', {}, 'Игра упала: ' + (err.message || 'ошибка'))) });
-        stage.append(h.box, Games.bar(h));
-      } else {
-        const tf = Games.teacherFrame({ get: () => g, set: ng => { g = ng; vr.game = ng; }, label: 'Играть', autostart: true, demo: () => T.demo });
-        stage.append(tf.h.box, Games.bar(tf.h, tf.status));
-      }
-      stage.append(el('div', { class: 'small muted' }, el('a', { href: `/play/${g.id}/${g.current}`, target: '_blank', rel: 'noopener' }, 'Открыть в отдельной вкладке ↗')));
-    };
-    variants.forEach((vr, k) => {
-      const v = vr.game.versions[vr.game.versions.length - 1] || {};
-      tabs.append(el('button', { type: 'button', class: 'opt', onclick: () => show(k) }, el('b', {}, String.fromCharCode(65 + k) + ' · ' + vr.label),
-        el('div', { class: 'small muted' }, vr.game.versions.length ? `версий: ${vr.game.versions.length}` + (vr.game.versions.some(x => x.error) ? ', были ошибки' : '') + (v.ms ? ` · ${Math.round(v.ms / 1000)} с` : '') : 'собирается…')));
-    });
-    box.append(tabs, stage);
-  }
-  return box;
-}
-
 // отзыв учителя: одно понятие геймдизайна + один вопрос, кубики — из колод урока (lesson.feedback).
 // «🪄 Черновик» — портал предлагает понятие и вопрос по телеметрии соседей и их карточкам; учитель правит и отправляет сам
 function feedbackEditor(nick, fb, hasGame) {
@@ -469,8 +415,7 @@ function drawWowSecret() {
     box.append(el('div', {}, el('span', { class: 'tag ' + (r.wow.secretBy === 'кубик' ? 'dice' : 'own') }, r.wow.secretBy === 'кубик' ? '[кубик]' : 'выбор учителя'), ' ', el('b', {}, r.secret.title)),
       el('div', { class: 'row' }, el('div', { class: 'grow' }, sel), el('button', { class: 'btn ghost small', type: 'button', onclick: () => wowAct('/api/teacher/wow/secret', {}) }, '🎲 Другая спрятанная механика')),
       r.secret.sound && !r.headphones ? el('p', { class: 'small', style: 'color:var(--warm)' }, '🎧 Эту спрятанную механику слышно только в наушниках, а в классе их нет — класс её не почувствует.') : '',
-      r.built && r.built.id !== r.secret.id ? el('p', { class: 'small', style: 'color:var(--warm)' }, `В собранной игре сейчас другая спрятанная механика: «${r.built.title}». Пересоберите игру, чтобы заложить новую.`) : '',
-      r.demo ? el('p', { class: 'small muted' }, 'Демо-режим: без ключа ИИ собирается запасная игра урока, у неё своя спрятанная механика — ускорение волны.') : '');
+      r.built && r.built.id !== r.secret.id ? el('p', { class: 'small', style: 'color:var(--warm)' }, `В собранной игре сейчас другая спрятанная механика: «${r.built.title}». Пересоберите игру, чтобы заложить новую.`) : '');
   }
   // наушники: без них спрятанные механики со звуком не выпадают кубиком и не попадают в карту спрятанной механики Фабрики
   if (!r.secrets.some(x => x.sound)) { host.append(box); return; } // спрятанных механик со звуком нет — отметка про наушники ни на что не влияет
@@ -492,20 +437,19 @@ function drawWowBuild() {
   const prog = el('div');
   const buildBtn = el('button', { class: 'btn', type: 'button', disabled: !ready || r.wow.status === 'building' || W.busy ? true : null, onclick: async () => {
     W.busy = true; buildBtn.disabled = true;
-    const p = el('p', {}, 'ИИ собирает игру класса…');
+    const p = el('p', {}, 'Qwen собирает игру класса…');
     prog.innerHTML = ''; prog.append(el('div', { class: 'progress' }, el('div', { class: 'spinner' }), p));
     try {
-      const res = await Lab.job('/api/teacher/wow/build', { code: T.code }, j => { p.textContent = `ИИ собирает игру класса… ${j.seconds} с` + (j.chars ? ` · ${j.chars.toLocaleString('ru-RU')} символов кода` : '') + (j.phase === 'синтаксис' ? ' · чинит опечатку' : ''); });
+      const res = await Lab.job('/api/teacher/wow/build', { code: T.code }, j => { p.textContent = `Qwen собирает игру класса… ${j.seconds} с` + (j.chars ? ` · ${j.chars.toLocaleString('ru-RU')} символов кода` : '') + (j.phase === 'синтаксис' ? ' · чинит опечатку' : ''); });
       toast(`Игра «${res.title}» собрана`, 'ok');
     } catch (e) { toast(e.message, 'err', 8000); }
     W.busy = false; drawWow(true);
-  } }, r.game ? '↻ Собрать заново' : '⚙ Собрать с ИИ');
+  } }, r.game ? '↻ Собрать заново' : '⚙ Собрать в Qwen');
   box.append(el('div', { class: 'row' }, buildBtn,
-    el('button', { class: 'btn ghost small', type: 'button', onclick: async () => { if (await Lab.ask('Взять запасную игру урока вместо сборки ИИ? Её спрятанная механика — ускорение волны.', { ok: 'Взять запасную' })) wowAct('/api/teacher/wow/fallback', {}, true); } }, 'Запасная игра'),
-    el('span', { class: 'muted small' }, r.demo ? 'Демо-режим: соберётся запасная игра урока с названием по картам.' : 'Полная 3D-игра пишется 5–20 минут. Пока ИИ пишет, класс играет в донора.')), prog);
+    el('span', { class: 'muted small' }, 'Откроется окно Qwen: скопируйте задание в новый чат chat.qwen.ai и вставьте ответ. Пока Qwen пишет, класс играет в донора.')), prog);
   if (r.game) {
     const g = r.game;
-    box.append(el('div', { class: 'row small' }, el('b', {}, `«${g.title}» v${g.version}`), el('span', { class: 'muted' }, g.fallback ? 'запасная игра' : `модель ${g.model}${g.attempts > 1 ? ', попыток ' + g.attempts : ''}`),
+    box.append(el('div', { class: 'row small' }, el('b', {}, `«${g.title}» v${g.version}`), el('span', { class: 'muted' }, `${g.model}${g.attempts > 1 ? ', ответов ' + g.attempts : ''}`),
       ...(g.warnings || []).map(w => el('span', { class: 'tag err', title: 'Замечание проверки' }, w))));
     // бот-плейтестер: новая версия без отчёта прогоняется сразу, в рамке предпросмотра — учитель видит партии бота в ускоренном времени
     const bot = el('div', { class: 'stack', id: 'wowBot' }), botLine = el('div', { class: 'small muted', 'aria-live': 'polite' });
@@ -539,7 +483,7 @@ function drawWowBuild() {
     if (g.playtest) {
       bot.append(Games.playtestBox(g.playtest, { before: g.before }));
       const row = el('div', { class: 'row' });
-      if (g.playtest.findings.length && !r.wow.given && !r.demo) {
+      if (g.playtest.findings.length && !r.wow.given) {
         const fixBtn = el('button', { class: 'btn', type: 'button' }, '🛠 Пусть программист поправит по отчёту');
         fixBtn.addEventListener('click', async () => {
           W.busy = true; fixBtn.disabled = true;
@@ -680,7 +624,7 @@ async function drawAI() {
   host.append(el('div', { class: 'card stack' },
     el('h3', {}, s.demo ? 'ИИ: демо-режим' : 'ИИ подключён'),
     el('p', { class: 'muted small' }, s.demo ? 'Впишите ключ provod.ai в portal/config.json (поле ai.apiKey) и перезапустите портал.' : `Провайдер: ${s.baseUrl}. Ключ хранится только на сервере.`),
-    el('div', { class: 'row' }, el('div', { class: 'grow' }, el('label', { class: 'lbl', for: 'codeModel' }, 'Программист (пишет игры)'), codeSel), el('div', { class: 'grow' }, el('label', { class: 'lbl', for: 'textModel' }, 'Продюсер (читает замыслы)'), textSel)),
+    el('div', { class: 'row' }, el('div', { class: 'grow' }, el('label', { class: 'lbl', for: 'codeModel' }, 'Связка карт (игры пишет Qwen в чате)'), codeSel), el('div', { class: 'grow' }, el('label', { class: 'lbl', for: 'textModel' }, 'Продюсер (читает замыслы)'), textSel)),
     custom,
     el('div', { class: 'row' },
       el('button', { class: 'btn', type: 'button', onclick: async () => {

@@ -1,11 +1,11 @@
 #!/usr/bin/env node
 // Сквозная проверка портала в браузере: учитель и ученик проходят урок 1 целиком.
-// Вау-старт: учитель тянет карты, ученик голосует, учитель тайно меняет спрятанную механику, собирает и раздаёт игру класса; «Найди спрятанную механику» и сводка.
-// Два прогона: с подставным ИИ (mock-ai.js: продюсер, сборка с ошибкой → автопочинка, правка) и в демо-режиме без ключа.
+// Вау-старт: учитель тянет карты, ученик голосует, учитель видит спрятанную механику урока, собирает и раздаёт игру класса; «Найди спрятанную механику» и сводка.
+// Два прогона: с подставным ИИ (mock-ai.js: продюсер и связка по API, программист — подставной Qwen: сборка с ошибкой → починка через тот же чат, правка) и в демо-режиме без ключа.
 // В прогоне с ИИ — «Играем вместе»: второй ученик собирает игру, оба играют в игры друг друга, бьют рекорд автора,
 // бросают вызов на зерне, оставляют плейтест; учитель пишет отзыв; аркада класса и личная аркада, скрытие игры.
 // Срез 3: проектор (код, таймер, кто закончил шаг), вау-старт teacher-demo (карты, сборка при всех, автопочинка, «открыть всем»),
-// фильтр «застряли», лимиты и «+10 запросов», сравнение моделей, отчёт журнала генераций и CSV, статусы заметок и Markdown;
+// фильтр «застряли», лимиты и «+10 запросов», отчёт журнала генераций и CSV, статусы заметок и Markdown;
 // Урок 2 в обоих прогонах: донор с ручками из шага, варианты игры, «Найди спрятанную механику» донора, квиз-раунды «Игра или не игра?»,
 // сортировщик на 8 лотков, Фабрика с донором на выбор и его колодами, черновик ИГРА по правилам донора, сборка, дуэль вдвоём.
 // Урок 3 в обоих прогонах: «Ночной лабиринт», предсказание динамики против телеметрии, «Найди спрятанную механику», квиз «Угадай охотника по следу»,
@@ -35,7 +35,7 @@ const TMP = fs.mkdtempSync(path.join(os.tmpdir(), 'lab-e2e-'));
 process.env.LAB_DATA = path.join(TMP, 'data');
 process.env.LAB_CONFIG = path.join(TMP, 'config.json');
 process.env.LAB_LESSONS = path.join(__dirname, 'fixtures', 'lessons'); // урок-проверка шага teacher-demo
-process.env.LAB_ALL_LESSONS = '1'; // урок 1 через API убран из меню учителя (все игры — в чате Qwen), проверка проходит его как раньше
+process.env.LAB_CHAT_AUTO = path.join(__dirname, 'mock-ai.js'); // программист — подставной Qwen: ответ в окно Qwen вставляется сам
 const OUT = path.resolve(__dirname, '..', '.check');
 fs.mkdirSync(OUT, { recursive: true });
 
@@ -90,6 +90,17 @@ async function playRound(frame, { score = 0, hold = null, page = null, restart =
 }
 // сортировщик квиза: ждём, пока сменится карточка или квиз кончится, а не паузу на анимацию
 const nextItem = (page, step, prev) => page.waitForFunction(([s, p]) => { const e = document.querySelector(s + ' .item'); return !!document.querySelector(s + '.done') || !e || e.textContent.trim() !== p; }, [step, prev], { timeout: 15000 });
+// правка в чате Qwen: ученик пишет Qwen сам и вставляет его ответ в окно правки; ответ «Qwen» — подставной chatAnswer.
+// Если ответ не лёг, портал выдаёт сообщение для того же чата — его подставной Qwen получает сам (LAB_CHAT_AUTO).
+async function chatEdit(student, stepId, what) {
+  const sel = '#step-' + stepId, before = await student.locator(sel + ' .ver').count();
+  await student.fill(sel + ' [data-ask=what]', what);
+  await student.fill(sel + ' [data-paste=text]', mock.chatAnswer({ kind: 'правка', prompt: 'Ученик просит одно изменение: ' + what }));
+  await student.click(sel + ' [data-paste=send]');
+  await student.waitForFunction(([s, n]) => document.querySelectorAll(s + ' .ver').length > n, [sel, before], { timeout: 30000 });
+}
+// задание для Qwen — четыре части (portal/ai/chat-prompt.md): просьба автора, замысел ученика с донором, картинка, что нужно порталу
+const clearTask = (t, donor) => /^собери яркую lowpoly 3d игру для школьников на html\n\n# Замысел геймдизайнера/.test(t || '') && (t || '').includes(donor) && /# Картинка/.test(t) && /# Что нужно порталу/.test(t) && !/Babylon/.test(t);
 // «null» текстом на странице: нативный append превращает null в слово (так было под картами вау-старта и в спрятанной механике у учителя)
 const nullText = p => p.evaluate(() => {
   const w = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
@@ -249,7 +260,7 @@ async function run(browser, base, mode) {
   }
   await shot(student, '5-build');
   await student.waitForSelector('#step-sborka.done', { timeout: 10000 });
-  check('Шаг сборки закрыт самой сборкой: партии — после перемены', mode === 'demo' || /5–10 минут/.test(await student.textContent('#step-sborka')));
+  check('Шаг сборки закрыт самой сборкой: программист — Qwen в чате', /chat\.qwen\.ai/.test(await student.textContent('#step-sborka')));
 
   if (FULL1) { // --only=N: остальное в уроке 1 пропускаем (без сдвига отступов, чтобы не мешать параллельным правкам)
   // после перемены: своя игра и «Совпало с задуманным чувством?» (урок 1, чекпоинт 5 «Разбор прототипа», 18.10.2026)
@@ -268,16 +279,19 @@ async function run(browser, base, mode) {
   own = await gameFrame(student, '/play/', 0);
   await student.locator('#step-razbor iframe').scrollIntoViewIfNeeded(); // рамка за краем экрана кадров не рисует — время партии стоит
   await own.evaluate(() => window.__lab.confirm());
-  // ждём время партии, а не настоящее: без видеокарты кадров мало, и за 6 настоящих секунд в игре проходит 2–3
-  const atT = t => own.waitForFunction(x => window.__lab.lab.t >= x, t, { timeout: 30000, polling: 100 });
-  await atT(2.5); await own.evaluate(() => { window.__lab.lab.score = 3; });
-  await atT(5); await own.evaluate(() => { window.__lab.lab.score = 7; });
-  await atT(6.5); await own.evaluate(() => window.__lab.end('lose', 'Проверка'));
+  // по игровым часам, а не по настенным: в программной отрисовке кадры редкие, и lab.t идёт медленнее
+  const at = t => own.waitForFunction(x => window.__lab.lab.t >= x, t, { timeout: 30000, polling: 100 });
+  await at(2.5); await own.evaluate(() => { window.__lab.lab.score = 3; });
+  await at(5); await own.evaluate(() => { window.__lab.lab.score = 7; });
+  await at(6.5); await own.evaluate(() => window.__lab.end('lose', 'Проверка'));
   await student.waitForSelector('#step-razbor svg.curve', { timeout: 10000 });
   check('Разбор: кривая партии нарисована по счёту из оболочки', await student.locator('#step-razbor svg.curve polyline.now').count() === 1);
-  await student.locator('#step-razbor svg.curve').scrollIntoViewIfNeeded(); // щелчок мышью — по экрану: кривая под рамкой игры может быть ниже края
-  const box = await student.locator('#step-razbor svg.curve').boundingBox();
-  await student.locator('#step-razbor svg.curve').click({ position: { x: box.width * 0.6, y: box.height / 2 } });
+  // отметка на кривой (кривая может быть ниже края окна); панель может перерисоваться после конца партии — тогда отмечаем ещё раз
+  for (let i = 0; i < 4 && (await student.locator('#step-razbor .toolpanel .chipbtn').count()) < 5; i++) {
+    const curve = student.locator('#step-razbor svg.curve'), box = await curve.boundingBox();
+    if (box) await curve.click({ position: { x: box.width * 0.6, y: box.height / 2 } }); // click сам прокручивает к кривой
+    await sleep(500);
+  }
   await student.click('#step-razbor .toolpanel .chipbtn >> nth=4');
   await student.click('#step-razbor [data-curve="no"]');
   await student.click('#step-razbor [data-offer] >> nth=0');
@@ -294,23 +308,18 @@ async function run(browser, base, mode) {
   await student.click('#step-razbor [data-done="sort"]');
   await student.click('#step-razbor [data-tool="lamps"]');
   check('Лампочки: «проигрыш или рекорд» загорелась по партии', await student.locator('#step-razbor .lamp.on').count() >= 1);
-  await student.click('#step-razbor [data-finding] >> nth=0');
+  await student.click('#step-razbor [data-finding]:has(.tag.card) >> nth=0'); // главная — 💬 просьба: она и пойдёт в правку
   await student.click('#step-razbor [data-razbor="done"]');
   await student.waitForSelector('#step-razbor.done', { timeout: 10000 });
   check('Разбор готов: главная находка выбрана', true, (await student.textContent('#step-razbor [data-finding].on')).replace(/\s+/g, ' '));
 
   // правка 1: главная находка разбора уже в просьбе
-  const pre = await student.inputValue('#f-masterskayareq');
+  await student.waitForFunction(() => { const i = document.querySelector('#step-masterskaya [data-ask=what]'); return i && i.value.length > 10; }, null, { timeout: 8000 }).catch(() => {});
+  const pre = await student.inputValue('#step-masterskaya [data-ask=what]');
   check('Правка 1: главная находка разбора — уже в просьбе', pre.length > 10 && await student.locator('#step-masterskaya [data-finding]').count() >= 1, pre);
-  const before = await student.locator('#step-masterskaya .ver').count();
-  await student.click('#step-masterskaya .opt >> text=Вяло, мало сочности');
-  await student.fill('#f-masterskayareq', 'Пусть последний враг мигает красным');
-  await student.click('#step-masterskaya >> text=Отправить программисту');
-  await student.waitForFunction(n => document.querySelectorAll('#step-masterskaya .ver').length > n, before, { timeout: 30000 });
-  check('Правка кнопкой и своими словами дала новую версию', true, await student.textContent('#step-masterskaya .versions'));
-  if (mode === 'mock') check('Куски правки дважды не легли — программист прислал игру целиком', mock.last.changeTries.join(',') === 'куски,куски,целиком', mock.last.changeTries.join(','));
-  // урок 1: в шаге одна правка — кнопка отправки исчезает; вторая — в «Версии 2»
-  await student.waitForSelector('#step-masterskaya >> text=Правка этого шага использована');
+  await chatEdit(student, 'masterskaya', 'Пусть последний враг мигает красным');
+  check('Правка в чате Qwen: просьба своими словами, ответ вставлен — новая версия', true, await student.textContent('#step-masterskaya .versions'));
+  if (mode === 'mock') check('Куски правки не легли — портал попросил в тот же чат, Qwen прислал игру целиком', mock.last.changeTries.join(',') === 'куски,целиком', mock.last.changeTries.join(','));
   // проверка версии: «Хуже» — откат одной кнопкой; в демо — к v1, с ИИ — к починенной v2 (v1 нарочно падает, а в эту версию будут играть соседи)
   const back = mode === 'mock' ? 2 : 1;
   await student.click('#step-proverka .veil button');
@@ -337,16 +346,9 @@ async function run(browser, base, mode) {
   // версия 2: правка 2 по карточкам соседей, сервер третью не берёт
   await student.click('.cp >> text=Версия 2');
   const before2 = await student.locator('#step-masterskaya-2 .ver').count();
-  if (mode === 'mock') {
-    await student.waitForSelector('#step-masterskaya-2 [data-card]', { timeout: 10000 });
-    await student.click('#step-masterskaya-2 [data-card] >> nth=0');
-    check('Правка 2: карточка соседа легла в просьбу', /\(сосед\): /.test(await student.inputValue('#f-masterskaya-2req')), await student.inputValue('#f-masterskaya-2req'));
-  } else await student.click('#step-masterskaya-2 .opt >> text=Скучно в середине');
-  await student.click('#step-masterskaya-2 >> text=Отправить программисту');
-  await student.waitForFunction(n => document.querySelectorAll('#step-masterskaya-2 .ver').length > n, before2, { timeout: 30000 });
-  await student.waitForSelector('#step-masterskaya-2 >> text=Правка этого шага использована');
-  const again = await student.evaluate(() => Lab.api('/api/ai/change', { request: 'Ещё одна правка' }).then(() => 'принял', e => e.status + ' ' + e.message));
-  check('Третью правку на уроке 1 сервер не берёт', /^429 /.test(again), again);
+  await chatEdit(student, 'masterskaya-2', 'Пусть в середине партии прилетает вторая волна');
+  check('Правка 2 дала новую версию', await student.locator('#step-masterskaya-2 .ver').count() > before2);
+  check('Правок без лимита: чат бесплатный, окно правки осталось', await student.locator('#step-masterskaya-2 [data-paste=send]').count() === 1);
   if (mode === 'mock') {
     await student.click('#step-sosed-v2 .veil button');
     await playRound(await gameFrame(student, '/play/', 0), { score: 15 });
@@ -406,7 +408,6 @@ async function run(browser, base, mode) {
   const plan = await teacher.textContent('#studentDlg pre.plan');
   check('Учитель видит замысел ученика', plan.includes('Пасека под огнём'));
   await shot(teacher, '7-teacher');
-  if (mode === 'mock') await compareModels(teacher, shot);
   await teacher.click('#studentDlg >> text=Закрыть');
   await liveLesson(code, mode, teacher, pj, shot);
   await teacher.click('.tabs >> text=Заметки автора');
@@ -427,13 +428,12 @@ async function run(browser, base, mode) {
     await teacher.waitForSelector('#report');
     const rows = await teacher.$$eval('#report tbody tr', trs => trs.map(tr => [...tr.cells].map(td => td.textContent.trim())));
     const byM = Object.fromEntries(rows.map(r => [r[0], r]));
-    // mock-code: три сборки (две ученические и вау-старт), каждая упала в рамке и починена; mock-alt — сравнение, заработало сразу
-    check('Отчёт: mock-code — 2 игры, 0% с первой попытки, все работают после починки', byM['mock-code'] && byM['mock-code'][1] === '2' && byM['mock-code'][2] === '0%' && byM['mock-code'][3] === '100%', JSON.stringify(byM['mock-code']));
-    check('Отчёт: mock-alt — 100% с первой попытки, рубли на игру', byM['mock-alt'] && byM['mock-alt'][2] === '100%' && byM['mock-alt'][6] !== '—', JSON.stringify(byM['mock-alt']));
-    check('Отчёт: сравнение моделей на одном замысле', /«Пасека под огнём» · Тестер/.test(aiTab) && /mock-alt: ✓ с первой попытки/.test(aiTab));
+    // chat.qwen.ai: две сборки учеников, каждая упала в рамке и починена через тот же чат
+    const q = byM['chat.qwen.ai'];
+    check('Отчёт: chat.qwen.ai — 2 игры, 0% с первой попытки, все работают после починки', q && q[1] === '2' && q[2] === '0%' && q[3] === '100%', JSON.stringify(q || rows));
     const [bom, csvText] = await teacher.evaluate(async () => { const b = new Uint8Array(await (await fetch(document.querySelector('#csvGames').href)).arrayBuffer()); return [[...b.slice(0, 3)].join(','), new TextDecoder().decode(b)]; });
     const lines = csvText.trim().split(/\r?\n/);
-    check('CSV по играм: заголовок, строка на игру, «;» и BOM', bom === '239,187,191' && /^Дата;Класс;Ученик/.test(lines[0]) && lines.length === 4 && lines.some(l => l.includes('mock-alt') && l.includes(';да;')), lines.length + ' строк');
+    check('CSV по играм: заголовок, строка на игру, «;» и BOM', bom === '239,187,191' && /^Дата;Класс;Ученик/.test(lines[0]) && lines.length === 3 && lines.every((l, i) => !i || l.includes('chat.qwen.ai')), lines.length + ' строк');
     const calls = await teacher.evaluate(async () => (await fetch(document.querySelector('#csvCalls').href)).text());
     check('CSV всех вызовов модели', /Токены вход/.test(calls) && calls.trim().split(/\r?\n/).length > 6);
   } else check('Демо-режим виден учителю', /демо-режим/i.test(aiTab));
@@ -513,14 +513,13 @@ async function wowStart(teacher, student, mode, shot) {
   check('Принятую связку видит ученик под картами', (await student.textContent('#step-vau-karty .linkbox .link-phrase')).trim() === phrase);
   await shot(teacher, '1a-wow-cards');
   // сборка: ученики видят, что ИИ собирает игру; учитель проверяет и раздаёт
-  await teacher.click('#wowBuild >> text=⚙ Собрать с ИИ');
+  await teacher.click('#wowBuild >> text=⚙ Собрать в Qwen');
   await teacher.waitForSelector('#wowBuild >> text=📣 Раздать классу', { timeout: 60000 });
   const info = (await teacher.textContent('#wowBuild')).replace(/\s+/g, ' ');
-  if (mode === 'mock') check('ИИ собрал игру класса с ручкой secret и скрытым счётчиком', !/нет ручки secret|не считается/.test(info) && !/запасная игра «/.test(info), info.slice(0, 120));
-  if (mode === 'mock') check('Принятая связка ушла программисту вместе с картами', /Гейм дизайн документ — класс принял его/.test(mock.last.wowUser || '') && (mock.last.wowUser || '').includes(phrase));
+  check('Qwen собрал игру класса с ручкой secret и скрытым счётчиком', !/нет ручки secret|не считается/.test(info) && /chat\.qwen\.ai/.test(info), info.slice(0, 120));
+  if (mode === 'mock') check('Принятый гейм дизайн документ ушёл программисту вместе с картами', /Гейм дизайн документ \(класс принял его/.test(mock.last.wowUser || '') && (mock.last.wowUser || '').includes(phrase));
   if (mode === 'mock') { const threat = (await teacher.textContent('#wowCards [data-card=threat] .wc-text')).trim(); check('Карта угрозы ушла программисту с особенностью', /- Угроза: .+ — .+/.test(mock.last.wowUser || ''), threat); }
   if (mode === 'mock') check('Документ задаёт программисту жанр и камеру, кнопки контроллера и риск', /- Жанр и камера: Арена/.test(mock.last.wowUser || '') && /- Риск и очки: /.test(mock.last.wowUser || ''));
-  else check('Без ключа собралась запасная игра урока', /запасная игра/.test(info), info.slice(0, 120));
   // бот-плейтестер сам прогоняет новую версию в рамке предпросмотра: три партии, отчёт сохраняется у версии
   await teacher.waitForSelector('#wowBot .botbox', { timeout: 180000 });
   const botRows = await teacher.locator('#wowBot .botrow').count(), botText = (await teacher.textContent('#wowBot')).replace(/\s+/g, ' ');
@@ -531,10 +530,10 @@ async function wowStart(teacher, student, mode, shot) {
     check('Бот нашёл, что править, и предлагает правку программисту', found > 0 && await teacher.locator('#wowBot >> text=Пусть программист поправит по отчёту').count() === 1, `находок ${found}`);
     await teacher.click('#wowBot >> text=Пусть программист поправит по отчёту');
     await teacher.waitForSelector('#wowBot >> text=до правки:', { timeout: 180000 });
-    check('Программист получил отчёт бота и правил по нему', /Бот-плейтестер сыграл/.test(mock.last.playtestUser || '') && /Что он нашёл:\n- /.test(mock.last.playtestUser || '') && /Торопыга/.test(mock.last.playtestUser || ''));
+    check('Программист получил отчёт бота и правил по нему', /отчёту бота-плейтестера:\n- /.test(mock.last.playtestUser || ''));
     const info2 = (await teacher.textContent('#wowBuild')).replace(/\s+/g, ' ');
     check('Правка по плейтесту — новая версия игры класса, бот проверил её снова', /v2/.test(info2) && /↩ Вернуть v1/.test(info2), info2.slice(0, 120));
-  } else check('Без ключа ИИ правки по отчёту бота нет', await teacher.locator('#wowBot >> text=Пусть программист поправит по отчёту').count() === 0);
+  }
   if (await teacher.locator('#wowBuild .veil:not([hidden]) button').count()) await teacher.click('#wowBuild .veil button');
   const tf = await gameFrame(teacher, '/play/', 0);
   if (mode === 'mock') check('Правка по отчёту пришла кусками и легла в код игры', /Правка по плейтесту/.test(await tf.evaluate(() => (GAME.notes || []).join(' '))));
@@ -548,7 +547,7 @@ async function wowStart(teacher, student, mode, shot) {
 async function secretHunt(teacher, student, mode, shot) {
   await student.click('.cp >> text=Спрятанная механика');
   // слепой тест: две копии игры класса, в одной ручка спрятанной механики выключена; в копии со спрятанной механикой она срабатывает 5 раз
-  const knob = mode === 'mock' ? 'secret' : 'speedup', seen = {};
+  const knob = 'secret', seen = {};
   for (const k of ['A', 'B']) {
     await student.click(`#step-secret-ab .ab-${k}`);
     await student.click('#step-secret-ab .veil button');
@@ -574,21 +573,20 @@ async function secretHunt(teacher, student, mode, shot) {
   await student.waitForSelector('#step-secret-hunt .opt');
   const options = await student.locator('#step-secret-hunt .opt').allTextContents();
   const twist = (await teacher.textContent('#wowCards [data-card=twist] .wc-text')).trim(); // вкладка учителя скрыта, но карты в ней остались
-  // в прогоне с ИИ ученик попадается в ловушку карт, в демо — угадывает спрятанную механику запасной игры
-  const pick = mode === 'mock' ? options.find(o => o.toLowerCase() === twist.toLowerCase()) : 'Волна ускоряется, когда врагов становится меньше';
-  check('«Найди спрятанную механику»: 4 варианта, среди них ловушка с карты', options.length === 4 && options.some(o => o.toLowerCase() === twist.toLowerCase()) && (mode === 'demo' || options.includes(SECRET1)), options.join(' | '));
+  // ученик попадается в ловушку карт
+  const pick = options.find(o => o.toLowerCase() === twist.toLowerCase());
+  check('«Найди спрятанную механику»: 4 варианта, среди них ловушка с карты', options.length === 4 && options.some(o => o.toLowerCase() === twist.toLowerCase()) && options.includes(SECRET1), options.join(' | '));
   await student.click(`#step-secret-hunt .opt >> text=${pick}`);
   await student.click('#step-secret-hunt >> text=Это спрятанная механика!');
   await student.waitForSelector('#step-secret-hunt.done');
   const reveal = (await student.textContent('#step-secret-hunt')).replace(/\s+/g, ' ');
-  if (mode === 'mock') check('Ловушка распознана, спрятанная механика раскрыта: «разгон», счётчик из партий', /Ловушка/.test(reveal) && reveal.includes(SECRET1) && /сработала 6 раз/.test(reveal), reveal.slice(0, 160));
-  else check('Спрятанная механика угадана и раскрыта', /Угадал/.test(reveal) && /Нисикадо/.test(reveal), reveal.slice(0, 120));
+  check('Ловушка распознана, спрятанная механика раскрыта: «разгон», счётчик из партий', /Ловушка/.test(reveal) && reveal.includes(SECRET1) && /сработала 6 раз/.test(reveal), reveal.slice(0, 160));
   check('Раскрытие: слепой тест угадан, моменты спрятанной механики на полоске партии', /спрятанная механика была именно там/.test(reveal) && await student.locator('#step-secret-hunt .marks i').count() >= 2, `отметок: ${await student.locator('#step-secret-hunt .marks i').count()}`);
   await shot(student, '2a-secret', true);
   // «Посмотри на спрятанную механику»: та же игра с лупой — оболочка зажигает её на каждом срабатывании, кнопки силы спрятанной механики 0 · 1 · 2
   await student.waitForSelector('#step-secret-lupa .donor-card h3', { timeout: 10000 });
   const lupaTitle = (await student.textContent('#step-secret-lupa .donor-card h3')).trim();
-  check('Лупа открылась после «Найди спрятанную механику» с названием спрятанной механики', mode === 'mock' ? lupaTitle === SECRET1 : lupaTitle.length > 3, lupaTitle);
+  check('Лупа открылась после «Найди спрятанную механику» с названием спрятанной механики', lupaTitle === SECRET1, lupaTitle);
   await student.click('#step-secret-lupa .veil button');
   const lf = await gameFrame(student, '/play/', 0);
   await sleep(600); // reveal приходит после ready
@@ -651,7 +649,7 @@ async function secretHunt(teacher, student, mode, shot) {
   await teacher.click('.tabs >> text=Вау-старт');
   await teacher.waitForSelector('#wowSummary td .tag', { timeout: 10000 }); // ждём свежую сводку с догадкой: старая осталась во вкладке с прошлого раза
   const sum = (await teacher.textContent('#wowSummary')).replace(/\s+/g, ' ');
-  check('Учитель видит сводку спрятанной механики: партии, срабатывания, догадки, слепой тест', /сработала 6 раз/.test(sum) && /почувствовали спрятанную механику 1 из 1/.test(sum) && (mode === 'mock' ? /ловушка/.test(sum) : /угадал/.test(sum)), sum.slice(0, 200));
+  check('Учитель видит сводку спрятанной механики: партии, срабатывания, догадки, слепой тест', /сработала 6 раз/.test(sum) && /почувствовали спрятанную механику 1 из 1/.test(sum) && /ловушка/.test(sum), sum.slice(0, 200));
   await shot(teacher, '2b-wow-summary');
   await teacher.click('.tabs >> text=Урок');
 }
@@ -687,7 +685,7 @@ async function projectorPair(pj, mode, shot) {
     const x = await f.evaluate(() => window.__lab && window.__lab.ready ? { cfg: window.__lab.cfg, lupa: window.__lab.lupa, bot: window.__lab.lab && window.__lab.lab.t > 0 } : null).catch(() => null);
     if (x && x.bot) sides.push(x);
   }
-  const knob = mode === 'mock' ? 'secret' : 'speedup';
+  const knob = 'secret';
   const off = sides.find(x => x.cfg[knob] === 0), on = sides.find(x => x.cfg[knob] !== 0);
   check('«Спрятанная механика рядом»: бот играет обе копии, слева спрятанная механика выключена, справа лупа', sides.length === 2 && !!off && !!on && !off.lupa && !!on.lupa, JSON.stringify(sides.map(x => ({ [knob]: x.cfg[knob], lupa: x.lupa && x.lupa.title }))));
   check('После запуска на проекторе видно название спрятанной механики', /«.+»/.test(await pj.textContent('#pj-pair h1')));
@@ -840,21 +838,6 @@ async function scriptEdit(teacher, shot) {
     delete require.cache[require.resolve(file)];
     if (await teacher.$('#authorSw.on')) await teacher.click('#authorSw');
   }
-}
-
-/* ---------- сравнение моделей на одном замысле (в карточке ученика) ---------- */
-async function compareModels(teacher, shot) {
-  await teacher.fill('#cmpCustom', 'mock-alt');
-  await teacher.click('#studentDlg >> text=⚖ Пересобрать другой моделью');
-  await teacher.waitForSelector('#studentDlg .cmpbox .seg .opt >> nth=1', { timeout: 30000 });
-  await teacher.click('#studentDlg .cmpbox .seg .opt >> nth=1');
-  const cf = await gameFrame(teacher, '/play/', 0);
-  check('Сравнение: другая модель пересобрала замысел, версия B запускается', await cf.evaluate(() => window.__lab.ready));
-  await sleep(600);
-  await shot(teacher, '7a-compare');
-  await teacher.click('#studentDlg .cmpbox .seg .opt >> nth=0');
-  const of = await gameFrame(teacher, '/play/', 0);
-  check('Сравнение: версия A — игра ученика в той же рамке', await of.evaluate(() => window.__lab.ready) && /Ученик/.test(await teacher.textContent('#studentDlg .cmpbox .seg .opt.on')));
 }
 
 /* ---------- урок-проверка: вау-старт учителя (teacher-demo) ---------- */
@@ -1182,8 +1165,8 @@ async function lessonThree(mode, teacher, student, shot) {
   await student.click('#step-sborka >> text=⚙ Собрать игру');
   let own = await gameFrame(student, '/play/', 0);
   if (mode === 'mock') {
-    check('Программисту ушли каркас от продюсера и находки продюсера', /Каркас \(выбрал продюсер\): Как у донора/.test(mock.last.newUser || '') && /Продюсер заметил в замысле[^\n]*\n- нет крючка/.test(mock.last.newUser || ''));
-    check('Программисту ушёл образец урока 3', mock.last.system.includes("title: 'Ночной лабиринт'") && !mock.last.system.includes("title: 'Камни мудреца'") && mock.last.system.includes('лабиринт по клеткам с охотниками'));
+    check('Программисту ушли находки продюсера', /Продюсер заметил:\n- нет крючка/.test(mock.last.newUser || ''));
+    check('Задание Qwen урока 3 — три части с донором урока', clearTask(mock.last.newUser, 'Pac-Man'));
     await own.evaluate(() => window.__lab.confirm());
     await student.waitForFunction(() => document.querySelectorAll('#step-sborka .ver').length >= 2, null, { timeout: 30000 });
     own = await gameFrame(student, '/play/', 0);
@@ -1321,8 +1304,7 @@ async function lessonFour(mode, teacher, student, shot) {
   await student.click('#step-sborka >> text=⚙ Собрать игру');
   let own = await gameFrame(student, '/play/', 0);
   if (mode === 'mock') {
-    const sys = mock.last.system || '';
-    check('Программист урока 4 получил образец «Каменный стакан» вместо «Камней мудреца»', sys.includes("title: 'Каменный стакан'") && !sys.includes("title: 'Камни мудреца'") && sys.includes('по мотивам «Тетриса»'));
+    check('Задание Qwen урока 4 — три части с донором урока', clearTask(mock.last.newUser, 'Тетрис'));
     await own.evaluate(() => window.__lab.confirm());
     await student.waitForFunction(() => document.querySelectorAll('#step-sborka .ver').length >= 2, null, { timeout: 30000 });
     own = await gameFrame(student, '/play/', 0);
@@ -1331,8 +1313,9 @@ async function lessonFour(mode, teacher, student, shot) {
   await student.waitForSelector('#step-sborka.done', { timeout: 10000 });
   const card = await student.evaluate(async () => (await (await fetch('/api/arcade', { headers: { 'x-lab-token': Lab.token.get() } })).json()).mine.find(c => c.lesson && c.lesson.id === 'urok-04'));
   check('Игра урока 4 собрана, в аркаде донор «Тетрис»', card && card.title === 'Сырная башня' && card.donor === '«Тетрис»', card ? `${card.title} · ${card.donor}` : 'нет карточки');
-  const p4 = require('./build-prompt'), sys4 = p4.systemPrompt({ lesson: 'urok-04' });
-  check('Промпт программиста урока 4 не больше 25 тысяч токенов', p4.tokens(sys4) <= 25000 && !/\{\{/.test(sys4), `примерно ${p4.tokens(sys4)} токенов`);
+  // программист — Qwen в чате: правила Лаб3D уходят в чат только короткими (перенос и починка прежней игры-объекта GAME)
+  const p4 = require('./build-prompt'), sys4 = p4.systemPrompt({ lesson: 'urok-04', model: 'chat.qwen.ai', short: true });
+  check('Правила Лаб3D для чата урока 4 не больше 25 тысяч токенов', p4.tokens(sys4) <= 25000 && !/\{\{/.test(sys4), `примерно ${p4.tokens(sys4)} токенов`);
   // Sonnet: свой короткий промпт и один образец — донор урока у игры ученика, каркас связки у игры класса
   const c4 = p4.systemPrompt({ lesson: 'urok-04', model: 'anthropic/claude-sonnet-5' }), cw = p4.systemPrompt({ model: 'anthropic/claude-sonnet-5', frame: 'Вид сбоку, камера сбоку' });
   const samples = t => ['НЛО в станице', 'Камни мудреца', 'Ночной лабиринт', 'Каменный стакан', 'Ледолом', 'Тур над Хаджохом', 'Шаг в такт', 'Башня до неба'].filter(n => t.includes(`title: '${n}'`)).length;
@@ -1441,14 +1424,13 @@ async function buildOwn(mode, student, les, title, sampleTitle, donor = null) {
   await student.click('#step-sborka >> text=⚙ Собрать игру');
   let own = await gameFrame(student, '/play/', 0);
   if (mode === 'mock') {
-    const sys = mock.last.system || '';
-    check(`Программист урока ${les.number} получил образец «${sampleTitle}»`, sys.includes(`title: '${sampleTitle}'`) && sys.includes(les.sample.about.slice(0, 40)));
+    check(`Задание Qwen урока ${les.number} — три части с донором урока`, clearTask(mock.last.newUser, les.donor.replace(/[«»]/g, '').split(/[ ,]/)[0]));
     await own.evaluate(() => window.__lab.confirm());
     await student.waitForFunction(() => document.querySelectorAll('#step-sborka .ver').length >= 2, null, { timeout: 30000 });
     own = await gameFrame(student, '/play/', 0);
   }
-  const bp = require('./build-prompt'), sys = bp.systemPrompt({ lesson: les.id });
-  check(`Промпт программиста урока ${les.number} не больше 25 тысяч токенов`, bp.tokens(sys) <= 25000 && !/\{\{/.test(sys), `примерно ${bp.tokens(sys)} токенов`);
+  const bp = require('./build-prompt'), sys = bp.systemPrompt({ lesson: les.id, model: 'chat.qwen.ai', short: true }); // короткие правила Лаб3D для чата
+  check(`Правила Лаб3D для чата урока ${les.number} не больше 25 тысяч токенов`, bp.tokens(sys) <= 25000 && !/\{\{/.test(sys), `примерно ${bp.tokens(sys)} токенов`);
   return { own, twist, r, i };
 }
 async function lessonFive(mode, teacher, student, shot) {
@@ -1880,7 +1862,7 @@ async function lessonEight(mode, teacher, student, shot, { browser, base, code, 
 
   // выставка: без игр класса — ожидание; с подставным ИИ соседка собирает игру джема, голоса, итоги, турнир на проекторе
   await student.click('.cp >> text=Играем вместе');
-  if (mode === 'demo') { check('Выставка без игр класса ждёт игры джема', /Ждём игры класса/.test(await student.textContent('#step-vystavka'))); return; }
+  if (mode === 'demo') { const wait = await student.waitForSelector('#step-vystavka >> text=Ждём игры класса', { timeout: 10000 }).then(() => true, () => false); check('Выставка без игр класса ждёт игры джема', wait, wait ? '' : (await student.textContent('#step-vystavka')).slice(0, 160)); return; }
   const nctx = await browser.newContext({ viewport: { width: 1280, height: 900 } });
   await nctx.addInitScript(() => { window.LAB_ASK_AUTO = true; window.LAB_FAST = true; window.LAB_LOWRES = true; });
   const nb = await nctx.newPage();
@@ -1958,7 +1940,7 @@ async function together(browser, base, code, teacher, student, errors, shot) {
   let nown = await gameFrame(nb, '/play/', 0);
   const nbFeel = await nb.inputValue('#f-resheniyafeeling');
   check('«Собрать сейчас»: пустые поля замысла дописал сервер и показал их ученице', nbFeel.length > 3 && await nb.locator('#step-resheniya .tag.dice').count() === 3 && (await nb.textContent('#step-igra .preview-igra')).includes('Тучи над Фиштом'), nbFeel);
-  check('Карта спрятанной механики ученицы ушла программисту', /Спрятанная механика — её выбрал ученик/.test(mock.last.newUser || ''));
+  check('Карта спрятанной механики ученицы ушла программисту', /Спрятанная механика — её нет на картах/.test(mock.last.newUser || '') && /portal.count\('_secret'\)/.test(mock.last.newUser || ''));
   await nown.evaluate(() => window.__lab.confirm());
   await nb.waitForFunction(() => document.querySelectorAll('#step-sborka .ver').length >= 2, null, { timeout: 30000 });
   nown = await gameFrame(nb, '/play/', 0);
@@ -2132,15 +2114,9 @@ async function together(browser, base, code, teacher, student, errors, shot) {
   await nctx.close();
 }
 
-/* ---------- кэш промпта: метка у модели с cache, чтение кэша дешевле в журнале генераций ---------- */
+/* ---------- кэш промпта: метка у модели с cache (по API теперь только продюсер, связка и черновик отзыва) ---------- */
 function cacheCheck() {
-  const log = require('../lib/store').genlog().filter(e => !e.demo);
-  const code = log.filter(e => e.model === 'mock-code' && e.tokensIn), hit = code.filter(e => e.tokensCached > 0);
-  check('Кэш промпта: системный промпт программиста ушёл с меткой cache_control, продюсера — без неё', mock.last.marked.has('mock-code') && !mock.last.marked.has('mock-text'));
-  check('Кэш промпта: повторные вызовы программиста читают кэш', hit.length > 0 && code.some(e => e.tokensCacheWrite > 0), `из кэша ${hit.length} из ${code.length}`);
-  const e = hit[0] || {}, full = Math.round(((e.tokensIn || 0) * 100 + (e.tokensOut || 0) * 400) / 1e4) / 100;
-  const want = Math.round((((e.tokensIn || 0) - (e.tokensCached || 0)) * 100 + (e.tokensCached || 0) * 10 + (e.tokensOut || 0) * 400) / 1e4) / 100;
-  check('Кэш промпта: рубли считаются по цене чтения кэша', e.rub === want && e.rub < full, `${e.rub} ₽ вместо ${full} ₽`);
+  check('Кэш промпта: системный промпт связки (модель с cache) ушёл с меткой cache_control, продюсера — без неё', mock.last.marked.has('mock-code') && !mock.last.marked.has('mock-text'));
 }
 
 (async () => {
@@ -2150,10 +2126,12 @@ function cacheCheck() {
   const base = `http://127.0.0.1:${srv.address().port}`;
   const browser = await chromium.launch({ headless: !process.argv.includes('--headed'), args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'] });
   try {
+    mock.last.demo = false;
     await run(browser, base, 'mock');
     if (FULL1) cacheCheck();
     if (!process.argv.includes('--mock-only')) {
       writeConfig({ apiKey: '' });
+      mock.last.demo = true;
       await run(browser, base, 'demo');
     }
   } catch (e) {

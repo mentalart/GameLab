@@ -1,8 +1,7 @@
 #!/usr/bin/env node
 // Подставной OpenAI-совместимый ИИ для проверки портала без ключа и без денег.
-// Продюсер отвечает JSON с развилкой. Первая сборка — игра, которая падает через секунду (проверка автопочинки),
-// починка и правка возвращают рабочий образец урока, общая игра урока — образец с ручкой secret. Модель mock-alt собирает
-// рабочую игру сразу — для сравнения моделей и отчёта журнала генераций. Поддерживает потоковый ответ (stream).
+// По API — продюсер (JSON с развилкой), правка продюсера, связка карт и черновик отзыва; поддерживает потоковый ответ (stream).
+// Программиста — Qwen в чате — подменяет chatAnswer ниже.
 // Запуск: node portal/tools/mock-ai.js [порт]  →  в config.json: "baseUrl": "http://localhost:порт/v1", "apiKey": "mock"
 'use strict';
 const http = require('http');
@@ -12,9 +11,9 @@ const path = require('path');
 const SAMPLE = fs.readFileSync(path.join(__dirname, '..', 'games', 'nlo-v-stanice.js'), 'utf8');
 const BROKEN = SAMPLE.replace('  update(lab, dt) {', '  update(lab, dt) {\n    if (lab.t > 1.2) lab.state.nothing.position.x = 1; // подставная ошибка для проверки автопочинки');
 
-// last.system — последний системный промпт программиста (e2e проверяет, какой образец урока ушёл модели);
+// last.chat — задания, которые портал выдал подставному Qwen; last.wowUser, newUser, playtestUser — последние из них по виду;
 // last.marked — модели, чей системный промпт пришёл с меткой кэша cache_control
-const last = { marked: new Set(), changeTries: [] };
+const last = { marked: new Set(), changeTries: [], chat: [] };
 const flat = c => typeof c === 'string' ? c : (c || []).map(p => p.text || '').join('');
 function answer(messages, model) {
   const sys = flat((messages.find(m => m.role === 'system') || {}).content);
@@ -30,41 +29,74 @@ function answer(messages, model) {
   if (/Перепиши промпт ИГРА/.test(user)) { // правка продюсера: поля ИГРА заново
     return JSON.stringify({ igra: { i: 'Пасечник защищает пасеку от шершней, напряжение растёт с каждым сбитым.', g: 'Стрелки — двигаться, пробел — стрелять, на геймпаде крестовина и A.', r: 'Шершни спускаются строем всё быстрее. Соревнуемся рекордом класса. Три жизни.', a: 'Закат над пасекой, золотые искры, гул роя.' }, changes: ['Вписал рекорд класса — так есть чем соревноваться.', 'Назвал кнопки на геймпаде.'] });
   }
-  if (!/продюсер/i.test(sys)) last.system = sys;
-  if (/^Игра класса\. /.test(user)) last.wowUser = user;
-  if (/^Игра ученика\. /.test(user)) last.newUser = user;
   if (/продюсер/i.test(sys)) {
     return JSON.stringify({ praise: 'Понятная идея и честное предупреждение перед выстрелом.', findings: [{ kind: 'нет крючка', text: 'Непонятно, как соревноваться с друзьями.' }], forks: [{ question: 'Как соревноваться?', options: ['Рекорд класса', 'Вдвоём на одном экране'] }], frame: 'Как у донора, изометрия' });
   }
-  const title = (/Название: (.+)/.exec(user) || [])[1];
-  const named = code => title ? code.replace(/title: '[^']*'/, 'title: ' + JSON.stringify(title.trim())) : code;
-  if (/Бот-плейтестер сыграл/.test(user)) { // правка игры класса по отчёту бота: присланный код с заметкой о правке
-    last.playtestUser = user;
-    return "Правлю два места.\n<<<<<<< НАЙТИ\n  players: 1,\n=======\n  notes: ['Правка по плейтесту (подставной ИИ): бездействие теперь наказано'],\n  players: 1,\n>>>>>>> ЗАМЕНИТЬ\n";
+  return '{}';
+}
+
+// Подставной Qwen в чате: server.js с LAB_CHAT_AUTO вставляет этот ответ в окно Qwen сам (q — задание: kind, prompt, followUp).
+// Отвечает объектом GAME образца урока — портал принимает и его, поэтому проверки ручек, рекордов и бота-плейтестера те же.
+// Первая сборка ученика падает через секунду (проверка починки через тот же чат), игра класса — образец с ручкой secret,
+// правка ученика сначала присылает куски, которые не ложатся, и после ответа портала — игру целиком.
+const js = code => '```js\n' + code + '```';
+const noted = (code, note) => code.replace("  donor: 'Space Invaders',", "  donor: 'Space Invaders',\n  notes: [" + JSON.stringify(note) + '],');
+function chatAnswer(q) {
+  const t = String(q.prompt || '');
+  last.chat.push({ kind: q.kind, followUp: !!q.followUp, prompt: t });
+  if (last.demo && !q.followUp) { const d = demoAnswer(q, t); if (d) return d; }
+  if (q.followUp) { // портал не принял прошлый ответ — игра целиком
+    if (/^правка/.test(q.kind)) last.changeTries.push('целиком');
+    return 'Вот игра целиком.\n' + js(noted(SAMPLE, 'Правка ученика выполнена (подставной Qwen)'));
   }
-  if (/^Игра класса\. /.test(user)) { // общая игра урока: спрятанная механика образца переименована в ручку secret
-    const hero = (/Герой: (.+)/.exec(user) || [])[1] || 'Герой';
+  if (/# Гейм дизайн документ/.test(t)) { // игра класса: спрятанная механика образца переименована в ручку secret
+    last.wowUser = t;
+    const hero = ((/- Герой: (.+)/.exec(t) || [])[1] || 'Герой').split(' — ')[0];
     const shared = SAMPLE.replace(/speedup/g, 'secret').replace(/label: 'Спрятанная механика: ускорение от числа сбитых', hint: '[^']*'/, "label: 'Спрятанная механика', hint: '0 — выключена, 1 — как задумано'")
       .replace(/\n.*Спрятанная механика выключена: волна не ускорялась.*\n/, '\n');
-    return '```js\n' + shared.replace(/title: '[^']*'/, 'title: ' + JSON.stringify(hero.trim() + ' против волны')) + '```';
+    return js(shared.replace(/title: '[^']*'/, 'title: ' + JSON.stringify(hero.trim() + ' против волны')));
   }
-  const patchAsked = /Формат ответа для этой правки другой/.test(user);
-  if (/Игра упала/.test(user)) { // чиним присланный код: убираем подставную ошибку (кусками, если просят куски)
-    const code = (/```js\n([\s\S]*?)```/.exec(user) || [])[1] || SAMPLE;
+  if (/# Замысел геймдизайнера/.test(t)) { // своя игра ученика: падает через секунду; карта спрятанной механики — ручка secret
+    last.newUser = t;
+    const title = (/Название: (.+)/.exec(t) || [])[1];
+    let code = /Спрятанная механика — её нет на картах/.test(t) ? BROKEN.replace(/speedup/g, 'secret') : BROKEN;
+    if (title) code = code.replace(/title: '[^']*'/, 'title: ' + JSON.stringify(title.trim()));
+    return js(code.replace("  donor: 'Space Invaders',", "  donor: 'Space Invaders',\n  notes: ['Решил сам: добавил золотую тарелку-бонус', 'Решил сам: стога-укрытия из сена'],"));
+  }
+  if (/Игра упала/.test(t)) { // починка: убираем подставную ошибку (кусками, если просят куски)
+    const code = (/```(?:js|html)\n([\s\S]*?)```/.exec(t.slice(t.lastIndexOf('Игра упала'))) || [])[1] || SAMPLE; // в задании GAME выше — правила с образцами
     const bad = code.split('\n').find(l => l.includes('подставная ошибка'));
-    if (patchAsked && bad) { last.fixPatch = true; return 'Нашёл: обращение к несуществующему объекту.\n<<<<<<< НАЙТИ\n' + bad + '\n=======\n>>>>>>> ЗАМЕНИТЬ\n'; }
-    return 'Нашёл: обращение к несуществующему объекту. Исправил.\n```js\n' + code.split('\n').filter(l => !l.includes('подставная ошибка')).join('\n') + '```';
+    if (/НАЙТИ/.test(t) && bad) { last.fixPatch = true; return 'Нашёл: обращение к несуществующему объекту.\n<<<<<<< НАЙТИ\n' + bad + '\n=======\n>>>>>>> ЗАМЕНИТЬ\n'; }
+    return 'Нашёл: обращение к несуществующему объекту. Исправил.\n' + js(code.split('\n').filter(l => !l.includes('подставная ошибка')).join('\n'));
   }
-  if (model === 'mock-alt') return 'Готово.\n```js\n' + named(SAMPLE).replace("  donor: 'Space Invaders',", "  donor: 'Space Invaders',\n  notes: ['Другая модель: собрал без ошибок'],") + '```';
-  const first = flat((messages.find(m => m.role === 'user') || {}).content);
-  if (/просит одно изменение/.test(first)) { // правка ученика: куски нарочно не ложатся — проверяем откат на игру целиком
-    last.changeTries.push(/Формат ответа для этой правки другой/.test(first) ? 'куски' : 'целиком');
-    if (last.changeTries[last.changeTries.length - 1] === 'куски') return '<<<<<<< НАЙТИ\nтакой строки в игре нет\n=======\nconst x = 1;\n>>>>>>> ЗАМЕНИТЬ\n';
+  if (/отчёту бота-плейтестера/.test(t)) { // правка игры класса по отчёту бота: куски с заметкой о правке
+    last.playtestUser = t;
+    return "Правлю два места.\n<<<<<<< НАЙТИ\n  players: 1,\n=======\n  notes: ['Правка по плейтесту (подставной Qwen): бездействие теперь наказано'],\n  players: 1,\n>>>>>>> ЗАМЕНИТЬ\n";
   }
-  if (/просит одно изменение/.test(user)) return '```js\n' + SAMPLE.replace("  donor: 'Space Invaders',", "  donor: 'Space Invaders',\n  notes: ['Правка ученика выполнена (подставной ИИ)'],") + '```';
-  // карта спрятанной механики ученика: ручка спрятанной механики образца становится ручкой secret, как у игры класса
-  const own = /Спрятанная механика — её выбрал ученик/.test(user) ? BROKEN.replace(/speedup/g, 'secret') : BROKEN;
-  return '```js\n' + named(own).replace("  donor: 'Space Invaders',", "  donor: 'Space Invaders',\n  notes: ['Решил сам: добавил золотую тарелку-бонус', 'Решил сам: стога-укрытия из сена'],") + '```';
+  if (/просит одно изменение/.test(t)) { // правка ученика: куски нарочно не ложатся — портал просит прислать заново
+    last.changeTries.push('куски');
+    return '<<<<<<< НАЙТИ\nтакой строки в игре нет\n=======\nconst x = 1;\n>>>>>>> ЗАМЕНИТЬ\n';
+  }
+  return js(SAMPLE);
+}
+
+// last.demo — прогон «демо-режим» в e2e: своя игра ученика — образец урока с его названием и решениями (ремейк из sample сценария),
+// правка оставляет игру как есть; игра класса, починка и правка по плейтесту — как выше
+function demoAnswer(q, t) {
+  if (/# Замысел геймдизайнера/.test(t)) {
+    last.newUser = t;
+    let les = null; try { les = require(path.join(__dirname, '..', 'lessons', String(q.lesson || '').replace(/[^\w-]/g, ''))); } catch (e) { /* урок-проверка */ }
+    let code = les && les.sample ? fs.readFileSync(path.join(__dirname, '..', les.sample.file), 'utf8') : SAMPLE;
+    const f = re => ((re.exec(t) || [])[1] || '').trim(), q2 = v => JSON.stringify(String(v || ''));
+    if (/Спрятанная механика — её нет на картах/.test(t)) code = code.replace(/speedup/g, 'secret');
+    code = code.replace(/title: '[^']*'/, 'title: ' + q2(f(/Название: (.+)/) || 'Моя игра'))
+      .replace(/subtitle: '[^']*'/, 'subtitle: ' + q2('Демо-режим: вместо Qwen — образец урока с твоим названием. ' + f(/- Идея и чувство: (.+)/)))
+      .replace(/decisions: \[[\s\S]*?\],\n/, 'decisions: ' + JSON.stringify([`Чувство: ${f(/- Чувство: (.+)/)}`, `Честность: ${f(/- Честность: (.+)/)}`, `Выбор: ${f(/- Выбор: (.+)/)}`]) + ',\n  notes: ["Демо-режим: игру не писала модель, это образец урока"],\n');
+    return js(code);
+  }
+  // правка идёт в тот же чат без кода игры: кусок, который ничего не меняет, ложится в любую игру GAME
+  if (/просит одно изменение/.test(t)) return 'Готово.\n<<<<<<< НАЙТИ\nconst GAME = {\n=======\nconst GAME = {\n>>>>>>> ЗАМЕНИТЬ\n';
+  return null;
 }
 
 const cacheSeen = new Set();
@@ -104,5 +136,5 @@ function start(port = 0) {
   });
   return new Promise(r => srv.listen(port, '127.0.0.1', () => r(srv)));
 }
-module.exports = { start, last };
+module.exports = { start, last, chatAnswer };
 if (require.main === module) start(Number(process.argv[2]) || 8090).then(s => console.log('Подставной ИИ: http://127.0.0.1:' + s.address().port + '/v1'));

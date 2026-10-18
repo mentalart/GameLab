@@ -14,7 +14,7 @@ async function boot() {
     if (e.status === 401) { location.href = '/'; return; }
     $('#main').innerHTML = ''; $('#main').append(el('div', { class: 'locked-msg' }, e.message)); return;
   }
-  S.me = me; S.lesson = me.lesson; S.answers = me.answers || {}; S.game = me.game; S.wow = me.wow; S.opened = me.class.opened; S.demo = me.demo;
+  S.me = me; S.lesson = me.lesson; S.answers = me.answers || {}; S.game = me.game; S.wow = me.wow; S.opened = me.class.opened;
   $('#lessonTitle').textContent = `Урок ${me.lesson.number} · ${me.lesson.title} · донор: ${me.lesson.donor}`;
   $('#nick').textContent = me.nick + ' · класс ' + me.class.code;
   $('#demoBanner').hidden = !me.demo;
@@ -422,7 +422,7 @@ function wowStatusText(W) {
   if (!W) return '';
   const drawn = W.cards.filter(c => c.text).length;
   return { cards: drawn ? (drawn < W.cards.length ? 'Учитель тянет карты.' : 'Карты на столе. Не нравится карта — голосуй «перетянуть».') : 'Ждём, пока учитель вытянет карты.',
-    building: '⚙ ИИ собирает игру класса прямо сейчас. Пока ждёшь — сыграй в донор ниже.', preview: 'Игра собрана, учитель её проверяет.', given: '✓ Игра готова — играй в следующем шаге!' }[W.status] || '';
+    building: '⚙ Qwen собирает игру класса прямо сейчас. Пока ждёшь — сыграй в донор ниже.', preview: 'Игра собрана, учитель её проверяет.', given: '✓ Игра готова — играй в следующем шаге!' }[W.status] || '';
 }
 
 // колода безумных идей: карты, которые учитель тянет при классе, появляются у всех сразу; голос «перетянуть»
@@ -1307,9 +1307,9 @@ function ownGame({ onOver, onAgain, autostart, onReady, onBalance, balanceWhy, p
     onPoster: data => { const gg = g(); api('/api/game/poster', { game: gg.id, version: gg.current, data }).catch(() => { gg.poster = null; }); },
     onError: async err => {
       const n = g().current;
-      if (fixTries >= 2 || S.demo) {
+      if (fixTries >= 2) {
         h.message(el('div', { class: 'stack', style: 'align-items:center' }, el('b', {}, 'Игра упала: ' + (err.message || 'ошибка')),
-          el('p', { class: 'muted small' }, S.demo ? 'В демо-режиме программист не чинит ошибки.' : 'Программист не смог починить за 2 попытки. Откати версию или опиши ошибку в Мастерской по формуле «Делал… Ожидал… Получилось… Не трогай…».')));
+          el('p', { class: 'muted small' }, 'Программист не смог починить за 2 попытки. Откати версию или опиши ошибку в Мастерской по формуле «Делал… Ожидал… Получилось… Не трогай…».')));
         api('/api/game/error', { version: n, error: err }).catch(() => {});
         return;
       }
@@ -1362,7 +1362,7 @@ STEPS.build = ctx => {
       const og = live = ownGame({ autostart, onOver: () => { v.rounds++; ctx.save(v, ctx.done || v.rounds >= need); } });
       host.append(og.el);
     }
-    host.append(el('div', { class: 'row' }, buildBtn, el('span', { class: 'muted small' }, S.demo ? 'Демо-режим: соберётся образец урока с твоим названием.' : 'Программист пишет 5–10 минут, игра сохранится.')));
+    host.append(el('div', { class: 'row' }, buildBtn, el('span', { class: 'muted small' }, 'Откроется окно Qwen: скопируй задание в новый чат chat.qwen.ai, дождись кода и вставь ответ. Игра сохранится.')));
   }
   async function build() {
     if (S.game && S.game.current && !(await Lab.ask('Собрать игру заново по замыслу? Правки этой игры останутся в версиях.', { ok: 'Собрать заново' }))) return;
@@ -1908,7 +1908,7 @@ function chatWorkshop({ v, save, what, feel, keepDeck, onDone }) {
   const keepRow = keepDeck && keepDeck.length ? el('div', { class: 'row', style: 'gap:4px' }, keepDeck.slice(0, 6).map(t => el('button', { type: 'button', class: 'chipbtn', onclick: () => {
     ask.keep = ask.keep ? ask.keep.replace(/\s*$/, '') + (ask.keep.includes(t) ? '' : ', ' + t) : t; v.ask = ask; save(); const i = box.querySelector('[data-ask=keep]'); if (i) i.value = ask.keep; paint();
   } }, '+ ' + t))) : null;
-  box.append(
+  box.append(...[
     el('div', { class: 'eyebrow' }, '1. Один раз за чат — договор с Qwen'),
     el('p', { class: 'small muted' }, 'Договор напоминает Qwen правила портала: ручки, конец партии, спрятанная механика, геймпад. Отправь его в тот чат, где Qwen собрал игру, один раз.'),
     el('div', { class: 'row' }, copyFromBtn(v.pact ? '✓ Договор скопирован · ещё раз' : '📋 Скопировать договор', '/api/chat/pact', () => { v.pact = true; save(); }),
@@ -1919,7 +1919,7 @@ function chatWorkshop({ v, save, what, feel, keepDeck, onDone }) {
       if (!ask.what.trim()) { toast('Напиши, что изменить'); return; } copy(msg.textContent); beep('tick'); v.copied = true; save(); toast('Скопировано — вставь в чат Qwen', 'ok');
     } }, '📋 Скопировать просьбу'), el('a', { class: 'btn ghost', href: QWEN_URL, target: '_blank', rel: 'noopener noreferrer' }, 'Открыть chat.qwen.ai ↗')),
     el('div', { class: 'eyebrow' }, '3. Вставь ответ Qwen'),
-    chatPasteBox({ request: () => ask.what.trim(), onDone }));
+    chatPasteBox({ request: () => ask.what.trim(), onDone })].filter(Boolean)); // null у нативного append — слово «null»
   paint();
   return box;
 }
@@ -1998,7 +1998,7 @@ STEPS.workshop = ctx => {
         try {
           const r = await Lab.job('/api/ai/change', { request: text }, j => { p.textContent = `Программист вносит правку… ${j.seconds} с` + (j.chars ? ` · ${j.chars.toLocaleString('ru-RU')} символов` : ''); });
           S.game = r.game; v.requests = v.requests.concat({ text: preset ? preset.label + (own ? ': ' + own : '') : own, dice: !preset && !!req.dice, version: r.version }); ctx.save(v, true, true);
-          toast(S.demo ? 'Демо-режим: правка записана, но игра не изменилась' : `Готово: версия ${r.version}`, 'ok'); draw(); gameChanged(); if (live) live.h.start();
+          toast(`Готово: версия ${r.version}`, 'ok'); draw(); gameChanged(); if (live) live.h.start();
         } catch (e) { toast(e.message, 'err', 8000); send.disabled = false; prog.innerHTML = ''; }
       });
       const cardsHost = el('div', { class: 'stack' });

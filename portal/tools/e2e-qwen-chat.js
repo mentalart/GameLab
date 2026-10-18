@@ -1,6 +1,6 @@
 #!/usr/bin/env node
-// Проверка урока 1 версии 2: программист — Qwen в чате chat.qwen.ai, игры собираются копированием задания и вставкой ответа.
-// Одна кнопка «Скопировать задание» на новую игру: задание Clear из трёх частей, ответ — страница HTML.
+// Проверка программиста — Qwen в чате chat.qwen.ai: игры собираются копированием задания и вставкой ответа.
+// Задание на новую игру одно — четыре части (просьба автора, замысел, картинка, что нужно порталу), ответ — страница HTML; прежний объект GAME тоже принимается.
 // Без ключа ИИ: сборка, оборванный ответ и «Продолжи», ответ без кода и сообщение в тот же чат, правки кусками обоих форматов,
 // мост portal.js (ручки, setCfg, «запустилась», отказ бота, телеметрия партии), игра класса у учителя, окно Qwen в браузере ученика,
 // правка в чате Qwen (договор, перенос в новый чат, конструктор просьбы, «Вставить новую версию из чата», сообщение «что пропало»).
@@ -21,8 +21,8 @@ const portal = require('../server');
 const results = [];
 const check = (what, ok, detail = '') => { results.push(!!ok); console.log(`  ${ok ? '✓' : '✗'} ${what}${detail ? ' — ' + detail : ''}`); };
 const sleep = ms => new Promise(r => setTimeout(r, ms));
-const SAMPLE = fs.readFileSync(path.join(__dirname, '..', 'games', 'nlo-v-stanice.js'), 'utf8'); // ответ на прежнее задание — объект GAME
-const PAGE = fs.readFileSync(path.join(__dirname, 'fixtures', 'qwen-game.html'), 'utf8'); // ответ на задание Clear — страница HTML
+const SAMPLE = fs.readFileSync(path.join(__dirname, '..', 'games', 'nlo-v-stanice.js'), 'utf8'); // ответ объектом GAME (прежние игры)
+const PAGE = fs.readFileSync(path.join(__dirname, 'fixtures', 'qwen-game.html'), 'utf8'); // ответ на задание — страница HTML
 const patch = (find, repl) => `<<<<<<< НАЙТИ\n${find}\n=======\n${repl}\n>>>>>>> ЗАМЕНИТЬ`;
 
 (async () => {
@@ -38,27 +38,29 @@ const patch = (find, repl) => `<<<<<<< НАЙТИ\n${find}\n=======\n${repl}\n>>
     for (let i = 0; i < 100; i++) { const j = await call(token, '/api/job?id=' + id); if (want.includes(j.state)) return j; await sleep(50); }
     throw new Error('Задание не дошло до ' + want);
   };
-  const prompt = (token, id, clear) => call(token, '/api/job/prompt?id=' + id + (clear ? '&clear=1' : '')).then(r => r.text);
+  const prompt = (token, id) => call(token, '/api/job/prompt?id=' + id).then(r => r.text);
   try {
-    console.log('▶ Урок 1, версия 2: Qwen в чате');
+    console.log('▶ Программист — Qwen в чате');
     const t = (await call('', '/api/login', { role: 'teacher', password: PASSWORD })).token;
     const list = await call(t, '/api/teacher/classes');
     const ids = list.lessons.map(l => l.id);
-    const v1 = list.lessons.find(l => l.id === 'urok-01');
-    check('Урок 1 (версия 1) скрыт из меню учителя, версия 2 — в меню', v1 && v1.hidden && ids.indexOf('urok-01-v2') >= 0 && !list.lessons.find(l => l.id === 'urok-01-v2').hidden, ids.slice(0, 3).join(', '));
-    check('Версия 2 помечена как чат', list.lessons.find(l => l.id === 'urok-01-v2').chat && !list.lessons.find(l => l.id === 'urok-01').chat);
-    const cls = await call(t, '/api/teacher/class', { name: 'Qwen', lesson: 'urok-01-v2' });
+    check('В меню один урок 1, версии 2 нет', ids.filter(id => /^urok-01/.test(id)).join() === 'urok-01', ids.slice(0, 3).join(', '));
+    // класс, открытый на прежней версии 2, открывает урок 1
+    const old = await call(t, '/api/teacher/class', { name: 'Старый', lesson: 'urok-01' });
+    const store = require('../lib/store'), oc = store.getClass(old.code); oc.lesson = 'urok-01-v2'; store.saveClass(oc);
+    const so = (await call('', '/api/login', { code: old.code, nick: 'Боря' })).token;
+    check('Класс прежней версии 2 открывает урок 1', (await call(so, '/api/me')).lesson.id === 'urok-01');
+    const cls = await call(t, '/api/teacher/class', { name: 'Qwen', lesson: 'urok-01' });
     const s = (await call('', '/api/login', { code: cls.code, nick: 'Аня' })).token;
     const me = await call(s, '/api/me');
-    check('Ученик видит урок версии 2 без демо-режима программиста', me.lesson.id === 'urok-01-v2' && me.chat === true && me.demo === false);
+    check('Ученик видит урок 1, программист — Qwen в чате', me.lesson.id === 'urok-01' && /chat\.qwen\.ai/.test(JSON.stringify(me.lesson)));
 
-    // сборка: два задания на выбор
+    // сборка: одно задание из трёх частей
     let job = (await call(s, '/api/ai/build', {})).job;
     let j = await poll(s, job, ['waiting']);
-    check('Сборка ждёт ответа из чата, заданий два', j.manual && j.manual.step === 1 && !j.manual.followUp && j.manual.clear > 0, j.manual && `${j.manual.chars} и ${j.manual.clear} знаков`);
-    const full = await prompt(s, job), clear = await prompt(s, job, true);
-    check('Прежнее задание: правила Лаб3D, образец, просьба автора и памятка', /const GAME = \{/.test(full) && full.includes(ai.CHAT.phrase) && /джойстика \(геймпада\)/.test(full));
-    check('Clear: четыре части без Babylon и образцов, раздел «Картинка»', clear.startsWith(ai.CHAT.phrase) && /# Замысел геймдизайнера/.test(clear) && /# Картинка/.test(clear) && /# Что нужно порталу/.test(clear)
+    check('Сборка ждёт ответа из чата, задание одно', j.manual && j.manual.step === 1 && !j.manual.followUp && !('clear' in j.manual), j.manual && `${j.manual.chars} знаков`);
+    const clear = await prompt(s, job);
+    check('Задание: четыре части без Babylon и образцов, раздел «Картинка»', clear.startsWith(ai.CHAT.phrase) && /# Замысел геймдизайнера/.test(clear) && /# Картинка/.test(clear) && /# Что нужно порталу/.test(clear)
       && /portal\.knobs/.test(clear) && /getGamepads/.test(clear) && !/Babylon|BABYLON|const GAME/.test(clear) && clear.length < 8500, `${clear.length} знаков`); // +1500: спрятанная механика по шагам (howto); +1000: раздел «Картинка» (решения автора 18.10.2026)
     // ответ оборвался: портал просит продолжение и склеивает части
     const answer = 'Вот игра:\n```js\n' + SAMPLE.trim() + '\n```\nГотово!';
@@ -74,12 +76,12 @@ const patch = (find, repl) => `<<<<<<< НАЙТИ\n${find}\n=======\n${repl}\n>>
     check('Версия записана как chat.qwen.ai без рублей', g1.versions[0].model === 'chat.qwen.ai' && g1.versions[0].rub === 0);
     check('Склеенный код совпадает с образцом', fs.readFileSync(path.join(process.env.LAB_DATA, 'games', g1.id, 'v1.js'), 'utf8').trim() === SAMPLE.trim());
 
-    // задание Clear: ответ без кода → сообщение в тот же чат, потом оборванная страница и продолжение
+    // ответ без кода → сообщение в тот же чат, потом оборванная страница и продолжение
     job = (await call(s, '/api/ai/build', {})).job;
     await poll(s, job, ['waiting']);
     await call(s, '/api/job/answer', { id: job, text: 'Конечно! Вот идея игры: кот прыгает по Луне.' });
     j = await poll(s, job, ['waiting']);
-    check('Ответ без кода: сообщение в тот же чат, одно задание', j.manual.step === 2 && j.manual.followUp && !j.manual.clear && /нет кода/.test(await prompt(s, job)));
+    check('Ответ без кода: сообщение в тот же чат', j.manual.step === 2 && j.manual.followUp && /нет кода/.test(await prompt(s, job)));
     r = await call(s, '/api/job/answer', { id: job, text: '```html\n' + PAGE.slice(0, PAGE.indexOf('function frame')) });
     check('Оборванная страница: «Продолжи»', r.continue === true);
     await call(s, '/api/job/answer', { id: job, text: PAGE.slice(PAGE.indexOf('function frame')) + '```' });
@@ -91,13 +93,13 @@ const patch = (find, repl) => `<<<<<<< НАЙТИ\n${find}\n=======\n${repl}\n>>
     const dl = await (await fetch(`${base}/download/${g1.id}/${vHtml}.html`)).text();
     check('Скачанная игра-страница несёт мост внутри', /window\.portal = portal/.test(dl) && !/src="\/engine\/portal\.js"/.test(dl));
 
-    // правки страницы — по заданию Clear, без лимита
+    // правки страницы — по chat-prompt.md, без лимита
     let okChanges = 0, title = 'Кот на Луне';
     for (let k = 0; k < 3; k++) {
       job = (await call(s, '/api/ai/change', { request: 'Новое название ' + k })).job;
       j = await poll(s, job, ['waiting']);
       const p = await prompt(s, job);
-      if (!k) check('Правка страницы в тот же чат: просьба и формат кусками, без кода игры и правил Лаб3D', /выше в этом чате/.test(p) && /Новое название 0/.test(p) && /НАЙТИ/.test(p) && /portal/.test(p) && !/<\/html>/.test(p) && !/const GAME = \{/.test(p) && !j.manual.clear, `${p.length} знаков`);
+      if (!k) check('Правка страницы в тот же чат: просьба и формат кусками, без кода игры и правил Лаб3D', /выше в этом чате/.test(p) && /Новое название 0/.test(p) && /НАЙТИ/.test(p) && /portal/.test(p) && !/<\/html>/.test(p) && !/const GAME = \{/.test(p), `${p.length} знаков`);
       await call(s, '/api/job/answer', { id: job, text: patch(`<title>${title}</title>`, `<title>Правка ${k}</title>`) });
       title = 'Правка ' + k;
       j = await poll(s, job, ['done', 'error', 'waiting']).catch(() => ({ state: 'timeout' }));
@@ -131,12 +133,12 @@ const patch = (find, repl) => `<<<<<<< НАЙТИ\n${find}\n=======\n${repl}\n>>
     const notes = (await call(s, '/api/game/notes')).notes || [];
     check('Записи программиста portal.notes читаются из кода', notes.includes('Золотая тарелка'), JSON.stringify(notes));
 
-    // учитель: игра класса, обе кнопки
+    // учитель: игра класса
     await call(t, '/api/teacher/wow/draw', { code: cls.code, card: 'all' });
     const tj = (await call(t, '/api/teacher/wow/build', { code: cls.code })).job;
     j = await poll(t, tj, ['waiting']);
-    const tClear = await prompt(t, tj, true);
-    check('Игра класса: Clear с картами, спрятанной механикой и картинкой', j.manual.clear > 0 && tClear.startsWith(ai.CHAT.phrase) && /# Гейм дизайн документ/.test(tClear) && /# Картинка/.test(tClear) && /_secret/.test(tClear) && !/lab\./.test(tClear));
+    const tClear = await prompt(t, tj);
+    check('Игра класса: задание с картами, спрятанной механикой и картинкой', tClear.startsWith(ai.CHAT.phrase) && /# Гейм дизайн документ/.test(tClear) && /# Картинка/.test(tClear) && /_secret/.test(tClear) && !/lab\./.test(tClear));
     const tj2 = (await call(t, '/api/teacher/wow/build', { code: cls.code })).job;
     j = await poll(t, tj, ['error']);
     check('Повторная сборка отменяет ждущее задание', /Отменено/.test(j.error) && tj2 !== tj);
@@ -145,9 +147,9 @@ const patch = (find, repl) => `<<<<<<< НАЙТИ\n${find}\n=======\n${repl}\n>>
     j = await poll(t, tj2, ['done', 'error']);
     const wow = await call(t, '/api/teacher/wow?code=' + cls.code);
     check('Игра класса собрана через чат', j.state === 'done' && wow.wow.status === 'preview' && wow.game.model === 'chat.qwen.ai', j.error || '');
-    let refused = '';
-    try { await call(t, '/api/teacher/compare', { code: cls.code, nick: 'Аня', model: 'x' }); } catch (e) { refused = e.message; }
-    check('Сравнение моделей API в версии 2 закрыто', /chat\.qwen\.ai/.test(refused));
+    let gone = '';
+    for (const p of ['/api/teacher/compare', '/api/teacher/wow/fallback']) try { await call(t, p, { code: cls.code, nick: 'Аня', model: 'x' }); } catch (e) { gone += e.status + ' '; }
+    check('Сравнения моделей и запасной игры нет', gone.trim() === '404 404', gone);
 
     // браузер: окно Qwen и мост игры
     const { chromium } = require('playwright');
@@ -160,9 +162,9 @@ const patch = (find, repl) => `<<<<<<< НАЙТИ\n${find}\n=======\n${repl}\n>>
     await pg.goto(base + '/student');
     await pg.waitForFunction(() => typeof Lab !== 'undefined');
     await pg.evaluate(() => { window.__res = null; Lab.job('/api/ai/build', {}).then(r => (window.__res = r), e => (window.__res = e.message)); });
-    await pg.waitForSelector('dialog.qwen[open] button.clear:not([disabled])', { timeout: 10000 });
+    await pg.waitForSelector('dialog.qwen[open] .qwen-steps button.btn:not([disabled])', { timeout: 10000 });
     const btns = await pg.$$eval('dialog.qwen button.btn:not(.ghost):not(.qwen-send)', b => b.map(x => x.textContent));
-    check('Окно Qwen: одна кнопка «Скопировать задание» (три части, без Clear в подписи), ссылка на чат', btns.length === 1 && /^📋 Скопировать задание \(/.test(btns[0]) && !/Clear/.test(btns[0]) && !!(await pg.$('dialog.qwen a[href="https://chat.qwen.ai/"]')), btns.join(' | '));
+    check('Окно Qwen: одна кнопка задания, ссылка на чат', btns.length === 1 && /Скопировать задание/.test(btns[0]) && !!(await pg.$('dialog.qwen a[href="https://chat.qwen.ai/"]')), btns.join(' | '));
     await pg.screenshot({ path: path.join(__dirname, '..', '.check', 'qwen-chat-dialog.png') }).catch(() => {});
     await pg.fill('dialog.qwen textarea', '```html\n' + PAGE + '\n```');
     await pg.click('dialog.qwen .qwen-send');
