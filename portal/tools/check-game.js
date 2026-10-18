@@ -3,6 +3,7 @@
 // Запуск:  node portal/tools/check-game.js                    — все игры из portal/games/
 //          node portal/tools/check-game.js games/моя-игра.js  — одна игра (путь от portal/)
 //          node portal/tools/check-game.js --self             — ещё и проверка самой оболочки (физика, ловля ошибок)
+//                                                               и витрины готовых деталей engine/kit.html (снимки kit-*.png)
 //          --headed — показать окно браузера, --quick — без «обезьяньего» прогона пресетов
 // Что проверяет: загрузка без ошибок, картинка не пустая, старт пробелом и геймпадом,
 // стартовое нажатие не засчитывается, ввод доходит до игры, панель ручек и пресеты,
@@ -201,6 +202,48 @@ async function brokenChecks(page, res, pass, state, key) {
   return res;
 }
 
+// витрина готовых деталей (engine/kit.html): вся библиотека строится без ошибок, а стили меняют силуэт, не только цвет
+const KIT_SHOTS = ['ель', 'дом с черепицей', 'валун', 'куст', 'фонарь', 'сундук', 'план:двуногий', 'план:четвероногий', 'план:комок', 'план:робот', 'пол:брусчатка', 'край:забор'];
+async function kitChecks(browser, base) {
+  const res = { game: 'engine/kit.html', ok: true, checks: [], errors: [], notes: {} };
+  const pass = (what, ok, detail) => { res.checks.push({ what, ok: !!ok, detail: detail == null ? '' : String(detail) }); if (!ok) res.ok = false; };
+  const page = await browser.newPage({ viewport: { width: 1200, height: 800 } });
+  page.on('pageerror', e => res.errors.push('pageerror: ' + e.message));
+  page.on('console', m => { if (m.type() === 'error' || (m.type() === 'warning' && /\[набор\]/.test(m.text()))) res.errors.push(m.type() + ': ' + m.text()); });
+  try {
+    await page.goto(`${base}/engine/kit.html?still=1`);
+    await page.waitForFunction('window.kitShow && document.querySelectorAll("nav a").length > 100', null, { timeout: 30000 });
+    // вся библиотека и все планы тела в одной сцене: без ошибок и предупреждений
+    const all = await page.evaluate(() => {
+      const P = window.kitPanes[0], lab = P.lab; let n = 0;
+      lab.style({ mood: 'ночь', shape: 'кривой', detail: 'богато', wear: 'заброшенное', wind: 1 });
+      for (const k of lab.kinds()) for (let v = 0; v < k.variants; v++) { lab.prop(k.name, { v }).copy([n % 20 * 3, 0, Math.floor(n / 20) * 3]); n++; }
+      for (const plan of P.api.PLANS) { lab.creature({ plan, colors: { main: '#e0703a' }, at: [n % 20 * 3, 0, 60] }); n++; }
+      lab.creatureKind({ plan: 'комок', colors: { main: '#40a0e0' }, role: 'враг' }).spawn([0, 0, -6]);
+      for (let i = 0; i < 4; i++) lab._kitTick(0.1);
+      return { n, meshes: P.scene.meshes.length };
+    });
+    pass('Вся библиотека строится: виды × варианты и 14 планов тела', !res.errors.length, `${all.n} штук, мешей в сцене ${all.meshes}${res.errors.length ? ' · ' + res.errors[0] : ''}`);
+    const weak = [];
+    for (const it of KIT_SHOTS) {
+      const r = await page.evaluate(n => window.kitShow(n, { mood: 'день', seed: 1, shapes: ['обычный', 'круглый', 'угловатый', 'острый'] }), it);
+      const d = await page.evaluate(() => window.kitDiff());
+      await sleep(150);
+      await page.screenshot({ path: path.join(OUT, `kit-${it.replace(/[:\s]/g, '-')}.png`) });
+      if (r.warns.length) res.errors.push(`${it}: ${r.warns[0]}`);
+      if (d && !d.exact && (d.min < d.threshold || d.recolor >= d.threshold)) weak.push(`${it}: силуэты ${Math.round(d.min * 100)}%, перекраска ${Math.round(d.recolor * 100)}%`);
+      if (d) res.notes[it] = { min: +d.min.toFixed(3), recolor: +d.recolor.toFixed(3) };
+    }
+    pass('Четыре стиля дают разные силуэты, перекраска — нет', !weak.length, weak.length ? weak.join(' | ') : 'снимки: portal/.check/kit-*.png');
+    pass('Без ошибок в консоли витрины', !res.errors.length, res.errors.slice(0, 3).join(' | '));
+  } catch (e) {
+    pass('Проверка витрины дошла до конца', false, e.message.split('\n')[0]);
+  } finally {
+    await page.close();
+  }
+  return res;
+}
+
 (async () => {
   fs.mkdirSync(OUT, { recursive: true });
   const srv = await start(0, '127.0.0.1');
@@ -219,6 +262,13 @@ async function brokenChecks(page, res, pass, state, key) {
     report.push(r);
     for (const c of r.checks) console.log(`  ${c.ok ? '✓' : '✗'} ${c.what}${c.detail ? ' — ' + c.detail : ''}`);
     if (r.notes.fps != null) console.log(`  · кадров в секунду: ${r.notes.fps} (графика без видеокарты, на школьном ПК в разы больше), мешей: ${r.notes.meshes}, вызовов отрисовки: ${r.notes.draws}, сборка партии: ${r.notes.restartMs} мс`);
+    if (!r.ok) allOk = false;
+  }
+  if (flag('--self')) {
+    process.stdout.write('\n▶ engine/kit.html — готовые детали\n');
+    const r = await kitChecks(browser, base);
+    report.push(r);
+    for (const c of r.checks) console.log(`  ${c.ok ? '✓' : '✗'} ${c.what}${c.detail ? ' — ' + c.detail : ''}`);
     if (!r.ok) allOk = false;
   }
   await browser.close();

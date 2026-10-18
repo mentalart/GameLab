@@ -180,7 +180,42 @@ function syntaxError(code) {
   }
 }
 const FORBIDDEN = [/\bdocument\./, /\bwindow\./, /\blocalStorage\b/, /\bfetch\s*\(/, /\bXMLHttpRequest\b/, /\beval\s*\(/, /new\s+Function\b/, /\bimport\s*\(/, /^\s*import\s/m, /\bsetInterval\s*\(/, /\bMath\.random\s*\(/];
-function lint(code) { return FORBIDDEN.filter(r => r.test(code)).map(r => String(r).replace(/\\b|\\s\*|\\|\/|\^|\$/g, '').replace(/m$/, '')); }
+function forbidden(code) { return FORBIDDEN.filter(r => r.test(code)).map(r => String(r).replace(/\\b|\\s\*|\\|\/|\^|\$/g, '').replace(/m$/, '')); }
+// готовые детали (engine/kit.js): что использовано из библиотеки — для предупреждений и ротации видов по классу
+function kitUse(code) {
+  const kinds = new Set(), plans = [];
+  for (const m of code.matchAll(/lab\.(?:prop|scatter)\(\s*['"]([^'"]+)['"]/g)) kinds.add(m[1]);
+  for (const m of code.matchAll(/lab\.scatter\(\s*\[([\s\S]{0,400}?\])\s*\]/g)) for (const k of m[1].matchAll(/\[\s*['"]([^'"]+)['"]\s*,\s*[\d.]+\s*\]/g)) kinds.add(k[1]);
+  for (const m of code.matchAll(/lab\.creature(?:Kind)?\(\s*\{([\s\S]{0,600}?)\}\s*\)/g)) {
+    const pl = /plan\s*:\s*['"]([^'"]+)['"]/.exec(m[1]);
+    if (pl) plans.push({ plan: pl[1], hero: /role\s*:\s*['"]герой['"]/.test(m[1]), mark: /\b(parts|wear|holds|extra)\s*:/.test(m[1]) });
+  }
+  return { kinds: [...kinds], plans, builds: (code.match(/lab\.build\(/g) || []).length, style: /lab\.style\(/.test(code) };
+}
+function lint(code) {
+  const w = forbidden(code), k = kitUse(code);
+  if (!k.style) w.push('нет lab.style: мир приглушённый и похож на соседние');
+  if (k.builds < 2) w.push('своих деталей lab.build меньше двух');
+  if (k.kinds.length > 4) w.push(`видов из библиотеки ${k.kinds.length}: больше четырёх`);
+  if (k.plans.some(p => p.hero && !p.mark)) w.push('у героя нет своей приметы (parts, wear, holds или extra)');
+  return w;
+}
+// ротация (решение 18.10.2026): что уже было в соседних играх класса на этом уроке — программист берёт другое или переиначивает стилем
+function neighborsText(who) {
+  if (!who || !who.class || !who.lesson) return '';
+  const games = store.games().filter(g => g.class === who.class && g.lesson === who.lesson && g.id !== who.game && !g.compareOf && g.current)
+    .sort((a, b) => String(b.created).localeCompare(String(a.created))).slice(0, 8);
+  const kinds = {}, plans = {};
+  for (const g of games) {
+    const code = store.versionCode(g.id, g.current); if (!code) continue;
+    const k = kitUse(code);
+    for (const x of k.kinds) kinds[x] = (kinds[x] || 0) + 1;
+    for (const p of k.plans.filter(p => p.hero)) plans[p.plan] = (plans[p.plan] || 0) + 1;
+  }
+  const top = o => Object.entries(o).sort((a, b) => b[1] - a[1]).map(([x]) => x);
+  if (!Object.keys(kinds).length && !Object.keys(plans).length) return '';
+  return fill(userTemplate('neighbors'), { 'виды': top(kinds).slice(0, 10).join(', ') || 'готовых деталей не было', 'планы': top(plans).slice(0, 4).join(', ') || 'не было' });
+}
 
 const fill = (tpl, map) => Object.entries(map).reduce((s, [k, v]) => s.split('[' + k + ']').join(v == null || v === '' ? '—' : String(v)), tpl);
 
@@ -402,9 +437,10 @@ async function feedbackDraft(d, who) {
 
 /* ---------------- программист ---------------- */
 // карта секрета (урок 1): секрет своей игры в ручке secret — правила те же, что у игры класса (шаблон user:secret)
-function newGameMessage(plan) {
+function newGameMessage(plan, who) {
   const secret = plan.secret ? fill(userTemplate('secret'), { 'секрет': plan.secret.prompt }) + '\n\n' : '';
-  return fill(userTemplate('new').replace('[секрет своей игры]\n', secret), {
+  const near = neighborsText(who);
+  return fill(userTemplate('new').replace('[секрет своей игры]\n', secret).replace('[соседи]\n', near ? near + '\n' : ''), {
     'донор': plan.donor, 'твист': plan.twist, 'мир': plan.world, 'уровень': plan.level,
     'название': plan.title, 'каркас': plan.frame || 'как у донора урока', 'детали': plan.details.length ? 'Детали замысла:\n' + plan.details.join('\n') : '',
     'находки': plan.findings && plan.findings.length ? plan.findings.map(f => '- ' + f).join('\n') : 'замечаний нет',
@@ -500,7 +536,7 @@ const studentFrame = plan => (plan.frame && !/донор/i.test(plan.frame) ? { 
 // opts.model и opts.kind — для сравнения моделей: тот же замысел, другая модель, запись «сравнение» в журнале
 async function build(plan, who, onProgress, opts = {}) {
   if (demo()) return demoGame(plan, who, opts.kind);
-  const r = await program(opts.kind || 'сборка', newGameMessage(plan), who, onProgress, opts.model, studentFrame(plan));
+  const r = await program(opts.kind || 'сборка', newGameMessage(plan, who), who, onProgress, opts.model, studentFrame(plan));
   if (plan.secret && !/\bsecret\s*:\s*\{/.test(r.code)) r.warnings = r.warnings.concat('нет ручки secret');
   return r;
 }

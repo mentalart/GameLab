@@ -14,8 +14,6 @@ const GAME = {
   ],
   camera: 'iso', // в start: наклон камеры свой
   field: { w: 20, h: 28 },
-  sky: '#7fc4f0',
-  fog: 0.004,
   accent: '#ffb347',
   lives: 3,
   decisions: [
@@ -53,6 +51,8 @@ const GAME = {
     st.bricks = this.wall(lab, scene);
     st.paddles = (lab.players === 2 ? [[-1, lab.p1], [1, lab.p2]] : [[0, lab.p1]]).map(([side, p], i) => this.buildPaddle(lab, scene, side * 3.2, i ? 1.7 : 0, p, i));
     st.ball = this.buildBall(lab, scene);
+    st.bakers = st.paddles.map((p, i) => this.buildBaker(lab, p, i));
+    lab.hero(st.paddles[0].node);
     lab.hud('lives', '');
   },
 
@@ -101,6 +101,7 @@ const GAME = {
         const off = lab.clamp((b.x - p.x) / half, -1, 1), a = off * lab.cfg.angle * Math.PI / 180;
         b.vx = Math.sin(a) * b.speed; b.vz = Math.cos(a) * b.speed; b.z = pz + 0.25 + R;
         st.combo = 0; b.sq = 0.45;
+        st.bakers.forEach(k => { k.squash(0.2); k.mood(null); });
         lab.pulse(p.node, 1.25, 0.14); lab.whiten(p.board, 0.06, '#ffe2a8'); lab.vibrate(60, 0.3);
         lab.tone(220, 0.08, 'triangle', 0.12, 160); lab.noise(0.04, 0.08, 1200);
         lab.burst([b.x, 0.6, pz + 0.3], { count: 6, colors: ['#ffd27a', '#ff8a3d'], speed: 3, up: 1 });
@@ -119,6 +120,7 @@ const GAME = {
     // хычин упал в пропасть
     if (b.z < this.PZ - 2.5) {
       lab.hurt([b.x, 0.5, this.PZ], 'Хычины кончились');
+      st.bakers.forEach(k => { k.hurt(); k.mood('испуган'); });
       st.stuck = true; st.auto = 1.6; st.combo = 0; b.speed = lab.cfg.speed;
       lab.vibrate(300, 0.8);
     }
@@ -162,6 +164,7 @@ const GAME = {
     lab.addScore(500 + lab.lives * 300, [k.x, 2, k.z], '#ffb347');
     if (!lab.cfg.finale) return lab.win('Весь лёд растоплен!');
     st.finT = 2.6; st.ball.node.setEnabled(false);
+    st.bakers.forEach(x => x.celebrate());
     lab.slowmo(0.5, 0.35); lab.flash('#ffffff', 0.6); lab.shake(1); lab.vibrate(500, 1);
     [523, 659, 784, 1046, 784, 1046, 1318, 1568].forEach((f, i) => lab.tone(f, 0.22, 'triangle', 0.12, 0, i * 0.12)); // своя победная мелодия
     lab.popup([0, 3, 4], 'ЛЕДОЛОМ!', '#ffb347', 48);
@@ -182,6 +185,8 @@ const GAME = {
     const half = lab.cfg.paddle * p.k / 2;
     p.x = lab.clamp(p.x + p.input.x * lab.cfg.move * dt, -this.W + half, this.W - half);
     p.node.position.x = p.x;
+    const baker = lab.state.bakers && lab.state.bakers[lab.state.paddles.indexOf(p)];
+    if (baker) baker.look(lab.state.ball.node);
     p.node.rotation.y = lab.lerp(p.node.rotation.y, -p.input.x * (lab.juicy('squash') ? 0.12 : 0), 1 - Math.exp(-dt * 12)); // наклон в движении
     p.board.scaling.x = lab.cfg.paddle * p.k; p.rim.scaling.x = lab.cfg.paddle * p.k * 0.95;
   },
@@ -244,26 +249,28 @@ const GAME = {
     top.addChild(fire);
     return { node, top, x: 0, z: this.PZ + 0.55, vx: 0, vz: 0, speed: lab.cfg.speed, sq: 0, spin: 0, trail: 0 };
   },
-  // ледяная пещера Лаго-Наки: пол из снега, стены, сосульки и горы в проёме
+  // ледяная пещера Лаго-Наки на готовых деталях: стиль, лёд пола, торосы, горы; свои — стены пещеры и печь-тандыр пекаря
   cave(lab, scene) {
-    const MB = BABYLON.MeshBuilder, st = lab.state;
-    lab.ground({ w: 80, h: 80, color: '#5d8fc4' });
-    const floor = this.part(lab, MB.CreateBox('лёд пола', { width: this.W * 2, height: 0.1, depth: 23.5 }, scene), '#24497a', 0, 0.03, 0.6, { shiny: 1 });
-    floor.receiveShadows = true;
-    const wallSrc = this.part(lab, MB.CreateBox('стена', { size: 1 }, scene), '#7b93c9'); wallSrc.isVisible = false;
-    const capSrc = this.part(lab, MB.CreateBox('снег', { size: 1 }, scene), '#ffffff'); capSrc.isVisible = false;
-    const put = (x, z, w, d, h) => { const m = wallSrc.createInstance('стена'); m.scaling.set(w, h, d); m.position.set(x, h / 2, z); const s = capSrc.createInstance('снег'); s.scaling.set(w + 0.1, 0.2, d + 0.1); s.position.set(x, h, z); };
-    put(-this.W - 0.6, 0.6, 1.2, 24, 1.4); put(this.W + 0.6, 0.6, 1.2, 24, 1.4); put(0, this.TOP + 0.6, this.W * 2 + 2.4, 1.2, 1.4);
-    // сосульки и глыбы по краям пещеры
-    const ice = this.part(lab, MB.CreateCylinder('сосулька', { height: 1, diameterTop: 0, diameterBottom: 1, tessellation: 5 }, scene), '#8fd0f0', 0, 0, 0);
-    ice.isVisible = false; ice.convertToFlatShadedMesh();
-    for (let i = 0; i < 26; i++) {
-      const side = i % 2 ? 1 : -1, m = ice.createInstance('глыба'), h = lab.rand(2, 6);
-      m.scaling.set(lab.rand(1.2, 2.4), h, lab.rand(1.2, 2.4)); m.position.set(side * lab.rand(10.5, 16), h / 2, lab.rand(-12, 16));
-    }
-    const mount = this.part(lab, MB.CreateCylinder('гора', { height: 1, diameterTop: 0, diameterBottom: 1, tessellation: 5 }, scene), '#8ea7d6', 0, 0, 0);
-    mount.isVisible = false; lab.noShadow(mount);
-    for (let i = 0; i < 7; i++) { const m = mount.createInstance('гора'), h = lab.rand(14, 24); m.scaling.set(lab.rand(14, 22), h, 10); m.position.set(-30 + i * 10, h / 2 - 1, 30 + lab.rand(0, 6)); }
+    const st = lab.state;
+    lab.style({ mood: 'зима', shape: 'острый', detail: 'обычно', wind: 0.6, palette: { земля: '#5d8fc4', вода: '#24497a', камень: '#7b93c9', огонь: '#ff7a2b', акцент: '#ffb347' } });
+    lab.floor({ type: 'лёд с трещинами', w: this.W * 2, h: 23.5, z: 0.6, colors: { лёд: '#2a5590' } }); // тёмный лёд: светлые кирпичи на нём читаются
+    lab.edge({ type: 'обрыв в туман', sides: ['ближняя'] }); // за лопатой — пропасть
+    lab.backdrop({ type: 'горы', layers: 2 });
+    lab.scatter([['торос', 3], ['сталагмит', 2], ['льдина', 1]], { n: 30, area: 'вокруг' });
+    lab.ambient('снег', { n: 60 });
+    // свои детали: стена пещеры со снежной шапкой и сосульками и печь-тандыр — ориентир слева
+    const wall = lab.build('стена пещеры', [['box', [1, 1, 1], [0, 0.5, 0], 0, 'камень'], ['box', [1.1, 0.2, 1.1], [0, 1, 0], 0, 'снег'],
+      ['cone', [0.25, 0.5, 0.25], [0.3, 0.75, 0.55], [Math.PI, 0, 0], 'лёд'], ['cone', [0.2, 0.4, 0.2], [-0.25, 0.8, 0.55], [Math.PI, 0, 0], 'лёд', { d: 1 }]]);
+    wall.copy([-this.W - 0.6, 0, 0.6], 0, [1.2, 1.4, 24]); wall.copy([this.W + 0.6, 0, 0.6], 0, [1.2, 1.4, 24]); wall.copy([0, 0, this.TOP + 0.6], 0, [this.W * 2 + 2.4, 1.4, 1.2]);
+    lab.build('тандыр', [['cyl', [3.2, 2.6, 3.2], [0, 1.3, 0], 0, '#c98a5a', { top: 0.7 }], ['torus', [2.2, 0.4, 2.2], [0, 2.6, 0], 0, '#a8653a'], ['cyl', [1.6, 0.3, 1.6], [0, 2.62, 0], 0, 'огонь', { glow: 1 }],
+      ['box', [1.1, 0.9, 0.3], [0, 0.6, 1.5], 0, 'тёмный'], ['sphere', [0.8, 0.5, 0.3], [0, 0.6, 1.62], 0, 'огонь', { glow: 0.8 }], ['cyl', [0.5, 3.2, 0.5], [0.9, 4, -0.6], 0, 'камень'],
+      ['box', [1.6, 0.25, 1.6], [0, 0.12, 0], 0, 'камень'], ['hemi', [1.6, 0.6, 1.6], [0, 0.2, 2.3], 0, 'снег', { d: 1 }]]).copy([-14, 0, -4], 0.4);
+    lab.ambient('дым из трубы', { at: [-13.1, 7.8, -4.6] });
     st.cave = true;
+  },
+  // пекарь у стены пещеры следит за хычином и переживает за каждый
+  buildBaker(lab, p, i) {
+    return lab.creature({ plan: 'двуногий', size: 2.4, at: [(i ? 1 : -1) * (this.W + 3), 0, this.PZ + 2], role: 'друг', colors: { main: '#f2d0a8', second: '#3a4a7a', belly: '#ffffff', accent: '#ff7a2b' },
+      wear: ['колпак повара', 'фартук'], face: { mustache: true, cheeks: true }, eyes: { look: 'хитрые' } });
   },
 };

@@ -1,0 +1,243 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Готовые детали · витрина</title>
+<style>
+:root{--bg:#0b1020;--panel:#10172e;--line:#2a3560;--accent:#7cf5a8;--accent-ink:#06140c;--text:#f2efe6;--muted:#9aa3c7;--warm:#ffb547;--danger:#ff5d6e;color-scheme:dark}
+*{box-sizing:border-box}
+html,body{height:100%;margin:0;background:var(--bg);color:var(--text);font:14px/1.45 system-ui,-apple-system,'Segoe UI',sans-serif}
+body{display:grid;grid-template-columns:240px 1fr;grid-template-rows:auto 1fr auto;height:100vh}
+header{grid-column:1/3;display:flex;flex-wrap:wrap;gap:10px;align-items:center;padding:8px 12px;border-bottom:1px solid var(--line);background:var(--panel)}
+header h1{font-size:15px;margin:0 8px 0 0;white-space:nowrap}
+label{display:flex;gap:6px;align-items:center;color:var(--muted);font-size:13px}
+select,button,input{font:13px system-ui,sans-serif;color:var(--text);background:#0a0f20;border:1px solid var(--line);border-radius:7px;padding:4px 8px}
+button{cursor:pointer}
+button:hover,select:hover{border-color:var(--accent)}
+button.main{background:var(--accent);color:var(--accent-ink);border-color:var(--accent);font-weight:700}
+nav{overflow:auto;border-right:1px solid var(--line);padding:6px 0;background:#0a0f1f}
+nav input{width:calc(100% - 16px);margin:2px 8px 6px}
+nav h2{font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin:10px 12px 2px}
+nav a{display:block;padding:2px 12px;color:var(--text);text-decoration:none;font-size:13px;cursor:pointer}
+nav a:hover{background:#18224a}
+nav a.on{background:var(--accent);color:var(--accent-ink)}
+nav a small{color:var(--muted);margin-left:4px}
+nav a.on small{color:var(--accent-ink)}
+main{display:grid;grid-template-columns:1fr 1fr;grid-template-rows:1fr 1fr;gap:6px;padding:6px;min-height:0}
+.pane{position:relative;border:1px solid var(--line);border-radius:10px;overflow:hidden;background:#000;min-height:0}
+.pane canvas{width:100%;height:100%;display:block;outline:none}
+.pane .cap{position:absolute;left:8px;top:8px;display:flex;gap:6px;align-items:center;background:#000a;padding:3px 6px;border-radius:8px}
+.pane .cap b{font-size:13px}
+footer{grid-column:1/3;padding:6px 12px;border-top:1px solid var(--line);color:var(--muted);font-size:13px;display:flex;gap:16px;flex-wrap:wrap}
+footer b{color:var(--text)}
+footer .bad{color:var(--danger)}
+footer .ok{color:var(--accent)}
+</style>
+</head>
+<body>
+<header>
+  <h1>Готовые детали · витрина</h1>
+  <label>настроение <select id="mood"></select></label>
+  <label>детали <select id="detail"><option>просто</option><option selected>обычно</option><option>богато</option></select></label>
+  <label>износ <select id="wear"><option>новое</option><option>старое</option><option>заброшенное</option></select></label>
+  <label>вариант <select id="v"><option value="">по зерну</option><option>0</option><option>1</option><option>2</option><option>3</option></select></label>
+  <button class="main" id="seedBtn" title="Другое зерно: те же стили, другие мелочи">Новое зерно</button>
+  <label><input type="checkbox" id="spin" checked> вращать</label>
+  <span id="seedOut" style="color:var(--muted)"></span>
+</header>
+<nav id="list"><input id="find" placeholder="найти вид…" aria-label="Найти вид"></nav>
+<main id="panes"></main>
+<footer><span id="what">—</span><span id="diff"></span><span id="warns"></span></footer>
+<script src="vendor/babylon/babylon.js"></script>
+<script src="kit.js"></script>
+<script>
+// Витрина готовых деталей: один вид или план тела в четырёх стилях рядом.
+// Четыре окна — четыре отдельных движка Babylon, у каждого свой набор LabKit.make(заглушка lab).
+// Для автопроверки: window.kitShow(имя, настройки) и window.kitDiff() — насколько различаются силуэты стилей.
+'use strict';
+const GAME = { title: 'Витрина', field: { w: 10, h: 10 }, camera: 'iso' };
+const B = BABYLON, $ = s => document.querySelector(s);
+const q = new URLSearchParams(location.search);
+const SHAPES = LabKit.SHAPES, MOODS = Object.keys(LabKit.MOODS);
+const STYLES = (q.get('shapes') || 'обычный,круглый,угловатый,острый').split(',');
+let seed = +(q.get('seed') || 1), current = q.get('item') || 'ель', still = !!q.get('still');
+const warns = [];
+const _warn = console.warn; console.warn = (...a) => { if (String(a[0]).includes('Лаб3D') || String(a[0]).includes('набор')) warns.push(a.join(' ')); _warn.apply(console, a); };
+
+for (const m of MOODS) $('#mood').append(new Option(m, m, m === (q.get('mood') || 'день'), m === (q.get('mood') || 'день')));
+if (q.get('detail')) $('#detail').value = q.get('detail');
+if (q.get('wear')) $('#wear').value = q.get('wear');
+if (q.get('v')) $('#v').value = q.get('v');
+if (q.get('still')) $('#spin').checked = false;
+
+// окна
+const panes = STYLES.map((shape, i) => {
+  const el = document.createElement('div'); el.className = 'pane';
+  el.innerHTML = `<canvas></canvas><div class="cap"><b>${i + 1}</b><select aria-label="Форма окна ${i + 1}">${SHAPES.map(s => `<option${s === shape ? ' selected' : ''}>${s}</option>`).join('')}</select></div>`;
+  $('#panes').append(el);
+  const canvas = el.querySelector('canvas'), engine = new B.Engine(canvas, true, { preserveDrawingBuffer: true, stencil: true });
+  const P = { el, canvas, engine, shape, scene: null, lab: null, item: [], ground: null, cam: null };
+  el.querySelector('select').onchange = e => { P.shape = e.target.value; show(current); };
+  let last = performance.now();
+  engine.runRenderLoop(() => {
+    if (!P.scene) return;
+    const now = performance.now(), dt = Math.min(0.05, (now - last) / 1000); last = now;
+    if ($('#spin').checked && P.cam && !P.world) P.cam.alpha += dt * 0.25;
+    try { P.lab._kitTick(still ? 0 : dt); P.scene.render(); } catch (e) { console.error(e); }
+  });
+  return P;
+});
+addEventListener('resize', () => panes.forEach(P => P.engine.resize()));
+
+// заглушка lab: то, чем набор пользуется из оболочки
+function newScene(P) {
+  if (P.scene) P.scene.dispose();
+  const scene = new B.Scene(P.engine);
+  scene.ambientColor = new B.Color3(0.3, 0.3, 0.34);
+  const hemi = new B.HemisphericLight('небо', new B.Vector3(0.2, 1, -0.3), scene);
+  const sun = new B.DirectionalLight('солнце', new B.Vector3(-0.45, -1, 0.4), scene); sun.position = new B.Vector3(30, 50, -30);
+  const sg = new B.ShadowGenerator(1024, sun); sg.usePercentageCloserFiltering = true; sg.bias = 0.0015;
+  scene.onNewMeshAddedObservable.add(m => {
+    m.receiveShadows = true;
+    setTimeout(() => { const no = x => !!(x && x.metadata && x.metadata.noShadow); if (!m.isDisposed() && !no(m) && !no(m.sourceMesh)) sg.addShadowCaster(m, false); }, 0);
+  });
+  const cam = new B.ArcRotateCamera('камера', -Math.PI / 2 - 0.5, 1.22, 10, new B.Vector3(0, 1, 0), scene);
+  cam.fov = 0.7; cam.minZ = 0.05; cam.maxZ = 900; cam.attachControl(P.canvas, true); cam.wheelPrecision = 30;
+  const lab = P.lab || {};
+  Object.assign(lab, {
+    scene, camera: cam, light: { hemi, sun }, shadows: sg, seed, t: 0, invuln: 0,
+    noShadow(m) { if (m) { m.metadata = Object.assign({}, m.metadata, { noShadow: true }); sg.removeShadowCaster(m, true); } return m; },
+    burst() {}, whiten() {}, juicy: () => true,
+  });
+  if (!P.lab) { P.lab = lab; P.api = LabKit.make(lab); }
+  lab._kitScene(scene);
+  Object.assign(P, { scene, cam, item: [], ground: null });
+  return lab;
+}
+
+// что показать
+function itemOf(name) {
+  if (name.startsWith('план:')) return { kind: 'plan', name: name.slice(5) };
+  if (name.startsWith('пол:')) return { kind: 'floor', name: name.slice(4) };
+  if (name.startsWith('край:')) return { kind: 'edge', name: name.slice(5) };
+  if (name.startsWith('фон:')) return { kind: 'back', name: name.slice(4) };
+  return { kind: 'prop', name };
+}
+function build(P, name, over = {}) {
+  const lab = newScene(P), it = itemOf(name), v = $('#v').value;
+  lab.style({ mood: $('#mood').value, shape: P.shape, detail: $('#detail').value, wear: $('#wear').value, wind: 1 });
+  const before = new Set(P.scene.meshes);
+  P.world = it.kind === 'floor' || it.kind === 'edge' || it.kind === 'back';
+  if (it.kind === 'prop') lab.prop(it.name, Object.assign({ v: v === '' ? undefined : +v, seed }, over)).copy([0, 0, 0]);
+  else if (it.kind === 'plan') lab.creature(Object.assign({ plan: it.name, size: 1.6, seed, colors: { main: '#e0703a', second: '#5a3a8a', belly: '#ffe2b8' }, parts: { хвост: 1 } }, over));
+  else {
+    lab.floor({ type: it.kind === 'floor' ? it.name : 'плитки' });
+    lab.edge({ type: it.kind === 'edge' ? it.name : 'камни' });
+    if (it.kind === 'back') lab.backdrop({ type: it.name, layers: 3 });
+  }
+  P.item = P.scene.meshes.filter(m => !before.has(m) && !/^тень|^звёзды|^лучи/.test(m.name));
+  return P;
+}
+function frame(list) {
+  // одна камера на все окна: разница в размере тоже видна
+  let lo = new B.Vector3(Infinity, Infinity, Infinity), hi = lo.scale(-1);
+  for (const P of list) for (const m of P.item) {
+    if (!m.isEnabled() || !m.isVisible || !m.getTotalVertices()) continue;
+    m.computeWorldMatrix(true); const bb = m.getBoundingInfo().boundingBox;
+    lo = B.Vector3.Minimize(lo, bb.minimumWorld); hi = B.Vector3.Maximize(hi, bb.maximumWorld);
+  }
+  if (!isFinite(lo.x)) { lo = new B.Vector3(-1, 0, -1); hi = new B.Vector3(1, 2, 1); }
+  const c = lo.add(hi).scale(0.5), ext = hi.subtract(lo), size = Math.max(ext.x, ext.y, ext.z, 0.5);
+  for (const P of list) {
+    if (P.world) { P.cam.alpha = -Math.PI / 2 - 0.35; P.cam.beta = itemOf(current).kind === 'back' ? 1.25 : 0.95; P.cam.radius = itemOf(current).kind === 'back' ? 30 : 22; P.cam.target.set(0, 0, 0); continue; }
+    P.cam.target.copyFrom(c); P.cam.radius = size * 0.62 / Math.tan(P.cam.fov / 2) + size * 0.5;
+    P.stand = { r: Math.max(ext.x, ext.z) * 0.9 + 0.8, y: lo.y - 0.01 };
+    stand(P);
+  }
+}
+function stand(P) { // подставка цвета земли стиля
+  if (!P.stand || P.world) return;
+  const g = B.MeshBuilder.CreateDisc('подставка', { radius: P.stand.r, tessellation: 48 }, P.scene);
+  g.rotation.x = Math.PI / 2; g.position.y = P.stand.y;
+  const mat = new B.StandardMaterial('подставка', P.scene); mat.diffuseColor = B.Color3.FromHexString(P.lab.pal('земля')).scale(0.85); mat.specularColor = B.Color3.Black(); g.material = mat;
+  g.receiveShadows = true; g.metadata = { noShadow: true }; P.ground = g;
+}
+function show(name) {
+  current = name; warns.length = 0;
+  for (const a of document.querySelectorAll('nav a')) a.classList.toggle('on', a.dataset.name === name);
+  panes.forEach(P => build(P, name));
+  frame(panes);
+  $('#what').innerHTML = `<b>${name}</b> · ${$('#mood').value} · зерно ${seed}`;
+  $('#seedOut').textContent = 'зерно ' + seed;
+  $('#warns').textContent = warns.length ? 'предупреждения: ' + [...new Set(warns)].slice(0, 3).join(' · ') : '';
+  $('#diff').textContent = '';
+  if (!P_world()) setTimeout(() => kitDiff().then(d => { if (current === name) $('#diff').innerHTML = d ? `${d.exact ? 'игровая деталь, форма точная · ' : ''}силуэты различаются: мин <b class="${d.min >= THRESHOLD || d.exact ? 'ok' : 'bad'}">${pct(d.min)}</b> · перекраска даёт ${pct(d.recolor)} · порог ${pct(THRESHOLD)}` : ''; }), 300);
+}
+const P_world = () => itemOf(current).kind !== 'prop' && itemOf(current).kind !== 'plan';
+const pct = x => Math.round(x * 100) + '%';
+const THRESHOLD = 0.05; // перекраска даёт 0–2%: её порог не пропускает
+
+// силуэт: все меши детали белым на чёрном, без земли, неба и тумана
+async function mask(P) {
+  const sc = P.scene, keep = new Set(P.item), saved = [];
+  for (const m of sc.meshes) { saved.push([m, m.isEnabled()]); if (!keep.has(m)) m.setEnabled(false); }
+  const cc = sc.clearColor.clone(), fog = sc.fogMode, a = P.cam.alpha; sc.clearColor = new B.Color4(1, 0, 1, 1); sc.fogMode = 0;
+  P.cam.alpha = -Math.PI / 2 - 0.5;
+  P.lab._kitTick(0); sc.render();
+  const w = P.engine.getRenderWidth(), h = P.engine.getRenderHeight(), px = await P.engine.readPixels(0, 0, w, h);
+  for (const [m, on] of saved) m.setEnabled(on);
+  sc.clearColor = cc; sc.fogMode = fog; P.cam.alpha = a;
+  const out = new Uint8Array(w * h);
+  for (let i = 0, j = 0; j < out.length; i += 4, j++) out[j] = (Math.abs(px[i] - 255) + px[i + 1] + Math.abs(px[i + 2] - 255)) > 40 ? 1 : 0;
+  return out;
+}
+function iouDiff(a, b) { let i = 0, u = 0; for (let k = 0; k < a.length; k++) { const x = a[k], y = b[k]; if (x | y) { u++; if (x & y) i++; } } return u ? 1 - i / u : 0; }
+async function kitDiff() {
+  if (P_world()) return null;
+  const masks = []; for (const P of panes) masks.push(await mask(P));
+  const pairs = []; for (let i = 0; i < masks.length; i++) for (let j = i + 1; j < masks.length; j++) pairs.push({ a: panes[i].shape, b: panes[j].shape, d: iouDiff(masks[i], masks[j]) });
+  // контроль: та же форма, другие цвета — силуэт обязан совпасть
+  const P = panes[0], it = itemOf(current);
+  const recolorOver = it.kind === 'plan' ? { colors: { main: '#3060e0', second: '#e0d040', belly: '#40c080' } } : { colors: { листва: '#c03070', ствол: '#3040a0', камень: '#40c0a0', стена: '#203020', крыша: '#40e0f0', дерево: '#e040e0', металл: '#e0a000', ткань: '#00a0ff', акцент: '#202020' } };
+  const sameAlpha = P.cam.alpha, keep = { target: P.cam.target.clone(), radius: P.cam.radius };
+  build(P, current, recolorOver); P.cam.target.copyFrom(keep.target); P.cam.radius = keep.radius; P.cam.alpha = sameAlpha;
+  const m2 = await mask(P);
+  build(P, current); P.cam.target.copyFrom(keep.target); P.cam.radius = keep.radius; P.cam.alpha = sameAlpha;
+  stand(P);
+  // игровые детали (платформы, монеты) держат точную форму: у них стиль меняет цвет и мелочи, а не силуэт
+  const D = it.kind === 'prop' && P.api.PROPS[P.lab.kinds().find(k => k.name === it.name) ? it.name : ''];
+  return { pairs, min: Math.min(...pairs.map(p => p.d)), recolor: iouDiff(masks[0], m2), exact: !!(D && (D.level || D.item)), threshold: THRESHOLD };
+}
+async function kitShow(name, o = {}) {
+  if (o.mood) $('#mood').value = o.mood;
+  if (o.seed != null) seed = o.seed;
+  if (o.shapes) o.shapes.forEach((s, i) => { panes[i].shape = s; panes[i].el.querySelector('select').value = s; });
+  $('#spin').checked = false; still = true;
+  show(name);
+  await new Promise(r => setTimeout(r, 120));
+  for (const P of panes) P.scene.render();
+  return { warns: [...new Set(warns)], meshes: panes.map(P => P.scene.meshes.length) };
+}
+window.kitShow = kitShow; window.kitDiff = kitDiff; window.kitPanes = panes;
+
+// список
+(function list() {
+  newScene(panes[0]);
+  const kinds = panes[0].lab.kinds(), fams = {};
+  for (const k of kinds) (fams[k.fam] = fams[k.fam] || []).push(k);
+  const nav = $('#list'), add = (h, items) => { const t = document.createElement('h2'); t.textContent = h; nav.append(t); for (const [name, label, note] of items) { const a = document.createElement('a'); a.dataset.name = name; a.innerHTML = label + (note ? ` <small>${note}</small>` : ''); a.onclick = () => show(name); nav.append(a); } };
+  add('Персонажи', panes[0].api.PLANS.map(p => ['план:' + p, p]));
+  for (const f of Object.keys(fams)) add(f, fams[f].map(k => [k.name, k.name, k.variants > 1 ? '×' + k.variants : '']));
+  const api = panes[0].api;
+  add('Пол', api.FLOORS.map(t => ['пол:' + t, t]));
+  add('Край поля', api.EDGES.map(t => ['край:' + t, t]));
+  add('Дальний фон', api.BACKS.map(t => ['фон:' + t, t]));
+  $('#find').oninput = e => { const s = e.target.value.trim().toLowerCase(); for (const a of nav.querySelectorAll('a')) a.hidden = s && !a.dataset.name.toLowerCase().includes(s); };
+})();
+for (const id of ['mood', 'detail', 'wear', 'v']) $('#' + id).onchange = () => show(current);
+$('#seedBtn').onclick = () => { seed = (seed * 1103515245 + 12345) % 100000 || 7; show(current); };
+show(current);
+</script>
+</body>
+</html>

@@ -13,8 +13,6 @@ const GAME = {
   ],
   camera: { type: 'iso', beta: 0.56, target: [0, 0, -1.2] },
   field: { w: 26, h: 31 },
-  sky: '#0b1430',
-  fog: 0.006,
   accent: '#d8ff6a',
   decisions: [
     'Чувство: «меня окружают» — волки заходят с разных сторон, а с факелом охотник и добыча меняются местами',
@@ -382,8 +380,7 @@ const GAME = {
   // ---------- лабиринт: стены пролётами, светлячки и факелы ----------
   buildMaze(lab, scene) {
     const B = BABYLON, st = lab.state, S = this.S;
-    const floor = B.MeshBuilder.CreateGround('тропа', { width: st.W * S, height: st.H * S }, scene);
-    floor.position.y = 0.01; floor.material = lab.mat('#1f2c3e'); lab.noShadow(floor);
+    lab.floor({ type: 'брусчатка', w: st.W * S, h: st.H * S, colors: { камень: '#2a3548' } });
     // стена — каменная кладка с мхом поверху; соседние клетки «#» в строке собраны в один пролёт, все пролёты — в один меш
     const stone = [], moss = [];
     this.MAP.forEach((row, y) => {
@@ -401,39 +398,25 @@ const GAME = {
     const walls = B.Mesh.MergeMeshes(stone, true, true); walls.material = lab.mat('#77738a');
     const tops = B.Mesh.MergeMeshes(moss, true, true); tops.material = lab.mat('#357a46');
     // дольмен — логово волков: низкие каменные плиты вокруг, лаз спереди и наклонная плита-крыша сзади; волков внутри видно
-    const dx = this.wx(lab, 9), dz = this.wz(lab, 9), P = [];
-    const slab = (w, h, d, x, y, z, rz) => { const m = B.MeshBuilder.CreateBox('плита', { width: w, height: h, depth: d }, scene); m.position.set(dx + x, y, dz + z); m.rotation.z = rz || 0; P.push(m); return m; };
-    slab(4.1, 0.75, 0.22, 0, 0.37, -0.7); // задняя
-    slab(0.22, 0.75, 1.6, -2.0, 0.37, 0); slab(0.22, 0.75, 1.6, 2.0, 0.37, 0); // боковые
-    slab(1.45, 0.75, 0.22, -1.32, 0.37, 0.7); slab(1.45, 0.75, 0.22, 1.32, 0.37, 0.7); // передние по бокам от лаза
-    slab(2.4, 0.2, 1.2, -1.0, 1.15, -1.05, 0.12); // плита-крыша прислонена сзади
-    const den = B.Mesh.MergeMeshes(P, true, true); den.material = lab.mat('#a39780');
+    const dx = this.wx(lab, 9), dz = this.wz(lab, 9), G = '#a39780';
+    lab.build('дольмен', [['box', [4.1, 0.75, 0.22], [0, 0.37, -0.7], 0, G], ['box', [0.22, 0.75, 1.6], [-2.0, 0.37, 0], 0, G], ['box', [0.22, 0.75, 1.6], [2.0, 0.37, 0], 0, G],
+      ['box', [1.45, 0.75, 0.22], [-1.32, 0.37, 0.7], 0, G], ['box', [1.45, 0.75, 0.22], [1.32, 0.37, 0.7], 0, G], ['box', [2.4, 0.2, 1.2], [-1.0, 1.15, -1.05], [0, 0, 0.12], G],
+      ['ico', [0.5, 0.3, 0.4], [1.6, 0.9, -0.7], 0, 'мох', { d: 1 }]], { shape: 'как есть' }).copy([dx, 0, dz]);
     const door = B.MeshBuilder.CreateBox('лаз', { width: 1.1, height: 0.12, depth: 0.24 }, scene);
     door.position.set(dx, 0.7, dz + 0.7);
     st.doorMat = lab.mat('#2a2018').clone('дверь'); door.material = st.doorMat;
-    [floor, walls, tops, den].forEach(m => m.freezeWorldMatrix());
+    [walls, tops].forEach(m => m.freezeWorldMatrix());
     // на мху поверх стен — кусты, камни и цветы: копии трёх исходников
-    const deco = [['куст', '#2f9a52', 0.7], ['куст', '#46b35e', 0.55], ['камень', '#8d8a9a', 0.4], ['цветок', '#ffd1f0', 0.18]].map(([n, c, d]) => {
-      const m = B.MeshBuilder.CreateSphere(n, { diameter: d, segments: 2 }, scene);
-      m.convertToFlatShadedMesh(); m.material = lab.mat(c, n === 'цветок' ? { glow: 0.6 } : undefined); m.isVisible = false; return m;
-    });
+    const deco = [lab.prop('куст', { h: 0.6 }), lab.prop('куст', { v: 1, h: 0.45 }), lab.prop('валун', { h: 0.35 })];
     this.MAP.forEach((row, y) => row.split('').forEach((c, x) => {
       if (c !== '#' || !lab.chance(0.3)) return;
-      const m = lab.pick(deco).createInstance('украшение');
-      m.position.set(this.wx(lab, x) + lab.rand(-0.3, 0.3), 1.05, this.wz(lab, y) + lab.rand(-0.3, 0.3));
-      m.scaling.y = lab.rand(0.6, 1); m.rotation.y = lab.rand(0, 3);
+      lab.pick(deco).copy([this.wx(lab, x) + lab.rand(-0.3, 0.3), 0.98, this.wz(lab, y) + lab.rand(-0.3, 0.3)], lab.rand(0, 3), [1, lab.rand(0.6, 1), 1]);
     }));
     // исходники светлячка и факела — дальше только копии
     st.dotSrc = B.MeshBuilder.CreateSphere('светлячок', { diameter: 0.24, segments: 3 }, scene);
     st.dotMat = lab.mat('#d8ff6a', { glow: 1 }).clone('светлячки'); st.dotSrc.material = st.dotMat; st.dotSrc.isVisible = false; lab.noShadow(st.dotSrc);
-    const stand = B.MeshBuilder.CreateCylinder('шест', { height: 0.9, diameterTop: 0.1, diameterBottom: 0.16, tessellation: 6 }, scene);
-    stand.position.y = 0.45; stand.material = lab.mat('#6b4a2e');
-    const bowl = B.MeshBuilder.CreateCylinder('чаша', { height: 0.18, diameterTop: 0.42, diameterBottom: 0.2, tessellation: 8 }, scene);
-    bowl.position.y = 0.95; bowl.material = lab.mat('#3a3a44');
-    const flame = B.MeshBuilder.CreateCylinder('огонь', { height: 0.55, diameterTop: 0, diameterBottom: 0.36, tessellation: 6 }, scene);
-    flame.position.y = 1.3; flame.material = lab.mat('#ff9a3c', { glow: 1 });
-    st.torchSrc = B.Mesh.MergeMeshes([stand, bowl, flame], true, true, undefined, false, true);
-    st.torchSrc.isVisible = false;
+    st.torchSrc = lab.build('факел', [['cyl', [0.16, 0.9, 0.16], [0, 0.45, 0], 0, '#6b4a2e', { top: 0.62 }], ['cyl', [0.42, 0.18, 0.42], [0, 0.95, 0], 0, '#3a3a44', { top: 1, taper: 0.5 }],
+      ['cone', [0.36, 0.55, 0.36], [0, 1.3, 0], 0, '#ff9a3c', { glow: 1 }]], { shape: 'как есть' }).mesh;
     // сыр — круг адыгейского сыра
     const ch = B.MeshBuilder.CreateCylinder('сыр', { height: 0.3, diameter: 0.8, tessellation: 10 }, scene);
     ch.material = lab.mat('#fff1c8', { glow: 0.25 }); ch.isVisible = false; st.cheeseSrc = ch;
@@ -454,23 +437,14 @@ const GAME = {
   // ---------- герои ----------
   part(list, mesh, color, lab, o) { mesh.material = lab.mat(color, o); list.push(mesh); return mesh; },
   buildHero(lab, scene) {
-    const B = BABYLON, st = lab.state, P = [];
-    const add = (m, c, o) => this.part(P, m, c, lab, o);
-    for (const x of [-0.13, 0.13]) add(B.MeshBuilder.CreateBox('нога', { width: 0.14, height: 0.4, depth: 0.16 }, scene), '#2b2230').position.set(x, 0.2, 0);
-    const coat = add(B.MeshBuilder.CreateCylinder('черкеска', { height: 0.62, diameterTop: 0.36, diameterBottom: 0.56, tessellation: 8 }, scene), '#8a2f35');
-    coat.position.y = 0.68;
-    add(B.MeshBuilder.CreateBox('пояс', { width: 0.44, height: 0.07, depth: 0.4 }, scene), '#e8c15a').position.y = 0.62;
-    add(B.MeshBuilder.CreateSphere('голова', { diameter: 0.34, segments: 6 }, scene), '#f1c9a0').position.y = 1.13;
-    add(B.MeshBuilder.CreateCylinder('папаха', { height: 0.24, diameterTop: 0.36, diameterBottom: 0.32, tessellation: 8 }, scene), '#ece6da').position.y = 1.35;
-    const arm = add(B.MeshBuilder.CreateBox('рука', { width: 0.1, height: 0.1, depth: 0.36 }, scene), '#8a2f35');
-    arm.position.set(0.2, 0.8, 0.2);
-    add(B.MeshBuilder.CreateBox('фонарь', { width: 0.18, height: 0.24, depth: 0.18 }, scene), '#ffd96b', { glow: 1 }).position.set(0.22, 0.7, 0.42);
-    P.forEach(m => m.convertToFlatShadedMesh());
-    const mesh = B.Mesh.MergeMeshes(P, true, true, undefined, false, true);
-    mesh.name = 'пастушок'; mesh.scaling.setAll(1.5);
-    const light = new B.PointLight('свет фонаря', new B.Vector3(0.22, 1.0, 0.5), scene);
-    light.diffuse = lab.color('#ffcf7a'); light.intensity = 0.9; light.range = 6; light.parent = mesh;
-    st.hero = { mesh, light, tx: 0, ty: 0, t: 0, dx: 0, dy: 0 };
+    const st = lab.state;
+    const c = lab.creature({ plan: 'двуногий', size: 2.4, role: 'герой', colors: { main: '#f1c9a0', belly: '#f1c9a0', second: '#2b2230', detail: '#8a2f35', accent: '#e8c15a' },
+      wear: ['папаха', 'черкеска'], holds: 'фонарь', eyes: { look: 'круглые' }, face: { cheeks: true } });
+    c.autoFace = false; // поворачивает place по клеткам
+    const light = new BABYLON.PointLight('свет фонаря', new BABYLON.Vector3(0.3, 1.2, 0.6), scene);
+    light.diffuse = lab.color('#ffcf7a'); light.intensity = 0.9; light.range = 6; light.parent = c.root;
+    st.hero = { c, mesh: c.root, light, tx: 0, ty: 0, t: 0, dx: 0, dy: 0 };
+    lab.hero(c.root);
   },
   wolfMesh(lab, scene, color, eye, name) {
     const B = BABYLON, P = [];
@@ -508,7 +482,9 @@ const GAME = {
     for (let i = 0; i < n; i++) {
       const def = this.WOLVES[i];
       const root = new B.TransformNode(def.name, scene); root.scaling.setAll(1.4);
-      const body = this.wolfMesh(lab, scene, def.color, def.eye, def.name); body.parent = root;
+      const wolf = lab.creature({ plan: 'четвероногий', size: 1.05, role: 'враг', colors: { main: def.color, belly: '#f4ece0', eye: def.eye, accent: def.eye },
+        build: { legs: 'длинные' }, parts: ['уши', 'хвост:пушистый'], eyes: { look: def.rule === 'пугается вблизи' ? 'испуганные' : 'злые' } });
+      wolf.autoFace = false; wolf.root.parent = root; const body = wolf.root;
       const scared = scaredSrc.createInstance('испуганный'); scared.parent = root;
       const eyes = eyesSrc.createInstance('глаза'); eyes.parent = root;
       st.wolves.push({ i, def, mesh: root, body, scared, eyes, human: i === 0 && Math.round(lab.cfg.vs) === 1, state: 'home', tx: 0, ty: 0, t: 0, dx: 0, dy: 0 });
@@ -523,39 +499,16 @@ const GAME = {
 
   // ---------- ночь вокруг: лес, горы, луна ----------
   scenery(lab, scene) {
-    const B = BABYLON;
-    lab.light.hemi.intensity = 0.62; lab.light.hemi.diffuse = lab.color('#9fb4ff');
-    lab.ground({ w: 150, h: 150, color: '#16301f' });
-    const cone = (name, color) => {
-      const m = B.MeshBuilder.CreateCylinder(name, { height: 1, diameterTop: 0, diameterBottom: 1, tessellation: 6 }, scene);
-      m.convertToFlatShadedMesh(); m.material = lab.mat(color); m.isVisible = false; return m;
-    };
-    const rock = lab.noShadow(cone('гора', '#2c3656')), snow = lab.noShadow(cone('снег', '#c9d6ff'));
-    [[-36, 60, 26, 14], [-8, 68, 34, 17], [20, 62, 24, 12], [44, 56, 18, 10]].forEach(([x, z, h, r]) => {
-      const m = rock.createInstance('гора'); m.scaling.set(r * 2, h, r * 2); m.position.set(x, h / 2 - 0.5, z);
-      const c = snow.createInstance('снег'); c.scaling.set(r * 0.6, h * 0.28, r * 0.6); c.position.set(x, h * 0.86 - 0.5, z);
-    });
-    const crowns = ['#12402a', '#175236', '#1d5e3c'].map(c => cone('ель', c));
-    const trunk = B.MeshBuilder.CreateCylinder('ствол', { height: 0.7, diameter: 0.3, tessellation: 5 }, scene);
-    trunk.material = lab.mat('#4a3324'); trunk.isVisible = false;
-    for (let i = 0; i < 34; i++) {
-      const side = i % 2 ? 1 : -1, x = side * lab.rand(14.5, 26), z = lab.rand(-20, 22), h = lab.rand(2, 4.2);
-      trunk.createInstance('ствол').position.set(x, 0.35, z);
-      const cr = lab.pick(crowns).createInstance('ель'); cr.scaling.set(h * 0.65, h, h * 0.65); cr.position.set(x, 0.7 + h / 2, z);
-    }
-    for (let i = 0; i < 10; i++) { // ели и за дальним краем лабиринта
-      const x = lab.rand(-14, 14), z = lab.rand(18, 24), h = lab.rand(2.4, 4.4);
-      const cr = lab.pick(crowns).createInstance('ель'); cr.scaling.set(h * 0.65, h, h * 0.65); cr.position.set(x, h / 2, z);
-    }
-    const moon = B.MeshBuilder.CreateSphere('луна', { diameter: 7, segments: 8 }, scene);
-    moon.position.set(-30, 34, 70); moon.material = lab.mat('#fff4d6', { unlit: true }); lab.noShadow(moon);
-    const star = B.MeshBuilder.CreateBox('звезда', { size: 0.35 }, scene);
-    star.material = lab.mat('#ffffff', { unlit: true }); star.isVisible = false; lab.noShadow(star);
-    for (let i = 0; i < 40; i++) star.createInstance('звезда').position.set(lab.rand(-80, 80), lab.rand(26, 55), lab.rand(70, 90));
+    lab.style({ mood: 'ночь', shape: 'угловатый', detail: 'обычно', wear: 'старое', palette: { земля: '#16301f', листва: '#175236', камень: '#77738a', мох: '#357a46', свет: '#d8ff6a' } });
+    lab.backdrop({ type: 'горы', layers: 2 });
+    lab.scatter([['ель', 4], ['валун', 1]], { n: 50, area: 'вокруг' });
+    lab.ambient('светлячки', { n: 24 });
+    // луна — свой ориентир: диск с кратерами и светлым ореолом
+    lab.build('луна', [['sphere', [7, 7, 7], [0, 0, 0], 0, '#fff4d6', { unlit: true }], ['disc', [11, 0, 11], [0, 0, 1.5], [Math.PI / 2, 0, 0], '#fff4d6', { alpha: 0.12, unlit: true }],
+      ['sphere', [1.4, 1.4, 0.6], [1.5, 1, -3.1], 0, '#e6dcc0', { unlit: true }], ['sphere', [1, 1, 0.5], [-1.8, -1.2, -3.1], 0, '#e6dcc0', { unlit: true }]], { shape: 'как есть', shadow: false }).copy([-30, 34, 70]);
   },
   animate(lab, dt) {
     const st = lab.state, t = lab.t;
     st.dotMat.emissiveColor = lab.color('#d8ff6a').scale(0.55 + 0.45 * Math.sin(t * 5)); // светлячки мерцают
-    st.hero.mesh.isVisible = !lab.blink();
   },
 };

@@ -13,7 +13,6 @@ const GAME = {
   camera: 'side', // в start: своя дистанция, цель едет за туром
   field: { w: 26, h: 14 },
   sky: '#8fd3f0',
-  fog: 0.006,
   accent: '#ffd23f',
   lives: 0,
   decisions: [
@@ -62,10 +61,12 @@ const GAME = {
     const st = lab.state;
     lab.setCamera({ type: 'side', beta: 1.42, target: [0, 3.5, 0], distance: 22 });
     Object.assign(st, { solids: [], movers: [], orbs: [], cp: 0, deaths: 0, jumps: 0, shorts: 0, early: 0, edge: 0, lost: 0, saved: 0, got: 0, dead: 0, path: [], pathT: 0, fx: [] });
+    lab.style({ mood: 'день', shape: 'угловатый', wind: 0.5, palette: { камень: '#c98a68', листва: '#2f8a4c', земля: '#6cc04a', вода: '#1784a3', стена: '#f4ead8', крыша: '#c0573a', дерево: '#7a4a2a' } });
     this.sources(lab, scene);
     this.world(lab, scene);
     this.track(lab, scene);
     st.hero = this.buildTur(lab, scene, false);
+    lab.hero(st.hero.node);
     const run = this.bestRun;
     if (run && lab.cfg.ghost >= 1) { st.ghost = this.buildTur(lab, scene, true); lab.hud('ghost', `Призрак: ${run.t.toFixed(1)} с`); }
     this.respawn(lab);
@@ -171,7 +172,7 @@ const GAME = {
     const st = lab.state, x = this.CHECKS[Math.min(st.cp, 2)] + 1.5, top = st.solids.find(s => !s.ceil && x >= s.x0 && x <= s.x1);
     st.hero = Object.assign(st.hero, { x, y: top ? top.y1 : 2, vx: 0, vy: 0, ground: top, off: 0, pend: null, jumped: false, face: 1, sq: 0 });
     st.hero.node.setEnabled(true);
-    if (st.cp > 0) lab.pulse(st.hero.body, 1.3, 0.2);
+    if (st.cp > 0) lab.pulse(st.hero.node, 1.3, 0.2);
   },
   reach(lab, i) {
     const st = lab.state, f = st.flags[i];
@@ -198,36 +199,28 @@ const GAME = {
   sources(lab, scene) {
     const MB = BABYLON.MeshBuilder, src = lab.state.src = {};
     const box = (c, o) => { const m = MB.CreateBox('блок', { size: 1 }, scene); m.material = lab.mat(c, o || {}); m.isVisible = false; return m; };
-    src.rock = box('#d9844f'); src.rock2 = box('#c26b42'); src.far = box('#9b8fb8'); src.far2 = box('#8a80aa'); src.farTop = box('#7fbf6a'); src.grass = box('#6cc04a'); src.stone = box('#7d8fa3'); src.moss = box('#5fae4c');
+    src.rock = box('#d9844f'); src.rock2 = box('#c26b42'); src.grass = box('#6cc04a'); src.stone = box('#7d8fa3'); src.moss = box('#5fae4c');
     src.raft = box('#a8743f'); src.ceil = box('#c26b42');
-    const cone = (h, d, c, y) => { const m = this.part(lab, MB.CreateCylinder('конус', { height: h, diameterTop: 0, diameterBottom: d, tessellation: 6 }, scene), c, 0, y, 0); m.convertToFlatShadedMesh(); return m; };
-    src.pine = ['#2f8a4c', '#3c9e57'].map(c => this.merge([this.part(lab, MB.CreateCylinder('ствол', { height: 1, diameter: 0.3, tessellation: 5 }, scene), '#6b4a30', 0, 0.5, 0), cone(1.8, 1.7, c, 1.6), cone(1.3, 1.2, c, 2.5)], 'пихта'));
+    src.pine = [lab.prop('пихта', { v: 0 }), lab.prop('пихта', { v: 1 })];
     src.orb = this.part(lab, MB.CreateIcoSphere('огонёк', { radius: 0.32, subdivisions: 1, flat: true }, scene), '#ffd23f', 0, 0, 0, { glow: 1 }); src.orb.isVisible = false;
     src.foam = lab.noShadow(box('#e9fbff', { glow: 0.4 }));
   },
+  // мир из готовых деталей: стены теснины, дальние горы, облака; своё — кош пастуха и сакля на финише
   world(lab, scene) {
     const MB = BABYLON.MeshBuilder, st = lab.state, src = st.src;
+    lab.backdrop({ type: 'скалы ущелья', layers: 1 });
+    lab.backdrop({ type: 'горы', layers: 1, colors: { камень: '#7d8fc0' } });
+    lab.ambient('облака', { n: 10 });
+    lab.ambient('птицы', { n: 5 });
     // река внизу теснины и пена
     const river = lab.noShadow(this.part(lab, MB.CreateBox('река', { width: 320, height: 0.2, depth: 30 }, scene), '#1784a3', 85, -2.9, 6));
     river.receiveShadows = true;
     st.foam = [];
     for (let i = 0; i < 30; i++) { const f = src.foam.createInstance('пена'); f.scaling.set(lab.rand(0.8, 2.5), 0.05, 0.12); f.position.set(lab.rand(-20, 200), -2.78, lab.rand(-2, 4)); st.foam.push(f); }
-    // стены теснины позади: уступы с травой и пихтами
-    for (let x = -30; x < 215; x += 7) {
-      const h = 7 + Math.sin(x * 0.07) * 3 + lab.rand(0, 4), z = lab.rand(16, 22);
-      const r = (x / 7) & 1 ? src.far : src.far2, w = r.createInstance('стена');
-      w.scaling.set(7.4, h + 3, 6); w.position.set(x, h / 2 - 3, z);
-      const g = src.farTop.createInstance('трава'); g.scaling.set(7.4, 0.4, 6); g.position.set(x, h - 1.3, z);
-      if (lab.chance(0.7)) { const t = lab.pick(src.pine).createInstance('пихта'); t.position.set(x + lab.rand(-2, 2), h - 1.1, z - lab.rand(0, 2)); t.scaling.setAll(lab.rand(1.2, 2)); }
-    }
-    // дальние горы и облака
-    const mount = lab.noShadow(this.part(lab, MB.CreateCylinder('гора', { height: 1, diameterTop: 0, diameterBottom: 1, tessellation: 5 }, scene), '#7d8fc0', 0, 0, 0));
-    mount.isVisible = false;
-    for (let i = 0; i < 9; i++) { const m = mount.createInstance('гора'), h = lab.rand(30, 55); m.scaling.set(lab.rand(40, 70), h, 30); m.position.set(-40 + i * 30, h / 2 - 4, 70); }
-    const puff = (x, y, s) => this.part(lab, MB.CreateSphere('облако', { diameter: s, segments: 5 }, scene), '#ffffff', x, y, 0, { glow: 0.3 });
-    const cloud = lab.noShadow(this.merge([puff(0, 0, 3), puff(1.6, -0.3, 2.2), puff(-1.7, -0.4, 2), puff(0.5, 0.8, 2)], 'облако'));
-    st.clouds = [];
-    for (let i = 0; i < 10; i++) { const c = cloud.createInstance('облако'); c.position.set(lab.rand(-30, 210), lab.rand(18, 26), lab.rand(40, 60)); c.scaling.setAll(lab.rand(1.5, 2.6)); st.clouds.push(c); }
+    // кош пастуха: каменная ограда с плетёной калиткой — стоит на широких скалах за тропой
+    const kosh = lab.build('кош', [['box', [3.2, 0.7, 0.4], [0, 0.35, -1], 0, 'камень'], ['box', [3.2, 0.7, 0.4], [0, 0.35, 1], 0, 'камень'], ['box', [0.4, 0.7, 2.4], [-1.4, 0.35, 0], 0, 'камень'],
+      ['box', [0.12, 0.9, 1.6], [1.5, 0.45, 0], 0.2, 'дерево'], ['box', [0.5, 0.5, 0.5], [-0.6, 0.25, 0], 0.4, '#f4f0e6'], ['sphere', [0.3, 0.3, 0.3], [-0.3, 0.55, 0], 0, '#f4f0e6']]);
+    for (const x of [6, 64, 125]) { const s = this.LEVEL.find(l => !l[3] && x >= l[0] && x <= l[1]); kosh.copy([x, s[2], 3.2], 0.3); }
   },
   // скалы, камни, плоты, огоньки, флажки и сакля
   track(lab, scene) {
@@ -250,7 +243,7 @@ const GAME = {
       } else {
         const b = (x0 & 1 ? src.rock : src.rock2).createInstance('скала'); b.scaling.set(w, y + 3, 3); b.position.set(cx, (y - 3) / 2, 0);
         const t = src.grass.createInstance('трава'); t.scaling.set(w, 0.3, 3.1); t.position.set(cx, y + 0.05, 0);
-        for (let k = 0; k < w / 6; k++) { const p = lab.pick(src.pine).createInstance('пихта'); p.position.set(lab.rand(x0 + 0.5, x1 - 0.5), y, lab.rand(1.2, 1.4)); p.scaling.setAll(lab.rand(0.6, 0.9)); }
+        if (x1 < 168) for (let k = 0; k < w / 6; k++) lab.pick(src.pine).copy([lab.rand(x0 + 0.5, x1 - 0.5), y, lab.rand(1.2, 1.4)], lab.rand(0, 6), lab.rand(0.6, 0.9)); // у сакли без пихт: финиш виден
       }
       st.solids.push(s);
     }
@@ -263,41 +256,23 @@ const GAME = {
       return this.part(lab, MB.CreateBox('флаг', { width: 1, height: 0.6, depth: 0.05 }, scene), i ? '#9aa3ad' : '#4fc35a', x + 0.5, top + 2.25, 0.6, i ? {} : { glow: 0.5 });
     });
   },
+  // сакля пастуха — ориентир финиша: видна с середины трассы, дым из трубы
   saklya(lab, scene, x, y) {
-    const MB = BABYLON.MeshBuilder, P = (m, c, px, py, pz, o) => this.part(lab, m, c, px, py, pz, o);
-    const roof = P(MB.CreateCylinder('крыша', { height: 4.6, diameter: 3.4, tessellation: 3 }, scene), '#c0573a', 0, 2.9, 0);
-    roof.rotation.z = Math.PI / 2; roof.rotation.y = Math.PI / 2;
-    const parts = [P(MB.CreateBox('стены', { width: 4, height: 2.4, depth: 3 }, scene), '#f4ead8', 0, 1.2, 0), roof,
-      P(MB.CreateBox('дверь', { width: 0.9, height: 1.5, depth: 0.1 }, scene), '#7a4a2a', -0.8, 0.75, -1.52),
-      P(MB.CreateBox('окно', { width: 0.8, height: 0.6, depth: 0.1 }, scene), '#ffd86b', 0.9, 1.4, -1.52, { glow: 0.9 })];
-    const m = this.merge(parts, 'сакля'); m.isVisible = true; m.position.set(x, y, 2.5);
+    const m = lab.build('сакля пастуха', [['box', [4, 2.4, 3], [0, 1.2, 0], 0, 'стена'], ['prism', [4.6, 1.6, 3.6], [0, 3.2, 0], 0, 'крыша'],
+      ['box', [0.9, 1.5, 0.1], [-0.8, 0.75, -1.52], 0, 'дерево'], ['box', [0.8, 0.6, 0.1], [0.9, 1.4, -1.52], 0, '#ffd86b', { glow: 0.9 }],
+      ['box', [0.5, 1.4, 0.5], [1.2, 3.8, 0.6], 0, 'камень'], ['box', [5, 0.3, 4], [0, 0.15, 0], 0, 'камень']]).copy([x, y, 2.5]);
+    lab.ambient('дым из трубы', { at: [x + 1.2, y + 4.6, 3.1] });
     return m;
   },
-  // тур: тело, голова с рогами-полумесяцами, борода, четыре ноги, глаза
+  // тур — существо из набора: четвероногий, рога, борода; призрак — тот же тур, полупрозрачный
   buildTur(lab, scene, ghost) {
-    const MB = BABYLON.MeshBuilder, B = BABYLON, node = new B.TransformNode(ghost ? 'призрак' : 'тур', scene);
-    const P = (m, c, x, y, z) => { m = this.part(lab, m, c, x, y, z); m.parent = node; return m; };
-    const fur = '#f2c46b', light = '#fff4dc', horn = '#4a3a2a';
-    const body = P(MB.CreateBox('тело', { width: 1.1, height: 0.6, depth: 0.55 }, scene), fur, 0, 0.75, 0);
-    P(MB.CreateBox('живот', { width: 0.9, height: 0.2, depth: 0.5 }, scene), light, 0, 0.5, 0);
-    P(MB.CreateBox('голова', { width: 0.45, height: 0.45, depth: 0.4 }, scene), fur, 0.62, 1.12, 0);
-    P(MB.CreateBox('морда', { width: 0.25, height: 0.25, depth: 0.3 }, scene), light, 0.86, 1.02, 0);
-    P(MB.CreateCylinder('борода', { height: 0.3, diameterTop: 0.16, diameterBottom: 0, tessellation: 4 }, scene), horn, 0.8, 0.8, 0);
-    for (const s of [-1, 1]) {
-      const h = P(MB.CreateTorus('рог', { diameter: 0.6, thickness: 0.09, tessellation: 10 }, scene), horn, 0.42, 1.4, s * 0.14);
-      h.rotation.x = Math.PI / 2; h.scaling.set(1, 0.55, 1);
-      P(MB.CreateSphere('глаз', { diameter: 0.16, segments: 6 }, scene), '#ffffff', 0.74, 1.2, s * 0.2);
-      P(MB.CreateSphere('зрачок', { diameter: 0.08, segments: 4 }, scene), '#1a1a22', 0.79, 1.2, s * 0.25);
-    }
-    P(MB.CreateBox('хвост', { width: 0.18, height: 0.24, depth: 0.12 }, scene), light, -0.58, 0.95, 0);
-    const legs = [[-0.38, 1], [-0.38, -1], [0.38, 1], [0.38, -1]].map(([x, s]) => {
-      const pivot = new B.TransformNode('нога', scene); pivot.parent = node; pivot.position.set(x, 0.5, s * 0.18);
-      const l = this.part(lab, MB.CreateBox('нога', { width: 0.14, height: 0.5, depth: 0.14 }, scene), '#6b4426', 0, -0.25, 0); l.parent = pivot;
-      return pivot;
-    });
-    node.scaling.setAll(1.2);
-    if (ghost) node.getChildMeshes().forEach(m => { m.visibility = 0.35; lab.noShadow(m); });
-    return { node, body, legs, x: 0, y: 0, vx: 0, vy: 0, face: 1, sq: 0, run: 0 };
+    const node = new BABYLON.TransformNode(ghost ? 'призрак' : 'тур', scene);
+    const c = lab.creature({ plan: 'четвероногий', size: 1.5, role: ghost ? null : 'герой', autoFace: false, seed: 7,
+      colors: { main: '#f2c46b', belly: '#fff4dc', second: '#6b4426', detail: '#4a3a2a', accent: '#ffd23f' },
+      parts: ['рога', 'хвост'], face: { beard: '#4a3a2a' }, build: { legs: 'длинные' } });
+    c.root.parent = node; c.root.rotation.y = Math.PI / 2; // лицом вправо, разворот — у узла
+    if (ghost) c.meshes.forEach(m => { m.visibility = 0.35; lab.noShadow(m); });
+    return { node, c, x: 0, y: 0, vx: 0, vy: 0, face: 1, sq: 0 };
   },
   animate(lab, h, dt) {
     const n = h.node, k = 1 - Math.exp(-dt * 12);
@@ -305,14 +280,11 @@ const GAME = {
     n.rotation.y = lab.lerp(n.rotation.y, h.face > 0 ? 0 : Math.PI, k * 1.5);
     n.rotation.z = h.ground ? 0 : lab.clamp(h.vy * 0.03, -0.35, 0.35) * h.face;
     h.sq = lab.lerp(h.sq, 0, k); // сжатие и растяжение
-    n.scaling.set(1.2 * (1 + h.sq * 0.6), 1.2 * (1 - h.sq), 1.2 * (1 + h.sq * 0.3));
-    h.run += dt * Math.abs(h.vx) * 2.2;
-    h.legs.forEach((l, i) => { l.rotation.z = h.ground ? Math.sin(h.run + (i % 2) * Math.PI) * 0.6 * Math.min(1, Math.abs(h.vx) / 3) : (i < 2 ? 0.7 : -0.7); });
+    n.scaling.set(1 + h.sq * 0.6, 1 - h.sq, 1 + h.sq * 0.3);
   },
   ghostAt(lab, g, t) {
     const P = this.bestRun.path, i = Math.min(P.length - 1, Math.floor(t / 0.05)), p = P[i];
     g.node.position.set(p[0], p[1], 0.8); g.node.rotation.y = p[2] > 0 ? 0 : Math.PI;
-    g.legs.forEach((l, j) => { l.rotation.z = Math.sin(t * 14 + (j % 2) * Math.PI) * 0.5; });
   },
   moveMover(lab, s, dt) {
     const m = s.mover, ox = s.x0, oy = s.y1;
@@ -330,7 +302,6 @@ const GAME = {
   tickWorld(lab, dt) {
     const st = lab.state;
     st.foam.forEach(f => { f.position.x -= dt * 3; if (f.position.x < lab.camera.target.x - 30) f.position.x += 60; });
-    st.clouds.forEach(c => { c.position.x += dt * 0.8; });
     st.orbs.forEach((o, i) => { if (!o.taken) { o.m.position.y = o.y + Math.sin(lab.t * 3 + i) * 0.15; o.m.rotation.y += dt * 2; } });
   },
 };

@@ -1936,7 +1936,7 @@ async function together(browser, base, code, teacher, student, errors, shot) {
   const rf = await gameFrame(student, 'seed=', 0);
   check('«Отыграться» открыл тот же мир в окне поверх урока', await rf.evaluate(() => window.__lab.lab.seed) === seed);
   await rf.evaluate(() => window.__lab.confirm());
-  await rf.waitForFunction(() => /^⚔ Соседка/.test(document.querySelector('#hudGhost').textContent), null, { timeout: 5000 });
+  await rf.waitForFunction(() => /^⚔ Соседка/.test(document.querySelector('#hudGhost').textContent), null, { timeout: 15000, polling: 250 }); // по таймеру: без видеокарты игра с готовыми деталями рисует пару кадров в секунду
   check('Призрак реванша — новый лидер Соседка', true);
   await shot(student, '14b-revenge');
   await student.click('dialog.chdlg >> text=✕ Закрыть');

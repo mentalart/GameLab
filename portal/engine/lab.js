@@ -711,6 +711,7 @@
     lab.round = ++session.rounds;
     const two = duo() ? 2 : 1; // ручка duo могла переключить игру на двоих
     if (two !== lab.players) { lab.players = two; for (const h of kb.concat(kbTap)) for (const k in h) h[k] = false; labels(); }
+    if (lab._kitScene) safe(() => lab._kitScene(scene), 'готовые детали'); // kit.js: новая сцена — свежий набор
     safe(() => G.start(lab, scene), 'start');
     freshPreview = preview;
   }
@@ -802,6 +803,8 @@
       return v.z > 0 && v.z < 1 && v.x >= -W * 0.02 && v.x <= W * 1.02 && v.y >= -H * 0.02 && v.y <= H * 1.02;
     } catch (e) { return null; }
   }
+  // общий такт готовых деталей kit.js (дыхание, моргание, походка, ветер); без kit.js — пусто
+  function tickKit(dt) { if (lab._kitTick && scene) { try { lab._kitTick(dt); } catch (e) { fail(e, 'готовые детали'); } } }
   function botStep(b) {
     botInput(b);
     let dt = BOT_DT;
@@ -814,7 +817,7 @@
       safe(() => G.update(lab, dt), 'update');
       while (tele.line.length < Math.min(600, Math.floor(lab.t) + 1)) tele.line.push(Math.round(lab.score));
     }
-    tickParticles(dt); tickPopups(dt); tickWarns(dt); tickPulses(dt); tickWhites(dt); tickCamera(dt); tickFlash(dt);
+    tickParticles(dt); tickPopups(dt); tickWarns(dt); tickPulses(dt); tickWhites(dt); tickCamera(dt); tickFlash(dt); tickKit(dt);
     if (lab.t >= b.nextLook) { b.nextLook = lab.t + 0.25; const on = heroOnScreen(); if (on !== null) { b.looks++; if (!on) b.off++; } }
   }
   const botWait = () => new Promise(r => setTimeout(r, 0));
@@ -885,6 +888,7 @@
     let dt = Math.min(engine.getDeltaTime() / 1000, 0.05);
     const live = state === 'play' && !paused && !errored && scene;
     if (live && slowT > 0) { slowT -= dt; dt *= slowK; } // замедление: игра и частицы идут медленнее, интерфейс — как обычно
+    const kdt = live && hitstopT <= 0 ? dt : 0; // готовые детали стоят на паузе и в стоп-кадре
     if (live) {
       if (hitstopT > 0) hitstopT -= dt;
       else {
@@ -896,7 +900,7 @@
       }
     }
     if (scene && cam) {
-      tickParticles(dt); tickPopups(dt); tickWarns(dt); tickPulses(dt); tickWhites(dt); tickCamera(dt);
+      tickParticles(dt); tickPopups(dt); tickWarns(dt); tickPulses(dt); tickWhites(dt); tickCamera(dt); tickKit(kdt);
       try { scene.render(); } catch (e) { fail(e, 'отрисовка'); }
     }
     tickFlash(dt);
