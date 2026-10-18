@@ -1,5 +1,5 @@
 // «Каменный стакан» — ремейк-донор урока 4 по мотивам механики «Тетриса».
-// Спрятанная механика донора — честный проигрыш: «мешок» из семи камней и предпросмотр (ручки bag и preview, пресет «Без спрятанной механики»).
+// Спрятанная механика донора — честный проигрыш: мешок из семи камней и предпросмотр (ручки bag, preview).
 const GAME = {
   title: 'Каменный стакан',
   subtitle: 'Камни дольмена падают в стакан на Лаго-Наки. Поверни и поставь: полный ряд исчезает.',
@@ -90,7 +90,7 @@ const GAME = {
       `Палка не приходила ${dry} камней подряд` + (lab.cfg.bag >= 1 ? ' (мешок: не больше 12)' : ' (без мешка — сколько угодно)')];
   },
 
-  // части в один меш, одноцветные — сперва вместе: меньше вызовов отрисовки
+  // части в один меш
   merge(parts, name) {
     const B = BABYLON, groups = new Map();
     parts.forEach(p => groups.set(p.material, (groups.get(p.material) || []).concat(p)));
@@ -114,7 +114,7 @@ const GAME = {
     src.ghost = lab.noShadow(hidden(MB.CreateBox('тень', { size: 0.9 }, scene), '#ffffff', { unlit: true, alpha: 0.22 }));
     src.wall = ['#d2ad7f', '#c39a6c'].map(c => hidden(MB.CreateBox('кладка', { width: 0.96, height: 0.98, depth: 1.4 }, scene), c));
     src.orn = hidden(MB.CreateCylinder('узор', { height: 0.08, diameter: 0.5, tessellation: 4 }, scene), '#ffcf4a', { glow: 0.8 });
-    src.orn.rotation.x = Math.PI / 2; src.orn.bakeCurrentTransformIntoVertices(); // копии не наследуют поворот исходника
+    src.orn.rotation.x = Math.PI / 2; src.orn.bakeCurrentTransformIntoVertices(); // поворот в вершины
     src.groove = lab.noShadow(hidden(MB.CreateBox('борозда', { width: 0.05, height: 1, depth: 0.05 }, scene), '#4a6196'));
   },
 
@@ -222,13 +222,13 @@ const GAME = {
   fits(w, cells, px, py) {
     return cells.every(([cx, cy]) => { const x = px + cx, y = py + cy; return x >= 0 && x < w.grid[0].length && y >= 0 && y < w.grid.length && !w.grid[y][x]; });
   },
-  moved(w) { if (!this.fits(w, w.piece.cells, w.px, w.py - 1)) { w.lockT = 0; w.resets++; } }, // на дне — отложить фиксацию
+  moved(w) { if (!this.fits(w, w.piece.cells, w.px, w.py - 1)) { w.lockT = 0; w.resets++; } }, // на дне — ждём
   shift(lab, w, dir) {
     if (!this.fits(w, w.piece.cells, w.px + dir, w.py)) return false;
     w.px += dir; this.moved(w); lab.tone(330, 0.03, 'square', 0.025);
     return true;
   },
-  // поворот: (x, y) → (y, n − 1 − x); не влез — отскок от стенки или вверх
+  // поворот (x, y) → (y, n − 1 − x); не влез — отскок
   rotate(lab, w) {
     const p = w.piece, cells = p.cells.map(([x, y]) => [y, p.n - 1 - x]);
     const kick = this.KICKS.find(([kx, ky]) => this.fits(w, cells, w.px + kx, w.py + ky));
@@ -267,14 +267,14 @@ const GAME = {
     w.maxDry = Math.max(w.maxDry, w.sinceI);
     return k;
   },
-  // спрятанная механика донора: «мешок» — семь камней перемешаны, по одному до конца мешка; без мешка — чистый случай
+  // мешок: семь камней перемешаны, по одному до конца мешка; без мешка — чистый случай
   gen(lab) {
     const st = lab.state, all = this.ORDER.split('');
     if (lab.cfg.bag < 1) return lab.pick(all);
     if (!st.bag.length) {
       st.bag = all;
       for (let i = 6; i > 0; i--) { const j = lab.randInt(0, i); [all[i], all[j]] = [all[j], all[i]]; }
-      lab.count('_secret'); // спрятанная механика сработала: новый мешок
+      lab.count('_secret'); // новый мешок
     }
     return st.bag.pop();
   },
@@ -343,7 +343,7 @@ const GAME = {
     const pts = this.LINE_PTS[n] * w.level;
     this.points(lab, w, pts); w.lines += n; lab.count('линии', n);
     lab.popup(at, (['', '', 'Две линии! ', 'Три линии! ', 'Четыре разом! '][n]) + '+' + pts, n === 4 ? '#ffd23f' : '#ffffff', 18 + 6 * n);
-    lab.shake(0.12 * n); if (st.mm.y <= st.mm.y0) st.mm.vy = 3 + 0.6 * n; // сурок прыгает от радости
+    lab.shake(0.12 * n); if (st.mm.y <= st.mm.y0) st.mm.vy = 3 + 0.6 * n; // сурок прыгает
     if (n === 4) {
       st.tetris++; lab.count('четыре разом');
       lab.flash('#ffd23f', 0.35); lab.hitstop(0.1); lab.sfx.power();
@@ -360,7 +360,7 @@ const GAME = {
     w.rows = [];
     this.checkDanger(lab, w);
   },
-  // мусор поднимается снизу, когда ляжет камень; в каждом ряду одна дыра
+  // мусор снизу после камня, в ряду одна дыра
   raiseGarbage(lab, w) {
     const st = lab.state, n = Math.min(w.pending, 8), gap = lab.randInt(0, st.W - 1);
     if (n <= 0) return;
