@@ -416,7 +416,7 @@ function makeRenderer() {
   try { const pm = new THREE.PMREMGenerator(renderer); envTex = pm.fromScene(new RoomEnvironment(), 0.04).texture; pm.dispose(); } catch (e) { envTex = null; }
 }
 const quality = () => Math.round(cfg.quality == null ? 1 : cfg.quality);
-function pixelRatio() { const d = window.devicePixelRatio || 1, q = quality(); return (q === 0 ? Math.min(d, 1) * 0.7 : q === 1 ? Math.min(d, 1.5) : Math.min(d, 2)) * dynScale; }
+function pixelRatio() { const d = window.devicePixelRatio || 1, q = quality(); return (q === 0 ? Math.min(d, 1) * 0.7 : q === 1 ? Math.min(d, 1.5) : Math.min(d, 2)) * dynScale * (window.LAB_LOWRES ? 0.5 : 1); } // LAB_LOWRES — для автопроверок без видеокарты
 // своё разрешение под компьютер: кадр дольше 34 мс — картинка мельче (до половины), быстрее 18 мс — обратно. Игра и ручки этого не замечают
 let dynScale = 1, dynSum = 0, dynN = 0;
 function tuneResolution(real) {
@@ -1344,6 +1344,7 @@ window.__lab = {
   ready: false, engine: 'three', lab, tele, session, get state() { return state; }, get paused() { return paused; }, get errored() { return errored; },
   get scene() { return scene; }, cfg, DEFAULTS,
   confirm, restart: () => restart(true), end: (k, t) => end(k || 'lose', t || 'Проверка'), togglePanel, playtest, botShow, setLupa,
+  lowres: on => { window.LAB_LOWRES = !!on; resize(); },
   get lupa() { return lupa ? { title: lupa.title, n: lupa.n, on: performance.now() <= lupa.until } : null; },
   frames: (n = 1) => new Promise(res => frameWaiters.push({ at: frameNo + n, res })),
   info() { let objects = 0, meshes = 0; if (scene) scene.traverse(o => { objects++; if (o.isMesh && o.visible) meshes++; }); return { engine: 'three', version: THREE.REVISION, shell: SHELL_VERSION, draws: lastDraws, triangles: lastTris, objects, meshes, fps: Math.round(fps) }; },

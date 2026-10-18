@@ -5,6 +5,9 @@
 //          node portal/tools/check-game.js games/моя-игра.js  — одна игра (путь от portal/)
 //          node portal/tools/check-game.js --self             — ещё и проверка самих оболочек (физика Babylon, ловля ошибок и строка)
 //          --headed — показать окно браузера, --quick — без «обезьяньего» прогона пресетов
+//          --all — проверить и игры, которые не менялись с последней зелёной проверки (без него они пропускаются)
+//          --jobs=3 — сколько игр проверять одновременно (по умолчанию 3; --jobs=1 — по одной, как раньше)
+// Без видеокарты игры рисуются в половину разрешения (LAB_LOWRES): кадров вдвое больше. Снимки и проверка «картинка не пустая» — в полном.
 // Что проверяет: загрузка без ошибок, картинка не пустая, старт пробелом и геймпадом,
 // стартовое нажатие не засчитывается, ввод доходит до игры, панель ручек и пресеты,
 // перезапуск R, экран конца партии, 10–20 секунд случайной игры без ошибок.
@@ -13,6 +16,7 @@
 'use strict';
 const fs = require('fs');
 const path = require('path');
+const crypto = require('crypto');
 const { start } = require('./serve.js');
 
 let chromium;
@@ -26,6 +30,17 @@ const OUT = path.join(PORTAL, '.check');
 const args = process.argv.slice(2);
 const flag = f => args.includes(f);
 const sleep = ms => new Promise(r => setTimeout(r, ms));
+const JOBS = Math.max(1, Number((args.find(a => a.startsWith('--jobs=')) || '=3').split('=')[1]) || 3);
+
+// отпечаток игры: её файл, оболочки и сама проверка. Совпал с последней зелёной проверкой — игру можно не гонять
+const PASSED = path.join(OUT, 'passed.json');
+const SHARED = ['engine/lab.js', 'engine/lab-three.js', 'engine/game.html', 'engine/three-game.html', 'engine/vendor/VERSIONS.txt', 'tools/check-game.js', 'tools/serve.js'];
+const fingerprint = src => {
+  const h = crypto.createHash('sha1');
+  for (const f of [src, ...SHARED]) { try { h.update(f + '\0' + fs.readFileSync(path.join(PORTAL, f))); } catch (e) { h.update(f + '\0нет'); } }
+  return h.digest('hex');
+};
+const readPassed = () => { try { return JSON.parse(fs.readFileSync(PASSED, 'utf8')); } catch (e) { return {}; } };
 
 // подставной геймпад: navigator.getGamepads отдаёт то, что лежит в window.__pad
 const FAKE_PAD = () => {
@@ -47,9 +62,15 @@ async function checkOne(browser, base, item) {
   const pass = (what, ok, detail) => { res.checks.push({ what, ok: !!ok, detail: detail == null ? '' : String(detail) }); if (!ok) res.ok = false; };
   const page = await browser.newPage({ viewport: { width: 960, height: 540 } });
   await page.addInitScript(FAKE_PAD);
+  await page.addInitScript(() => { window.LAB_LOWRES = true; });
   page.on('pageerror', e => res.errors.push('pageerror: ' + e.message));
   page.on('console', m => { if (m.type() === 'error') res.errors.push('console: ' + m.text()); });
-  const shot = async step => { await page.screenshot({ path: path.join(OUT, `${name}-${step}.png`) }); };
+  // снимок — в полном разрешении: на время снимка LAB_LOWRES выключается
+  const shot = async step => {
+    await L('window.__lab.lowres(false)'); await frames(2);
+    await page.screenshot({ path: path.join(OUT, `${name}-${step}.png`) });
+    await L('window.__lab.lowres(true)');
+  };
   const L = expr => page.evaluate(expr);
   const state = () => L('window.__lab && window.__lab.state');
   const errored = () => L('!!(window.__lab && window.__lab.errored)');
@@ -84,8 +105,10 @@ async function checkOne(browser, base, item) {
     res.notes.title = meta.title; res.notes.engine = meta.engine;
     pass('Заголовок игры на стартовом экране', meta.title && meta.title !== 'Загрузка…', meta.title);
     await sleep(600);
-    await shot('1-menu');
+    await L('window.__lab.lowres(false)'); await frames(2);
+    await page.screenshot({ path: path.join(OUT, `${name}-1-menu.png`) });
     const px = await pixels();
+    await L('window.__lab.lowres(true)');
     pass('Картинка не пустая (превью за меню)', px.colors >= 12 && px.lit >= 5, `${px.colors} оттенков, светлых точек ${px.lit}%`);
 
     // геймпад: подписи меняются, A запускает партию, стартовое нажатие не засчитывается
@@ -199,20 +222,35 @@ async function brokenChecks(page, res, pass, state, key) {
     headless: !flag('--headed'),
     args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist', '--autoplay-policy=no-user-gesture-required'],
   });
-  const items = gameList();
+  let items = gameList();
   if (flag('--self')) items.push({ src: 'tools/fixtures/fizika.js', kind: 'physics' }, { src: 'tools/fixtures/oshibka.js', kind: 'broken' }, { src: 'tools/fixtures/oshibka-three.js', kind: 'broken' });
+  const passed = readPassed();
+  const named = args.some(a => !a.startsWith('--'));
+  if (!named && !flag('--all')) {
+    const same = items.filter(it => passed[it.src] === fingerprint(it.src));
+    if (same.length) console.log(`Не менялись с последней зелёной проверки, пропускаю (${same.length}): ${same.map(it => path.basename(it.src, '.js')).join(', ')}. Проверить всё — --all.`);
+    items = items.filter(it => !same.includes(it));
+  }
   const report = [];
   let allOk = true;
-  for (const it of items) {
+  const print = (it, r) => {
     process.stdout.write(`\n▶ ${it.src}\n`);
-    const r = await checkOne(browser, base, it);
-    report.push(r);
     for (const c of r.checks) console.log(`  ${c.ok ? '✓' : '✗'} ${c.what}${c.detail ? ' — ' + c.detail : ''}`);
     if (r.notes.fps != null) console.log(`  · ${r.notes.engine === 'three' ? 'three.js r' + r.notes.version : 'Babylon.js ' + r.notes.version}: кадров в секунду ${r.notes.fps} (графика без видеокарты, на школьном ПК в разы больше), мешей ${r.notes.meshes}, вызовов отрисовки ${r.notes.draws}, сборка партии ${r.notes.restartMs} мс`);
-    if (!r.ok) allOk = false;
-  }
+  };
+  // несколько игр одновременно, каждая на своей странице; печатаем по готовности
+  const queue = items.slice();
+  await Promise.all(Array.from({ length: Math.min(JOBS, queue.length) }, async () => {
+    for (let it; (it = queue.shift());) {
+      const r = await checkOne(browser, base, it);
+      report.push(r);
+      print(it, r);
+      if (r.ok) passed[it.src] = fingerprint(it.src); else { allOk = false; delete passed[it.src]; }
+    }
+  }));
   await browser.close();
   srv.close();
+  fs.writeFileSync(PASSED, JSON.stringify(passed, null, 2));
   fs.writeFileSync(path.join(OUT, 'report.json'), JSON.stringify(report, null, 2));
   console.log(`\n${allOk ? 'Всё в порядке' : 'Есть ошибки'}. Снимки и отчёт: portal/.check/`);
   process.exit(allOk ? 0 : 1);

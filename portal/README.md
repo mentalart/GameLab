@@ -21,7 +21,7 @@ portal/
   engine/       движок игр: Babylon.js 9.31.0 + Havok в vendor/, оболочка «Лаб3D» (lab.js), страница игры
   games/        ремейки-доноры учителя: образцы механик для уроков и для ИИ
   ai/           промпты: программист игр (claude-prompt.md — системный промпт Sonnet, game-prompt.md — промпт Qwen и сообщения программисту), продюсер и его правка ИГРА (producer-prompt.md), связка карт вау-старта (link-prompt.md)
-  tools/        serve.js, check-game.js, e2e-portal.js, mock-ai.js, build-prompt.js; fixtures/lessons — урок-проверка для e2e
+  tools/        check.js, serve.js, check-game.js, e2e-portal.js, mock-ai.js, build-prompt.js; fixtures/lessons — урок-проверка для e2e
   config.json   ключ ИИ, модели, цены, лимиты, пароль учителя — создаётся при первом запуске, в git не попадает
   data/         классы, ученики, вызовы, игры и версии, партии чужих игроков, рекорды, заметки, журнал генераций — в git не попадает
 ```
@@ -225,8 +225,9 @@ node portal/server.js            # или: node portal/server.js 8090 — дру
 ## Проверки
 
 ```bash
-node portal/tools/check-game.js --self   # игры и оболочка в браузере
-node portal/tools/e2e-portal.js          # портал целиком: учитель и ученик проходят уроки 1–8 (--from=5 — с урока 5, для отладки)
+node portal/tools/check.js                # после задачи: только то, что задели изменённые файлы (--dry — план, --full — всё)
+node portal/tools/check-game.js --self   # игры и оболочка в браузере (неизменённые игры пропускаются, --all — все; 3 одновременно)
+node portal/tools/e2e-portal.js          # портал целиком: учитель и ученик проходят уроки 1–8 (--only=3,6 — только эти уроки, --mock-only — без демо-прогона)
 node portal/tools/build-prompt.js --sizes  # размер промпта программиста для каждого урока
 ```
 

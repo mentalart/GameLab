@@ -23,6 +23,9 @@
 // образец урока, две башни вдвоём, релиз модуля 2; с подставным ИИ — выставка: соседка собирает игру джема, голоса в номинациях,
 // итоги класса и кнопочный турнир на проекторе.
 // Запуск: node portal/tools/e2e-portal.js [--headed] [--from=5]   Снимки — в portal/.check/portal-*.png
+//         --only=5 или --only=3,6 — только эти уроки: от урока 1 остаются вход, вау-старт, Фабрика и сборка (класс, ученик, своя игра),
+//         «Играем вместе» — только для уроков 4 и 6 (им нужны игры соседей). --mock-only — без второго, демо-прогона.
+// Игры в рамках рисуются в половину разрешения (LAB_LOWRES), паузы квизов короче (LAB_FAST): без видеокарты так втрое быстрее.
 'use strict';
 const fs = require('fs');
 const os = require('os');
@@ -52,6 +55,9 @@ const store = require('../lib/store');
 
 const PASSWORD = 'e2e-пароль';
 const FROM = Number((process.argv.find(a => a.startsWith('--from=')) || '=0').split('=')[1]) || 0; // --from=5 — для отладки: уроки 2…4 пропустить
+const ONLY = ((process.argv.find(a => a.startsWith('--only=')) || '=').split('=')[1]).split(',').map(Number).filter(Boolean);
+const FULL1 = !ONLY.length || ONLY.includes(1); // урок 1 целиком
+const want = n => (ONLY.length ? ONLY.includes(n) : n === 8 || FROM <= n);
 const results = [];
 const check = (what, ok, detail = '') => { results.push({ what, ok: !!ok, detail }); console.log(`  ${ok ? '✓' : '✗'} ${what}${detail ? ' — ' + detail : ''}`); };
 const sleep = ms => new Promise(r => setTimeout(r, ms));
@@ -81,6 +87,8 @@ async function playRound(frame, { score = 0, hold = null, page = null, restart =
   } else await sleep(300);
   await frame.evaluate(s => { window.__lab.lab.score = s; window.__lab.end('lose', 'Проверка'); }, score);
 }
+// сортировщик квиза: ждём, пока сменится карточка или квиз кончится, а не паузу на анимацию
+const nextItem = (page, step, prev) => page.waitForFunction(([s, p]) => { const e = document.querySelector(s + ' .item'); return !!document.querySelector(s + '.done') || !e || e.textContent.trim() !== p; }, [step, prev], { timeout: 15000 });
 // «null» текстом на странице: нативный append превращает null в слово (так было под картами вау-старта и в секрете у учителя)
 const nullText = p => p.evaluate(() => {
   const w = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
@@ -99,7 +107,7 @@ async function run(browser, base, mode) {
   const tctx = await browser.newContext({ viewport: { width: 1280, height: 860 } });
   const sctx = await browser.newContext({ viewport: { width: 1280, height: 900 } });
   // вопросы «да / нет» портала (Lab.ask) в прогоне отвечают «да» сами
-  for (const c of [tctx, sctx]) await c.addInitScript(() => { window.LAB_ASK_AUTO = true; });
+  for (const c of [tctx, sctx]) await c.addInitScript(() => { window.LAB_ASK_AUTO = true; window.LAB_FAST = true; window.LAB_LOWRES = true; }); // LAB_FAST — короткие паузы квизов, LAB_LOWRES — игры в половину разрешения
   const teacher = await tctx.newPage(), student = await sctx.newPage();
   await teacher.addInitScript(() => { window.LAB_PLAYTEST_SECONDS = 12; }); // бот-плейтестер в проверке играет короткие партии
   failShots = async () => { await student.screenshot({ path: path.join(OUT, `portal-${mode}-x-student.png`), fullPage: true }).catch(() => {}); await teacher.screenshot({ path: path.join(OUT, `portal-${mode}-x-teacher.png`) }).catch(() => {}); };
@@ -175,9 +183,11 @@ async function run(browser, base, mode) {
   await student.waitForSelector('.cp.open >> nth=7', { timeout: 10000 });
   check('Чекпоинты открылись у ученика без перезагрузки (SSE)', true);
 
-  await secretHunt(teacher, student, mode, shot);
-  await projectorPair(pj, mode, shot);
-  await projectorPoll(pj, shot);
+  if (FULL1) {
+    await secretHunt(teacher, student, mode, shot);
+    await projectorPair(pj, mode, shot);
+    await projectorPoll(pj, shot);
+  }
 
   // Фабрика и решения: карты вместо своих слов, свои слова — только «Чувство»
   await student.click('.cp >> text=Фабрика');
@@ -240,6 +250,7 @@ async function run(browser, base, mode) {
   await student.waitForSelector('#step-sborka.done', { timeout: 10000 });
   check('Шаг сборки закрыт самой сборкой: партии — после перемены', mode === 'demo' || /5–10 минут/.test(await student.textContent('#step-sborka')));
 
+  if (FULL1) { // --only=N: остальное в уроке 1 пропускаем (без сдвига отступов, чтобы не мешать параллельным правкам)
   // после перемены: своя игра и «Совпало с задуманным чувством?» (урок 1, чекпоинт 5 «Разбор прототипа», 18.10.2026)
   await student.click('.cp >> text=Своя игра');
   check('Над своей игрой — задуманное чувство', /Ты задумал: Страшно, когда шершни уже у ульев/.test(await student.textContent('#step-ruchki .recall')));
@@ -313,13 +324,15 @@ async function run(browser, base, mode) {
 
   check('Кнопка «Сохранить мой баланс» есть и ждёт повёрнутой ручки', await student.$eval('#step-masterskaya [data-balance]', b => b.disabled));
 
-  if (mode === 'mock') await together(browser, base, code, teacher, student, errors, shot);
-  else {
+  } // FULL1
+  if (mode === 'mock' && (FULL1 || ONLY.some(n => n === 4 || n === 6))) await together(browser, base, code, teacher, student, errors, shot);
+  else if (FULL1 && mode === 'demo') {
     await student.click('.cp >> text=Играем вместе');
     await student.waitForSelector('#step-sosed >> text=Ждём игру соседа');
     check('Без игр соседей шаг arcade ждёт и не падает', true);
   }
 
+  if (FULL1) { // --only=N: остальное в уроке 1 пропускаем
   // версия 2: правка 2 по карточкам соседей, сервер третью не берёт
   await student.click('.cp >> text=Версия 2');
   const before2 = await student.locator('#step-masterskaya-2 .ver').count();
@@ -425,13 +438,14 @@ async function run(browser, base, mode) {
   } else check('Демо-режим виден учителю', /демо-режим/i.test(aiTab));
   await shot(teacher, '8-ai', true);
   await fixtureLesson(mode, teacher, student, pj, shot);
-  if (FROM <= 2) await lessonTwo(mode, teacher, student, shot);
-  if (FROM <= 3) await lessonThree(mode, teacher, student, shot);
-  if (FROM <= 4) await lessonFour(mode, teacher, student, shot);
-  if (FROM <= 5) await lessonFive(mode, teacher, student, shot);
-  if (FROM <= 6) await lessonSix(mode, teacher, student, shot);
-  if (FROM <= 7) await lessonSeven(mode, teacher, student, shot);
-  await lessonEight(mode, teacher, student, shot, { browser, base, code, errors, pj });
+  } // FULL1
+  if (want(2)) await lessonTwo(mode, teacher, student, shot);
+  if (want(3)) await lessonThree(mode, teacher, student, shot);
+  if (want(4)) await lessonFour(mode, teacher, student, shot);
+  if (want(5)) await lessonFive(mode, teacher, student, shot);
+  if (want(6)) await lessonSix(mode, teacher, student, shot);
+  if (want(7)) await lessonSeven(mode, teacher, student, shot);
+  if (want(8)) await lessonEight(mode, teacher, student, shot, { browser, base, code, errors, pj });
   // учитель возвращает класс к модулю 1: следующий прогон начинает с него
   await teacher.click('.tabs >> text=Урок');
   await teacher.selectOption('#moduleSel', '1');
@@ -606,7 +620,7 @@ async function secretHunt(teacher, student, mode, shot) {
     const text = (await student.textContent('#step-secret-quiz .item')).trim();
     const k = quiz.bins.findIndex(b => b.id === binOf(text));
     await student.keyboard.press('Digit' + (k + 1));
-    await sleep(1050);
+    await nextItem(student, '#step-secret-quiz', text);
   }
   await student.waitForSelector('#step-secret-quiz.done');
   const quizText = await student.textContent('#step-secret-quiz h2 >> nth=1');
@@ -971,12 +985,12 @@ async function lessonTwo(mode, teacher, student, shot) {
       await student.waitForSelector('#step-detali .item.bad');
       check('Сортировщик: после ошибки — подсказка лотка', (await student.textContent('#step-detali .why')).includes('Подсказка: ' + det.bins[k].hint), (await student.textContent('#step-detali .why')).slice(0, 100));
       await shot(student, '22-u2-detali');
-      await sleep(3400);
+      await nextItem(student, '#step-detali', text);
       continue;
     }
     if (i === 1) { for (let n = 0; n < k; n++) await student.keyboard.press('ArrowRight'); await student.keyboard.press('Space'); } // стрелками и пробелом
     else await student.keyboard.press('Digit' + (k + 1));
-    await sleep(1050);
+    await nextItem(student, '#step-detali', text);
   }
   await student.waitForSelector('#step-detali.done', { timeout: 10000 });
   const dres = await student.textContent('#step-detali h2 >> nth=1');
@@ -1027,7 +1041,10 @@ async function lessonTwo(mode, teacher, student, shot) {
   check('Дуэль: «Камни мудреца» вдвоём, первый вариант — классика', await gf.evaluate(() => window.__lab.cfg.vs === 1 && window.__lab.cfg.rule === 0));
   await gf.evaluate(() => window.__lab.confirm());
   await gf.locator('#cv').focus();
-  for (const k of ['Space', 'Space']) { await student.keyboard.press(k); await sleep(700); } // солнце в центр, луна — курсор занят, сдвиг не нужен: ждём ход лун
+  // солнце в центр, луна — курсор занят, сдвиг не нужен: ждём ход луны. Ждём по доске, а не по часам: без видеокарты кадры редкие
+  await student.keyboard.press('Space');
+  await gf.waitForFunction(() => window.__lab.lab.state.pos.b.filter(Boolean).length >= 1, null, { timeout: 10000, polling: 100 }).catch(() => {});
+  await student.keyboard.press('Space'); await sleep(700);
   const placed = await gf.evaluate(() => window.__lab.lab.state.pos.b.filter(Boolean).length);
   check('Дуэль: оба игрока ходят одними кнопками', placed >= 1, `камней на доске: ${placed}`);
   await gf.evaluate(() => window.__lab.end('win', 'Проверка'));
@@ -1124,7 +1141,7 @@ async function lessonThree(mode, teacher, student, shot) {
   for (let i = 0; i < mda.items.length; i++) {
     const text = (await student.textContent('#step-mda .item')).trim();
     await student.keyboard.press('Digit' + (mda.bins.findIndex(b => b.id === mda.items.find(x => x.text === text).bin) + 1));
-    await sleep(1050);
+    await nextItem(student, '#step-mda', text);
   }
   await student.waitForSelector('#step-mda.done', { timeout: 10000 });
   check('Квиз «Механика, динамика или эстетика?» пройден', new RegExp(`${mda.items.length} из ${mda.items.length}`).test(await student.textContent('#step-mda h2 >> nth=1')));
@@ -1317,7 +1334,8 @@ async function lessonFour(mode, teacher, student, shot) {
   await student.click('.cp >> text=Мастерская');
   await student.waitForSelector('#step-reliz .seg .opt');
   const games = await student.$$eval('#step-reliz .seg .opt', bs => bs.map(b => b.dataset.game));
-  check('Релиз: на выбор все игры модуля 1 (уроки 1–4)', games.length === 4 && /из 4/.test(await student.textContent('#step-reliz')), `игр: ${games.length}`);
+  const built1 = [1, 2, 3, 4].filter(n => n === 1 || want(n)).length; // с --only собраны не все игры модуля
+  check('Релиз: на выбор все игры модуля 1 (уроки 1–4)', games.length === built1 && /из 4/.test(await student.textContent('#step-reliz')), `игр: ${games.length}`);
   const first = await student.evaluate(async () => (await (await fetch('/api/arcade', { headers: { 'x-lab-token': Lab.token.get() } })).json()).mine.find(c => c.lesson && c.lesson.id === 'urok-01'));
   await student.click(`#step-reliz .seg .opt[data-game="${first.id}"]`);
   await student.waitForSelector(`#step-reliz .seg .opt.on[data-game="${first.id}"]`);
@@ -1807,7 +1825,7 @@ async function lessonEight(mode, teacher, student, shot, { browser, base, code, 
   for (let i = 0; i < (mode === 'mock' ? quiz.items.length : 3); i++) {
     const text = (await student.textContent('#step-priemy .item')).trim();
     await student.keyboard.press('Digit' + (quiz.bins.findIndex(b => b.id === binOf(text)) + 1));
-    await sleep(1050);
+    await nextItem(student, '#step-priemy', text);
   }
   if (mode === 'mock') {
     await student.waitForSelector('#step-priemy.done');
@@ -1825,7 +1843,7 @@ async function lessonEight(mode, teacher, student, shot, { browser, base, code, 
   await student.click('.cp >> text=Мастерская');
   await experimentRound(student, shot);
   await student.waitForSelector('#step-reliz .seg .opt');
-  const built = [5, 6, 7, 8].filter(n => n >= FROM).length;
+  const built = [5, 6, 7, 8].filter(want).length;
   const games = await student.$$eval('#step-reliz .seg .opt', bs => bs.map(b => b.dataset.game));
   check('Релиз модуля 2: на выбор только игры модуля 2', games.length === built && /из 4/.test(await student.textContent('#step-reliz')), `игр: ${games.length}`);
   await student.click('#step-reliz .seg .opt >> nth=' + (games.length - 1));
@@ -1854,7 +1872,7 @@ async function lessonEight(mode, teacher, student, shot, { browser, base, code, 
   await student.click('.cp >> text=Играем вместе');
   if (mode === 'demo') { check('Выставка без игр класса ждёт игры джема', /Ждём игры класса/.test(await student.textContent('#step-vystavka'))); return; }
   const nctx = await browser.newContext({ viewport: { width: 1280, height: 900 } });
-  await nctx.addInitScript(() => { window.LAB_ASK_AUTO = true; });
+  await nctx.addInitScript(() => { window.LAB_ASK_AUTO = true; window.LAB_FAST = true; window.LAB_LOWRES = true; });
   const nb = await nctx.newPage();
   watch(nb, errors);
   await nb.goto(base + '/?code=' + code);
@@ -1915,7 +1933,7 @@ async function lessonEight(mode, teacher, student, shot, { browser, base, code, 
 /* ---------- «Играем вместе»: второй ученик, игры друг друга, вызов, плейтест, отзыв, аркада ---------- */
 async function together(browser, base, code, teacher, student, errors, shot) {
   const nctx = await browser.newContext({ viewport: { width: 1280, height: 900 } });
-  await nctx.addInitScript(() => { window.LAB_ASK_AUTO = true; });
+  await nctx.addInitScript(() => { window.LAB_ASK_AUTO = true; window.LAB_FAST = true; window.LAB_LOWRES = true; });
   const nb = await nctx.newPage();
   watch(nb, errors);
   // вторая ученица собирает свою игру: Фабрика и решения кубиками, ИГРА, сборка без продюсера
@@ -2123,9 +2141,11 @@ function cacheCheck() {
   const browser = await chromium.launch({ headless: !process.argv.includes('--headed'), args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'] });
   try {
     await run(browser, base, 'mock');
-    cacheCheck();
-    writeConfig({ apiKey: '' });
-    await run(browser, base, 'demo');
+    if (FULL1) cacheCheck();
+    if (!process.argv.includes('--mock-only')) {
+      writeConfig({ apiKey: '' });
+      await run(browser, base, 'demo');
+    }
   } catch (e) {
     check('Прогон дошёл до конца', false, e.message.split('\n').slice(0, 3).join(' '));
     await failShots();

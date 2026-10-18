@@ -1,20 +1,27 @@
 ---
 name: proverka-i-kommit
-description: Проверить портал и игры «Лаборатории игр» перед коммитом (check-game.js, playtest.js, e2e-portal.js) и отправить правки в main автокоммитом. Используй перед каждым коммитом в этом репозитории и когда проверка упала.
+description: Проверить портал и игры «Лаборатории игр» перед коммитом (check.js, check-game.js, playtest.js, e2e-portal.js) и отправить правки в main автокоммитом. Используй перед каждым коммитом в этом репозитории и когда проверка упала.
 ---
 
 # Проверка и коммит
 
 Правки идут сразу в `main`, без веток и запросов на слияние.
 
-## Что запускать
+## Что запускать: две ступени
 
-| Что меняли | Команда |
+1. **После задачи** — `node portal/tools/check.js`. Он смотрит изменённые файлы (незакоммиченные, новые и свои коммиты против `origin/main`) и запускает только нужное: одну игру и уроки, где она донор; `e2e-portal.js --only=N` для сценария урока N; демо-прогон, только если трогали ИИ, сервер или сценарий; `e2e-qwen-chat.js` для портала. Документы и skills не проверяются. `--dry` — показать план.
+2. **Полная** — `node portal/tools/check.js --full`: перед меткой урока (`урок-0N`), перед прохождением, после больших правок сервера и оболочки. Каждую ночь её гоняет GitHub Actions (`.github/workflows/nochnaya-proverka.yml`), красный прогон присылает письмо.
+
+После `git pull --rebase` запусти `node portal/tools/check.js --since=<коммит до pull>`: если пришли только документы или чужая игра, проверять почти нечего.
+
+| Отдельные команды | Что делают |
 | --- | --- |
-| игры, оболочку `portal/engine/` | `node portal/tools/check-game.js --self` |
-| одну игру | `node portal/tools/check-game.js games/<имя>.js` и `node portal/tools/playtest.js games/<имя>.js` |
-| портал (`server.js`, `lib/`, `public/`, `lessons/`, `ai/`) | ещё `node portal/tools/e2e-portal.js` |
-| размер промпта программиста | `node portal/tools/build-prompt.js --sizes` |
+| `node portal/tools/check-game.js --self` | игры и оболочка; игры без изменений с последней зелёной проверки пропускаются (`--all` — все), по 3 одновременно (`--jobs=1` — по одной) |
+| `node portal/tools/check-game.js games/<имя>.js` и `node portal/tools/playtest.js games/<имя>.js` | одна игра и бот-плейтестер |
+| `node portal/tools/e2e-portal.js` | портал целиком, два прогона; `--only=3,6` — только эти уроки, `--mock-only` — без демо-прогона |
+| `node portal/tools/build-prompt.js --sizes` | размер промпта программиста |
+
+В проверках игры рисуются в половину разрешения (`LAB_LOWRES`), а квизы ждут меньше (`LAB_FAST`): без видеокарты игровое время идёт в разы медленнее настоящего. Поэтому в e2e жди по часам игры (`window.__lab.lab.t`) или по состоянию страницы, а не `sleep()`.
 
 Нужен Playwright с Chromium (`npm i -g playwright && npx playwright install chromium`). В облачной среде Claude Code он уже стоит: браузер там не скачивай.
 
@@ -30,4 +37,4 @@ description: Проверить портал и игры «Лаборатори�
 - В конце ответа с правками хук `.claude/hooks/autocommit.sh` коммитит и отправляет в main сам. Если хук не сработал (облачная среда, репозиторий в подпапке), запусти из корня репозитория `bash .claude/hooks/autocommit.sh`.
 - Своё сообщение коммита — по-русски, о том, что изменилось для автора и учеников.
 - В коммит никогда не попадают: ключи API, `config.json`, `.env`, `portal/data/`, данные учеников и записи прохождений.
-- Если в main успели прийти чужие правки, сначала `git pull --rebase origin main`, потом проверка ещё раз.
+- Если в main успели прийти чужие правки, сначала `git pull --rebase origin main`, потом `node portal/tools/check.js --since=<коммит до pull>`.

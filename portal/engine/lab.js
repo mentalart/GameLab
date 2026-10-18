@@ -299,9 +299,11 @@
     if (scene) { try { scene.dispose(); } catch (e) { /* уже освобождена */ } }
     scene = null; sg = null; glow = null; sps = null; cam = null;
   }
+  // LAB_LOWRES — для автопроверок без видеокарты: картинка в половину разрешения, кадров вдвое больше. Ученики его не видят
+  const scaling = () => (Math.round(cfg.quality) === 0 ? 1.5 : 1) * (window.LAB_LOWRES ? 2 : 1);
   function buildScene() {
     const q = Math.round(cfg.quality);
-    engine.setHardwareScalingLevel(q === 0 ? 1.5 : 1);
+    engine.setHardwareScalingLevel(scaling());
     scene = new B.Scene(engine);
     lab.scene = scene;
     const sky = G.sky || '#1b2440';
@@ -1073,6 +1075,7 @@
     ready: false, lab, tele, session, get state() { return state; }, get paused() { return paused; }, get errored() { return errored; },
     get scene() { return scene; }, cfg, DEFAULTS,
     confirm, restart: () => restart(true), end: (k, t) => end(k || 'lose', t || 'Проверка'), togglePanel, playtest, botShow, setLupa,
+    lowres: on => { window.LAB_LOWRES = !!on; engine.setHardwareScalingLevel(scaling()); },
     get lupa() { return lupa ? { title: lupa.title, n: lupa.n, on: performance.now() <= lupa.until } : null; },
     engine: 'babylon',
     // то же, что у оболочки three.js: автопроверка работает с обеими

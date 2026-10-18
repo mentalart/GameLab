@@ -3,6 +3,8 @@
 'use strict';
 const { el, api, toast, roll, beep, copy, valText, fieldEditor } = Lab;
 const $ = s => document.querySelector(s);
+// LAB_FAST — для проверочного прогона e2e: паузы квизов в 4 раза короче, загадку достаточно поиграть секунду
+const pause = ms => (window.LAB_FAST ? Math.max(250, Math.round(ms / 4)) : ms);
 const S = { me: null, lesson: null, answers: {}, game: null, wow: null, opened: [], cpId: null, hooks: [], demo: false };
 
 /* =================== загрузка и синхронизация =================== */
@@ -658,7 +660,7 @@ STEPS.sort = ctx => {
     if (!ok) binBtns[right].classList.add('flash-good');
     const hint = !ok && st.bins[right].hint ? ' Подсказка: ' + st.bins[right].hint : '';
     why.textContent = (ok ? 'Верно! ' : k < 0 ? 'Время вышло. ' : `Это ${st.bins[right].label.toLowerCase()}. `) + it.why + hint;
-    setTimeout(() => { binBtns.forEach(b => b.classList.remove('flash-good', 'flash-bad')); i++; next(); }, ok ? 900 : hint ? 3200 : 2200);
+    setTimeout(() => { binBtns.forEach(b => b.classList.remove('flash-good', 'flash-bad')); i++; next(); }, pause(ok ? 900 : hint ? 3200 : 2200));
   }
   function finish() {
     active = false; cancelAnimationFrame(raf);
@@ -932,7 +934,7 @@ STEPS.trace = ctx => {
     if (k >= 0) btns[k].classList.add(ok ? 'flash-good' : 'flash-bad');
     if (!ok) btns[right].classList.add('flash-good');
     why.innerHTML = ''; why.append(el('b', {}, ok ? 'Верно! ' : k < 0 ? `Время вышло. Это «${R[right].label}». ` : `Это «${R[right].label}». `), R[right].why || '', target(sim) ? ' Пунктир — куда он целился.' : '');
-    setTimeout(() => { if (phase === 'why') { i++; show(); } }, ok ? 1800 : 3600);
+    setTimeout(() => { if (phase === 'why') { i++; show(); } }, pause(ok ? 1800 : 3600));
   }
   function finish() {
     phase = 'end'; cancelAnimationFrame(raf);
@@ -2357,7 +2359,7 @@ STEPS.cycle = ctx => {
 // rounds — [{ cfg, answer, why }], options — подписи ответов (на раунд берутся верный и ещё choices − 1), seconds — сколько играть до ответа,
 // baseLabel — подпись вкладки с основой (по умолчанию «Как задумано»).
 STEPS.blind = ctx => {
-  const st = ctx.step, need = st.seconds || 6, choices = st.choices || 4;
+  const st = ctx.step, need = window.LAB_FAST ? 1 : st.seconds || 6, choices = st.choices || 4;
   const host = el('div', { class: 'stack blind' });
   let v = Object.assign({ i: 0, picks: [] }, ctx.value), tab = 'mystery', h = null, played = 0, tick = null, auto = false;
   const round = () => st.rounds[v.i];

@@ -1,0 +1,41 @@
+# Ночная полная проверка: все игры, оба прогона портала, чат Qwen — на свежем main.
+# Ловит то, что пропустила быстрая проверка после задачи (node portal/tools/check.js).
+# Если красно — GitHub пишет письмо, снимки проверки лежат в артефакте прогона. Запуск вручную — вкладка Actions.
+name: Ночная полная проверка
+
+on:
+  schedule:
+    - cron: "0 23 * * *" # 02:00 по Москве
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: nochnaya-proverka
+  cancel-in-progress: true
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Playwright с Chromium
+        run: |
+          npm i -g playwright
+          npx playwright install --with-deps chromium
+      - name: Полная проверка
+        run: |
+          export NODE_PATH="$(npm root -g)"
+          node portal/tools/check.js --full
+      - name: Снимки проверки
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: snimki-proverki
+          path: portal/.check/
+          retention-days: 7
