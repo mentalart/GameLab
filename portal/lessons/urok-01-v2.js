@@ -18,7 +18,7 @@ delete lesson.hidden;
 Object.assign(lesson, {
   id: 'urok-01-v2',
   version: 2,
-  title: v1.title + ' · версия 2: Qwen в чате',
+  title: v1.title,
   programmer: 'chat', // lib/ai.js: сборка, правка и починка игр идут через chat.qwen.ai копированием
 });
 
