@@ -1416,12 +1416,12 @@ STEPS.ownplay = ctx => {
       onclick: () => { v.match = o; beep('tick'); ctx.save(v, ready() ? true : null); drawMatch(); } }, o)));
     const emos = el('div', { class: 'row', style: 'gap:6px' }, (m.emotions || []).map(x => el('button', { type: 'button', class: 'chipbtn' + (emo.includes(x) ? ' on' : ''), 'aria-pressed': String(emo.includes(x)),
       onclick: () => { v.emotions = emo.includes(x) ? emo.filter(y => y !== x) : emo.concat(x).slice(-2); beep('tick'); ctx.save(v, ready() ? true : null); drawMatch(); } }, x)));
-    matchBox.append(el('label', { class: 'lbl' }, m.question), seg, m.emotions ? el('div', { class: 'small muted' }, 'Что ты почувствовал на самом деле? Одна-две эмоции.') : null, m.emotions ? emos : null);
+    matchBox.append(el('label', { class: 'lbl' }, m.question), seg, m.emotions ? el('div', { class: 'small muted' }, 'Что ты почувствовал на самом деле? Одна-две эмоции.') : '', m.emotions ? emos : ''); // нативный append пишет null словом
   }
   const og = ownGame({ onOver: () => { v.rounds++; show(); ctx.save(v, ready() ? true : null); } });
   if (feel) host.append(el('div', { class: 'recall' }, el('b', {}, 'Ты задумал: '), feel));
   host.append(og.el, el('div', { class: 'small' }, status), matchBox,
-    st.question ? fieldEditor({ id: 'answer', label: st.question, deck: st.deck }, v.answer, nv => { v.answer = nv; ctx.save(v, ready() ? true : null); }, { idPrefix: st.id }) : null);
+    st.question ? fieldEditor({ id: 'answer', label: st.question, deck: st.deck }, v.answer, nv => { v.answer = nv; ctx.save(v, ready() ? true : null); }, { idPrefix: st.id }) : '');
   show();
   return host;
 };
@@ -1603,7 +1603,7 @@ function curveSvg(line, { marks = [], prev = null, mark = null, onPick } = {}) {
   if (mark != null) svg.append(mk('circle', { cx: x(mark), cy: y(line[Math.min(line.length - 1, Math.round(mark))] || 0), r: 7, class: 'pick' }));
   if (onPick) {
     svg.style.cursor = 'crosshair';
-    svg.addEventListener('click', e => { const r = svg.getBoundingClientRect(); const t = Math.round(Math.max(0, Math.min(len, (e.clientX - r.left) / r.width * W - P) / (W - 2 * P) * len)); onPick(Math.min(line.length - 1, t)); });
+    svg.addEventListener('click', e => { const r = svg.getBoundingClientRect(); const t = Math.round(Math.max(0, Math.min(len, ((e.clientX - r.left) / r.width * W - P) / (W - 2 * P) * len))); onPick(Math.min(line.length - 1, t)); });
   }
   return el('div', { class: 'curvebox' }, svg, el('div', { class: 'row small muted' }, el('span', {}, '0 с'), el('span', { class: 'grow', style: 'text-align:center' }, 'зелёная — счёт · жёлтые полосы — 8+ секунд без очков · голубые штрихи — сработал секрет'), el('span', {}, `${len} с`)));
 }
@@ -2022,6 +2022,8 @@ STEPS.workshop = ctx => {
         ta.value = `${it.kind} (сосед): ${it.text}`; ta.dispatchEvent(new Event('input')); ta.focus(); beep('tick');
       } }, el('b', {}, it.kind + ': '), it.text))));
   }
+  // разбор закрыт позже, чем нарисован этот шаг (они в одном чекпоинте): главная находка приходит в просьбу, если ученик ещё ничего не написал
+  if (st.findingsFrom) S.hooks.push((kind, id) => { if (kind === 'answered' && id === st.findingsFrom && host.isConnected && !v.requests.length && ![...host.querySelectorAll('textarea')].some(t => t.value.trim())) draw(); });
   draw();
   return host;
 };
