@@ -237,7 +237,8 @@ const programmerDemo = lessonId => demo() && !manual(lessonId);
 const fullTask = (who, user, popts) => `${systemPrompt(Object.assign({ lesson: who && who.lesson, model: CHAT.model, short: true }, popts))}\n\n# Задание\n${user}\n\n${CHAT.phrase}\n${CHAT.format}`;
 const chatTpl = name => promptSection('chat-prompt.md', `<!-- chat:${name}:start -->`, `<!-- chat:${name}:end -->`);
 // пустое поле замысла fill превращает в «—»: такие строки в задании для чата не нужны
-const chatTask = middle => [CHAT.phrase, middle.replace(/^—\r?\n/gm, '').replace(/\n—\s*$/, '').trim(), chatTpl('portal')].join('\n\n');
+// раздел «Картинка» (look) — что значит «ярко» по пунктам: во всех заданиях на новую игру и в переносе в новый чат (решение автора 18.10.2026)
+const chatTask = middle => [CHAT.phrase, middle.replace(/^—\r?\n/gm, '').replace(/\n—\s*$/, '').trim(), chatTpl('look'), chatTpl('portal')].join('\n\n');
 // спрятанная механика в задании Clear: без API оболочки Лаб3D (звук спрятанной механики «ритм» игра пишет сама)
 // [база] — что из обычных правил игры делает только спрятанная механика (поле base колоды спрятанных механик урока): без неё копия «Без спрятанной механики» содержит тот же эффект
 const SECRET_BASE = 'всё, что в остальных правилах похоже на эту спрятанную механику.';
@@ -316,7 +317,7 @@ function chatChange(code, request, who, onProgress, kind) {
 const chatPact = code => chatTpl(isHtml(code) ? 'pact' : 'pact-game');
 function chatMove(code, who) {
   const pact = chatPact(code);
-  if (isHtml(code)) return fill(chatTpl('move'), { 'портал': chatTpl('portal'), 'код': code.trim(), 'договор': pact });
+  if (isHtml(code)) return fill(chatTpl('move'), { 'картинка': chatTpl('look'), 'портал': chatTpl('portal'), 'код': code.trim(), 'договор': pact });
   return `${systemPrompt({ lesson: who && who.lesson, model: CHAT.model, short: true })}\n\n# Текущая игра\nЭто игра для портала курса. Дальше я буду просить правки — по одной за раз.\n\`\`\`js\n${code.trim()}\n\`\`\`\n\n${pact}`;
 }
 // сообщение из конструктора просьбы: что не так, ради какого чувства, что не трогать
