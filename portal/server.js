@@ -244,8 +244,9 @@ function downloadPage(res, gameId, n) {
   send(res, 200, html, 'text/html; charset=utf-8', { 'Content-Security-Policy': 'sandbox allow-scripts allow-pointer-lock', 'Content-Disposition': `attachment; filename="igra.html"; filename*=UTF-8''${encodeURIComponent(name)}` });
 }
 // решения программиста из поля notes текущей версии — для шага «Найди, где ИИ своевольничал»
+// у игры-страницы из чата записи лежат в вызове portal.notes([...]) (урок 1, чекпоинт 5)
 function gameNotes(code) {
-  const m = /\bnotes\s*:\s*\[([\s\S]*?)\]/.exec(code || '');
+  const m = /\bportal\.notes\s*\(\s*\[([\s\S]*?)\]/.exec(code || '') || /\bnotes\s*:\s*\[([\s\S]*?)\]/.exec(code || '');
   if (!m) return [];
   return [...m[1].matchAll(/(['"`])((?:\\.|(?!\1)[\s\S])*?)\1/g)].map(x => x[2].replace(/\\(['"`\\])/g, '$1'));
 }
@@ -998,6 +999,25 @@ route('POST', '/api/teacher/wow/playtest-fix', (ctx) => {
   w.jobId = job.id; store.saveClass(cls);
   return { job: job.id };
 });
+// Проверка секрета без бота (урок 1, чекпоинт 5, 18.10.2026): в игру-страницу из чата бот не играет, поэтому секрет проверяют живые партии —
+// учителя в предпросмотре и класса в слепом тесте. Молчит — учитель отправляет правку в тот же чат Qwen; игра остаётся у класса.
+const SECRET_SILENT_CHAT = 'Секрет ни разу не сработал в партиях: скрытый счётчик молчит, и класс не почувствует разницу копий А и Б. Сделай секрет заметным уже в первой минуте партии при ручке secret = 1 и вызывай portal.count(\'_secret\') (в игре GAME — lab.count(\'_secret\')) каждый раз, когда он срабатывает.';
+route('POST', '/api/teacher/wow/secret-fix', (ctx) => {
+  const { cls, les, w } = needWow(ctx);
+  if (ai.programmerDemo(les.id)) throw Object.assign(new Error('Без ключа ИИ программист не правит игру — попробуйте с ключом'), { status: 400 });
+  if (w.status === 'building' && busyJob(w.jobId)) throw Object.assign(new Error('Игра уже собирается'), { status: 409 });
+  const g = w.gameId && store.getGame(w.gameId), n = g && g.current;
+  if (!n) throw Object.assign(new Error('Сначала соберите игру класса'), { status: 400 });
+  const code = store.versionCode(g.id, n), secretId = w.builtSecret, given = w.given;
+  const whoAI = { class: cls.code, nick: 'учитель', lesson: les.id };
+  const job = startJob(ctx.who.token, 'wow', async (progress) => {
+    const r = await ai.change(code, SECRET_SILENT_CHAT, whoAI, progress);
+    const out = wowVersion(cls.code, Object.assign(r, { knob: w.knob }), secretId, { kind: 'правка: секрет молчал', from: n, request: SECRET_SILENT_CHAT });
+    if (given) { const c2 = store.getClass(cls.code), w2 = wowState(c2, les); w2.given = true; store.saveClass(c2); wowChanged(c2, les); }
+    return out;
+  });
+  return { job: job.id };
+});
 route('POST', '/api/teacher/wow/version', (ctx) => { // вернуть прошлую версию игры класса (правка по плейтесту вышла хуже)
   const { cls, les, w } = needWow(ctx);
   const g = w.gameId && store.getGame(w.gameId), n = Number(ctx.body.version);
@@ -1211,6 +1231,33 @@ route('POST', '/api/game/poster', (ctx) => {
   return { ok: true, poster: `/poster/${g.id}.jpg?v=${g.poster.version}` };
 });
 
+/* ---------- правка своими словами в чате Qwen (урок 1, чекпоинт 5, 18.10.2026) ---------- */
+// договор (один раз за чат) и перенос игры в новый чат — тексты для копирования; формат зависит от игры: страница HTML или объект GAME
+function ownGameCode(c) {
+  const g = c.st.gameId && store.getGame(c.st.gameId);
+  if (!g || !g.current) throw Object.assign(new Error('Сначала собери игру'), { status: 400 });
+  return { g, code: store.versionCode(g.id, g.current) };
+}
+route('GET', '/api/chat/pact', (ctx) => { const c = needStudent(ctx); return { text: ai.chatPact(ownGameCode(c).code) }; });
+route('GET', '/api/chat/move', (ctx) => { const c = needStudent(ctx); const { code } = ownGameCode(c); return { text: ai.chatMove(code, { lesson: c.les.id }) }; });
+route('POST', '/api/chat/ask', (ctx) => { needStudent(ctx); return { text: ai.chatAsk(ctx.body || {}) }; });
+// «Вставить новую версию из чата»: в любой момент, без задания портала. Проверка та же, что у задания; не подошло или оборвалось —
+// окно Qwen с сообщением для того же чата. request — о чём просил ученик (причина версии для учителя); repair — что дописать в чат.
+route('POST', '/api/game/paste', (ctx) => {
+  const pre = needStudent(ctx);
+  const text = String(ctx.body.text || '').slice(0, 600000);
+  if (!text.trim()) throw Object.assign(new Error('Вставь ответ из чата'), { status: 400 });
+  const request = String(ctx.body.request || '').replace(/\s+/g, ' ').trim().slice(0, 600) || 'правка своими словами в чате';
+  const { g, code } = ownGameCode(pre);
+  const c = aiGuard(ctx, true);
+  const base = g.current;
+  const job = startJob(c.w.token, 'paste', async (progress) => {
+    const r = await ai.chatPaste(code, text, c.whoAI, progress, g.knob === 'secret');
+    return Object.assign(addVersion(g.id, r, { kind: 'правка', request, from: base, chat: true }), { warnings: r.warnings || [], repair: r.repair || '' });
+  });
+  return { job: job.id };
+});
+
 route('GET', '/api/game/notes', (ctx) => {
   const c = needStudent(ctx);
   const g = c.st.gameId && store.getGame(c.st.gameId);
@@ -1267,7 +1314,7 @@ route('POST', '/api/job/cancel', (ctx) => { waitingJob(ctx, ctx.body.id).cancel(
 /* ---------- учитель ---------- */
 route('GET', '/api/teacher/classes', (ctx) => {
   needTeacher(ctx);
-  const les = lessons().map(l => ({ id: l.id, number: l.number, title: l.title, module: l.module || 0, version: l.version || null, chat: ai.manual(l.id) }));
+  const les = lessons().map(l => ({ id: l.id, number: l.number, title: l.title, module: l.module || 0, version: l.version || null, chat: ai.manual(l.id), hidden: !!l.hidden && !process.env.LAB_ALL_LESSONS })); // LAB_ALL_LESSONS — проверка e2e-portal.js проходит урок 1 через API
   // модули курса и, если есть, «Проверочные уроки» (module: 0) — для уроков-проверок из LAB_LESSONS
   const modules = MODULES.concat(les.some(l => !l.module) ? [{ number: 0, title: 'Проверочные уроки' }] : []);
   return { classes: store.classes(), lessons: les, modules };
@@ -1393,7 +1440,20 @@ route('GET', '/api/teacher/poll', (ctx) => {
     } else if (x.type === 'abtest' || (x.type === 'blindpair' && x.mode === 'secret')) {
       const list = done(x.id).filter(v => v.vote), felt = x.type === 'abtest' ? list.filter(v => v.vote === v.side).length : list.filter(v => v.felt).length, same = list.filter(v => v.vote === 'same').length;
       steps.push({ cp: cp.id, id: x.id, title: x.title, kind: 'secret', n: list.length,
-        bars: [{ label: 'Почувствовали секрет', n: felt }, { label: 'Выбрали копию без секрета', n: list.length - felt - same }, { label: 'Разницы нет', n: same }] });
+        bars: [{ label: 'Почувствовали секрет', n: felt }, { label: 'Выбрали копию без секрета', n: list.length - felt - same }, { label: 'Разницы нет', n: same }] });    // разбор прототипа (урок 1, чекпоинт 5): «Совпало?», находки разбора (главные — словами), «Ближе к чувству?» — проектор и карточка учителя
+    } else if (x.type === 'ownplay' && x.match) {
+      const list = all.map(a => (a[x.id] || {}).value || {}).filter(v => v.match);
+      steps.push({ cp: cp.id, id: x.id, title: x.match.question, kind: 'choice', n: list.length, bars: x.match.options.map(o => ({ label: o, n: list.filter(v => v.match === o).length })) });
+    } else if (x.type === 'razbor') {
+      const list = all.map(a => (a[x.id] || {}).value || {}).filter(v => (v.findings || []).length), count = {};
+      list.forEach(v => new Set(v.findings.map(f => f.label || f.key)).forEach(l => { count[l] = (count[l] || 0) + 1; }));
+      const main = list.map(v => v.findings.find(f => f.id === v.main)).filter(Boolean).map(f => (f.kind === 'knob' ? '🎛 ' : '') + f.text);
+      steps.push({ cp: cp.id, id: x.id, title: x.title + ': находки', kind: 'choice', n: list.length,
+        bars: Object.entries(count).sort((p, q) => q[1] - p[1]).slice(0, 8).map(([label, n]) => ({ label, n })), own: main.slice(-6) });
+    } else if (x.type === 'verify') {
+      const list = all.map(a => ((a[x.id] || {}).value || {}).log || []).filter(l => l.length).map(l => l[l.length - 1].verdict);
+      steps.push({ cp: cp.id, id: x.id, title: 'Ближе к задуманному чувству?', kind: 'choice', n: list.length,
+        bars: [['yes', 'Да, ближе'], ['unknown', 'Не знаю'], ['worse', 'Хуже']].map(([k, label]) => ({ label, n: list.filter(v => v === k).length })) });
     }
   }
   return { steps };

@@ -299,10 +299,53 @@ async function chatShared(wow, who, onProgress) {
   }), { frame: wowFrame(wow) });
   return Object.assign(await chatProgram('общая игра', full, who, onProgress, null, true, chatTask(text)), { knob: 'secret' });
 }
+// правка идёт в тот же чат, где Qwen писал игру: код он уже видел, поэтому сообщение — только просьба и формат (решение автора 18.10.2026);
+// игру в новый чат переносит сообщение chatMove
 function chatChange(code, request, who, onProgress, kind) {
-  const text = isHtml(code) ? fill(chatTpl('change'), { 'код': code.trim(), 'просьба': request, 'формат': chatTpl('patch') })
-    : `${systemPrompt({ lesson: who && who.lesson, model: CHAT.model, short: true })}\n\n# Задание\n${fill(userTemplate('change'), { 'код': code.trim(), 'просьба': request, 'формат': userTemplate('patch') })}`;
+  const text = isHtml(code) ? fill(chatTpl('change'), { 'просьба': request, 'формат': chatTpl('patch') })
+    : fill(chatTpl('change-game'), { 'просьба': request, 'формат': userTemplate('patch') });
   return chatProgram(kind || 'правка', text, who, onProgress, code);
+}
+
+/* ---------------- правка своими словами в чате (урок 1, чекпоинт 5, 18.10.2026) ---------------- */
+// Ученик пишет просьбу сам в том чате, где Qwen собирал игру, и вставляет ответ в портал в любой момент.
+// Договор — один раз за чат: формат ответа, который портал примет; перенос — игра в новый чат с правилами портала и договором.
+const chatPact = code => chatTpl(isHtml(code) ? 'pact' : 'pact-game');
+function chatMove(code, who) {
+  const pact = chatPact(code);
+  if (isHtml(code)) return fill(chatTpl('move'), { 'портал': chatTpl('portal'), 'код': code.trim(), 'договор': pact });
+  return `${systemPrompt({ lesson: who && who.lesson, model: CHAT.model, short: true })}\n\n# Текущая игра\nЭто игра для портала курса. Дальше я буду просить правки — по одной за раз.\n\`\`\`js\n${code.trim()}\n\`\`\`\n\n${pact}`;
+}
+// сообщение из конструктора просьбы: что не так, ради какого чувства, что не трогать
+function chatAsk({ what, why, keep }) {
+  return fill(chatTpl('ask'), { 'что': cleanLine(what), 'зачем': why ? 'Зачем: ' + cleanLine(why) : '', 'не трогай': keep ? 'Не трогай: ' + cleanLine(keep) : '' })
+    .replace(/^—\r?\n/gm, '').replace(/\n{2,}/g, '\n');
+}
+const cleanLine = t => String(t || '').replace(/\s+/g, ' ').trim().slice(0, 600);
+// замечания проверки, которые ученик чинит сообщением в тот же чат (без них портал работает хуже)
+const REPAIRABLE = [
+  [/нет portal\.knobs/, 'ручки геймдизайнера (portal.knobs с пресетом «Новичок»)'],
+  [/нет portal\.over/, 'конец партии portal.over(очки) — без него не пишутся рекорды'],
+  [/нет геймпада/, 'управление с джойстика (navigator.getGamepads каждый кадр)'],
+  [/секрет не считается/, "portal.count('_secret') каждый раз, когда срабатывает секрет"],
+];
+function chatRepair(warnings) {
+  const lost = REPAIRABLE.filter(([re]) => (warnings || []).some(w => re.test(w))).map(([, t]) => t);
+  return lost.length ? fill(chatTpl('repair'), { 'что пропало': lost.join('; ') }) : '';
+}
+// вставленный ответ из чата — новая версия своей игры: тот же разбор, что у задания (код, куски, синтаксис, замечания);
+// оборванный ответ или ответ, который не подошёл, — окно Qwen с сообщением для того же чата (onProgress.ask)
+function chatPaste(code, text, who, onProgress, secret) {
+  let first = true;
+  const ask = q => {
+    if (!first) return onProgress.ask(q);
+    first = false;
+    // оборванный ответ: окно сразу просит «Продолжи» и склеивает части (/api/job/answer)
+    if (truncated(text)) return onProgress.ask(Object.assign({}, q, { followUp: true, answer: text, parts: 1 }));
+    return Promise.resolve(text);
+  };
+  const progress = Object.assign((...a) => onProgress(...a), { ask });
+  return chatProgram('правка из чата', '(ответ вставлен учеником)', who, progress, code, secret).then(r => Object.assign(r, { repair: chatRepair(r.warnings) }));
 }
 function chatFix(code, error, who, onProgress) {
   const text = isHtml(code) ? fill(chatTpl('fix'), { 'ошибка': error.message || '?', 'строка': error.line || '?', 'код': code.trim(), 'формат': chatTpl('patch') })
@@ -702,4 +745,4 @@ function demoGame(plan, who, kind) {
   return { code, model: 'демо', attempts: 1, warnings: [], demo: true, ms: 0, rub: null };
 }
 
-module.exports = { CHAT, manual, programmerDemo, truncated, joinParts, isHtml, LINK_FIELDS, playtestFix, feedbackDraft, applyPatches, loadConfig, reloadConfig, demo, models, limits, listModels, producer, producerFix, wowLink, build, buildShared, demoShared, change, fix, planText, extractCode, syntaxError };
+module.exports = { chatPact, chatMove, chatAsk, chatRepair, chatPaste, CHAT, manual, programmerDemo, truncated, joinParts, isHtml, LINK_FIELDS, playtestFix, feedbackDraft, applyPatches, loadConfig, reloadConfig, demo, models, limits, listModels, producer, producerFix, wowLink, build, buildShared, demoShared, change, fix, planText, extractCode, syntaxError };

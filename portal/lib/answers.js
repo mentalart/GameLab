@@ -29,10 +29,12 @@ function answerText(step, a, game) {
     case 'decisions': case 'igra': return step.fields.filter(x => val((v.fields || {})[x.id])).map(x => `${x.letter ? x.letter + ' — ' : ''}${x.label}: ${dice(v.fields[x.id])}`).join('\n');
     case 'producer': return v.result ? (v.result.forks || []).map((x, i) => `${x.question} → ${(v.choices || {})[i] || 'не выбрано'}`).join('\n') || 'прочитал' : '';
     case 'build': return game ? `«${game.title || ''}», версий ${game.versions.length}, текущая v${game.current}` + (v.rounds ? `, партий ${v.rounds}` : '') : '';
-    case 'ownplay': return v.rounds ? `партий ${v.rounds}` + (val(v.answer) ? `; ${step.question || 'ответ'}: ${dice(v.answer)}` : '') : '';
+    case 'ownplay': return v.rounds ? `партий ${v.rounds}` + (v.match ? `; совпало с чувством: ${v.match.toLowerCase()}` + ((v.emotions || []).length ? ' ' + v.emotions.join(' ') : '') : '') + (val(v.answer) ? `; ${step.question || 'ответ'}: ${dice(v.answer)}` : '') : '';
+    case 'razbor': return razborText(v);
+    case 'verify': return verifyText(v);
     case 'experiment': return v.knob ? `ручка ${v.knob}: ${v.from} → ${v.to == null ? '—' : v.to}; предсказание: ${dice(v.guess) || '—'}` + (v.before && v.after ? `; счёт ${v.before.score} → ${v.after.score}` : '') + (v.result ? `; ${v.result.toLowerCase()}` : '') + (v.kept === 'keep' ? '; числа сохранены' : '') : '';
     case 'aicheck': return val(v.text) ? `догадка: ${val(v.text)}` : '';
-    case 'workshop': return (v.requests || []).map(r => `${r.text}${r.dice ? ' [кубик]' : ''} → v${r.version}`).join('\n');
+    case 'workshop': return (v.requests || []).map(r => `${r.chat ? '[чат] ' : ''}${r.text}${r.dice ? ' [кубик]' : ''} → v${r.version}${r.repair ? ' (пропало: ' + r.repair.split('\n')[0].replace(/^.*нашёл, что пропало: /, '').replace(/\.$/, '') + ')' : ''}`).join('\n');
     case 'arcade': return v.game ? `«${v.title || ''}» (автор ${v.author || '—'}), партий ${v.rounds || 0}, лучший счёт ${v.best || 0}${v.beat ? ', рекорд автора побит' : ''}` : '';
     case 'playtest': return v.sent ? `${(v.emotions || []).join(' ')}; нравится: ${dice(v.like)}; хочется: ${dice(v.want)}; а что если: ${dice(v.whatif)}` : '';
     default: return a.done ? 'готово' : '';
@@ -68,4 +70,16 @@ function classAnswers(les, students, gameOf) {
   return { steps, students: rows, quizzes };
 }
 
-module.exports = { answerText, classAnswers };
+// разбор прототипа (урок 1, чекпоинт 5): приборы и главная находка
+const TOOL_NAMES = { curve: 'кривая', sort: 'своеволие ИИ', secret: 'секрет', lamps: 'лампочки' };
+function razborText(v) {
+  const tools = Object.entries(v.tools || {}).filter(([, t]) => t && t.done).map(([k]) => TOOL_NAMES[k] || k);
+  if (!tools.length && !(v.findings || []).length) return '';
+  const main = (v.findings || []).find(f => f.id === v.main);
+  return `приборы: ${tools.join(', ') || '—'}; находок ${(v.findings || []).length}` + (main ? `\nглавная: ${main.kind === 'knob' ? '[ручка] ' : ''}${main.text}` : '') +
+    (v.findings || []).filter(f => f !== main).map(f => `\n· ${f.kind === 'knob' ? '[ручка] ' : ''}${f.text}`).join('');
+}
+const VERDICTS = { yes: 'ближе к чувству', unknown: 'не знаю', worse: 'хуже' };
+function verifyText(v) { return (v.log || []).map(x => `v${x.version}: ${VERDICTS[x.verdict] || x.verdict}`).join('; '); }
+
+module.exports = { answerText, classAnswers, razborText, verifyText };

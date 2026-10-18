@@ -2,7 +2,8 @@
 // Проверка урока 1 версии 2: программист — Qwen в чате chat.qwen.ai, игры собираются копированием задания и вставкой ответа.
 // Две кнопки задания на новую игру: прежнее (правила Лаб3D, ответ — объект GAME) и Clear (три части, ответ — страница HTML).
 // Без ключа ИИ: сборка, оборванный ответ и «Продолжи», ответ без кода и сообщение в тот же чат, правки кусками обоих форматов,
-// мост portal.js (ручки, setCfg, «запустилась», отказ бота), игра класса у учителя, окно Qwen в браузере ученика.
+// мост portal.js (ручки, setCfg, «запустилась», отказ бота, телеметрия партии), игра класса у учителя, окно Qwen в браузере ученика,
+// правка в чате Qwen (договор, перенос в новый чат, конструктор просьбы, «Вставить новую версию из чата», сообщение «что пропало»).
 // Данные и настройки — во временной папке. Запуск: node portal/tools/e2e-qwen-chat.js
 'use strict';
 const fs = require('fs');
@@ -43,7 +44,8 @@ const patch = (find, repl) => `<<<<<<< НАЙТИ\n${find}\n=======\n${repl}\n>>
     const t = (await call('', '/api/login', { role: 'teacher', password: PASSWORD })).token;
     const list = await call(t, '/api/teacher/classes');
     const ids = list.lessons.map(l => l.id);
-    check('В меню обе версии урока 1', ids.indexOf('urok-01') >= 0 && ids.indexOf('urok-01-v2') === ids.indexOf('urok-01') + 1, ids.slice(0, 3).join(', '));
+    const v1 = list.lessons.find(l => l.id === 'urok-01');
+    check('Урок 1 (версия 1) скрыт из меню учителя, версия 2 — в меню', v1 && v1.hidden && ids.indexOf('urok-01-v2') >= 0 && !list.lessons.find(l => l.id === 'urok-01-v2').hidden, ids.slice(0, 3).join(', '));
     check('Версия 2 помечена как чат', list.lessons.find(l => l.id === 'urok-01-v2').chat && !list.lessons.find(l => l.id === 'urok-01').chat);
     const cls = await call(t, '/api/teacher/class', { name: 'Qwen', lesson: 'urok-01-v2' });
     const s = (await call('', '/api/login', { code: cls.code, nick: 'Аня' })).token;
@@ -95,7 +97,7 @@ const patch = (find, repl) => `<<<<<<< НАЙТИ\n${find}\n=======\n${repl}\n>>
       job = (await call(s, '/api/ai/change', { request: 'Новое название ' + k })).job;
       j = await poll(s, job, ['waiting']);
       const p = await prompt(s, job);
-      if (!k) check('Правка страницы: код, просьба и формат кусками, без правил Лаб3D', /```html/.test(p) && /НАЙТИ/.test(p) && /portal/.test(p) && !/const GAME = \{/.test(p) && !j.manual.clear);
+      if (!k) check('Правка страницы в тот же чат: просьба и формат кусками, без кода игры и правил Лаб3D', /выше в этом чате/.test(p) && /Новое название 0/.test(p) && /НАЙТИ/.test(p) && /portal/.test(p) && !/<\/html>/.test(p) && !/const GAME = \{/.test(p) && !j.manual.clear, `${p.length} знаков`);
       await call(s, '/api/job/answer', { id: job, text: patch(`<title>${title}</title>`, `<title>Правка ${k}</title>`) });
       title = 'Правка ' + k;
       j = await poll(s, job, ['done', 'error', 'waiting']).catch(() => ({ state: 'timeout' }));
@@ -106,10 +108,28 @@ const patch = (find, repl) => `<<<<<<< НАЙТИ\n${find}\n=======\n${repl}\n>>
     await call(s, '/api/game/current', { version: 1 });
     job = (await call(s, '/api/ai/change', { request: 'Другое название' })).job;
     await poll(s, job, ['waiting']);
-    check('Правка игры GAME: правила Лаб3D и формат кусками', /const GAME = \{/.test(await prompt(s, job)));
+    const pg1 = await prompt(s, job);
+    check('Правка игры GAME в тот же чат: без кода игры, ввод через lab.p1, формат кусками', /игры GAME, которую ты написал выше/.test(pg1) && /lab\.p1/.test(pg1) && /НАЙТИ/.test(pg1) && !/const GAME = \{/.test(pg1), `${pg1.length} знаков`);
     await call(s, '/api/job/answer', { id: job, text: patch("  title: '" + /title: '([^']*)'/.exec(SAMPLE)[1] + "',", "  title: 'Другое название',") });
     j = await poll(s, job, ['done', 'error']);
     check('Правка игры GAME легла', j.state === 'done', j.error || '');
+
+    // правка в чате Qwen (урок 1, чекпоинт 5): договор, перенос в новый чат, конструктор просьбы, «Вставить новую версию из чата»
+    await call(s, '/api/game/current', { version: vHtml + 3 });
+    const pact = (await call(s, '/api/chat/pact')).text;
+    check('Договор с Qwen: целиком или куски, ручки, секрет, portal.notes', /Договорились/.test(pact) && /НАЙТИ/.test(pact) && /portal\.knobs/.test(pact) && /_secret/.test(pact) && /portal\.notes/.test(pact) && !/<title>/.test(pact));
+    const move = (await call(s, '/api/chat/move')).text;
+    check('Перенос в новый чат: правила портала, код текущей версии и договор', /Что нужно порталу/.test(move) && /<title>Правка 2<\/title>/.test(move) && /Договорились/.test(move), `${move.length} знаков`);
+    const askText = (await call(s, '/api/chat/ask', { what: 'Враги  быстрее к концу', why: 'Чтобы игрок почувствовал: страшно', keep: 'Управление' })).text;
+    check('Конструктор просьбы: что, зачем, не трогай — без кода', /^Правка: Враги быстрее к концу\nЗачем: Чтобы игрок/.test(askText) && /Не трогай: Управление/.test(askText) && !/<html/.test(askText), askText.split('\n')[0]);
+    const noOver = PAGE.replace(/portal\.over\(score\);\s*/, '').replace("portal.count('_secret')", "portal.count('_secret'); portal.notes(['Золотая тарелка'])").replace('Кот на Луне', 'Из чата');
+    job = (await call(s, '/api/game/paste', { text: 'Вот:\n```html\n' + noOver + '\n```', request: 'Враги быстрее к концу' })).job;
+    j = await poll(s, job, ['done', 'error']);
+    const pv = j.result && j.result.game.versions[j.result.version - 1];
+    check('Вставка из чата: новая версия-правка с просьбой ученика', j.state === 'done' && pv.kind === 'правка' && pv.chat && pv.request === 'Враги быстрее к концу' && pv.from === vHtml + 3, j.error || JSON.stringify(pv && { kind: pv.kind, from: pv.from }));
+    check('Пропал portal.over — сообщение для того же чата', /portal\.over/.test(j.result.repair) && /ничего другого не меняя/.test(j.result.repair), j.result.repair);
+    const notes = (await call(s, '/api/game/notes')).notes || [];
+    check('Записи программиста portal.notes читаются из кода', notes.includes('Золотая тарелка'), JSON.stringify(notes));
 
     // учитель: игра класса, обе кнопки
     await call(t, '/api/teacher/wow/draw', { code: cls.code, card: 'all' });
@@ -162,6 +182,23 @@ const patch = (find, repl) => `<<<<<<< НАЙТИ\n${find}\n=======\n${repl}\n>>
     }, `/play/${res.gameId}/${res.version}`);
     check('Мост: игра сообщает «запустилась» со своими ручками', !!(bridge.config && bridge.config.speed && bridge.config.speed.label === 'Скорость героя' && bridge.config.secret), JSON.stringify(bridge.config));
     check('Мост: бот-плейтестер получает понятный отказ', /бот-плейтестер/.test(bridge.bot || ''));
+    // телеметрия моста: игра отдельной страницей, «родитель» подменён (window.parent заменяемое свойство) — видно, что мост шлёт порталу
+    const tp = await browser.newPage();
+    tp.on('pageerror', e => errors.push('игра: ' + e.message));
+    await tp.addInitScript(() => { window.__sent = []; window.parent = { postMessage: m => window.__sent.push(JSON.parse(JSON.stringify(m))) }; });
+    await tp.goto(`${base}/play/${res.gameId}/${res.version}`);
+    await tp.waitForFunction(() => window.__sent.some(m => m.type === 'ready'));
+    await tp.evaluate(() => { window.__sent.length = 0; portal.again(); portal.score(3); });
+    await tp.keyboard.press('Space');
+    await tp.keyboard.down('ArrowLeft'); await sleep(1500); await tp.keyboard.up('ArrowLeft');
+    await tp.evaluate(() => { portal.score(8); portal.hurt(); portal.count('_secret'); });
+    await sleep(1200);
+    const tele = await tp.evaluate(() => { portal.over(); const o = window.__sent.find(m => m.type === 'over'); return o && { score: o.score, tele: o.tele }; });
+    await tp.close();
+    const T = (tele || {}).tele || {};
+    check('Мост: телеметрия партии — время, нажатия, удержание, урон, счёт по секундам, секунда секрета',
+      tele && tele.score === 8 && T.time >= 2 && T.presses.a === 1 && T.presses.left === 1 && T.hold.left >= 1 && T.hurts === 1 && T.line.length >= 3 && T.line[0] === 3 && T.line[T.line.length - 1] === 8 && (T.marks._secret || []).some(x => x >= 1),
+      JSON.stringify(tele && { score: tele.score, time: T.time, presses: T.presses, hold: T.hold, hurts: T.hurts, line: T.line, marks: T.marks }));
     const gp = await browser.newPage();
     gp.on('pageerror', e => errors.push('игра: ' + e.message));
     await gp.goto(`${base}/play/${res.gameId}/${res.version}`);
@@ -171,6 +208,27 @@ const patch = (find, repl) => `<<<<<<< НАЙТИ\n${find}\n=======\n${repl}\n>>
     await gp.keyboard.press('Tab');
     const panel = await gp.evaluate(() => ({ paused: portal.paused, text: document.body.innerText }));
     check('Мост: Tab открывает панель ручек, игра на паузе, setCfg меняет ручку', panel.paused && /Ручки геймдизайнера/.test(panel.text) && /Скорость героя: 15/.test(panel.text) && /Новичок/.test(panel.text), panel.text.slice(0, 120));
+    // чекпоинт 5 в браузере ученика: разбор и правка в чате Qwen («Вставить новую версию из чата» под игрой и в Мастерской)
+    await call(t, '/api/teacher/class/update', { code: cls.code, opened: ['vau', 'secret', 'fabrika', 'peremena', 'svoya'] });
+    await call(s, '/api/game/current', { version: res.version });
+    await pg.goto(base + '/student');
+    await pg.click('.cp >> text=Своя игра');
+    await pg.waitForSelector('#step-masterskaya .chatbox');
+    check('Своя игра: под игрой — «Вставить новую версию из чата», в разборе четыре прибора',
+      !!(await pg.$('#step-ruchki details.pastebox')) && await pg.locator('#step-razbor [data-tool]').count() === 4);
+    await pg.fill('#step-masterskaya [data-ask="what"]', 'Враги быстрее к концу партии');
+    await pg.waitForFunction(() => /Правка: Враги быстрее к концу партии/.test(document.querySelector('#step-masterskaya .chatmsg').textContent));
+    check('Мастерская в чате: договор, перенос в новый чат и конструктор просьбы', /Договор/.test(await pg.textContent('#step-masterskaya')) && /Перенести игру в новый чат/.test(await pg.textContent('#step-masterskaya')));
+    await pg.fill('#step-masterskaya [data-paste="text"]', '```html\n' + PAGE.replace('Кот на Луне', 'Быстрые враги') + '\n```');
+    await pg.click('#step-masterskaya [data-paste="send"]');
+    await pg.waitForSelector('#step-masterskaya >> text=Мои правки (1)', { timeout: 15000 });
+    check('В Мастерской чата одна вставка — без дубля под игрой', await pg.locator('#step-masterskaya [data-paste="text"]').count() === 1);
+    const meP = await call(s, '/api/me');
+    const lastV = meP.game.versions[meP.game.versions.length - 1];
+    check('Ответ из чата в Мастерской стал правкой с просьбой ученика', lastV.request === 'Враги быстрее к концу партии' && lastV.chat && /\[чат\]/.test(JSON.stringify(meP.answers.masterskaya.value.requests.map(r => (r.chat ? '[чат] ' : '') + r.text))), lastV.request);
+    check('Нет слова «null» в разборе, Мастерской и проверке', !/\bnull\b/.test(await pg.textContent('#main')));
+    check('Проверка версии ждёт партии в новой версии', /Сыграй партию в новую версию/.test(await pg.textContent('#step-proverka')));
+    await pg.screenshot({ path: path.join(__dirname, '..', '.check', 'qwen-chat-workshop.png'), fullPage: true }).catch(() => {});
     check('Без ошибок на страницах', !errors.length, errors.join('; '));
     await browser.close();
   } catch (e) {

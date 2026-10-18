@@ -32,6 +32,7 @@ const TMP = fs.mkdtempSync(path.join(os.tmpdir(), 'lab-e2e-'));
 process.env.LAB_DATA = path.join(TMP, 'data');
 process.env.LAB_CONFIG = path.join(TMP, 'config.json');
 process.env.LAB_LESSONS = path.join(__dirname, 'fixtures', 'lessons'); // урок-проверка шага teacher-demo
+process.env.LAB_ALL_LESSONS = '1'; // урок 1 через API убран из меню учителя (все игры — в чате Qwen), проверка проходит его как раньше
 const OUT = path.resolve(__dirname, '..', '.check');
 fs.mkdirSync(OUT, { recursive: true });
 
@@ -238,22 +239,52 @@ async function run(browser, base, mode) {
   await student.waitForSelector('#step-sborka.done', { timeout: 10000 });
   check('Шаг сборки закрыт самой сборкой: партии — после перемены', mode === 'demo' || /5–10 минут/.test(await student.textContent('#step-sborka')));
 
-  // после перемены: своя игра, ручки и вопрос о задуманном чувстве
+  // после перемены: своя игра и «Совпало с задуманным чувством?» (урок 1, чекпоинт 5 «Разбор прототипа», 18.10.2026)
   await student.click('.cp >> text=Своя игра');
   check('Над своей игрой — задуманное чувство', /Ты задумал: Страшно, когда шершни уже у ульев/.test(await student.textContent('#step-ruchki .recall')));
   await student.click('#step-ruchki .veil button');
   own = await gameFrame(student, '/play/', 0);
   await playRound(own);
-  await student.click('#step-ruchki .dicebtn');
+  await student.click('#step-ruchki [data-match="Частично"]');
+  await student.click('#step-ruchki .chipbtn >> nth=1');
   await student.waitForSelector('#step-ruchki.done', { timeout: 10000 });
-  check('Первая партия в своей игре и ответ про ручки засчитаны', true);
+  check('Первая партия и «Совпало с задуманным чувством?» засчитаны', true);
 
-  // мастерская: правка 1
-  await student.fill('#aicheck-text', 'Золотая тарелка, я её не просил');
-  await student.click('#step-svoevolie >> text=Показать, что программист решил сам');
-  await student.waitForSelector('#step-svoevolie.done');
-  const notes = await student.locator('#step-svoevolie li').count();
-  check('Решения программиста показаны', mode === 'demo' ? notes >= 1 : notes >= 1, `строк: ${notes}`);
+  // разбор прототипа: кривая партии (партия 6 секунд — счёт по секундам из оболочки) и своеволие ИИ, находки на доске
+  await student.click('#step-razbor .veil button');
+  own = await gameFrame(student, '/play/', 0);
+  await own.evaluate(() => window.__lab.confirm());
+  await sleep(2500); await own.evaluate(() => { window.__lab.lab.score = 3; });
+  await sleep(2500); await own.evaluate(() => { window.__lab.lab.score = 7; });
+  await sleep(1500); await own.evaluate(() => window.__lab.end('lose', 'Проверка'));
+  await student.waitForSelector('#step-razbor svg.curve', { timeout: 10000 });
+  check('Разбор: кривая партии нарисована по счёту из оболочки', await student.locator('#step-razbor svg.curve polyline.now').count() === 1);
+  const box = await student.locator('#step-razbor svg.curve').boundingBox();
+  await student.mouse.click(box.x + box.width * 0.6, box.y + box.height / 2);
+  await student.click('#step-razbor .toolpanel .chipbtn >> nth=4');
+  await student.click('#step-razbor [data-curve="no"]');
+  await student.click('#step-razbor [data-offer] >> nth=0');
+  check('Кривая: «не тот момент» — находка на доске', await student.locator('#step-razbor [data-finding]').count() >= 1, await student.textContent('#step-razbor .toolpanel'));
+  await student.click('#step-razbor [data-done="curve"]');
+  await student.click('#step-razbor [data-tool="sort"]');
+  await student.click('#step-razbor [data-sort="start"]');
+  await student.waitForSelector('#step-razbor [data-bin], #step-razbor [data-keep], #step-razbor [data-done="sort"]');
+  for (let i = 0; i < 12 && await student.locator('#step-razbor [data-bin]').count(); i++) { await student.click('#step-razbor [data-bin="ai"]'); await sleep(100); }
+  const kept = await student.locator('#step-razbor [data-keep="keep"]').count();
+  for (let i = 0; i < kept; i++) await student.click(`#step-razbor [data-keep="${i ? 'keep' : 'drop'}"] >> nth=${i}`);
+  check('Своеволие ИИ: карточки разложены, решения программиста оставлены или убраны', kept >= 1 || mode === 'demo', `решений ИИ: ${kept}`);
+  if (!kept) await student.fill('#f-razborguess', 'Золотая тарелка');
+  await student.click('#step-razbor [data-done="sort"]');
+  await student.click('#step-razbor [data-tool="lamps"]');
+  check('Лампочки: «проигрыш или рекорд» загорелась по партии', await student.locator('#step-razbor .lamp.on').count() >= 1);
+  await student.click('#step-razbor [data-finding] >> nth=0');
+  await student.click('#step-razbor [data-razbor="done"]');
+  await student.waitForSelector('#step-razbor.done', { timeout: 10000 });
+  check('Разбор готов: главная находка выбрана', true, (await student.textContent('#step-razbor [data-finding].on')).replace(/\s+/g, ' '));
+
+  // правка 1: главная находка разбора уже в просьбе
+  const pre = await student.inputValue('#f-masterskayareq');
+  check('Правка 1: главная находка разбора — уже в просьбе', pre.length > 10 && await student.locator('#step-masterskaya [data-finding]').count() >= 1, pre);
   const before = await student.locator('#step-masterskaya .ver').count();
   await student.click('#step-masterskaya .opt >> text=Вяло, мало сочности');
   await student.fill('#f-masterskayareq', 'Пусть последний враг мигает красным');
@@ -263,12 +294,16 @@ async function run(browser, base, mode) {
   if (mode === 'mock') check('Куски правки дважды не легли — программист прислал игру целиком', mock.last.changeTries.join(',') === 'куски,куски,целиком', mock.last.changeTries.join(','));
   // урок 1: в шаге одна правка — кнопка отправки исчезает; вторая — в «Версии 2»
   await student.waitForSelector('#step-masterskaya >> text=Правка этого шага использована');
-  // откат одним кликом: в демо — к v1, с ИИ — к починенной v2 (v1 нарочно падает, а в эту версию будут играть соседи)
+  // проверка версии: «Хуже» — откат одной кнопкой; в демо — к v1, с ИИ — к починенной v2 (v1 нарочно падает, а в эту версию будут играть соседи)
   const back = mode === 'mock' ? 2 : 1;
-  await student.click(`#step-masterskaya .ver >> nth=${back - 1}`);
+  await student.click('#step-proverka .veil button');
+  await playRound(await gameFrame(student, '/play/', 0));
+  await student.click('#step-proverka [data-verdict="worse"]');
+  await student.waitForSelector('#step-proverka.done', { timeout: 10000 });
+  await student.click('#step-proverka [data-verify="back"]');
   await sleep(500);
   const cur = await student.textContent('#step-masterskaya .ver.cur');
-  check(`Откат к версии ${back} одним кликом`, new RegExp('v' + back).test(cur), cur);
+  check(`«Хуже» — откат к версии ${back} одной кнопкой`, new RegExp('v' + back).test(cur), cur);
   await shot(student, '6-workshop');
 
   check('Кнопка «Сохранить мой баланс» есть и ждёт повёрнутой ручки', await student.$eval('#step-masterskaya [data-balance]', b => b.disabled));
@@ -284,8 +319,8 @@ async function run(browser, base, mode) {
   await student.click('.cp >> text=Версия 2');
   const before2 = await student.locator('#step-masterskaya-2 .ver').count();
   if (mode === 'mock') {
-    await student.waitForSelector('#step-masterskaya-2 .cardopt', { timeout: 10000 });
-    await student.click('#step-masterskaya-2 .cardopt >> nth=0');
+    await student.waitForSelector('#step-masterskaya-2 [data-card]', { timeout: 10000 });
+    await student.click('#step-masterskaya-2 [data-card] >> nth=0');
     check('Правка 2: карточка соседа легла в просьбу', /\(сосед\): /.test(await student.inputValue('#f-masterskaya-2req')), await student.inputValue('#f-masterskaya-2req'));
   } else await student.click('#step-masterskaya-2 .opt >> text=Скучно в середине');
   await student.click('#step-masterskaya-2 >> text=Отправить программисту');

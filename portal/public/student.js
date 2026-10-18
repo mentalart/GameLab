@@ -1,4 +1,4 @@
-// Страница ученика: урок по чекпоинтам и типовые шаги (play, teacher-demo, choice, text, sort, rounds, cycle, trace, predict, blind, blindpair, listen, sequencer, vote, cards, secret, factory, decisions, igra, producer, build, aicheck, workshop, release, arcade, playtest).
+// Страница ученика: урок по чекпоинтам и типовые шаги (play, teacher-demo, choice, text, sort, rounds, cycle, trace, predict, blind, blindpair, listen, sequencer, vote, cards, secret, factory, decisions, igra, producer, build, aicheck, razbor, workshop, verify, release, arcade, playtest).
 // Рамка игры, карточки аркады и открытие плейтеста — в games.js, поле с кубиком — в common.js.
 'use strict';
 const { el, api, toast, roll, beep, copy, valText, fieldEditor } = Lab;
@@ -991,6 +991,7 @@ STEPS.predict = ctx => {
 // factory: lockLevels — уровни выше первого открываются после первой сборки (цель версии 2); hookFrom — ответ «Что цепляет?» подсказкой;
 // quickBuild — «⚙ Собрать сейчас» в любой момент: пустые поля сервер дописывает кубиком
 const hasGame = () => !!(S.game && S.game.current);
+const myFeeling = () => valText(((ans(S.lesson.plan.decisions).value || {}).fields || {}).feeling);
 STEPS.factory = ctx => {
   const st = ctx.step;
   let v = Object.assign({ level: st.levels[0].id, fields: {} }, ctx.value);
@@ -1264,7 +1265,7 @@ function balanceBar(h, gameId, onSaved, { why } = {}) {
   return el('div', { class: 'row balance' }, btn, line);
 }
 const gameChanged = () => S.hooks.forEach(fn => fn('game'));
-function ownGame({ onOver, autostart, onReady, onBalance, balanceWhy } = {}) {
+function ownGame({ onOver, onAgain, autostart, onReady, onBalance, balanceWhy, paste = true } = {}) {
   const status = el('div', { class: 'small', 'aria-live': 'polite' });
   const versions = el('div', { class: 'versions' });
   let fixTries = 0;
@@ -1278,6 +1279,7 @@ function ownGame({ onOver, autostart, onReady, onBalance, balanceWhy } = {}) {
       if (gg && (!gg.poster || gg.poster.version !== gg.current)) { gg.poster = { version: gg.current }; h.post({ type: 'poster' }); }
       if (onOver) onOver(m);
     },
+    onAgain,
     onPoster: data => { const gg = g(); api('/api/game/poster', { game: gg.id, version: gg.current, data }).catch(() => { gg.poster = null; }); },
     onError: async err => {
       const n = g().current;
@@ -1309,7 +1311,9 @@ function ownGame({ onOver, autostart, onReady, onBalance, balanceWhy } = {}) {
   // своя игра видна в нескольких шагах (сборка, эксперимент, мастерская): новая версия в одном — списки версий обновляются во всех
   S.hooks.push(kind => { if (kind === 'game') drawVersions(); });
   const bal = balanceBar(h, () => g().id, r => { S.game = r.game; fixTries = 0; gameChanged(); h.start(); if (onBalance) onBalance(r); }, { why: balanceWhy });
-  return { h, el: el('div', { class: 'stack' }, h.box, Games.bar(h), bal, el('div', { class: 'row' }, el('span', { class: 'small muted' }, 'Версии:'), versions), status), drawVersions };
+  // игры собираются в chat.qwen.ai: новую версию из того же чата можно вставить в любой момент
+  const pasteBox = paste && S.me.chat ? el('details', { class: 'pastebox' }, el('summary', {}, '⬇ Вставить новую версию из чата'), chatPasteBox({ onDone: () => h.start() })) : null;
+  return { h, el: el('div', { class: 'stack' }, h.box, Games.bar(h), bal, el('div', { class: 'row' }, el('span', { class: 'small muted' }, 'Версии:'), versions), pasteBox, status), drawVersions };
 }
 
 // build: собрать можно в любой момент — пустые поля Фабрики, решений и ИГРА сервер дописывает кубиком и возвращает их сюда.
@@ -1376,13 +1380,26 @@ STEPS.ownplay = ctx => {
       } }, '↻ Проверить'))));
     return host;
   }
-  const ready = () => v.rounds >= need && (!st.question || !!valText(v.answer));
-  const feel = valText(((ans(S.lesson.plan.decisions).value || {}).fields || {}).feeling);
+  const ready = () => v.rounds >= need && (!st.question || !!valText(v.answer)) && (!st.match || !!v.match);
+  const feel = myFeeling();
   const status = el('b', {});
-  const show = () => { status.textContent = `Партий: ${v.rounds}` + (v.rounds < need ? ` из ${need}` : ' ✓'); };
+  const matchBox = el('div', { class: 'stack', style: 'gap:8px' });
+  const show = () => { status.textContent = `Партий: ${v.rounds}` + (v.rounds < need ? ` из ${need}` : ' ✓'); drawMatch(); };
+  // match — после партии «Совпало с задуманным?» и эмоции: первая точка «задумал — получилось» на своей игре
+  function drawMatch() {
+    matchBox.innerHTML = '';
+    if (!st.match || !v.rounds) return;
+    const m = st.match, emo = v.emotions || [];
+    const seg = el('div', { class: 'seg', role: 'radiogroup', 'aria-label': m.question });
+    m.options.forEach(o => seg.append(el('button', { type: 'button', class: 'opt' + (v.match === o ? ' on' : ''), 'aria-pressed': String(v.match === o), 'data-match': o,
+      onclick: () => { v.match = o; beep('tick'); ctx.save(v, ready() ? true : null); drawMatch(); } }, o)));
+    const emos = el('div', { class: 'row', style: 'gap:6px' }, (m.emotions || []).map(x => el('button', { type: 'button', class: 'chipbtn' + (emo.includes(x) ? ' on' : ''), 'aria-pressed': String(emo.includes(x)),
+      onclick: () => { v.emotions = emo.includes(x) ? emo.filter(y => y !== x) : emo.concat(x).slice(-2); beep('tick'); ctx.save(v, ready() ? true : null); drawMatch(); } }, x)));
+    matchBox.append(el('label', { class: 'lbl' }, m.question), seg, m.emotions ? el('div', { class: 'small muted' }, 'Что ты почувствовал на самом деле? Одна-две эмоции.') : null, m.emotions ? emos : null);
+  }
   const og = ownGame({ onOver: () => { v.rounds++; show(); ctx.save(v, ready() ? true : null); } });
   if (feel) host.append(el('div', { class: 'recall' }, el('b', {}, 'Ты задумал: '), feel));
-  host.append(og.el, el('div', { class: 'small' }, status),
+  host.append(og.el, el('div', { class: 'small' }, status), matchBox,
     st.question ? fieldEditor({ id: 'answer', label: st.question, deck: st.deck }, v.answer, nv => { v.answer = nv; ctx.save(v, ready() ? true : null); }, { idPrefix: st.id }) : null);
   show();
   return host;
@@ -1518,8 +1535,376 @@ const WORKSHOP_PRESETS = [
   { label: 'Вяло, мало сочности', request: 'Главное действие ощущается вяло. Добавь к нему вспышку, частицы и звук, к попаданию — короткую паузу удара и лёгкую тряску камеры. Механику и числа не трогай.' },
 ];
 
+/* ---------- разбор прототипа (урок 1, чекпоинт 5, решение автора 18.10.2026) ---------- */
+// razbor: ученик как геймдизайнер ставит своей игре диагноз приборами по понятиям урока. tools — приборы по порядку, required — обязательные.
+// Каждый прибор даёт находки; находка — «🎛 ручка» (числа чинятся ручками, в чат не идут) или «💬 просьба программисту».
+// Все находки ложатся на одну доску, ученик выбирает главную: её берёт шаг workshop с findingsFrom.
+// Значение шага: { tools: { curve, sort, secret, lamps }, findings: [{ id, tool, key, label, text, kind, knob }], main }
+const RAZBOR_TOOLS = {
+  curve: { icon: '📈', title: 'Кривая партии', hint: 'Линза эмоций: где в партии было сильнее всего — и там ли, где ты задумал?' },
+  sort: { icon: '🧩', title: 'Найди, где ИИ своевольничал', hint: 'Что ты просил, а что программист решил сам? Решай, что оставить.' },
+  secret: { icon: '🤫', title: 'Мой секрет: включён и выключен', hint: 'Сработал ли секрет и почувствуешь ли ты разницу?' },
+  lamps: { icon: '💡', title: 'Игра или иллюстрация', hint: 'Пять лампочек критерия курса и «видно = правда».' },
+};
+const LAMPS = [
+  { id: 'clear', text: 'Понятна за 10 секунд: ясно, что делать, без объяснений', bad: 'Непонятно за 10 секунд, что делать: нужна подсказка цели и кнопок в начале партии' },
+  { id: 'goal', text: 'Есть цель: понятно, к чему стремиться', bad: 'Нет понятной цели: игрок не знает, к чему стремиться' },
+  { id: 'growth', text: 'Есть нарастание: к концу партии труднее и напряжённее', bad: 'Нет нарастания: к концу партии не труднее, чем в начале', auto: true },
+  { id: 'end', text: 'Есть проигрыш или рекорд: партия заканчивается, счёт остаётся', bad: 'Партия не заканчивается или счёт не остаётся', auto: true },
+  { id: 'again', text: 'Хочется сыграть ещё раз', bad: 'Не хочется сыграть ещё раз: нет повода вернуться' },
+  { id: 'honest', text: 'Видно = правда: когда меня задело, я понял, чем', bad: 'Урон прилетает непонятно откуда: опасность не видна заранее' },
+];
+const KNOB_RE = /быстр|медлен|чаще|реже|сложн|легк|жизн|скорост|сильн|слаб/i;
+// счёт по секундам: где очки не растут 8 секунд и дольше, и растёт ли игра к концу
+function lineFacts(line) {
+  const flat = []; let from = null;
+  for (let i = 1; i <= line.length; i++) {
+    const same = i < line.length && line[i] === line[i - 1];
+    if (same && from == null) from = i - 1;
+    if (!same && from != null) { if (i - 1 - from >= 8) flat.push([from, i - 1]); from = null; }
+  }
+  const n = line.length, third = Math.max(1, Math.floor(n / 3));
+  const gain = (a, b) => (line[Math.min(n - 1, b)] - line[Math.max(0, a)]) / Math.max(1, b - a);
+  return { flat, growing: n >= 9 ? gain(n - third - 1, n - 1) > gain(0, third) : null };
+}
+// SVG полоски партии: счёт по секундам, пустые отрезки, моменты секрета; prev — прошлая партия бледной линией, mark — отмеченная секунда
+function curveSvg(line, { marks = [], prev = null, mark = null, onPick } = {}) {
+  const W = 600, H = 120, P = 8;
+  const len = Math.max(line.length - 1, prev ? prev.length - 1 : 0, 1), max = Math.max(1, ...line, ...(prev || []));
+  const x = t => P + (W - 2 * P) * t / len, y = v => H - P - (H - 2 * P) * v / max;
+  const pts = l => l.map((v, i) => `${x(i).toFixed(1)},${y(v).toFixed(1)}`).join(' ');
+  const ns = 'http://www.w3.org/2000/svg', mk = (tag, a) => { const e = document.createElementNS(ns, tag); for (const k in a) e.setAttribute(k, a[k]); return e; };
+  const svg = mk('svg', { viewBox: `0 0 ${W} ${H}`, class: 'curve', role: 'img', 'aria-label': `Счёт по секундам партии: ${line.length} с, ${line[line.length - 1] || 0} очков` });
+  lineFacts(line).flat.forEach(([a, b]) => svg.append(mk('rect', { x: x(a), y: P, width: Math.max(2, x(b) - x(a)), height: H - 2 * P, class: 'flat' })));
+  marks.forEach(t => svg.append(mk('line', { x1: x(t), x2: x(t), y1: P, y2: H - P, class: 'smark' })));
+  if (prev && prev.length > 1) svg.append(mk('polyline', { points: pts(prev), class: 'prev' }));
+  svg.append(mk('polyline', { points: pts(line), class: 'now' }));
+  if (mark != null) svg.append(mk('circle', { cx: x(mark), cy: y(line[Math.min(line.length - 1, Math.round(mark))] || 0), r: 7, class: 'pick' }));
+  if (onPick) {
+    svg.style.cursor = 'crosshair';
+    svg.addEventListener('click', e => { const r = svg.getBoundingClientRect(); const t = Math.round(Math.max(0, Math.min(len, (e.clientX - r.left) / r.width * W - P) / (W - 2 * P) * len)); onPick(Math.min(line.length - 1, t)); });
+  }
+  return el('div', { class: 'curvebox' }, svg, el('div', { class: 'row small muted' }, el('span', {}, '0 с'), el('span', { class: 'grow', style: 'text-align:center' }, 'зелёная — счёт · жёлтые полосы — 8+ секунд без очков · голубые штрихи — сработал секрет'), el('span', {}, `${len} с`)));
+}
+STEPS.razbor = ctx => {
+  const st = ctx.step, tools = (st.tools || Object.keys(RAZBOR_TOOLS)).filter(t => RAZBOR_TOOLS[t]), required = st.required || tools;
+  let v = Object.assign({ tools: {}, findings: [], main: null }, ctx.value);
+  tools.forEach(t => { v.tools[t] = Object.assign({ done: false }, v.tools[t]); });
+  const host = el('div', { class: 'stack' });
+  if (!hasGame()) { host.append(el('p', { class: 'muted' }, 'Сначала собери игру в чекпоинте «Фабрика и сборка».')); return host; }
+  let active = tools.find(t => !v.tools[t].done) || tools[0], conf = {}, lastOver = null;
+  const feel = myFeeling();
+  const plan = planVars();
+  const ready = () => required.every(t => v.tools[t].done) && (!!v.main || !v.findings.length);
+  const save = () => ctx.save(v, ready() ? (v.closed ? true : null) : false);
+  const fid = () => 'f' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5);
+  function addFinding(f) {
+    if (v.findings.some(x => x.key === f.key && x.text === f.text)) { toast('Эта находка уже на доске'); return; }
+    v.findings = v.findings.concat(Object.assign({ id: fid(), tool: active }, f)).slice(-12); // находка помнит прибор
+    if (!v.main && f.kind === 'ask') v.main = v.findings[v.findings.length - 1].id;
+    beep('good'); save(); drawBoard(); drawTool();
+  }
+  // предложение находки: текст и кнопка «+ На доску»
+  const offer = f => {
+    const on = v.findings.some(x => x.key === f.key && x.text === f.text);
+    return el('div', { class: 'offer' + (on ? ' on' : '') }, el('span', { class: 'tag ' + (f.kind === 'knob' ? 'auto' : 'card') }, f.kind === 'knob' ? '🎛 ручка' : '💬 просьба'), el('span', { class: 'grow' }, f.text),
+      el('button', { type: 'button', class: 'btn ghost small', disabled: on ? true : null, 'data-offer': f.key, onclick: () => addFinding(f) }, on ? '✓ на доске' : '+ На доску'));
+  };
+  const finish = (t, extra) => { v.tools[t] = Object.assign(v.tools[t], extra || {}, { done: true }); beep('done'); save(); drawTabs(); drawBoard(); };
+
+  const og = ownGame({
+    onReady: meta => { conf = meta.config || {}; },
+    onOver: m => { lastOver = m; v.rounds = (v.rounds || 0) + 1; const T = TOOL[active]; if (T && T.over) T.over(m); save(); drawTool(); if (v.tools.lamps) LAMP_AUTO(m); },
+  });
+  const tabs = el('div', { class: 'row tooltabs', role: 'tablist' }), panel = el('div', { class: 'stack toolpanel' }), board = el('div', { class: 'stack' });
+  if (feel) host.append(el('div', { class: 'recall' }, el('b', {}, 'Ты задумал: '), feel));
+  host.append(og.el, tabs, panel, board);
+  function drawTabs() {
+    tabs.innerHTML = '';
+    tools.forEach(t => tabs.append(el('button', { type: 'button', role: 'tab', class: 'chipbtn' + (t === active ? ' on' : ''), 'aria-selected': String(t === active), 'data-tool': t,
+      onclick: () => { active = t; drawTabs(); drawTool(); } }, `${v.tools[t].done ? '✓' : RAZBOR_TOOLS[t].icon} ${RAZBOR_TOOLS[t].title}` + (required.includes(t) ? '' : ' · по желанию'))));
+  }
+  function drawTool() {
+    panel.innerHTML = '';
+    const T = RAZBOR_TOOLS[active];
+    panel.append(el('div', { class: 'small muted' }, T.hint), TOOL[active].draw());
+  }
+
+  // автолампочки по партии: партия закончилась — есть конец; счёт растёт к концу — есть нарастание
+  function LAMP_AUTO(m) {
+    const L = v.tools.lamps, line = ((m.tele || {}).line) || [];
+    L.auto = Object.assign({}, L.auto, { end: true });
+    const g = lineFacts(line).growing;
+    if (g != null) L.auto.growth = g;
+  }
+  const TOOL = {
+    curve: {
+      over(m) {
+        const c = v.tools.curve, line = ((m.tele || {}).line || []).slice(0, 600);
+        c.lines = (c.lines || []).concat([line]).slice(-2);
+        c.marks = ((m.tele || {}).marks || {})._secret || [];
+        c.hurts = (m.tele || {}).hurts || 0; c.final = Math.round(m.score || 0);
+        if (c.lines.length === 1) c.moment = null;
+      },
+      draw() {
+        const c = v.tools.curve, box = el('div', { class: 'stack', style: 'gap:8px' });
+        const line = c.lines && c.lines[c.lines.length - 1];
+        if (!line) { box.append(el('p', {}, 'Сыграй партию — портал нарисует её кривую: очки по секундам.')); return box; }
+        if (line.length && line.length < 5) { box.append(el('p', {}, `Партия была всего ${line.length} с — кривая получится плоской. Сыграй партию подольше.`)); return box; }
+        // счёт по ходу партии не пришёл: линии нет или она вся нулевая, хотя партия закончилась с очками
+        if (!line.length || (Math.max(...line) === 0 && c.final > 0)) {
+          box.append(el('p', {}, 'Игра не прислала счёт по ходу партии — кривую не нарисовать.'),
+            offer({ key: 'noline', label: 'Нет счёта по секундам', text: 'Портал не видит счёт по ходу партии: вызывай portal.score(очки) каждый раз, когда меняется счёт, и portal.hurt() при уроне', kind: 'ask' }),
+            el('button', { type: 'button', class: 'btn ghost small', onclick: () => finish('curve') }, 'Понятно, дальше'));
+          return box;
+        }
+        const prev = c.lines.length > 1 ? c.lines[0] : null;
+        box.append(curveSvg(line, { marks: c.marks, prev, mark: c.moment, onPick: t => { c.moment = t; c.emotion = null; c.match = null; save(); drawTool(); } }));
+        if (c.moment == null) { box.append(el('p', { class: 'concept' }, 'Нажми на кривую там, где тебе было сильнее всего.')); return box; }
+        // что было рядом с отмеченной секундой
+        const t = c.moment, f = lineFacts(line), near = [];
+        if ((c.marks || []).some(x => Math.abs(x - t) <= 2)) near.push('сработал секрет');
+        const inFlat = f.flat.find(([a, b]) => t >= a && t <= b); if (inFlat) near.push(`очки не росли с ${inFlat[0]} по ${inFlat[1]} с`);
+        const jump = (line[Math.min(line.length - 1, t + 2)] || 0) - (line[Math.max(0, t - 2)] || 0); if (jump > 0) near.push(`+${jump} очков за 4 секунды`);
+        box.append(el('p', {}, el('b', {}, `${t} с: `), near.length ? 'рядом — ' + near.join(', ') + '.' : 'рядом ничего особенного: ни секрета, ни всплеска очков.'));
+        const emos = ['😬 Напряжённо', '😄 Весело', '🤩 Вау', '😤 Обидно', '😴 Скучно', '🤔 Непонятно'];
+        box.append(el('div', { class: 'row', style: 'gap:6px' }, emos.map(e => el('button', { type: 'button', class: 'chipbtn' + (c.emotion === e ? ' on' : ''), onclick: () => { c.emotion = e; save(); drawTool(); } }, e))));
+        if (!c.emotion) return box;
+        const seg = el('div', { class: 'seg', role: 'radiogroup', 'aria-label': 'Это задуманный момент?' });
+        [['yes', 'Да, это задуманный момент'], ['no', 'Нет, задумано другое']].forEach(([k, label]) => seg.append(el('button', { type: 'button', class: 'opt' + (c.match === k ? ' on' : ''), 'data-curve': k, onclick: () => { c.match = k; save(); drawTool(); } }, label)));
+        box.append(el('label', { class: 'lbl' }, feel ? `Ты задумал: «${feel}». Это тот момент?` : 'Это момент, который ты задумал?'), seg);
+        if (!c.match) return box;
+        const offers = [];
+        if (c.match === 'no') offers.push({ key: 'moment', label: 'Сильный момент не там', text: `Сильнее всего — на ${t} с (${c.emotion.replace(/^\S+\s/, '').toLowerCase()}), а задумано: ${feel || 'другое чувство'}`, kind: 'ask' });
+        f.flat.forEach(([a, b]) => offers.push({ key: 'flat', label: 'Пустое время', text: `С ${a} по ${b} секунду очки не растут: игроку нечего делать`, kind: 'ask' }));
+        if (f.growing === false) offers.push({ key: 'nogrowth', label: 'Нет нарастания', text: 'Напряжение не растёт к концу партии: очки идут так же, как в начале', kind: 'ask' });
+        box.append(el('div', { class: 'eyebrow' }, 'Находки кривой'), ...(offers.length ? offers.map(offer) : [el('p', { class: 'small muted' }, 'Кривая не нашла беды. Можно идти дальше.')]));
+        // ручка, которая двигает момент: повернуть, сыграть ещё раз, сравнить кривые
+        const keys = Object.keys(conf);
+        if (keys.length) {
+          const sel = el('select', { 'aria-label': 'Какая ручка двигает этот момент?', 'data-curve': 'knob' }, el('option', { value: '' }, 'Какая ручка двигает этот момент?'), ...keys.map(k => el('option', { value: k, selected: c.knob === k ? true : null }, conf[k].label || k)));
+          sel.addEventListener('change', () => { c.knob = sel.value || null; save(); drawTool(); });
+          box.append(sel);
+          if (c.knob) box.append(el('p', { class: 'small muted' }, `Открой Tab, поверни «${(conf[c.knob] || {}).label || c.knob}» и сыграй ещё раз: бледная линия — прошлая партия.`),
+            offer({ key: 'knob', label: 'Ручка', text: `Ручка «${(conf[c.knob] || {}).label || c.knob}» двигает этот момент — подобрать число и «Сохранить мой баланс»`, kind: 'knob', knob: c.knob }));
+        }
+        box.append(el('div', {}, el('button', { type: 'button', class: 'btn small' + (v.tools.curve.done ? ' ghost' : ''), 'data-done': 'curve', onclick: () => finish('curve') }, v.tools.curve.done ? '✓ Кривая разобрана' : 'Кривая разобрана')));
+        return box;
+      },
+    },
+    sort: {
+      draw() {
+        const c = v.tools.sort, box = el('div', { class: 'stack', style: 'gap:8px' });
+        if (!c.items) {
+          box.append(el('p', {}, 'Сыграй внимательно и подумай: что в игре есть, чего ты не просил? Потом разложи карточки.'),
+            el('div', {}, el('button', { type: 'button', class: 'btn', 'data-sort': 'start', onclick: async () => {
+              let notes = [];
+              try { notes = (await api('/api/game/notes')).notes || []; } catch (e) { toast(e.message, 'err'); return; }
+              const mine = ['hero', 'enemies', 'twist', 'world'].map(k => plan[k]).filter(Boolean).slice(0, 3);
+              const items = notes.slice(0, 6).map(t => ({ text: t, bin: 'ai' })).concat(mine.map(t => ({ text: t, bin: 'me' })));
+              c.items = items.sort((a, b) => hashStr(a.text) - hashStr(b.text)); c.picks = {}; c.keep = {}; c.notes = notes.length;
+              save(); drawTool();
+            } }, 'Разложить карточки')));
+          return box;
+        }
+        if (!c.notes) {
+          box.append(el('p', {}, 'Программист не оставил записей о том, что решил сам. Найди своеволие сам: что в игре есть, чего не было в твоём замысле?'),
+            fieldEditor({ id: 'guess', label: 'Что ИИ добавил сам?', hint: 'Осторожно: не называй то, что ты сам просил' }, c.guess || { text: '' }, nv => { c.guess = nv; save(); }, { idPrefix: st.id }),
+            el('div', { class: 'row' }, el('button', { type: 'button', class: 'btn ghost small', onclick: () => { if (valText(c.guess)) addFinding({ key: 'ai-guess', label: 'Своеволие ИИ', text: 'Убери то, чего я не просил: ' + valText(c.guess), kind: 'ask' }); } }, '+ Убрать это — на доску'),
+              el('button', { type: 'button', class: 'btn small', 'data-done': 'sort', onclick: () => finish('sort') }, 'Готово')),
+            offer({ key: 'nonotes', label: 'Нет записей ИИ', text: "Перечисли в portal.notes(['...']), что ты решил сам, чего я не просил", kind: 'ask' }));
+          return box;
+        }
+        const left = c.items.filter(x => !c.picks[x.text]);
+        if (left.length) {
+          const it = left[0];
+          box.append(el('div', { class: 'small muted' }, `Карточка ${c.items.length - left.length + 1} из ${c.items.length}`), el('div', { class: 'sortcard' }, it.text),
+            el('div', { class: 'row' }, [['me', 'Я просил'], ['ai', 'ИИ решил сам']].map(([k, label]) => el('button', { type: 'button', class: 'btn ghost', 'data-bin': k, onclick: () => {
+              c.picks[it.text] = k; const ok = k === it.bin; beep(ok ? 'good' : 'bad');
+              toast(ok ? 'Верно!' : it.bin === 'ai' ? 'Это решил программист: этого не было в твоём замысле.' : 'Это было в твоём замысле — ловушка!', ok ? 'ok' : 'err');
+              save(); drawTool();
+            } }, label))));
+          return box;
+        }
+        const right = c.items.filter(x => c.picks[x.text] === x.bin).length;
+        box.append(el('p', {}, el('b', {}, `Верно ${right} из ${c.items.length}. `), 'Теперь реши за каждое решение программиста: оставить или убрать? Нисикадо оставил ускорение, которое придумал не он, — и это стало лучшей частью игры.'));
+        c.items.filter(x => x.bin === 'ai').forEach(x => {
+          const seg = el('div', { class: 'row', style: 'gap:6px' }, [['keep', 'Оставляю, как Нисикадо'], ['drop', 'Убираю']].map(([k, label]) => el('button', { type: 'button', class: 'chipbtn' + (c.keep[x.text] === k ? ' on' : ''), 'data-keep': k, onclick: () => {
+            c.keep[x.text] = k;
+            if (k === 'drop') addFinding({ key: 'ai-remove', label: 'Убрать своеволие ИИ', text: 'Убери: ' + x.text, kind: 'ask' }); else { v.findings = v.findings.filter(f => f.text !== 'Убери: ' + x.text); save(); drawBoard(); }
+            drawTool();
+          } }, label)));
+          box.append(el('div', { class: 'offer' }, el('span', { class: 'grow' }, x.text), seg));
+        });
+        const all = c.items.filter(x => x.bin === 'ai').every(x => c.keep[x.text]);
+        box.append(el('div', {}, el('button', { type: 'button', class: 'btn small', disabled: all ? null : true, 'data-done': 'sort', onclick: () => finish('sort', { right }) }, all ? (c.done ? '✓ Разобрано' : 'Готово') : 'Реши за каждое решение')));
+        return box;
+      },
+    },
+    secret: {
+      over(m) {
+        const c = v.tools.secret; if (!c.stage) return;
+        const t = m.tele || {}, r = { hits: Number((t.custom || {})._secret) || 0, time: Math.round(t.time || 0), score: Math.round(m.score || 0), at: (t.marks || {})._secret || [] };
+        if (c.stage === 'on') { c.on = r; c.stage = 'off'; og.h.post({ type: 'setCfg', cfg: { secret: 0 } }); toast('Теперь партия без секрета', 'ok'); }
+        else if (c.stage === 'off') { c.off = r; c.stage = 'feel'; og.h.post({ type: 'setCfg', cfg: { secret: conf.secret ? conf.secret.value : 1 } }); }
+      },
+      draw() {
+        const c = v.tools.secret, box = el('div', { class: 'stack', style: 'gap:8px' }), title = plan.secret || 'секрет';
+        if (!conf.secret) {
+          box.append(el('p', {}, Object.keys(conf).length ? 'В игре нет ручки secret: секрет нельзя выключить и проверить.' : 'Запусти игру — прибор прочитает её ручки.'));
+          if (Object.keys(conf).length) box.append(offer({ key: 'nosecretknob', label: 'Нет ручки секрета', text: `Сделай секрет «${title}» ручкой secret (0 — выключен, 1 — включён) и вызывай portal.count('_secret') каждый раз, когда он срабатывает`, kind: 'ask' }),
+            el('button', { type: 'button', class: 'btn ghost small', onclick: () => finish('secret') }, 'Понятно, дальше'));
+          return box;
+        }
+        if (!c.stage) {
+          box.append(el('p', {}, `Твой секрет: «${title}». Сыграй две партии: первую как задумано, вторую без секрета — портал сам выключит его.`),
+            el('div', {}, el('button', { type: 'button', class: 'btn', 'data-secret': 'start', onclick: () => { c.stage = 'on'; og.h.post({ type: 'setCfg', cfg: { secret: conf.secret.value || 1 } }); save(); drawTool(); } }, '▶ Начать: партия с секретом')));
+          return box;
+        }
+        const row = (label, r) => el('tr', {}, el('td', {}, label), el('td', {}, r ? String(r.hits) : '…'), el('td', {}, r ? r.time + ' с' : '…'), el('td', {}, r ? String(r.score) : '…'));
+        box.append(el('div', { class: 'tablewrap' }, el('table', {}, el('thead', {}, el('tr', {}, ['', 'секрет сработал', 'партия', 'счёт'].map(h => el('th', {}, h)))), el('tbody', {}, row('с секретом', c.on), row('без секрета', c.off)))));
+        if (c.on && c.on.time) box.append(marksBar({ at: c.on.at, len: c.on.time }));
+        if (c.stage === 'on' || c.stage === 'off') { box.append(el('p', { class: 'concept' }, c.stage === 'on' ? 'Партия 1 из 2: секрет включён. Играй как обычно.' : 'Партия 2 из 2: секрет выключен.')); return box; }
+        const seg = el('div', { class: 'seg' }, [['yes', 'Да, разница есть'], ['no', 'Нет, разницы не чувствую']].map(([k, label]) => el('button', { type: 'button', class: 'opt' + (c.feel === k ? ' on' : ''), 'data-secret': k, onclick: () => { c.feel = k; save(); drawTool(); } }, label)));
+        box.append(el('label', { class: 'lbl' }, 'Почувствовал разницу между партиями?'), seg);
+        if (!c.feel) return box;
+        const offers = [];
+        if (!c.on.hits) offers.push({ key: 'secret-zero', label: 'Секрет молчит', text: `Секрет «${title}» не сработал ни разу за партию: сделай, чтобы он срабатывал уже в первой минуте`, kind: 'ask' });
+        else if (c.on.time && c.on.hits / c.on.time * 60 > 20) offers.push({ key: 'secret-loud', label: 'Секрет видно', text: `Секрет «${title}» срабатывает всё время — его видно, а секрет игрок должен чувствовать, но не замечать`, kind: 'ask' });
+        if (c.feel === 'no' && c.on.hits) offers.push({ key: 'secret-weak', label: 'Секрет слабый', text: 'Ручка «Секрет»: разницы не чувствую — сделать секрет сильнее', kind: 'knob', knob: 'secret' });
+        box.append(...(offers.length ? offers.map(offer) : [el('p', { class: 'small muted' }, 'Секрет работает и чувствуется. Сосед будет искать его вслепую в «Играем вместе».')]),
+          el('div', {}, el('button', { type: 'button', class: 'btn small' + (c.done ? ' ghost' : ''), 'data-done': 'secret', onclick: () => finish('secret') }, c.done ? '✓ Секрет проверен' : 'Секрет проверен')),
+          el('button', { type: 'button', class: 'btn ghost small', onclick: () => { Object.assign(c, { stage: null, on: null, off: null, feel: null }); save(); drawTool(); } }, '↻ Проверить заново'));
+        return box;
+      },
+    },
+    lamps: {
+      draw() {
+        const c = v.tools.lamps, box = el('div', { class: 'stack', style: 'gap:8px' });
+        c.self = c.self || {}; c.auto = c.auto || {};
+        const state = id => (id in c.self ? c.self[id] : id in c.auto ? c.auto[id] : null);
+        if (!v.rounds) box.append(el('p', { class: 'small muted' }, 'Сыграй партию: лампочки «нарастание» и «проигрыш или рекорд» загорятся сами.'));
+        LAMPS.forEach(L => {
+          const s = state(L.id);
+          const b = (val, label) => el('button', { type: 'button', class: 'chipbtn' + (c.self[L.id] === val ? ' on' : ''), 'data-lamp': L.id + ':' + (val ? 'yes' : 'no'), onclick: () => {
+            c.self[L.id] = val; const f = { key: 'lamp-' + L.id, label: L.bad.split(':')[0], text: L.bad, kind: 'ask' };
+            if (!val) addFinding(f); else { v.findings = v.findings.filter(x => x.key !== f.key); save(); drawBoard(); }
+            drawTool();
+          } }, label);
+          box.append(el('div', { class: 'lamp' + (s === true ? ' on' : s === false ? ' off' : '') }, el('i', { 'aria-hidden': 'true' }), el('span', { class: 'grow' }, L.text, !(L.id in c.self) && L.id in c.auto ? el('span', { class: 'tag auto', style: 'margin-left:6px' }, 'по партии') : null),
+            b(true, 'Да'), b(false, 'Нет')));
+        });
+        const all = LAMPS.every(L => state(L.id) != null);
+        LAMPS.filter(L => c.auto[L.id] === false && !(L.id in c.self)).forEach(L => box.append(offer({ key: 'lamp-' + L.id, label: L.bad.split(':')[0], text: L.bad, kind: 'ask' })));
+        box.append(el('div', {}, el('button', { type: 'button', class: 'btn small', disabled: all ? null : true, 'data-done': 'lamps', onclick: () => finish('lamps') }, all ? (c.done ? '✓ Лампочки проверены' : 'Готово') : 'Ответь про каждую лампочку')));
+        return box;
+      },
+    },
+  };
+
+  // доска находок: главная — одна; своя находка — тоже карточка
+  function drawBoard() {
+    board.innerHTML = '';
+    const left = required.filter(t => !v.tools[t].done).map(t => RAZBOR_TOOLS[t].title);
+    board.append(el('div', { class: 'eyebrow' }, `Доска находок · ${v.findings.length}`));
+    if (!v.findings.length) board.append(el('p', { class: 'small muted' }, 'Находки приборов появятся здесь. Числа — 🎛 ручкой, правила и поведение — 💬 просьбой программисту.'));
+    const grid = el('div', { class: 'cardopts', role: 'radiogroup', 'aria-label': 'Главная находка' });
+    v.findings.forEach(f => grid.append(el('div', { class: 'cardopt finding' + (v.main === f.id ? ' on' : ''), role: 'radio', tabindex: '0', 'aria-checked': String(v.main === f.id), 'data-finding': f.key,
+      onclick: e => { if (e.target.closest('.x')) return; v.main = f.id; beep('tick'); save(); drawBoard(); },
+      onkeydown: e => { if (e.key === ' ' || e.key === 'Enter') { e.preventDefault(); v.main = f.id; save(); drawBoard(); } } },
+    el('div', { class: 'row', style: 'gap:6px' }, el('span', { class: 'tag ' + (f.kind === 'knob' ? 'auto' : 'card') }, f.kind === 'knob' ? '🎛 ручка' : '💬 просьба'), el('span', { class: 'small muted grow' }, (RAZBOR_TOOLS[f.tool] || {}).icon || '✍'),
+      el('button', { type: 'button', class: 'x', 'aria-label': 'Убрать находку', onclick: () => { v.findings = v.findings.filter(x => x !== f); if (v.main === f.id) v.main = null; save(); drawBoard(); } }, '×')),
+    el('div', {}, f.text))));
+    if (v.findings.length) board.append(el('label', { class: 'lbl' }, 'Что сильнее всего мешает задуманному чувству? Выбери главную находку — она пойдёт в правку.'), grid);
+    // своя находка
+    let own = { text: '' };
+    const kindSel = el('select', { 'aria-label': 'Чем чинить', 'data-own': 'kind' }, el('option', { value: 'ask' }, '💬 просьба программисту'), el('option', { value: 'knob' }, '🎛 ручка'));
+    const ownBox = el('details', {}, el('summary', {}, '✍ Своя находка'), el('div', { class: 'stack', style: 'gap:6px' },
+      fieldEditor({ id: 'own', label: 'Что мешает задуманному чувству?', hint: 'Если дело в числах (быстрее, чаще, больше жизней) — это ручка' }, own, nv => { own = nv; if (KNOB_RE.test(valText(nv))) kindSel.value = 'knob'; }, { idPrefix: st.id, rows: 2 }),
+      el('div', { class: 'row' }, kindSel, el('button', { type: 'button', class: 'btn ghost small', onclick: () => { if (!valText(own).trim()) { toast('Напиши находку'); return; } addFinding({ tool: null, key: 'own', label: 'Своя находка', text: valText(own).trim(), kind: kindSel.value }); } }, '+ На доску'))));
+    board.append(ownBox);
+    const ok = ready();
+    board.append(el('div', { class: 'row' }, el('button', { type: 'button', class: 'btn', 'data-razbor': 'done', disabled: ok ? null : true, onclick: () => {
+      v.closed = true; ctx.save(v, true); toast(v.main ? 'Разбор готов: главная находка ушла в правку' : 'Разбор готов', 'ok'); drawBoard();
+    } }, ctx.done ? '✓ Разбор готов' : 'Разбор готов'), el('span', { class: 'small muted' }, ok ? '' : left.length ? 'Осталось: ' + left.join(', ') : 'Выбери главную находку')));
+  }
+  drawTabs(); drawTool(); drawBoard();
+  return host;
+};
+// главная находка разбора и все находки — для правки (workshop с findingsFrom)
+function razborFindings(stepId) { const v = ans(stepId).value || {}; return { list: v.findings || [], main: (v.findings || []).find(f => f.id === v.main) || null }; }
+
+/* ---------- правка в чате Qwen (урок 1, чекпоинт 5, 18.10.2026): все игры собираются в chat.qwen.ai ---------- */
+const QWEN_URL = 'https://chat.qwen.ai/';
+// кнопка «скопировать текст с сервера»: договор, перенос игры в новый чат
+function copyFromBtn(label, url, after) {
+  return el('button', { type: 'button', class: 'btn ghost small', onclick: async () => {
+    try { const r = await api(url); copy(r.text); beep('tick'); toast('Скопировано — вставь в чат Qwen', 'ok'); if (after) after(); } catch (e) { toast(e.message, 'err'); }
+  } }, label);
+}
+// «Вставить новую версию из чата»: в любой момент; request — о чём просил. Сервер проверяет ответ; что пропало — сообщение для того же чата
+function chatPasteBox({ request, onDone } = {}) {
+  const ta = el('textarea', { rows: 4, placeholder: 'Вставь сюда весь ответ Qwen: блок ```html целиком или куски НАЙТИ / ЗАМЕНИТЬ', 'data-paste': 'text', 'aria-label': 'Ответ из чата Qwen' });
+  const why = el('input', { type: 'text', maxlength: 300, placeholder: 'Например: враги быстрее к концу партии', 'data-paste': 'request', 'aria-label': 'О чём просил' });
+  if (request) why.value = typeof request === 'function' ? request() : request;
+  const prog = el('div'), out = el('div', { class: 'stack' });
+  const btn = el('button', { type: 'button', class: 'btn', 'data-paste': 'send' }, '⬇ Вставить новую версию');
+  btn.addEventListener('click', async () => {
+    if (!ta.value.trim()) { toast('Вставь ответ из чата'); ta.focus(); return; }
+    if (!why.value.trim() && typeof request === 'function') why.value = request();
+    btn.disabled = true; pauseFrames(); out.innerHTML = '';
+    prog.innerHTML = ''; const p = el('p', {}, 'Портал проверяет ответ…'); prog.append(el('div', { class: 'progress' }, el('div', { class: 'spinner' }), p));
+    try {
+      const r = await Lab.job('/api/game/paste', { text: ta.value, request: why.value.trim() }, j => { p.textContent = `Портал проверяет ответ… ${j.seconds} с`; });
+      S.game = r.game; ta.value = ''; prog.innerHTML = ''; gameChanged();
+      toast(`Готово: версия ${r.version}`, 'ok'); beep('done');
+      if (r.repair) out.append(repairBox(r.repair, r.warnings));
+      if (onDone) onDone(r, why.value.trim());
+    } catch (e) { prog.innerHTML = ''; toast(e.message, 'err', 8000); }
+    btn.disabled = false;
+  });
+  return el('div', { class: 'stack chatpaste', style: 'gap:6px' }, el('label', { class: 'lbl' }, 'Ответ из чата'), ta, el('label', { class: 'lbl' }, 'О чём просил'), why, el('div', { class: 'row' }, btn), prog, out);
+}
+// сообщение для того же чата: что пропало в новой версии
+function repairBox(text, warnings) {
+  return el('div', { class: 'warnbox stack', style: 'gap:6px', 'data-repair': '' }, el('b', {}, 'Версия сохранена, но в ней кое-что пропало. Отправь это в тот же чат и вставь ответ ещё раз:'),
+    el('pre', { class: 'chatmsg' }, text), (warnings || []).length ? el('div', { class: 'small muted' }, 'Проверка: ' + warnings.join('; ')) : null,
+    el('div', { class: 'row' }, el('button', { type: 'button', class: 'btn small', onclick: () => { copy(text); beep('tick'); toast('Скопировано', 'ok'); } }, '📋 Скопировать'),
+      el('a', { class: 'btn ghost small', href: QWEN_URL, target: '_blank', rel: 'noopener noreferrer' }, 'Открыть chat.qwen.ai ↗')));
+}
+// окно правки в чате: договор → конструктор просьбы → открыть чат → вставить ответ. keep — «не трогай» по умолчанию
+function chatWorkshop({ v, save, what, feel, keepDeck, onDone }) {
+  const box = el('div', { class: 'stack chatbox', style: 'gap:10px' });
+  let ask = Object.assign({ what: '', why: feel ? 'Чтобы игрок почувствовал: ' + feel : '', keep: '' }, v.ask);
+  if (what && !v.ask) ask.what = what;
+  const msg = el('pre', { class: 'chatmsg', 'aria-live': 'polite' });
+  const paint = async () => { try { msg.textContent = (await api('/api/chat/ask', { what: ask.what, why: ask.why, keep: ask.keep })).text; } catch (e) { msg.textContent = ''; } };
+  const inp = (k, label, ph) => { const i = el('input', { type: 'text', maxlength: 300, placeholder: ph, 'data-ask': k, value: ask[k] || '' });
+    i.addEventListener('input', () => { ask[k] = i.value; v.ask = ask; save(); paint(); }); return el('label', { class: 'stack', style: 'gap:2px' }, el('b', { class: 'small' }, label), i); };
+  const keepRow = keepDeck && keepDeck.length ? el('div', { class: 'row', style: 'gap:4px' }, keepDeck.slice(0, 6).map(t => el('button', { type: 'button', class: 'chipbtn', onclick: () => {
+    ask.keep = ask.keep ? ask.keep.replace(/\s*$/, '') + (ask.keep.includes(t) ? '' : ', ' + t) : t; v.ask = ask; save(); const i = box.querySelector('[data-ask=keep]'); if (i) i.value = ask.keep; paint();
+  } }, '+ ' + t))) : null;
+  box.append(
+    el('div', { class: 'eyebrow' }, '1. Один раз за чат — договор с Qwen'),
+    el('p', { class: 'small muted' }, 'Договор напоминает Qwen правила портала: ручки, конец партии, секрет, геймпад. Отправь его в тот чат, где Qwen собрал игру, один раз.'),
+    el('div', { class: 'row' }, copyFromBtn(v.pact ? '✓ Договор скопирован · ещё раз' : '📋 Скопировать договор', '/api/chat/pact', () => { v.pact = true; save(); }),
+      copyFromBtn('🧳 Чат потерялся? Перенести игру в новый чат', '/api/chat/move', () => { v.pact = true; save(); })),
+    el('div', { class: 'eyebrow' }, '2. Просьба программисту'),
+    inp('what', 'Что изменить', 'Одно правило или поведение, не числа'), inp('why', 'Зачем (чувство)', 'Чтобы игрок почувствовал…'), inp('keep', 'Не трогай', 'Что уже работает'), keepRow, msg,
+    el('div', { class: 'row' }, el('button', { type: 'button', class: 'btn', 'data-ask': 'copy', onclick: () => {
+      if (!ask.what.trim()) { toast('Напиши, что изменить'); return; } copy(msg.textContent); beep('tick'); v.copied = true; save(); toast('Скопировано — вставь в чат Qwen', 'ok');
+    } }, '📋 Скопировать просьбу'), el('a', { class: 'btn ghost', href: QWEN_URL, target: '_blank', rel: 'noopener noreferrer' }, 'Открыть chat.qwen.ai ↗')),
+    el('div', { class: 'eyebrow' }, '3. Вставь ответ Qwen'),
+    chatPasteBox({ request: () => ask.what.trim(), onDone }));
+  paint();
+  return box;
+}
+
 // workshop: limit — правок в этом шаге (сервер считает правки урока по сумме limit всех шагов workshop);
-// cardsFrom — над просьбой карточки соседей из плейтеста моей игры («Хочется», «А что если»): касание берёт карточку в просьбу
+// cardsFrom — над просьбой карточки соседей из плейтеста моей игры («Хочется», «А что если»): касание берёт карточку в просьбу;
+// findingsFrom — id шага razbor: доска находок над просьбой, главная находка — уже в просьбе; находка-ручка — совет про Tab, правку не тратит.
+// Класс в режиме чата (chat.qwen.ai): вместо «Отправить программисту» — договор, конструктор просьбы и «Вставить новую версию из чата».
+// keepDeck — подсказки для «Не трогай»
 STEPS.workshop = ctx => {
   const st = ctx.step;
   let v = Object.assign({ requests: [] }, ctx.value);
@@ -1531,12 +1916,33 @@ STEPS.workshop = ctx => {
     host.innerHTML = '';
     if (live) { live.h.destroy(); live = null; }
     if (!S.game || !S.game.current) { host.append(el('p', { class: 'muted' }, 'Сначала собери игру в чекпоинте «Фабрика и сборка».')); return; }
-    const og = live = ownGame({});
+    const og = live = ownGame({ paste: !S.me.chat }); // в чате вставка — в окне правки ниже
     const left = st.limit ? st.limit - v.requests.length : Infinity;
+    const F = st.findingsFrom ? razborFindings(st.findingsFrom) : null;
+    let pick = F && (F.list.find(f => f.id === v.pick) || F.main);
+    const pickText = () => (pick && pick.kind === 'ask' ? pick.text : '');
+    const boardHost = el('div', { class: 'stack', style: 'gap:6px' });
+    function drawFindings() {
+      boardHost.innerHTML = '';
+      if (!F) return;
+      if (!F.list.length) { boardHost.append(el('p', { class: 'small muted' }, 'На доске разбора нет находок. Напиши просьбу своими словами.')); return; }
+      boardHost.append(el('div', { class: 'eyebrow' }, 'Доска находок разбора — главная уже в просьбе'),
+        el('div', { class: 'cardopts', role: 'radiogroup', 'aria-label': 'Находка для правки' }, F.list.map(f => el('button', { type: 'button', role: 'radio', 'aria-checked': String(pick === f), class: 'cardopt finding' + (pick === f ? ' on' : ''), 'data-finding': f.key,
+          onclick: () => { pick = f; v.pick = f.id; ctx.save(v); beep('tick'); draw(); } }, el('span', { class: 'tag ' + (f.kind === 'knob' ? 'auto' : 'card') }, f.kind === 'knob' ? '🎛 ручка' : '💬 просьба'), ' ', f.text))));
+      if (pick && pick.kind === 'knob') boardHost.append(el('p', { class: 'concept' }, '🎛 Это число, а числа не тратят правку: открой Tab, поверни ручку' + (pick.knob ? ` «${pick.knob}»` : '') + ', сыграй и нажми «Сохранить мой баланс». Правку возьми на другую находку.'));
+    }
+    drawFindings();
+    const lastReq = v.requests[v.requests.length - 1];
+    const repair = lastReq && lastReq.repair && S.game.current === lastReq.version ? repairBox(lastReq.repair, lastReq.warnings) : null; // что пропало в последней правке из чата
     if (left <= 0) {
-      host.append(og.el, el('p', { class: 'concept' }, st.limit === 1 ? (several ? '✓ Правка этого шага использована.' : '✓ Правка урока использована.') + ' Числа можно и дальше крутить ручками (Tab).' : `✓ Все ${st.limit} правки ${several ? 'шага' : 'урока'} использованы. Числа можно и дальше крутить ручками (Tab).`));
+      host.append(...[og.el, repair, S.me.chat ? el('details', { class: 'pastebox' }, el('summary', {}, '⬇ Вставить новую версию из чата'), chatPasteBox({ onDone: () => og.h.start() })) : null].filter(Boolean)); // null у нативного append — слово «null»
+      host.append(el('p', { class: 'concept' }, st.limit === 1 ? (several ? '✓ Правка этого шага использована.' : '✓ Правка урока использована.') + ' Числа можно и дальше крутить ручками (Tab).' : `✓ Все ${st.limit} правки ${several ? 'шага' : 'урока'} использованы. Числа можно и дальше крутить ручками (Tab).`));
+    } else if (S.me.chat) {
+      host.append(...[og.el, repair, boardHost, chatWorkshop({ v, save: () => ctx.save(v), what: pickText(), feel: myFeeling(), keepDeck: st.keepDeck,
+        onDone: (r, request) => { v.requests = v.requests.concat({ text: request || 'правка в чате', version: r.version, chat: true, finding: pick ? pick.key : null, repair: r.repair || null, warnings: r.warnings || [] }); ctx.save(v, true, true); draw(); if (live) live.h.start(); } }),
+        st.limit ? el('p', { class: 'muted small' }, left === 1 ? 'Здесь одна правка: выбирай главное. Ответы Qwen для починки (сообщение «что пропало») правкой не считаются.' : `Осталось правок: ${left}`) : null].filter(Boolean));
     } else {
-      let req = { text: '' }, preset = null;
+      let req = { text: pickText() }, preset = null;
       const grid = el('div', { class: 'opts', role: 'radiogroup', 'aria-label': 'Что не так с игрой' });
       presets.forEach(pr => {
         const b = el('button', { type: 'button', class: 'opt', 'aria-pressed': 'false', title: pr.request }, pr.label);
@@ -1573,7 +1979,7 @@ STEPS.workshop = ctx => {
       });
       const cardsHost = el('div', { class: 'stack' });
       if (st.cardsFrom) loadCards(cardsHost);
-      host.append(og.el, cardsHost,
+      host.append(og.el, boardHost, cardsHost,
         el('label', { class: 'lbl' }, 'Что не так с игрой?'), grid,
         fieldEditor({ id: 'req', label: 'Или своими словами (можно вместе с кнопкой)', hint: 'Числа программист не нужен: их меняют ручки (Tab) и «Сохранить мой баланс».', deck: st.deck }, req, nv => { req = nv; }, { rows: 2, idPrefix: st.id }),
         bugBtn, bugBox,
@@ -1589,12 +1995,64 @@ STEPS.workshop = ctx => {
     box.innerHTML = '';
     if (!items.length) { box.append(el('p', { class: 'muted small' }, 'Соседи ещё не оставили карточек плейтеста. Они появятся в шаге «Плейтест» чекпоинта «Играем вместе».')); return; }
     box.append(el('div', { class: 'eyebrow' }, 'Что сказали соседи — нажми, чтобы взять в просьбу'),
-      el('div', { class: 'cardopts' }, items.map(it => el('button', { type: 'button', class: 'cardopt', title: 'Автор карточки: ' + it.who, onclick: () => {
+      el('div', { class: 'cardopts' }, items.map(it => el('button', { type: 'button', class: 'cardopt', 'data-card': '', title: 'Автор карточки: ' + it.who, onclick: () => {
         const ta = document.getElementById('f-' + st.id + 'req');
         if (!ta) return;
         ta.value = `${it.kind} (сосед): ${it.text}`; ta.dispatchEvent(new Event('input')); ta.focus(); beep('tick');
       } }, el('b', {}, it.kind + ': '), it.text))));
   }
+  draw();
+  return host;
+};
+
+// verify: проверка новой версии после правки — партия и «Ближе к задуманному чувству?» (урок 1, чекпоинт 5).
+// «Хуже» — кнопка «Вернуть прошлую версию»; три «Хуже» подряд — совет из правил итерации: откатись и попроси по-другому.
+// Значение: { log: [{ version, verdict: 'yes' | 'unknown' | 'worse', request }] }; готово, когда есть ответ про версию из правки
+STEPS.verify = ctx => {
+  let v = Object.assign({ log: [] }, ctx.value);
+  const host = el('div', { class: 'stack' });
+  let live = null, played = null, drawAsk = () => {};
+  const cur = () => S.game && S.game.versions.find(x => x.n === S.game.current);
+  const VERD = [['yes', 'Да, ближе'], ['unknown', 'Не знаю'], ['worse', 'Хуже']];
+  function draw() {
+    host.innerHTML = '';
+    if (live) { live.h.destroy(); live = null; }
+    if (!S.game || !S.game.current) { host.append(el('p', { class: 'muted' }, 'Сначала собери игру в чекпоинте «Фабрика и сборка».')); return; }
+    const feel = myFeeling();
+    live = ownGame({ onOver: () => { played = S.game.current; drawAsk(); } });
+    const ask = el('div', { class: 'stack', style: 'gap:8px' }), head = el('p', { class: 'small muted' });
+    if (feel) host.append(el('div', { class: 'recall' }, el('b', {}, 'Ты задумал: '), feel));
+    host.append(head, live.el, ask);
+    drawAsk = () => {
+      ask.innerHTML = '';
+      const ver = cur() || {};
+      head.textContent = `Сейчас версия ${ver.n}` + (ver.request ? ` — правка: «${ver.request}»` : ver.kind ? ` · ${ver.kind}` : '') + '.';
+      const mine = v.log.filter(x => x.version === ver.n).pop();
+      if (!ver.from && ver.kind !== 'правка') { ask.append(el('p', { class: 'small muted' }, 'Эта версия не из правки. Сделай правку в шаге выше и вернись сюда.')); return; }
+      if (played !== ver.n && !mine) { ask.append(el('p', { class: 'concept' }, 'Сыграй партию в новую версию — потом ответь, стало ли ближе к чувству.')); return; }
+      const seg = el('div', { class: 'seg', role: 'radiogroup', 'aria-label': 'Ближе к задуманному чувству?' }, VERD.map(([k, label]) => el('button', { type: 'button', class: 'opt' + (mine && mine.verdict === k ? ' on' : ''), 'data-verdict': k, onclick: () => {
+        v.log = v.log.filter(x => x.version !== ver.n).concat({ version: ver.n, verdict: k, request: ver.request || '' }).slice(-20);
+        ctx.save(v, true); beep(k === 'yes' ? 'good' : k === 'worse' ? 'bad' : 'tick'); drawAsk();
+      } }, label)));
+      ask.append(el('label', { class: 'lbl' }, `Версия ${ver.n} ближе к задуманному чувству?`), seg);
+      if (!mine) return;
+      if (mine.verdict === 'yes') ask.append(el('p', { class: 'concept' }, '✓ Правка сработала. Дальше — числа ручками (Tab) и «Сохранить мой баланс».'));
+      if (mine.verdict === 'unknown') ask.append(el('p', { class: 'small muted' }, 'Сыграй ещё партию и сравни с прошлой версией: кнопки версий над игрой.'));
+      if (mine.verdict === 'worse') {
+        const back = ver.from || ver.n - 1;
+        ask.append(el('div', { class: 'row' }, el('button', { type: 'button', class: 'btn', 'data-verify': 'back', onclick: async () => {
+          try { const r = await api('/api/game/current', { version: back }); S.game = r.game; gameChanged(); live.h.start(); toast(`Вернул версию ${back}`, 'ok'); } catch (e) { toast(e.message, 'err'); }
+        } }, `↩ Вернуть v${back}`), el('span', { class: 'small muted' }, 'Прошлая версия не пропала: вернуть — одна кнопка.')));
+      }
+      // три «Хуже» подряд: просьба не та — правило итерации 4
+      const tail = v.log.slice(-3);
+      if (tail.length === 3 && tail.every(x => x.verdict === 'worse')) ask.append(el('div', { class: 'warnbox', 'data-verify': 'advice' }, el('b', {}, 'Три «Хуже» подряд. '),
+        'Правило итерации: если правка трижды не выходит, не проси снова то же самое. Вернись к последней хорошей версии и попроси по-другому: одно правило, ради какого чувства и что не трогать. Или поверни ручку — может, дело в числах.'));
+    };
+    drawAsk();
+  }
+  // новая версия (правка, вставка из чата, откат) — вопрос про неё, игра та же рамка
+  S.hooks.push(kind => { if (kind !== 'game' || !host.isConnected) return; if (!live && S.game && S.game.current) draw(); else drawAsk(); });
   draw();
   return host;
 };
@@ -2315,10 +2773,15 @@ function stepSummary(step) {
     case 'decisions': case 'igra': return step.fields.map(x => `${x.letter ? x.letter + ' — ' : ''}${x.label}: ${f((v.fields || {})[x.id]) || '—'}`).join('\n');
     case 'producer': return v.result ? [v.result.praise, ...v.result.findings.map(x => `[${x.kind}] ${x.text}`), ...v.result.forks.map((x, i) => `${x.question} → ${(v.choices || {})[i] || 'не выбрано'}`)].filter(Boolean).join('\n') : 'не вызывался';
     case 'build': return S.game ? `«${S.game.title || ''}», версий ${S.game.versions.length}, текущая v${S.game.current}, модель ${(S.game.versions[S.game.current - 1] || {}).model || '—'}, партий ${v.rounds || 0}` : 'игра не собрана';
-    case 'ownplay': return `партий ${v.rounds || 0}` + (step.question ? `; ${step.question} — ${f(v.answer) || '—'}` : '');
+    case 'ownplay': return `партий ${v.rounds || 0}` + (step.match ? `; ${step.match.question} — ${v.match || '—'} ${(v.emotions || []).join(' ')}` : '') + (step.question ? `; ${step.question} — ${f(v.answer) || '—'}` : '');
+    case 'razbor': {
+      const main = (v.findings || []).find(x => x.id === v.main), done = Object.keys(v.tools || {}).filter(k => v.tools[k].done).map(k => RAZBOR_TOOLS[k].title);
+      return `приборы: ${done.join(', ') || '—'}\n` + ((v.findings || []).map(x => `${x === main ? '★ ' : '· '}${x.kind === 'knob' ? '[ручка] ' : ''}${x.text}`).join('\n') || 'находок нет');
+    }
+    case 'verify': return (v.log || []).map(x => `v${x.version}: ${{ yes: 'ближе к чувству', unknown: 'не знаю', worse: 'хуже' }[x.verdict]}`).join('; ') || 'не проверял';
     case 'experiment': return v.knob ? `ручка ${v.knob}: ${v.from} → ${v.to == null ? '—' : v.to}; предсказание: ${f(v.guess) || '—'}` + (v.before && v.after ? `; счёт ${v.before.score} → ${v.after.score}, партия ${v.before.time} → ${v.after.time} с` : '') + (v.result ? `; ${v.result.toLowerCase()}` : '') + (valText(v.noticed) ? `; заметил: ${f(v.noticed)}` : '') + (v.kept === 'keep' ? '; числа сохранены' : v.kept === 'back' ? '; вернул как было' : '') : 'не начат';
     case 'aicheck': return `догадка: ${v.text || '—'}` + (v.notes ? '\nрешения программиста: ' + (v.notes.join('; ') || 'нет записей') : '');
-    case 'workshop': return (v.requests || []).map(r => `${r.text}${r.dice ? ' [кубик]' : ''} → v${r.version}`).join('\n') || 'правок не было';
+    case 'workshop': return (v.requests || []).map(r => `${r.chat ? '[чат] ' : ''}${r.text}${r.dice ? ' [кубик]' : ''} → v${r.version}`).join('\n') || 'правок не было';
     case 'arcade': return v.game ? `игра «${v.title || ''}» (автор ${v.author || '—'}), партий ${v.rounds || 0}, лучший счёт ${v.best || 0}${v.beat ? ', рекорд автора побит' : ''}` : 'не играл';
     case 'playtest': return (v.sent ? `отзыв на «${v.title || ''}»: ${(v.emotions || []).join(' ')}; нравится: ${f(v.like)}; хочется: ${f(v.want)}; а что если: ${f(v.whatif)}` : 'отзыв не отправлен') +
       (S.me.feedback ? `\nотзыв учителя: понятие — ${valText(S.me.feedback.concept)}; вопрос — ${valText(S.me.feedback.question)}` : '');

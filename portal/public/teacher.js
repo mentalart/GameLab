@@ -19,7 +19,8 @@ async function loadClasses() {
   T.classes = r.classes; T.lessons = r.lessons; T.modules = r.modules || [];
 }
 const lessonOf = id => T.lessons.find(l => l.id === id);
-const moduleLessons = m => T.lessons.filter(l => l.module === m);
+// hidden — урок убран из меню (урок 1 через API: все игры курса собираются в чате Qwen, 18.10.2026); класс, который уже на нём, его видит
+const moduleLessons = m => T.lessons.filter(l => l.module === m && (!l.hidden || (T.overview && T.overview.class.lesson === l.id)));
 function drawClassSel() {
   // классы — строки списка, а не <select>: у раскрытого <select> клавиша Del до страницы не доходит
   const sel = $('#classSel'); sel.innerHTML = '';
@@ -504,13 +505,24 @@ function drawWowBuild() {
     const bot = el('div', { class: 'stack', id: 'wowBot' }), botLine = el('div', { class: 'small muted', 'aria-live': 'polite' });
     const runBot = () => { W.botFor = g.id + '/' + g.version; botLine.textContent = '🤖 Бот-плейтестер запускает игру…'; if (W.preview.ready) sendBot(); else W.preview.start(); };
     const sendBot = () => { W.preview.post({ type: 'playtest', options: { seconds: window.LAB_PLAYTEST_SECONDS || 90 } }); };
+    // проверка секрета живыми партиями: в игру-страницу из чата бот не играет — секрет считают партии учителя в предпросмотре
+    const selfKey = g.id + '/' + g.version;
+    if (!W.self || W.self.key !== selfKey) W.self = { key: selfKey, rounds: 0, hits: 0 };
+    const selfLine = el('div', { class: 'small', 'aria-live': 'polite' });
+    const drawSelf = () => {
+      selfLine.innerHTML = '';
+      if (r.wow.knob !== 'secret' || !W.self.rounds) return;
+      selfLine.append(el('span', { class: 'muted' }, `Ваши партии в предпросмотре: ${W.self.rounds}, секрет сработал ${W.self.hits} раз. `));
+      if (W.self.rounds >= 2 && !W.self.hits) selfLine.append(secretFixBox('Секрет молчит в ваших партиях: класс не почувствует разницу копий А и Б.'));
+    };
     W.preview = Games.frame({ src: () => `/play/${g.id}/${g.version}`, key: () => 'wow:' + g.id, label: 'Проверить игру',
+      onOver: m => { if (W.self.key !== selfKey) return; W.self.rounds++; W.self.hits += Number(((m.tele || {}).custom || {})._secret) || 0; drawSelf(); },
       onReady: () => { if (W.botFor === g.id + '/' + g.version) sendBot(); },
       onPlaytestStep: m => { botLine.textContent = `🤖 Бот играет: ${({ idle: 'пассивный', mash: 'торопыга', random: 'новичок' })[m.strategy] || m.strategy}, ${m.t} из ${m.seconds} с`; },
       onPlaytest: async m => {
         if (W.botFor !== g.id + '/' + g.version) return;
         W.botFor = null;
-        if (m.error) { botLine.textContent = '🤖 Бот не смог сыграть: ' + m.error; return; }
+        if (m.error) { botLine.textContent = '🤖 Бот не смог сыграть: ' + m.error + (r.wow.knob === 'secret' ? '. Секрет проверят живые партии: сыграйте 2 партии в предпросмотре — портал посчитает срабатывания.' : ''); return; }
         let res = null;
         try { res = await api('/api/teacher/wow/playtest', { code: T.code, version: g.version, report: m.report }); } catch (e) { toast(e.message, 'err'); }
         if (res && res.autoFix && !W.busy) { autoFixSecret(); return; }
@@ -536,7 +548,8 @@ function drawWowBuild() {
       if (g.from && !r.wow.given) row.append(el('button', { class: 'btn ghost small', type: 'button', onclick: () => wowAct('/api/teacher/wow/version', { version: g.from }, true) }, `↩ Вернуть v${g.from}`));
       bot.append(row);
     } else if (!r.wow.given && W.botFor !== g.id + '/' + g.version) setTimeout(runBot, 0);
-    bot.append(botLine);
+    bot.append(botLine, selfLine);
+    drawSelf();
     box.append(W.preview.box, Games.bar(W.preview), bot,
       el('div', { class: 'row' },
         r.wow.given ? el('button', { class: 'btn ghost', type: 'button', onclick: () => wowAct('/api/teacher/wow/give', { given: false }, true) }, 'Забрать у класса')
@@ -556,10 +569,26 @@ async function autoFixSecret() {
   } catch (e) { toast(e.message, 'err', 8000); }
   W.busy = false; drawWow(true);
 }
+// секрет игры класса молчит в живых партиях: правка уходит программисту (в уроке с Qwen в чате — окном Qwen в тот же чат), игра остаётся у класса
+function secretFixBox(why) {
+  const btn = el('button', { class: 'btn warm small', type: 'button', 'data-secret-fix': '1' }, '🛠 Отправить программисту: секрет молчит');
+  btn.addEventListener('click', async () => {
+    if (W.busy) return;
+    W.busy = true; btn.disabled = true;
+    try {
+      await Lab.job('/api/teacher/wow/secret-fix', { code: T.code }, j => { btn.textContent = `🛠 Программист чинит секрет… ${j.seconds} с`; });
+      toast('Секрет поправлен: новая версия игры класса', 'ok');
+    } catch (e) { toast(e.message, 'err', 8000); }
+    W.busy = false; drawWow(true);
+  });
+  return el('div', { class: 'row warnbox' }, el('b', { class: 'grow' }, '⚠ ' + why), btn);
+}
 function drawWowSummary() {
   const r = W.data, s = r.summary, host = $('#wowSummary'); host.innerHTML = '';
   const box = el('div', { class: 'card stack' }, el('h3', {}, 'Чекпоинт 2 · как секрет влияет на игру'));
   if (!s.rows.length) { box.append(el('p', { class: 'muted' }, 'Пока никто не сыграл в игру класса.')); host.append(box); return; }
+  const onRounds = s.rows.reduce((n, x) => n + x.onRounds, 0);
+  if (r.wow.knob === 'secret' && r.game && onRounds >= 3 && !s.hits) box.append(secretFixBox(`Секрет ни разу не сработал за ${onRounds} партий класса с секретом.`));
   box.append(el('div', { class: 'compare' },
     el('div', {}, el('div', { class: 'eyebrow' }, 'С секретом'), el('b', {}, `средний лучший счёт ${s.onAvg}`), el('div', { class: 'small muted' }, `секрет сработал ${s.hits} раз за все партии класса`)),
     el('div', {}, el('div', { class: 'eyebrow' }, 'Без секрета'), el('b', {}, `средний лучший счёт ${s.offAvg}`), el('div', { class: 'small muted' }, `угадали секрет: ${s.correct} из ${s.guessed}, попались в ловушку карт: ${s.trap}` + (s.voted ? ` · слепой тест: почувствовали секрет ${s.felt} из ${s.voted}` : '')))),
