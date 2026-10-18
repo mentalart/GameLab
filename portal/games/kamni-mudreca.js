@@ -472,7 +472,7 @@ const GAME = {
     if (w) {
       st.windArrow.rotation.y = Math.atan2(w.d[0], w.d[1]);
       const k = 0.4 * Math.sin(t * 4);
-      st.windArrow.position.set(w.d[0] * k, this.TOP + 2.6, w.d[1] * k);
+      st.windArrow.position.set(w.d[0] * k, this.TOP + 1.7, w.d[1] * k);
       if ((st.windT -= dt) <= 0) {
         st.windT = 0.09;
         const side = lab.rand(-4, 4), x = w.d[0] ? -w.d[0] * 4.5 : side, z = w.d[1] ? -w.d[1] * 4.5 : side;
@@ -552,7 +552,7 @@ const GAME = {
     if (!on) return;
     st.scaleX = lab.damp(st.scaleX, st.scaleTo || 0, 5, dt);
     const wob = st.sure ? 0 : Math.sin(lab.t * 3.1) * 0.06 + Math.sin(lab.t * 7.3) * 0.03; // открытый исход колеблется
-    st.scaleGem.position.x = (st.scaleX + wob) * 3.0;
+    st.scaleGem.position.x = -(st.scaleX + wob) * 3.0; // солнца слева, луны справа
     st.scaleGem.rotation.y += dt * (st.sure ? 0.6 : 3);
     const col = !st.sure ? st.gemOpen : st.evalV > 0 ? st.gemSun : st.evalV < 0 ? st.gemMoon : st.gemDraw;
     st.scaleGem.children[0].material = col;
@@ -683,7 +683,7 @@ const GAME = {
     st.sunLine = lab.mat('#ffd23f', { glow: 1.2 }); st.moonLine = lab.mat('#5fa8ff', { glow: 1.2 });
     st.line = lab.box(1, 0.18, 0.32, st.sunLine, { shadow: false }); st.line.visible = false;
     // стрелка ветра над доской: смотрит по своей +Z
-    st.windArrow = lab.group();
+    st.windArrow = lab.group({ scale: 1.3 });
     const wm = lab.mat('#e8f7ff', { glow: 0.6 });
     lab.cyl(0.11, 0.11, 1.6, wm, { parent: st.windArrow, rot: [Math.PI / 2, 0, 0], sides: 6, shadow: false });
     lab.cone(0.35, 0.7, wm, { parent: st.windArrow, at: [0, 0, 1.1], rot: [Math.PI / 2, 0, 0], sides: 6, shadow: false });
