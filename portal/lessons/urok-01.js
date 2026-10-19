@@ -10,7 +10,7 @@ const genreCard = g => `${g.genre} — ${g.action}`;
 // у жанров пилота угрозы и повороты — { card, type } и { card, rule }: в колоду идёт текст карты, а type и rule — в задание (wow.genres)
 const cardText = x => x.card || x;
 const byGenre = key => Object.fromEntries(GENRES.map(g => [genreCard(g), g[key].map(cardText)]));
-const slotsOf = (list, key) => Object.fromEntries(list.filter(x => x[key]).map(x => [x.card, x[key]]));
+const slotsOf = (list, key) => Object.fromEntries((list || []).filter(x => x[key]).map(x => [x.card, x[key]]));
 // вау-старт «пять вопросов» (19.10.2026): шесть мини-игр и шесть миров, герой и угроза — из колоды мира (urok-01-miry.js)
 const { GAMES, WORLDS } = require('./urok-01-miry');
 const ASK_GENRES = GENRES.filter(g => GAMES[g.genre]);
@@ -68,7 +68,12 @@ module.exports = {
     // Повороты не повторяют спрятанные механики урока (иначе в «Найди спрятанную механику» ловушка совпадёт с ответом).
     formula: 'Игра × мир × герой × угроза × поворот',
     // жанр карты действия → каркас и камера движка: подсказка связке и образец каркаса программисту, если связки нет
-    genres: GENRES.map(g => Object.assign({ card: genreCard(g), name: g.genre, frame: g.frame, juice: g.juice }, g.recipe && { recipe: g.recipe, types: slotsOf(g.threats, 'type'), rules: slotsOf(g.twists, 'rule') })),
+    genres: GENRES.map(g => Object.assign({ card: genreCard(g), name: g.genre, frame: g.frame, juice: g.juice },
+      g.recipe && { recipe: g.recipe, types: slotsOf(g.threats, 'type'), rules: slotsOf(g.twists, 'rule'), moves: g.moves, luck: g.luck, checks: g.checks })),
+    // мир и ход угрозы для задания Qwen (вау-старт 2.0): мир на карте «Мир» уходит в задание цветами, предметом и декором,
+    // ход угрозы мира (moves) выбирает её тип врага в рецепте игры (genres[].moves)
+    worlds: Object.fromEntries(WORLDS.map(w => [w.card, { name: w.name, sky: w.sky, ground: w.ground, far: w.far, acc: w.acc, item: w.item, itemName: w.itemName, decorNames: w.decorNames }])),
+    moves: Object.fromEntries(WORLDS.flatMap(w => w.threats.map(([, t, m]) => [t, m]))),
     // ask — вау-старт вопросами (решение автора 19.10.2026): карты идут по порядку, на каждую учитель задаёт классу вопрос (q),
     // крупно объясняет зачем (why), портал выкладывает offer карт из колоды, класс голосует seconds секунд, победитель встаёт опорой pillar.
     // Порядок карт = порядок вопросов: игра, мир, герой, угроза, поворот. Герой и угроза — из колоды выбранного мира, поворот — из колоды игры.
