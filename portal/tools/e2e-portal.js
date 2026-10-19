@@ -532,6 +532,8 @@ async function wowStart(teacher, student, pj, mode, shot) {
   const rtask = ai.chatSharedText({ cards: rc, genre: rg, world, move, secret: 'секрет', link: null });
   check('Задание Qwen: рецепт слово в слово, враг по ходу угрозы, правило поворота и удача', rtask.includes(`Рецепт жанра «${rg.name}»`) && rg.recipe.every(l => rtask.includes(l)) && rtask.includes(`враг типа «${rg.moves[move]}»`) && rtask.includes(rg.rules[rc.twist]) && rtask.includes(rg.luck), rg.name);
   check('Задание Qwen: мир данными — цвета, что собираем, декор; проверка перед ответом', rtask.includes(world.sky[0]) && rtask.includes(world.itemName) && rtask.includes(world.decorNames) && rtask.includes('Проверь перед ответом') && rg.checks.every(c => rtask.includes(c)), world.name);
+  check('Задание Qwen: как у лучших в жанре — образцы, зрелище, события и большое событие у всех шести игр', askGames.every(g => { const t = ai.chatSharedText({ cards: Object.assign({}, rc, { action: g.card }), genre: g, world, secret: 'секрет', link: null });
+    return g.best && g.show.length >= 3 && g.beats.length >= 3 && g.boss && t.includes(`Как у лучших в жанре — ${g.best}`) && g.show.concat(g.beats, g.boss).every(l => t.includes(l)) && /каждые 8–10 с новое событие/.test(t); }));
   check('Задание Qwen: сочность жанра у каждого жанра колоды', lesson1.wow.genres.every(g => g.juice && ai.chatSharedText({ cards: Object.assign({}, rc, { action: g.card }), genre: g, secret: 'секрет', link: null }).includes(g.juice)));
   const plain = lesson1.wow.genres.find(g => !g.recipe);
   check('Жанр без рецепта: задание без строки рецепта', !/Рецепт жанра/.test(ai.chatSharedText({ cards: Object.assign({}, rc, { action: plain.card }), genre: plain, secret: 'секрет', link: null })));
