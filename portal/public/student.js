@@ -3,6 +3,8 @@
 'use strict';
 const { el, api, toast, roll, beep, copy, valText, fieldEditor } = Lab;
 const $ = s => document.querySelector(s);
+// чем спрятанная механика действует на игрока (поле effect колоды урока): подпись под раскрытием
+const SECRET_EFFECT = { 'помощник': 'помощник: незаметно помогает игроку', 'нагнетатель': 'нагнетатель: делает игру напряжённее', 'азарт': 'азарт: зажигает игрока', 'утешение': 'утешение: смягчает промах', 'слава': 'слава: игрок чувствует себя звездой' };
 // LAB_FAST — для проверочного прогона e2e: паузы квизов в 4 раза короче, загадку достаточно поиграть секунду
 const pause = ms => (window.LAB_FAST ? Math.max(250, Math.round(ms / 4)) : ms);
 const S = { me: null, lesson: null, answers: {}, game: null, wow: null, opened: [], cpId: null, hooks: [], demo: false };
@@ -500,7 +502,7 @@ STEPS.secret = ctx => {
       host.append(el('p', { class: 'verdict ' + verdict[0] }, verdict[1]), felt ? el('p', { class: 'verdict ' + felt[0] }, felt[1]) : '',
         el('div', { class: 'secret-reveal' },
           el('div', { class: 'eyebrow' }, 'Спрятанная механика игры класса'), el('h3', {}, a.secret.title), el('p', {}, a.secret.reveal),
-          a.secret.effect ? el('span', { class: 'tag' }, a.secret.effect === 'помощник' ? 'помощник: незаметно помогает игроку' : 'нагнетатель: делает игру напряжённее') : null),
+          a.secret.effect ? el('span', { class: 'tag' }, SECRET_EFFECT[a.secret.effect] || a.secret.effect) : null),
         data.felt && data.felt.voted ? el('p', { class: 'concept' }, `В классе спрятанную механику почувствовали вслепую ${data.felt.felt} из ${data.felt.voted}.`) : '',
         el('div', { class: 'compare' }, col(sk, true), col(ok, false)), marksBar(AB[sk].marks) || '',
         el('p', { class: 'concept' }, lessonSteps().some(x => x.lupa) ? 'Ниже — та же игра с лупой: она загорается каждый раз, когда срабатывает спрятанная механика. Поймай этот момент.' : 'Открой ручки (Tab) в игре класса и покрути ручку «Спрятанная механика». Как меняется чувство игры?'));
@@ -518,7 +520,7 @@ STEPS.secret = ctx => {
       el('div', { class: 'secret-reveal' },
         el('div', { class: 'eyebrow' }, H ? 'Спрятанная механика донора' : 'Спрятанная механика игры класса'), el('h3', {}, a.secret.title),
         el('p', {}, a.secret.reveal),
-        a.secret.effect ? el('span', { class: 'tag' }, a.secret.effect === 'помощник' ? 'помощник: незаметно помогает игроку' : a.secret.effect === 'нагнетатель' ? 'нагнетатель: делает игру напряжённее' : a.secret.effect) : null),
+        a.secret.effect ? el('span', { class: 'tag' }, SECRET_EFFECT[a.secret.effect] || a.secret.effect) : null),
       el('div', { class: 'compare' },
         el('div', {}, el('div', { class: 'eyebrow' }, (C && C.onLabel) || 'Со спрятанной механикой'), el('b', {}, `лучший счёт ${V(on).best || 0}`), el('div', { class: 'small muted' }, line(on, true))),
         el('div', {}, el('div', { class: 'eyebrow' }, (C && C.offLabel) || 'Без спрятанной механики'), el('b', {}, `лучший счёт ${V(off).best || 0}`), el('div', { class: 'small muted' }, line(off, false)))),

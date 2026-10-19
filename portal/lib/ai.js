@@ -281,6 +281,7 @@ function chatBuild(plan, who, onProgress, kind) {
 const chatSharedText = wow => chatTask(fill(chatTpl('wow'), {
     'герой': wow.cards.hero, 'действие': wow.cards.action, 'место': wow.cards.place, 'угроза': wow.cards.threat || 'нет карты — придумай по месту', 'поворот': wow.cards.twist,
     'рецепт': recipeText(wow.genre, wow.cards),
+    'сочность': wow.genre && wow.genre.juice ? `Сочность жанра — без неё игра выглядит картонной, сделай всё: ${wow.genre.juice}.` : '',
     'связка': wow.link ? 'Гейм дизайн документ (класс принял его, строй игру по нему):\n' + LINK_FIELDS.filter(([k]) => wow.link[k]).map(([k, label]) => `- ${label}: ${wow.link[k]}`).join('\n') : '',
   }) + chatSecret(wow.secret, wow.base, wow.howto));
 async function chatShared(wow, who, onProgress) {

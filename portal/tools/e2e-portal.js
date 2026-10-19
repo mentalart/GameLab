@@ -488,6 +488,7 @@ async function wowStart(teacher, student, mode, shot) {
   check('Жанр с рецептом: герой с ручкой жанра, у прочих жанров — общая колода', heroCard.decks[rg.card].every(h => /^[^—]+ — /.test(h)) && !heroCard.decks[lesson1.wow.genres.find(g => !g.recipe).card], rc.hero);
   const rtask = ai.chatSharedText({ cards: rc, genre: rg, secret: 'секрет', link: null });
   check('Задание Qwen: рецепт жанра слово в слово, тип угрозы и что меняет поворот', rtask.includes(`Рецепт жанра «${rg.name}»`) && rg.recipe.every(l => rtask.includes(l)) && rtask.includes(`враг типа «${rg.types[rc.threat]}»`) && rtask.includes(rg.rules[rc.twist]), rg.name);
+  check('Задание Qwen: сочность жанра у каждого жанра колоды', lesson1.wow.genres.every(g => g.juice && ai.chatSharedText({ cards: Object.assign({}, rc, { action: g.card }), genre: g, secret: 'секрет', link: null }).includes(g.juice)));
   const plain = lesson1.wow.genres.find(g => !g.recipe);
   check('Жанр без рецепта: задание без строки рецепта', !/Рецепт жанра/.test(ai.chatSharedText({ cards: Object.assign({}, rc, { action: plain.card }), genre: plain, secret: 'секрет', link: null })));
   // спрятанная механика скрыта, пока учитель её не откроет; в уроке 1 она одна на все классы — ни кубика, ни замены
@@ -497,7 +498,7 @@ async function wowStart(teacher, student, mode, shot) {
   const secText = await teacher.textContent('#wowSecret');
   check('Учитель видит одну спрятанную механику урока, без кубика и замены', secText.includes(SECRET1) && await teacher.locator('#wowSecretSel').count() === 0 && !/Другая спрятанная механика|\[кубик\]/.test(secText), secText.replace(/\s+/g, ' ').slice(0, 120));
   check('Спрятанная механика у учителя без слова «null»', !(await nullText(teacher)));
-  const swap = await teacher.evaluate(async c => { try { await Lab.api('/api/teacher/wow/secret', { code: c, id: 'yarost' }); return 200; } catch (e) { return e.status; } }, (await teacher.textContent('#classCode')).trim());
+  const swap = await teacher.evaluate(async c => { try { await Lab.api('/api/teacher/wow/secret', { code: c, id: 'uteshenie' }); return 200; } catch (e) { return e.status; } }, (await teacher.textContent('#classCode')).trim());
   check('Сервер не даёт заменить спрятанную механику урока', swap === 400, 'ответ ' + swap);
   await teacher.click('#wowSecret >> text=Скрыть');
   // связка от ИИ: геймдизайнер сводит карты в одну игру, учитель принимает — связку видят ученики, она уходит в сборку
@@ -588,7 +589,7 @@ async function secretHunt(teacher, student, mode, shot) {
   await student.click('#step-secret-hunt >> text=Это спрятанная механика!');
   await student.waitForSelector('#step-secret-hunt.done');
   const reveal = (await student.textContent('#step-secret-hunt')).replace(/\s+/g, ' ');
-  check('Ловушка распознана, спрятанная механика раскрыта: «разгон», счётчик из партий', /Ловушка/.test(reveal) && reveal.includes(SECRET1) && /сработала 6 раз/.test(reveal), reveal.slice(0, 160));
+  check('Ловушка распознана, спрятанная механика раскрыта, счётчик из партий', /Ловушка/.test(reveal) && reveal.includes(SECRET1) && /сработала 6 раз/.test(reveal), reveal.slice(0, 160));
   check('Раскрытие: слепой тест угадан, моменты спрятанной механики на полоске партии', /спрятанная механика была именно там/.test(reveal) && await student.locator('#step-secret-hunt .marks i').count() >= 2, `отметок: ${await student.locator('#step-secret-hunt .marks i').count()}`);
   await shot(student, '2a-secret', true);
   // «Посмотри на спрятанную механику»: та же игра с лупой — оболочка зажигает её на каждом срабатывании, кнопки силы спрятанной механики 0 · 1 · 2
