@@ -6,8 +6,7 @@
    жизненный цикл партии и экраны, ввод (клавиатура, два геймпада, тач),
    ручки геймдизайнера (Tab) с пресетами, камеры, свет, тени, свечение,
    сочность, звук, случайность по зерну, телеметрию, рекорды, призрака,
-   бота-плейтестера и связь с порталом. Протокол сообщений — тот же,
-   что у оболочки Babylon (lab.js), портал разницы не видит.
+   бота-плейтестера и связь с порталом (страница engine/game.html).
    Контракт GAME и API объекта lab описаны в portal/engine/README.md.
    ===================================================================== */
 import * as THREE from 'three';
@@ -98,7 +97,7 @@ let ghost = null, challengeOn = false; // вызов «побей мой мир�
 let bot = null, heroObj = null; // бот-плейтестер играет сам (тогда партия не уходит порталу); герой — для проверки «не ушёл ли за кадр»
 const rngFx = Math.random; // эффекты не трогают зерно игры
 
-/* ---------------- ввод (тот же, что в оболочке Babylon) ---------------- */
+/* ---------------- ввод ---------------- */
 const BTN = ['left', 'right', 'up', 'down', 'a', 'b'];
 function mkPlayer() {
   const p = { x: 0, y: 0, pressed: {}, released: {} };
@@ -1225,7 +1224,7 @@ async function botShow(o = {}) {
 }
 
 /* ---------------- главный цикл ---------------- */
-let lastT = performance.now();
+let lastT = performance.now(), idleDrawn = 0;
 function loop(now) {
   requestAnimationFrame(loop);
   const real = Math.min(Math.max(0, (now - lastT) / 1000), 0.25); lastT = now;
@@ -1238,7 +1237,10 @@ function loop(now) {
   let dt = Math.min(real, 0.05);
   const live = state === 'play' && !paused && !errored && !!scene;
   if (live) dt = gameStep(dt);
-  if (scene && cam) { effectsStep(live ? dt : renderDt, live); render(); }
+  // автопроверки (LAB_LOWRES) рисуют меню, паузу и конец партии 5 раз в секунду: без видеокарты игры в соседних рамках
+  // и окнах, которые просто стоят, съедали процессор целиком, и новая игра в рамке грузилась по 30 секунд
+  const idleSkip = window.LAB_LOWRES && !live && now - idleDrawn < 200 && !posterWanted && !frameWaiters.length;
+  if (scene && cam && !idleSkip) { effectsStep(live ? dt : renderDt, live); render(); if (!live) idleDrawn = now; }
   tickFlash(renderDt);
   hudTick();
 }
@@ -1339,7 +1341,7 @@ async function boot() {
   } catch (e) { fail(e, 'загрузка'); }
 }
 
-// доступ для автопроверки и отладки учителем (те же поля, что у оболочки Babylon, плюс frames, info и pixels)
+// доступ для автопроверки и отладки учителем
 window.__lab = {
   ready: false, engine: 'three', lab, tele, session, get state() { return state; }, get paused() { return paused; }, get errored() { return errored; },
   get scene() { return scene; }, cfg, DEFAULTS,

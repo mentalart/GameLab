@@ -205,7 +205,7 @@ function staticUnder(root, rel, res, extra) {
   if (!file.startsWith(root + path.sep)) return send(res, 403, 'Нельзя', 'text/plain; charset=utf-8');
   serveFile(res, file, extra);
 }
-// игры работают в рамке без своего происхождения (sandbox без allow-same-origin): им нужен CORS для wasm
+// игры работают в рамке без своего происхождения (sandbox без allow-same-origin): модулям three.js и оболочки нужен CORS
 const CORS = { 'Access-Control-Allow-Origin': '*' };
 
 // Игра-страница из чата (урок 1, версия 2) — без оболочки Лаб3D: мост engine/portal.js даёт ей объект portal
@@ -219,18 +219,15 @@ function playPage(res, gameId, n) {
   if (!code) return send(res, 404, 'Нет такой версии игры', 'text/plain; charset=utf-8');
   // страница HTML из чата Qwen (урок 1, версия 2) — как есть, в той же песочнице
   if (ai.isHtml(code)) return send(res, 200, htmlGame(code), 'text/html; charset=utf-8', Object.assign({ 'Content-Security-Policy': 'sandbox allow-scripts allow-pointer-lock' }, CORS));
-  const shell = /\bengine\s*:\s*['"]three['"]/.test(code) ? 'three-game.html' : 'game.html'; // игра на three.js (как доноры с образца урока) — в новой оболочке
-  const html = fs.readFileSync(path.join(PORTAL, 'engine', shell), 'utf8')
+  // объект GAME — в оболочке «Лаб3D» на three.js (engine/game.html)
+  const html = fs.readFileSync(path.join(PORTAL, 'engine', 'game.html'), 'utf8')
     .replace('<head>', '<head>\n<base href="/engine/">')
     .replace('<!--GAME-->', () => '<script>\n' + code.replace(/<\/script/gi, '<\\/script') + '\n</script>'); // функцией: «$&» и «$'» в коде игры — не шаблоны замены
   // CSP sandbox: даже открытая отдельной вкладкой игра не видит данных портала (своё «пустое» происхождение)
   send(res, 200, html, 'text/html; charset=utf-8', Object.assign({ 'Content-Security-Policy': 'sandbox allow-scripts allow-pointer-lock' }, CORS));
 }
-// игра одним файлом: оболочка, Babylon.js и код версии в одном .html — работает без портала и без интернета (кроме игр с физикой Havok)
-let BABYLON_JS = null;
+// игра одним файлом: оболочка, three.js и код версии в одном .html — работает без портала и без интернета
 const inlineScript = js => '<script>\n' + js.replace(/<\/script/gi, '<\\/script') + '\n</script>';
-// игра на three.js (engine: 'three'): страница three-game.html, оболочка lab-three.js
-const isThree = code => /\bengine\s*:\s*['"]three['"]/.test(code || '');
 // модули оболочки и three.js для игры одним файлом: исходники с метками @@Mn@@ вместо путей импорта,
 // загрузчик в странице превращает каждый модуль в blob: — без файлов, импорт-карты и интернета
 let THREE_MODS = null;
@@ -263,22 +260,10 @@ function downloadPage(res, gameId, n) {
   const v = g && (Number(n) || g.current), code = g && store.versionCode(gameId, v);
   if (!code) return send(res, 404, 'Нет такой версии игры', 'text/plain; charset=utf-8');
   if (ai.isHtml(code)) return send(res, 200, htmlGame(code, true), 'text/html; charset=utf-8', { 'Content-Security-Policy': 'sandbox allow-scripts allow-pointer-lock', 'Content-Disposition': `attachment; filename="igra.html"; filename*=UTF-8''${encodeURIComponent((g.title || 'igra') + ' v' + v + '.html')}` });
-  if (isThree(code)) {
-    const html = fs.readFileSync(path.join(PORTAL, 'engine', 'three-game.html'), 'utf8')
-      .replace(/<script type="importmap">[^<]*<\/script>\n?/, '')
-      .replace('<script type="module" src="lab-three.js"></script>', '')
-      .replace('<!--GAME-->', () => inlineScript(code) + '\n' + threeLoader())
-      .replace('<title>Лаборатория игр</title>', () => `<title>${String(g.title || 'Моя игра').replace(/[<>&]/g, '')} · Лаборатория игр</title>`);
-    const name = `${(g.title || 'igra').replace(/[\\/:*?"<>|]+/g, '').trim() || 'igra'} v${v}.html`;
-    return send(res, 200, html, 'text/html; charset=utf-8', { 'Content-Security-Policy': 'sandbox allow-scripts allow-pointer-lock', 'Content-Disposition': `attachment; filename="igra.html"; filename*=UTF-8''${encodeURIComponent(name)}` });
-  }
-  if (/\bphysics\s*:\s*true/.test(code)) return send(res, 409, 'Эта игра с физикой: одним файлом она не запустится. Играй в неё в аркаде.', 'text/plain; charset=utf-8');
-  if (!BABYLON_JS) BABYLON_JS = fs.readFileSync(path.join(PORTAL, 'engine', 'vendor', 'babylon', 'babylon.js'), 'utf8');
-  const lab = fs.readFileSync(path.join(PORTAL, 'engine', 'lab.js'), 'utf8');
   const html = fs.readFileSync(path.join(PORTAL, 'engine', 'game.html'), 'utf8')
-    .replace('<script src="vendor/babylon/babylon.js"></script>', () => inlineScript(BABYLON_JS))
-    .replace('<script src="lab.js"></script>', () => inlineScript(lab))
-    .replace('<!--GAME-->', () => inlineScript(code))
+    .replace(/<script type="importmap">[^<]*<\/script>\n?/, '')
+    .replace('<script type="module" src="lab-three.js"></script>', '')
+    .replace('<!--GAME-->', () => inlineScript(code) + '\n' + threeLoader())
     .replace('<title>Лаборатория игр</title>', () => `<title>${String(g.title || 'Моя игра').replace(/[<>&]/g, '')} · Лаборатория игр</title>`);
   const name = `${(g.title || 'igra').replace(/[\\/:*?"<>|]+/g, '').trim() || 'igra'} v${v}.html`;
   send(res, 200, html, 'text/html; charset=utf-8', { 'Content-Security-Policy': 'sandbox allow-scripts allow-pointer-lock', 'Content-Disposition': `attachment; filename="igra.html"; filename*=UTF-8''${encodeURIComponent(name)}` });

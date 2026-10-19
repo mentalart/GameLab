@@ -4,7 +4,7 @@
 // Запуск: node portal/tools/playtest.js games/nlo-v-stanice.js [ещё игры…] [--seconds 90] [--json]
 //         без игр — все игры из portal/games/
 // Выводы — подсказки, а не ошибки: код выхода всегда 0, если игра загрузилась.
-// Работает с обеими оболочками: game.html сам открывает игру с engine: 'three' в three-game.html, бот у них общий (window.__lab.playtest).
+// Бот живёт в оболочке «Лаб3D» (window.__lab.playtest), игра открывается в engine/game.html.
 'use strict';
 const fs = require('fs');
 const path = require('path');

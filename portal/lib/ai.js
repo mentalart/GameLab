@@ -6,7 +6,6 @@ const path = require('path');
 const vm = require('vm');
 const crypto = require('crypto');
 const store = require('./store');
-const { systemPrompt, userTemplate } = require('../tools/build-prompt');
 
 const PORTAL = path.resolve(__dirname, '..');
 const CONFIG_FILE = process.env.LAB_CONFIG ? path.resolve(process.env.LAB_CONFIG) : path.join(PORTAL, 'config.json');
@@ -213,13 +212,16 @@ async function call(kind, who, model, messages, onProgress) {
 // в server.js). Дальше код достаётся из ответа, синтаксис проверяется, куски правки вставляются; если не вышло —
 // портал выдаёт следующее сообщение в тот же чат. Продюсер, связка и черновик отзыва остаются на API.
 // Задание на новую игру — четыре части (portal/ai/chat-prompt.md): просьба автора, гейм дизайн документ или замысел ученика,
-// картинка (раздел look) и что нужно порталу. Ответ — страница HTML без Babylon.js, связь с порталом — мост engine/portal.js.
-// Правка и починка идут в формате той игры, что есть: страница HTML — по chat-prompt.md, прежний объект GAME — по game-prompt.md.
+// картинка (раздел look) и что нужно порталу. Ответ — страница HTML, связь с порталом — мост engine/portal.js.
+// Правка и починка идут в формате той игры, что есть: страница HTML — разделы change, fix, move; объект GAME для оболочки
+// «Лаб3D» на three.js (так отвечает подставной Qwen в проверках) — разделы change-game, fix-game, move-game того же файла.
 const CHAT = {
   model: 'chat.qwen.ai', url: 'https://chat.qwen.ai/',
   phrase: 'собери яркую lowpoly 3d игру для школьников на html', // просьба автора курса (18.10.2026) в каждом задании на новую игру
 };
 const chatTpl = name => promptSection('chat-prompt.md', `<!-- chat:${name}:start -->`, `<!-- chat:${name}:end -->`);
+// формат кусками: у объекта GAME большая правка — объект целиком блоком ```js
+const chatPatch = code => (isHtml(code) ? chatTpl('patch') : chatTpl('patch').replace(/```html/g, '```js'));
 // пустое поле замысла fill превращает в «—»: такие строки в задании для чата не нужны
 // раздел «Картинка» (look) — что значит «ярко» по пунктам: во всех заданиях на новую игру и в переносе в новый чат (решение автора 18.10.2026)
 const chatTask = middle => [CHAT.phrase, middle.replace(/^—\r?\n/gm, '').replace(/\n—\s*$/, '').trim(), chatTpl('look'), chatTpl('portal')].join('\n\n');
@@ -290,8 +292,7 @@ async function chatShared(wow, who, onProgress) {
 // правка идёт в тот же чат, где Qwen писал игру: код он уже видел, поэтому сообщение — только просьба и формат (решение автора 18.10.2026);
 // игру в новый чат переносит сообщение chatMove
 function chatChange(code, request, who, onProgress, kind) {
-  const text = isHtml(code) ? fill(chatTpl('change'), { 'просьба': request, 'формат': chatTpl('patch') })
-    : fill(chatTpl('change-game'), { 'просьба': request, 'формат': userTemplate('patch') });
+  const text = fill(chatTpl(isHtml(code) ? 'change' : 'change-game'), { 'просьба': request, 'формат': chatPatch(code) });
   return chatProgram(kind || 'правка', text, who, onProgress, code);
 }
 
@@ -300,9 +301,7 @@ function chatChange(code, request, who, onProgress, kind) {
 // Договор — один раз за чат: формат ответа, который портал примет; перенос — игра в новый чат с правилами портала и договором.
 const chatPact = code => chatTpl(isHtml(code) ? 'pact' : 'pact-game');
 function chatMove(code, who) {
-  const pact = chatPact(code);
-  if (isHtml(code)) return fill(chatTpl('move'), { 'картинка': chatTpl('look'), 'портал': chatTpl('portal'), 'код': code.trim(), 'договор': pact });
-  return `${systemPrompt({ lesson: who && who.lesson, model: CHAT.model, short: true })}\n\n# Текущая игра\nЭто игра для портала курса. Дальше я буду просить правки — по одной за раз.\n\`\`\`js\n${code.trim()}\n\`\`\`\n\n${pact}`;
+  return fill(chatTpl(isHtml(code) ? 'move' : 'move-game'), { 'картинка': chatTpl('look'), 'портал': chatTpl('portal'), 'код': code.trim(), 'договор': chatPact(code) });
 }
 // сообщение из конструктора просьбы: что не так, ради какого чувства, что не трогать
 function chatAsk({ what, why, keep }) {
@@ -336,8 +335,7 @@ function chatPaste(code, text, who, onProgress, secret) {
   return chatProgram('правка из чата', '(ответ вставлен учеником)', who, progress, code, secret).then(r => Object.assign(r, { repair: chatRepair(r.warnings) }));
 }
 function chatFix(code, error, who, onProgress) {
-  const text = isHtml(code) ? fill(chatTpl('fix'), { 'ошибка': error.message || '?', 'строка': error.line || '?', 'код': code.trim(), 'формат': chatTpl('patch') })
-    : `${systemPrompt({ lesson: who && who.lesson, model: CHAT.model, short: true })}\n\n# Задание\n${fill(userTemplate('fix'), { 'фаза: загрузка | start | update | отрисовка': error.phase || 'update', 'текст ошибки': error.message || '?', 'номер': error.line || '?', 'код': code.trim(), 'формат': userTemplate('patch') })}`;
+  const text = fill(chatTpl(isHtml(code) ? 'fix' : 'fix-game'), { 'ошибка': error.message || '?', 'строка': error.line || '?', 'код': code.trim(), 'формат': chatPatch(code) });
   return chatProgram('починка', text, who, onProgress, code);
 }
 

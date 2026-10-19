@@ -71,13 +71,19 @@ function writeConfig(aiPart) {
 }
 
 async function gameFrame(page, urlPart, n = 0) {
-  for (let i = 0; i < 100; i++) {
-    const fr = page.frames().filter(f => f.url().includes(urlPart));
-    // опрос по таймеру, а не по кадрам: рамка за краем экрана (чужое происхождение) кадров не рисует
-    if (fr[n]) { await fr[n].waitForFunction('window.__lab && (window.__lab.ready || window.__lab.errored)', null, { timeout: 30000, polling: 250 }); return fr[n]; }
-    await sleep(200);
+  // опрос из проверки, а не waitForFunction внутри рамки: рамку могут пересоздать, пока игра грузится,
+  // а без видеокарты загрузка игры в рамке занимает до десятков секунд (см. журнал, 19.10.2026)
+  const t0 = Date.now();
+  while (Date.now() - t0 < 60000) {
+    const fr = page.frames().filter(f => f.url().includes(urlPart))[n];
+    if (fr && await fr.evaluate('!!(window.__lab && (window.__lab.ready || window.__lab.errored))').catch(() => false)) {
+      if (Date.now() - t0 > 15000) console.log(`    · игра в рамке ${urlPart} загрузилась за ${Math.round((Date.now() - t0) / 1000)} с`);
+      return fr;
+    }
+    await sleep(250);
   }
-  throw new Error('Не дождался рамки игры ' + urlPart);
+  const all = await Promise.all(page.frames().slice(1).map(async f => f.url().replace(/^https?:\/\/[^/]+/, '') + ' — ' + await f.evaluate('window.__lab ? (window.__lab.ready ? "готова" : "грузится") : "нет __lab"').catch(x => 'ошибка: ' + x.message.split('\n')[0])));
+  throw new Error(`Рамка ${urlPart} №${n} не дождалась игры за 60 с. Рамки: ${all.join('; ') || 'нет'}`);
 }
 // партия: старт, по желанию — зажатая клавиша (телеметрия), конец с заданным счётом
 async function playRound(frame, { score = 0, hold = null, page = null, restart = false } = {}) {
@@ -100,7 +106,7 @@ async function chatEdit(student, stepId, what) {
   await student.waitForFunction(([s, n]) => document.querySelectorAll(s + ' .ver').length > n, [sel, before], { timeout: 30000 });
 }
 // задание для Qwen — четыре части (portal/ai/chat-prompt.md): просьба автора, замысел ученика с донором, картинка, что нужно порталу
-const clearTask = (t, donor) => /^собери яркую lowpoly 3d игру для школьников на html\n\n# Замысел геймдизайнера/.test(t || '') && (t || '').includes(donor) && /# Картинка/.test(t) && /# Что нужно порталу/.test(t) && !/Babylon/.test(t);
+const clearTask = (t, donor) => /^собери яркую lowpoly 3d игру для школьников на html\n\n# Замысел геймдизайнера/.test(t || '') && (t || '').includes(donor) && /# Картинка/.test(t) && /# Что нужно порталу/.test(t) && !/const GAME/.test(t);
 // «null» текстом на странице: нативный append превращает null в слово (так было под картами вау-старта и в спрятанной механике у учителя)
 const nullText = p => p.evaluate(() => {
   const w = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
@@ -379,11 +385,11 @@ async function run(browser, base, mode) {
     await shot(sp, '6c-studio', true);
     await sp.close();
   }
-  // игра одним файлом: оболочка, Babylon и код версии внутри, скачивание вложением
+  // игра одним файлом: оболочка, three.js и код версии внутри, скачивание вложением
   {
     const me3 = await student.evaluate(() => Lab.api('/api/me'));
     const dl = await student.evaluate(u => fetch(u).then(async r => ({ status: r.status, cd: r.headers.get('content-disposition') || '', html: await r.text() })), `/download/${me3.game.id}/${me3.game.current}.html`);
-    check('Игра скачивается одним файлом .html', dl.status === 200 && /attachment/.test(dl.cd) && dl.html.length > 1e6 && !/src="lab\.js"/.test(dl.html) && /\bGAME\b/.test(dl.html), `${Math.round(dl.html.length / 1e6)} МБ, ${dl.cd.slice(0, 40)}`);
+    check('Игра скачивается одним файлом .html', dl.status === 200 && /attachment/.test(dl.cd) && dl.html.length > 1e6 && !/src="lab-three\.js"/.test(dl.html) && /\bGAME\b/.test(dl.html), `${Math.round(dl.html.length / 1e6)} МБ, ${dl.cd.slice(0, 40)}`);
   }
   // «Нужна помощь»: рука ученика — первой в очереди учителя, «Помог» опускает её
   await teacher.click('.tabs >> text=Урок');
@@ -1322,14 +1328,6 @@ async function lessonFour(mode, teacher, student, shot) {
   await student.waitForSelector('#step-sborka.done', { timeout: 10000 });
   const card = await student.evaluate(async () => (await (await fetch('/api/arcade', { headers: { 'x-lab-token': Lab.token.get() } })).json()).mine.find(c => c.lesson && c.lesson.id === 'urok-04'));
   check('Игра урока 4 собрана, в аркаде донор «Тетрис»', card && card.title === 'Сырная башня' && card.donor === '«Тетрис»', card ? `${card.title} · ${card.donor}` : 'нет карточки');
-  // программист — Qwen в чате: правила Лаб3D уходят в чат только короткими (перенос и починка прежней игры-объекта GAME)
-  const p4 = require('./build-prompt'), sys4 = p4.systemPrompt({ lesson: 'urok-04', model: 'chat.qwen.ai', short: true });
-  check('Правила Лаб3D для чата урока 4 не больше 25 тысяч токенов', p4.tokens(sys4) <= 25000 && !/\{\{/.test(sys4), `примерно ${p4.tokens(sys4)} токенов`);
-  // Sonnet: свой короткий промпт и один образец — донор урока у игры ученика, каркас связки у игры класса
-  const c4 = p4.systemPrompt({ lesson: 'urok-04', model: 'anthropic/claude-sonnet-5' }), cw = p4.systemPrompt({ model: 'anthropic/claude-sonnet-5', frame: 'Вид сбоку, камера сбоку' });
-  const samples = t => ['НЛО в станице', 'Камни мудреца', 'Ночной лабиринт', 'Каменный стакан', 'Ледолом', 'Тур над Хаджохом', 'Шаг в такт', 'Башня до неба'].filter(n => t.includes(`title: '${n}'`)).length;
-  check('Промпт Sonnet для игры ученика: один образец — донор урока', samples(c4) === 1 && c4.includes("title: 'Каменный стакан'") && /# Механика: игра, а не иллюстрация/.test(c4) && !/\{\{/.test(c4), `образцов ${samples(c4)}, примерно ${p4.tokens(c4)} токенов`);
-  check('Промпт Sonnet для игры класса: образец каркаса связки', samples(cw) === 1 && cw.includes("title: 'Тур над Хаджохом'") && !cw.includes("title: 'Камни мудреца'"), `примерно ${p4.tokens(cw)} токенов`);
 
   // релиз модуля: выбор игры модуля, чек-лист с подсказками из аркады, метка 1.0 — одна на модуль
   await student.click('.cp >> text=Мастерская');
@@ -1440,8 +1438,6 @@ async function buildOwn(mode, student, les, title, sampleTitle, donor = null) {
     await student.waitForFunction(() => document.querySelectorAll('#step-sborka .ver').length >= 2, null, { timeout: 30000 });
     own = await gameFrame(student, '/play/', 0);
   }
-  const bp = require('./build-prompt'), sys = bp.systemPrompt({ lesson: les.id, model: 'chat.qwen.ai', short: true }); // короткие правила Лаб3D для чата
-  check(`Правила Лаб3D для чата урока ${les.number} не больше 25 тысяч токенов`, bp.tokens(sys) <= 25000 && !/\{\{/.test(sys), `примерно ${bp.tokens(sys)} токенов`);
   return { own, twist, r, i };
 }
 async function lessonFive(mode, teacher, student, shot) {

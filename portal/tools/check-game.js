@@ -1,9 +1,9 @@
 #!/usr/bin/env node
-// Автопроверка игры в настоящем браузере (Playwright + Chromium без окна). Работает с обеими оболочками:
-// игры на three.js (engine: 'three', оболочка lab-three.js) и старые на Babylon.js (lab.js) — через window.__lab.
+// Автопроверка игры в настоящем браузере (Playwright + Chromium без окна): игра на three.js в оболочке «Лаб3D»
+// (engine/game.html и lab-three.js), проверки — через window.__lab.
 // Запуск:  node portal/tools/check-game.js                    — все игры из portal/games/
 //          node portal/tools/check-game.js games/моя-игра.js  — одна игра (путь от portal/)
-//          node portal/tools/check-game.js --self             — ещё и проверка самих оболочек (физика Babylon, ловля ошибок и строка)
+//          node portal/tools/check-game.js --self             — ещё и проверка самой оболочки (ловля ошибки и строка из кода игры)
 //          --headed — показать окно браузера, --quick — без «обезьяньего» прогона пресетов
 //          --all — проверить и игры, которые не менялись с последней зелёной проверки (без него они пропускаются)
 //          --jobs=3 — сколько игр проверять одновременно (по умолчанию 3; --jobs=1 — по одной, как раньше)
@@ -34,7 +34,7 @@ const JOBS = Math.max(1, Number((args.find(a => a.startsWith('--jobs=')) || '=3'
 
 // отпечаток игры: её файл, оболочки и сама проверка. Совпал с последней зелёной проверкой — игру можно не гонять
 const PASSED = path.join(OUT, 'passed.json');
-const SHARED = ['engine/lab.js', 'engine/lab-three.js', 'engine/game.html', 'engine/three-game.html', 'engine/vendor/VERSIONS.txt', 'tools/check-game.js', 'tools/serve.js'];
+const SHARED = ['engine/lab-three.js', 'engine/game.html', 'engine/vendor/three/VERSION.txt', 'tools/check-game.js', 'tools/serve.js'];
 const fingerprint = src => {
   const h = crypto.createHash('sha1');
   for (const f of [src, ...SHARED]) { try { h.update(f + '\0' + fs.readFileSync(path.join(PORTAL, f))); } catch (e) { h.update(f + '\0нет'); } }
@@ -95,8 +95,9 @@ async function checkOne(browser, base, item) {
   };
 
   try {
-    await page.goto(`${base}/engine/game.html?game=../${item.src}&seed=12345`);
-    await page.waitForFunction('window.__lab && (window.__lab.ready || window.__lab.errored)', null, { timeout: 30000 });
+    // без видеокарты три игры разом делят процессор: загрузка новой может идти дольше 30 секунд
+    await page.goto(`${base}/engine/game.html?game=../${item.src}&seed=12345`, { waitUntil: 'commit' });
+    await page.waitForFunction('window.__lab && (window.__lab.ready || window.__lab.errored)', null, { timeout: 90000, polling: 250 });
     const loaded = await L('window.__lab.ready && !window.__lab.errored');
     pass('Загрузка без ошибок', loaded && !res.errors.length, res.errors[0] || (loaded ? '' : await L("document.querySelector('#errBox').innerText")));
     if (item.kind === 'broken') return await brokenChecks(page, res, pass, state, key);
@@ -147,7 +148,7 @@ async function checkOne(browser, base, item) {
     await frames(2);
     const info = await L('window.__lab.info()');
     Object.assign(res.notes, { meshes: info.meshes, draws: info.draws, version: info.version });
-    pass(`Вызовов отрисовки не больше 250 (${meta.engine === 'three' ? 'копии InstancedMesh и lab.merge' : 'копии через createInstance'})`, res.notes.draws <= 250, res.notes.draws);
+    pass('Вызовов отрисовки не больше 250 (копии InstancedMesh и lab.merge)', res.notes.draws <= 250, res.notes.draws);
 
     // ручки геймдизайнера
     await key('Tab'); await sleep(200);
@@ -185,11 +186,6 @@ async function checkOne(browser, base, item) {
     await shot('4-over');
     await key('Space'); await frames(3);
     pass('Пробел после конца — новая партия', (await state()) === 'play', await state());
-    if (item.kind === 'physics') {
-      await sleep(1500);
-      const ph = await L('({ on: !!window.__lab.scene.getPhysicsEngine(), y: window.__lab.lab.state.boxes[0].mesh.position.y })');
-      pass('Физика Havok работает (ящики стоят на площадке)', ph.on && ph.y > 0.2 && ph.y < 0.7, `y нижнего ящика = ${ph.y.toFixed(3)}`);
-    }
     pass('Без ошибок в консоли за всю проверку', !res.errors.length, res.errors.slice(0, 3).join(' | '));
   } catch (e) {
     pass('Проверка дошла до конца', false, e.message.split('\n')[0]);
@@ -223,7 +219,7 @@ async function brokenChecks(page, res, pass, state, key) {
     args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist', '--autoplay-policy=no-user-gesture-required'],
   });
   let items = gameList();
-  if (flag('--self')) items.push({ src: 'tools/fixtures/fizika.js', kind: 'physics' }, { src: 'tools/fixtures/oshibka.js', kind: 'broken' }, { src: 'tools/fixtures/oshibka-three.js', kind: 'broken' });
+  if (flag('--self')) items.push({ src: 'tools/fixtures/oshibka.js', kind: 'broken' });
   const passed = readPassed();
   const named = args.some(a => !a.startsWith('--'));
   if (!named && !flag('--all')) {
@@ -236,7 +232,7 @@ async function brokenChecks(page, res, pass, state, key) {
   const print = (it, r) => {
     process.stdout.write(`\n▶ ${it.src}\n`);
     for (const c of r.checks) console.log(`  ${c.ok ? '✓' : '✗'} ${c.what}${c.detail ? ' — ' + c.detail : ''}`);
-    if (r.notes.fps != null) console.log(`  · ${r.notes.engine === 'three' ? 'three.js r' + r.notes.version : 'Babylon.js ' + r.notes.version}: кадров в секунду ${r.notes.fps} (графика без видеокарты, на школьном ПК в разы больше), мешей ${r.notes.meshes}, вызовов отрисовки ${r.notes.draws}, сборка партии ${r.notes.restartMs} мс`);
+    if (r.notes.fps != null) console.log(`  · three.js r${r.notes.version}: кадров в секунду ${r.notes.fps} (графика без видеокарты, на школьном ПК в разы больше), мешей ${r.notes.meshes}, вызовов отрисовки ${r.notes.draws}, сборка партии ${r.notes.restartMs} мс`);
   };
   // несколько игр одновременно, каждая на своей странице; печатаем по готовности
   const queue = items.slice();

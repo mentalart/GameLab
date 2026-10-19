@@ -4,16 +4,9 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>Лаборатория игр</title>
-<script>/* игра на three.js (engine: 'three' в объекте GAME) по той же ссылке открывается в новой оболочке three-game.html */
-(function () {
-  var g = new URLSearchParams(location.search).get('game');
-  if (!g || !/^[\w./-]+\.js$/.test(g) || g.indexOf('//') >= 0) return;
-  try {
-    var x = new XMLHttpRequest(); x.open('GET', g, false); x.send();
-    if (x.status === 200 && /\bengine\s*:\s*['"]three['"]/.test(x.responseText)) { window.__labMoved = true; location.replace('three-game.html' + location.search + location.hash); }
-  } catch (e) { /* игра остаётся в оболочке Babylon */ }
-})();
-</script>
+<script>/* ошибки до запуска оболочки (код игры на верхнем уровне): оболочка покажет их со строкой */
+window.__labEarly = []; addEventListener('error', function (e) { if (window.__labEarly) window.__labEarly.push(e.error || e); });</script>
+<script type="importmap">{ "imports": { "three": "./vendor/three/three.module.min.js", "three/addons/": "./vendor/three/addons/" } }</script>
 <style>
 :root{--bg:#0b1020;--panel:rgba(10,14,30,.94);--line:#2a3560;--accent:#7cf5a8;--accent-ink:#06140c;--text:#f2efe6;--muted:#9aa3c7;--danger:#ff5d6e;--warm:#ffb547;color-scheme:dark}
 [hidden]{display:none!important}
@@ -33,7 +26,7 @@ html,body{height:100%;margin:0;background:#04060d;color:var(--text);font:15px/1.
 #lupa.on{opacity:1;transform:translateX(-50%) scale(1.12);border-color:var(--accent);color:var(--accent);box-shadow:0 0 18px var(--accent)}
 #lupa i{font-style:normal;font-size:20px}
 #popups{position:absolute;inset:0;pointer-events:none;z-index:3;overflow:hidden}
-.pop{position:absolute;transform:translate(-50%,-50%);font:800 18px system-ui,sans-serif;white-space:nowrap;text-shadow:0 2px 4px #000c}
+.pop{position:absolute;transform:translate(-50%,-50%);font:800 18px system-ui,sans-serif;white-space:nowrap;text-shadow:0 2px 0 #0009,0 0 12px #0008;will-change:transform,opacity}
 #flash{position:absolute;inset:0;pointer-events:none;z-index:3;opacity:0}
 .topbtns{position:absolute;top:8px;right:8px;display:flex;gap:6px;z-index:8}
 .ghost{font:13px system-ui,sans-serif;color:var(--text);background:rgba(4,6,13,.75);border:1px solid var(--line);border-radius:8px;padding:5px 10px;cursor:pointer}
@@ -137,8 +130,7 @@ textarea.copy{width:100%;box-sizing:border-box;min-height:110px;background:#0406
   <div id="errBox" hidden role="alert"></div>
   <div class="touch" id="touch"></div>
 </div>
-<script src="vendor/babylon/babylon.js"></script>
-<script src="lab.js"></script>
+<script type="module" src="lab-three.js"></script>
 <!--GAME-->
 </body>
 </html>

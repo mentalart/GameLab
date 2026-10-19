@@ -2,7 +2,7 @@
 // Простой сервер для разработки: отдаёт папку portal/ по HTTP.
 // Запуск: node portal/tools/serve.js [порт]  →  http://localhost:8080/
 // Игра: http://localhost:8080/engine/game.html?game=../games/nlo-v-stanice.js
-// Без зависимостей. Нужен потому, что физика Havok (WebAssembly) не грузится с file://.
+// Без зависимостей. Нужен потому, что модули three.js и оболочки не грузятся с file://.
 'use strict';
 const http = require('http');
 const fs = require('fs');
