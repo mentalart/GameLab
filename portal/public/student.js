@@ -152,7 +152,7 @@ function lootOf(cp) {
       case 'abtest': text = !v.vote ? '' : v.vote === 'same' ? 'разницы не заметил' : v.vote === v.side ? 'почувствовал вслепую' : 'выбрал копию без неё'; break;
       case 'secret': text = v.guess ? (v.correct ? 'угадал' : v.trap ? 'попался в ловушку карт' : 'не угадал') : ''; break;
       case 'razbor': { const m = (v.findings || []).find(x => x.id === v.main); text = m ? m.text + (v.weak ? ` · шатается: ${v.weak}` : '') : ''; break; }
-      case 'workshop': { const r = (v.requests || []).slice(-1)[0]; text = r ? `версия ${r.version}` : ''; break; }
+      case 'workshop': { const r = (v.requests || []).slice(-1)[0]; text = r ? `v${r.version}` : ''; break; } // «v2», а не «версия 2»: не путать с чекпоинтом «Версия 2»
       case 'verify': { const r = (v.log || []).slice(-1)[0]; text = r ? { yes: 'ближе к чувству', unknown: 'не знаю', worse: 'хуже' }[r.verdict] : ''; break; }
       case 'ownplay': text = v.match ? [v.match, ...(v.emotions || [])].join(' ') : ''; break;
       case 'playtest': text = v.sent ? (v.emotions || []).join(' ') || 'отзыв отправлен' : ''; break;
@@ -299,7 +299,7 @@ STEPS.nishikado = ctx => {
     g.fillStyle = '#1d2a4d'; g.fillRect(0, H - 14, W, 2);
     for (const a of aliens) { g.fillStyle = COL[a.r % 3]; SPR.forEach((row, y) => [...row].forEach((ch, x) => { if (ch === 'X') g.fillRect(a.x - 12 + x * 3, a.y - 9 + y * 3, 3, 3); })); }
     flash = flash.filter(f => f.t-- > 0);
-    for (const f of flash) { g.fillStyle = `rgba(255,255,255,${f.t / 10})`; g.beginPath(); g.arc(f.x, f.y, 16 - f.t, 0, 7); g.fill(); }
+    for (const f of flash) { g.fillStyle = `rgba(255,214,110,${f.t / 10})`; g.beginPath(); g.arc(f.x, f.y, 18 - f.t, 0, 7); g.fill(); }
     g.fillStyle = '#7cf5a8'; g.fillRect(W / 2 - 12, H - 10, 24, 6);
   }
   // шаг волны: по одному пришельцу за кадр (железо) или вся волна раз в FIX кадров (исправлено)

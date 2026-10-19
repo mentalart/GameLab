@@ -209,8 +209,15 @@ const Opory = (() => {
       if (S.flash > 0) { cx.fillStyle = `rgba(255,255,255,${S.flash * 0.45})`; cx.fillRect(-30, -30, CW + 60, CH + 60); }
       if (S.out.size) { cx.fillStyle = 'rgba(0,0,0,.4)'; cx.fillRect(-30, -30, CW + 60, CH + 60); cx.fillStyle = '#fff'; cx.font = '800 28px system-ui, sans-serif'; cx.textAlign = 'center'; cx.textBaseline = 'middle'; cx.fillText('Игра сломалась: чего-то не хватает', CW / 2, 70); }
     }
-    let prev = performance.now();
-    const loop = now => { if (!S.alive) return; const dt = Math.min(0.05, (now - prev) / 1000); prev = now; if (cv.isConnected) frame(dt); S.raf = requestAnimationFrame(loop); };
+    let prev = performance.now(), last = 0, was = false;
+    // сцену убрали со страницы (шаг ученика или вкладка проектора перерисованы) — её кадры больше не нужны, иначе циклы копятся.
+    // В проверке без видеокарты (LAB_LOWRES) набросок рисуется 10 раз в секунду: три страницы по 60 кадров душили процессор и замирали
+    const loop = now => {
+      if (!S.alive) return;
+      if (cv.isConnected) was = true; else if (was) { S.alive = false; return; }
+      if (cv.isConnected && !(window.LAB_LOWRES && now - last < 100)) { const dt = Math.min(0.05, (now - prev) / 1000); prev = now; last = now; frame(dt); }
+      S.raf = requestAnimationFrame(loop);
+    };
     S.raf = requestAnimationFrame(loop);
     paint();
     return { roof, base, cap, update, slot, destroy: () => { S.alive = false; cancelAnimationFrame(S.raf); } };

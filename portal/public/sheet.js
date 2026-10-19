@@ -22,7 +22,7 @@ const { el, api } = Lab;
   });
   document.title = `Лист урока ${les.number} · ${les.title}`;
   host.innerHTML = '';
-  host.append(
+  host.append(...[
     el('h1', {}, `Урок ${les.number}. ${les.title}`),
     el('p', { class: 'meta' }, `Донор: ${les.donor} · ${at} мин · класс ${o.class.code}`),
     el('p', { style: 'margin:0 0 6px' }, les.goal),
@@ -34,5 +34,5 @@ const { el, api } = Lab;
     les.lens ? el('p', { style: 'margin:8px 0 0' }, el('b', {}, 'Линза урока: '), les.lens) : null,
     el('h2', {}, 'Перед уроком'),
     el('ul', { class: 'check' }, ['Проектор открыт, код класса на экране', 'chat.qwen.ai открывается в школьной сети', 'Ученики знают адрес портала', 'Наушники или звук тише', 'Пульт: вкладка «Урок» в панели', 'Лист рядом']
-      .map(x => el('li', {}, x))));
+      .map(x => el('li', {}, x)))].flat().filter(Boolean));
 })();

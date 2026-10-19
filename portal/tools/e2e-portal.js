@@ -157,6 +157,20 @@ async function run(browser, base, mode) {
   const code = await teacher.textContent('#classCode');
   check('Учитель создал класс', /^[A-Z0-9]{5}$/.test(code), code);
   await teacher.click('text=Открыть: Вау-старт →');
+  // пульт учителя (У1): сейчас — первый шаг вау-старта, его реплика из сценария по шагам (У2)
+  await teacher.waitForSelector('.pult [data-pult-say="vopros-uroka"]', { timeout: 10000 });
+  const pultSay = (await teacher.textContent('.pult .pult-say')).trim();
+  check('Пульт учителя: сейчас — «Вопрос урока», реплика из сценария по шагам', pultSay === lesson1.checkpoints[0].steps[0].teacher.say && /шаг 1 из/.test(await teacher.textContent('.pult .eyebrow')), pultSay.slice(0, 80));
+  await shot(teacher, '0-pult');
+  {
+    const sh = await teacher.context().newPage(); watch(sh, errors);
+    await sh.goto(base + '/sheet?code=' + code);
+    await sh.waitForSelector('#sheet table tbody tr');
+    const rows = await sh.locator('#sheet table tbody tr').count(), txt = await sh.textContent('#sheet');
+    check('Лист урока (У3): хронометраж всех чекпоинтов, вопрос урока, три понятия и словарик', rows === lesson1.checkpoints.length && txt.includes(lesson1.question) && await sh.locator('#sheet .concept').count() === 3 && /Словарик/.test(txt), `строк ${rows}`);
+    await sh.screenshot({ path: path.join(OUT, `portal-${mode}-sheet.png`), fullPage: true });
+    await sh.close();
+  }
 
   // ученик: вход по коду
   await student.goto(base + '/?code=' + code);
@@ -184,6 +198,15 @@ async function run(browser, base, mode) {
   await student.click('#step-donor-hook .opt >> nth=0');
   await student.click('#step-donor-hook >> text=Ответить');
   await student.waitForSelector('#step-donor-hook.done');
+  // вопрос урока (П2): в начале и тот же в конце
+  await student.click('#step-vopros-uroka .opt >> nth=1');
+  await student.click('#step-vopros-uroka >> text=Ответить');
+  await student.waitForSelector('#step-vopros-uroka.done');
+  // словарик по месту (С2): подчёркнутое слово — одна фраза и пример урока
+  await student.click('#main .term >> nth=0');
+  await student.waitForSelector('.gloss-pop');
+  check('Словарик: нажатие на подчёркнутое слово — фраза и пример урока', /У нас в уроке/.test(await student.textContent('.gloss-pop')), (await student.textContent('.gloss-pop')).slice(0, 80));
+  await student.keyboard.press('Escape');
   // «Что почувствует игрок?» до игры класса: ответ вернётся в шаге «Совпало?» и на проектор
   predicted = (await student.textContent('#step-vau-predict .opt >> nth=1')).trim();
   await student.click('#step-vau-predict .opt >> nth=1');
@@ -209,6 +232,17 @@ async function run(browser, base, mode) {
 
   // Фабрика и решения: карты вместо своих слов, свои слова — только «Чувство»
   await student.click('.cp >> text=Фабрика');
+  // «Твист или спрятанная механика?» (И2): две корзины, клавиши 1 и 2
+  await student.click('#step-tvist-sekret >> text=▶ Начать');
+  for (let i = 0; i < 20 && !(await student.locator('#step-tvist-sekret.done').count()); i++) {
+    const it = student.locator('#step-tvist-sekret .item');
+    if (!(await it.count())) { await sleep(200); continue; }
+    const text = (await it.textContent()).trim();
+    await student.keyboard.press('Digit1');
+    await nextItem(student, '#step-tvist-sekret', text);
+  }
+  check('«Твист или спрятанная механика?»: сортировка в две корзины пройдена', await student.locator('#step-tvist-sekret.done').count() === 1);
+  check('Фабрика: пять опор, как на вау-старте', await student.locator('#step-fabrika .pillars .pil').count() === 5 && await student.locator('#step-fabrika .pillars .pil.up').count() >= 1);
   check('Урок 1: один уровень задания, остальные — цель версии 2', await student.locator('#step-fabrika >> text=Откроется после первой сборки — цель версии 2').count() === 2);
   check('«Что цепляет?» с донора — подсказка над полями Фабрики', /Тебя зацепило в доноре/.test(await student.textContent('#step-fabrika .hookbox')));
   await student.click('#step-fabrika >> text=🎲 Кубик для пустых полей');
@@ -228,7 +262,7 @@ async function run(browser, base, mode) {
   await student.waitForSelector('#step-resheniya.done');
   await shot(student, '3-fabrika');
 
-  // ИГРА — готовый промпт, правка по желанию; продюсер
+  // ИГРА — готовый промпт, правка по желанию (продюсера в уроке 1 нет, С1)
   const preview = (await student.textContent('#step-igra .preview-igra')).replace(/\s+/g, ' ');
   check('ИГРА: готовый промпт «Вот что получит программист», полей правки нет', /Вот что получит программист/.test(preview) && preview.includes('Пасека под огнём') && await student.locator('#f-igrai').count() === 0, preview.slice(0, 90));
   await student.click('#step-igra button:has-text("✎ Поправить")');
@@ -236,22 +270,7 @@ async function run(browser, base, mode) {
   check('По «✎ Поправить» — черновик ИГРА из Фабрики в полях', prefill.includes('Пасека под огнём'), prefill.slice(0, 60));
   await student.click('#step-igra button:text-is("Готово")');
   await student.waitForSelector('#step-igra.done');
-  await student.click('#step-prodyuser >> text=Отдать замысел продюсеру');
-  await student.waitForSelector('#step-prodyuser .fork .opt', { timeout: 30000 });
-  const forkPick = (await student.textContent('#step-prodyuser .fork .opt >> nth=0')).trim();
-  await student.click('#step-prodyuser .fork .opt >> nth=0');
-  await student.waitForSelector('#step-prodyuser.done');
-  check('Продюсер ответил, развилка выбрана', true);
-  // «Пусть поправит продюсер»: по своему разбору продюсер переписывает поля ИГРА, ученик видит «было → стало» и принимает
-  await student.click('#step-prodyuser >> text=🪄 Пусть поправит продюсер');
-  await student.waitForSelector('#step-prodyuser .fixbox', { timeout: 30000 });
-  check('Продюсер переписал промпт ИГРА: было → стало', await student.locator('#step-prodyuser .fixbox .now').count() >= 1, (await student.textContent('#step-prodyuser .fixbox')).replace(/\s+/g, ' ').slice(0, 120));
-  await shot(student, '4-producer', true);
-  await student.click('#step-prodyuser >> text=✓ Принять правку');
-  await student.waitForSelector('#step-prodyuser >> text=Продюсер поправил промпт ИГРА');
-  const fixedP = (await student.textContent('#step-igra .preview-igra')).replace(/\s+/g, ' ');
-  check('Правка продюсера легла в промпт ИГРА', mode === 'mock' ? /крестовина и A/.test(fixedP) : fixedP.includes(forkPick), fixedP.slice(0, 120));
-
+  check('Сборка: три плитки Qwen, как у учителя (П3)', await student.locator('#step-sborka .qwen-tiles .qtile').count() === 3);
   // сборка: в демо — кнопкой «⚙ Собрать сейчас» из Фабрики, с ИИ — кнопкой шага сборки
   if (mode === 'mock') await student.click('#step-sborka >> text=⚙ Собрать игру');
   else await student.click('#step-fabrika >> text=⚙ Собрать сейчас');
@@ -312,9 +331,9 @@ async function run(browser, base, mode) {
   check('Своеволие ИИ: карточки разложены, решения программиста оставлены или убраны', kept >= 1 || mode === 'demo', `решений ИИ: ${kept}`);
   if (!kept) await student.fill('#f-razborguess', 'Золотая тарелка');
   await student.click('#step-razbor [data-done="sort"]');
-  await student.click('#step-razbor [data-tool="lamps"]');
-  check('Лампочки: «проигрыш или рекорд» загорелась по партии', await student.locator('#step-razbor .lamp.on').count() >= 1);
   await student.click('#step-razbor [data-finding]:has(.tag.card) >> nth=0'); // главная — 💬 просьба: она и пойдёт в правку
+  await student.click('#step-razbor [data-pillar="Угроза"]');
+  check('Разбор: «какая опора шатается?» — опора Угроза красная (П1)', await student.locator('#step-razbor .pil.weak[data-pillar="Угроза"]').count() === 1);
   await student.click('#step-razbor [data-razbor="done"]');
   await student.waitForSelector('#step-razbor.done', { timeout: 10000 });
   check('Разбор готов: главная находка выбрана', true, (await student.textContent('#step-razbor [data-finding].on')).replace(/\s+/g, ' '));
@@ -355,15 +374,26 @@ async function run(browser, base, mode) {
   await chatEdit(student, 'masterskaya-2', 'Пусть в середине партии прилетает вторая волна');
   check('Правка 2 дала новую версию', await student.locator('#step-masterskaya-2 .ver').count() > before2);
   check('Правок без лимита: чат бесплатный, окно правки осталось', await student.locator('#step-masterskaya-2 [data-paste=send]').count() === 1);
+
+  // финал: турнир, сосед играет версию 2, линза, вопрос урока ещё раз, открытка; стена аркады урока на проекторе
+  await student.click('.cp >> text=Турнир и финал');
   if (mode === 'mock') {
     await student.click('#step-sosed-v2 .veil button');
     await playRound(await gameFrame(student, '/play/', 0), { score: 15 });
     const okV2 = await student.waitForSelector('#step-sosed-v2.done', { timeout: 10000 }).then(() => true, () => false);
     check('Сосед в версии 2: шаг arcade с about засчитан', okV2, (await student.textContent('#step-sosed-v2 .gamebar')).replace(/\s+/g, ' '));
   }
-
-  // финал: открытие и заметка автора, стена аркады урока на проекторе
-  await student.click('.cp >> text=Турнир и финал');
+  await student.click('#step-linza .lens-card');
+  await student.waitForSelector('#step-linza.done');
+  check('Линза эмоций переворачивается и ложится в колоду (С3)', /что должен почувствовать игрок/.test(await student.textContent('#step-linza .lens-face')));
+  await student.click('#step-vopros-uroka-2 .opt >> text=Геймдизайнер');
+  await student.click('#step-vopros-uroka-2 >> text=Ответить');
+  await student.waitForSelector('#step-vopros-uroka-2.done');
+  await student.waitForSelector('#step-otkrytka [data-postcard=save]', { timeout: 10000 });
+  await student.click('#step-otkrytka [data-postcard=save]');
+  await student.waitForSelector('#step-otkrytka.done');
+  check('Открытка первой игры: название игры и задуманное чувство (И3)', /Пасека под огнём/.test(await student.textContent('#step-otkrytka .postcard')) && /шершни/.test(await student.textContent('#step-otkrytka .postcard')));
+  await shot(student, '7-final', true);
   await student.click('#step-otkrytie-den .opt >> nth=0');
   await student.click('#step-otkrytie-den >> text=Ответить');
   await student.click('#step-plan-v2 .dicebtn');
@@ -378,6 +408,7 @@ async function run(browser, base, mode) {
     const sv = await sp.evaluate(() => Lab.api('/api/studio'));
     check('Моя студия: игра на полке, значок «Первая сборка», журнал с планом версии 2',
       sv.games.length >= 1 && sv.badges.find(b => b.id === 'build').got && sv.journal.some(j => j.plan), `игр ${sv.games.length}, значков ${sv.badges.filter(b => b.got).length}; план: ${(sv.journal.find(j => j.plan) || {}).plan || planText}`);
+    check('Моя студия: открытка первой игры на полке открыток', (sv.postcards || []).some(c => c.title === 'Пасека под огнём') && await sp.locator('#postcards .postcard').count() >= 1, `открыток ${(sv.postcards || []).length}`);
     await sp.click('#emblems .emblem >> nth=2');
     await sp.waitForFunction(() => /^\S+ Тестер/.test(document.querySelector('#nick').textContent), null, { timeout: 5000 });
     const card = (await sp.evaluate(() => Lab.api('/api/arcade'))).mine[0];
@@ -665,6 +696,12 @@ async function secretHunt(teacher, student, mode, shot) {
   await student.waitForSelector('#step-secret-seen.done');
   await student.click('#step-secret-feel .opt >> nth=0');
   await student.click('#step-secret-feel >> text=Ответить');
+  // «Ты — Нисикадо» (И1): сбить волну до трёх пришельцев и решить, оставить ли случайность железа
+  for (let i = 0; i < 30 && await student.locator('#step-nisikado [data-nk=keep]:visible').count() === 0; i++) await student.click('#step-nisikado [data-nk=fire]');
+  await student.click('#step-nisikado [data-nk=keep]');
+  await student.waitForSelector('#step-nisikado.done');
+  check('«Ты — Нисикадо»: волна сбита, решение «оставить» засчитано, раскрыто правило', /так же, как Нисикадо/.test(await student.textContent('#step-nisikado .concept')));
+  await shot(student, '2b-nisikado');
   await student.click('#step-secret-story >> text=Понятно');
   // квиз: постоянные карточки + карточки из игры класса (карты и раскрытая спрятанная механика)
   const quiz = lesson1.checkpoints.find(c => c.id === 'secret').steps.find(s => s.id === 'secret-quiz');
@@ -775,7 +812,8 @@ async function openProjector(base, code, teacher, errors, shot) {
   check('Проектор: крупно код класса', (await pj.textContent('#pjCode')).trim() === code);
   await pj.waitForFunction(() => /^\d\d:\d\d$/.test(document.querySelector('#pjTimer').textContent), null, { timeout: 5000 });
   const t = await pj.textContent('#pjTimer'), min = String(lesson1.checkpoints[0].minutes).padStart(2, '0');
-  check('Проектор: открытый чекпоинт и таймер по minutes урока', /Вау-старт/.test(await pj.textContent('.pj-cp h1')) && new RegExp(`^(${min}:00|${String(min - 1).padStart(2, '0')}:5\\d)$`).test(t), t);
+  // проектор открывается после партии в донора: от старта таймера проходит до минуты
+  check('Проектор: открытый чекпоинт и таймер по minutes урока', /Вау-старт/.test(await pj.textContent('.pj-cp h1')) && new RegExp(`^(${min}:00|${String(min - 1).padStart(2, '0')}:[0-5]\\d)$`).test(t), t);
   await shot(pj, 'p1-projector');
   return pj;
 }
