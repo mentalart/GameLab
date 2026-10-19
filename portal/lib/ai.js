@@ -183,11 +183,68 @@ function htmlPage(text) {
   return b && /<script/i.test(b[1]) ? `<!DOCTYPE html>\n<html lang="ru"><head><meta charset="utf-8"></head><body>\n${b[1].trim()}\n</body></html>` : '';
 }
 function syntaxError(code) {
-  if (isHtml(code)) return null;
-  try { new vm.Script(code, { filename: 'game.js' }); return null; } catch (e) {
-    const m = /game\.js:(\d+)/.exec(e.stack || '');
-    return { message: e.message, line: m ? Number(m[1]) : null };
+  if (isHtml(code)) return pageError(code);
+  return jsError(code, false);
+}
+// разбор кода без запуска; module — скрипт type="module": импорты и export убираются, тело — в async-функции (await на верхнем уровне)
+function jsError(code, module) {
+  let src = code;
+  if (module) {
+    src = src.replace(/^[ \t]*import\b(?!\s*\(|\.)[^;]*?(?:from\s*)?['"][^'"\n]+['"][ \t]*;?/gm, m => m.replace(/[^\n]/g, ' '))
+      .replace(/^([ \t]*)export\s+(default\s+)?/gm, '$1').replace(/\bimport\.meta\b/g, '({})');
+    src = '(async function(){"use strict";' + src + '\n})';
   }
+  try { new vm.Script(src, { filename: 'game.js' }); return null; } catch (e) {
+    const m = /game\.js:(\d+)/.exec(e.stack || '');
+    const line = m ? Number(m[1]) : null;
+    return { message: e.message, line, text: line ? (code.split('\n')[line - 1] || '').trim().slice(0, 160) : '' };
+  }
+}
+// скрипты страницы, которые браузер выполнит как JavaScript: без src, без type или type module / text/javascript
+// (шейдеры x-shader и importmap не трогаем); start — номер строки страницы, с которой начинается код скрипта
+function pageScripts(html) {
+  const out = [];
+  for (const m of html.matchAll(/<script\b([^>]*)>([\s\S]*?)<\/script>/gi)) {
+    const attrs = m[1], type = (/\btype\s*=\s*["']?([^"'\s>]+)/i.exec(attrs) || [])[1] || '';
+    if (/\bsrc\s*=/i.test(attrs) || (type && !/^(module|text\/javascript|application\/javascript)$/i.test(type))) continue;
+    const at = m.index + m[0].indexOf('>') + 1;
+    out.push({ code: m[2], at, module: /^module$/i.test(type), start: html.slice(0, at).split('\n').length });
+  }
+  return out;
+}
+// первая синтаксическая ошибка страницы: строка — в файле страницы, как её видит Qwen
+function pageError(html) {
+  for (const sc of pageScripts(html)) {
+    const e = jsError(sc.code, sc.module);
+    if (e) return Object.assign(e, { line: e.line ? sc.start + e.line - 1 : null });
+  }
+  return null;
+}
+// Qwen переносит в код типографику из задания: минус «−», неразрывный пробел, невидимые символы — «Invalid or unexpected token».
+// Чиним только скрипт, который без этого не разбирается, и только если после замены он разбирается.
+// Замены идут ступенями: сначала безопасные (минус, пробелы), потом кавычки “ ” ‘ ’, потом «×» между числами и именами — каждая следующая, только если без неё скрипт не разбирается.
+const TYPO = [
+  [[/−/g, '-'], [/[   ]/g, ' '], [/[​-‍⁠﻿]/g, '']],
+  [[/[“”„]/g, '"'], [/[‘’]/g, "'"]],
+  [[/([\w)\]])[ \t]*×[ \t]*(?=[\w(])/g, '$1 * ']],
+];
+function fixScript(code, module) {
+  if (!jsError(code, module)) return code;
+  let f = code;
+  for (const stage of TYPO) {
+    f = stage.reduce((x, [re, to]) => x.replace(re, to), f);
+    if (!jsError(f, module)) return f;
+  }
+  return code;
+}
+function fixTypography(code) {
+  if (!isHtml(code)) return fixScript(code, false);
+  let out = code;
+  for (const sc of pageScripts(code).reverse()) {
+    const f = fixScript(sc.code, sc.module);
+    if (f !== sc.code) out = out.slice(0, sc.at) + f + out.slice(sc.at + sc.code.length);
+  }
+  return out;
 }
 const FORBIDDEN = [/\bdocument\./, /\bwindow\./, /\blocalStorage\b/, /\bfetch\s*\(/, /\bXMLHttpRequest\b/, /\beval\s*\(/, /new\s+Function\b/, /\bimport\s*\(/, /^\s*import\s/m, /\bsetInterval\s*\(/, /\bMath\.random\s*\(/];
 function lint(code) { if (isHtml(code)) return ['страница HTML без оболочки Лаб3D: нет рекордов, ручек и автопочинки']; return FORBIDDEN.filter(r => r.test(code)).map(r => String(r).replace(/\\b|\\s\*|\\|\/|\^|\$/g, '').replace(/m$/, '')); }
@@ -260,8 +317,10 @@ async function chatProgram(kind, prompt, who, onProgress, base, secret) {
     } else {
       try { code = extractCode(text); } catch (e) { problem = 'В ответе нет кода игры. Пришли игру целиком: один файл HTML одним блоком ```html, без пояснений.'; }
     }
+    if (!problem) code = fixTypography(code);
     const err = !problem && syntaxError(code);
-    if (err) problem = `В коде ошибка: ${err.message}${err.line ? ', строка ' + err.line : ''}. Исправь и пришли игру целиком одним блоком \`\`\`html.`;
+    // ошибку разбора портал ловит сам и сразу пишет в тот же чат: игра не открывается ученику сломанной
+    if (err) problem = `Код не запускается: ${err.message}${err.line ? `, строка ${err.line}` : ''}${err.text ? ` («${err.text}»)` : ''}. Частая причина — символы из текста задания в коде: «−» вместо минуса, «×» вместо *, кавычки « » или “ ” вокруг строк, дробь с запятой, строка в кавычках, разорванная переносом. Исправь и пришли игру целиком одним блоком \`\`\`html.`;
     entry.ok = !problem; if (problem) entry.error = problem;
     attempts.push(log(entry));
     if (!problem) return { code, model: CHAT.model, attempts: attempts.length, warnings: chatWarnings(code, secret), ms: attempts.reduce((n, e) => n + e.ms, 0), rub: 0 };
@@ -283,7 +342,7 @@ function chatBuild(plan, who, onProgress, kind) {
 // wow.world — мир с карты «Мир» (цвета, что собираем, декор), wow.move — ход угрозы мира: по нему рецепт выбирает тип врага (вау-старт 2.0)
 const chatSharedText = wow => chatTask(fill(chatTpl('wow'), {
     'герой': wow.cards.hero, 'действие': wow.cards.action, 'место': wow.cards.place, 'угроза': wow.cards.threat || 'нет карты — придумай по месту', 'поворот': wow.cards.twist,
-    'рецепт': recipeText(wow.genre, wow.cards, wow.move, wow.world), 'мир': worldText(wow.world), 'проверь': checksText(wow.genre),
+    'рецепт': recipeText(wow.genre, wow.cards, wow.move, wow.world), 'лучшие': bestText(wow.genre), 'мир': worldText(wow.world), 'проверь': checksText(wow.genre),
     'сочность': wow.genre && wow.genre.juice ? `Сочность жанра — без неё игра выглядит картонной, сделай всё: ${wow.genre.juice}.` : '',
     'связка': wow.link ? `Гейм дизайн документ (класс принял его${wow.genre && wow.genre.recipe ? '; правила, кнопки и числа — из рецепта, документ задаёт фразу игры и подачу' : ', строй игру по нему'}):\n` + LINK_FIELDS.filter(([k]) => wow.link[k]).map(([k, label]) => `- ${label}: ${wow.link[k]}`).join('\n') : '',
   }) + chatSecret(wow.secret, wow.base, wow.howto));
@@ -470,6 +529,13 @@ function recipeText(genre, cards, move, world) {
     rule ? `- Поворот меняет в рецепте одно: ${rule}.` : '',
     genre.luck ? `- Удача в этой игре — каждое начисление очков: ${genre.luck}.` : ''].filter(Boolean).join('\n');
 }
+// как у лучших в жанре (19.10.2026): игры выходили играбельными, но бедными — зрелище и события раз в 8–10 с по образцам жанра.
+// Бонусы событий меняют умение, не очки: множители и золотые бонусы спорили бы со спрятанной механикой «Каждый десятый — золотой».
+const bestText = g => (g && g.best ? [`Как у лучших в жанре — ${g.best}. Это тоже часть рецепта, сделай всё; упрощай, но не выбрасывай.`,
+  'Зрелище:', ...g.show.map(l => '- ' + l),
+  'События — ритм лучших игр: каждые 1–2 с мелочь рецепта (монетка, враг), с 12-й секунды каждые 8–10 с новое событие из списка (подряд одно и то же не повторяй), примерно раз в 30 с большое событие. Бонусы событий меняют умение, а не очки: множителей очков, комбо и золотых бонусов нет. Если событие спорит с поворотом, прав поворот: такое событие пропусти.',
+  ...g.beats.map(l => '- ' + l),
+  `- большое событие: ${g.boss}`].join('\n') : '');
 // мир с карты «Мир» данными (вау-старт 2.0): Qwen по одной строке карты рисовал мир наугад
 const worldText = w => (w ? [`Мир «${w.name}»:`,
   `- цвета: небо — градиент от ${w.sky[0]} сверху к ${w.sky[1]} у горизонта, туман в цвет горизонта; земля ${w.ground}; дальний план ${w.far}; акцент для бонусов и вспышек ${w.acc}`,
@@ -478,8 +544,9 @@ const worldText = w => (w ? [`Мир «${w.name}»:`,
   '- герой — самый яркий в кадре и не сливается с землёй; угроза тёмная или красная, с подсветкой, её видно издалека'].join('\n') : '');
 // что проверить перед ответом: проверки рецепта и две общие — Qwen-Flash чаще ошибается в порядке объявлений и в конце партии
 const checksText = genre => (genre && genre.checks ? ['Проверь перед ответом — всё это работает в первой же партии:', ...genre.checks.map(c => '- ' + c),
+  genre.beats ? '- с 12-й секунды каждые 8–10 с случается новое событие из «Как у лучших в жанре», к 30-й секунде — первое большое событие' : '',
   '- код без ошибок: three.js подключён через importmap, каждая переменная и функция объявлена до первого кадра, в консоли нет ошибок',
-  '- партия заканчивается экраном конца, новая партия начинается по Enter, R или Start'].join('\n') : '');
+  '- партия заканчивается экраном конца, новая партия начинается по Enter, R или Start'].filter(Boolean).join('\n') : '');
 async function wowLink(cards, prev, who, genre, move) {
   if (demo()) return demoLink(cards, who, genre);
   const model = models().link;
@@ -619,4 +686,4 @@ async function playtestFix(code, report, wow, who, onProgress) {
   return Object.assign(await chatChange(code, 'исправь игру по отчёту бота-плейтестера:\n' + report.findings.map(f => '- ' + f).join('\n'), who, onProgress, 'правка по плейтесту'), { knob: 'secret' });
 }
 
-module.exports = { chatSharedText, chatPact, chatMove, chatAsk, chatRepair, chatPaste, CHAT, truncated, joinParts, isHtml, LINK_FIELDS, playtestFix, feedbackDraft, applyPatches, loadConfig, reloadConfig, demo, models, limits, listModels, producer, producerFix, wowLink, build, buildShared, change, fix, planText, extractCode, syntaxError };
+module.exports = { chatSharedText, chatPact, chatMove, chatAsk, chatRepair, chatPaste, CHAT, truncated, joinParts, isHtml, LINK_FIELDS, playtestFix, feedbackDraft, applyPatches, loadConfig, reloadConfig, demo, models, limits, listModels, producer, producerFix, wowLink, build, buildShared, change, fix, planText, extractCode, syntaxError, fixTypography };
