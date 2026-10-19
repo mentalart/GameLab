@@ -185,7 +185,7 @@ const canvas = $('#cv');
 let renderer = null, composer = null, bloom = null, envTex = null;
 let G = null, state = 'loading', paused = false, errored = false, freshPreview = false;
 let scene = null, cam = null, skyTex = null;
-let parts = null, popups = [], warns = [], pulses = [], whites = [], rings = [], trails = [], tweens = [], timers = [], follow = null;
+let parts = null, popups = [], warns = [], pulses = [], whites = [], rings = [], trails = [], tweens = [], timers = [], follow = null, sceneGen = 0;
 let shakeAmp = 0, flashA = 0, hitstopT = 0, matCache = {}, glowMats = [];
 const cfg = {}, DEFAULTS = {}, META = {};
 const tele = { presses: {}, hold: {}, hurts: 0, custom: {}, stats: {}, marks: {}, line: [] }; // line — счёт на каждой секунде партии (призрак соперника в вызове)
@@ -457,7 +457,7 @@ function skyTexture(top, bottom) {
 }
 function disposeScene() {
   popups.forEach(p => p.el.remove());
-  popups = []; warns = []; pulses = []; whites = []; rings = []; trails = []; tweens = []; timers = []; follow = null; parts = null;
+  popups = []; warns = []; pulses = []; whites = []; rings = []; trails = []; tweens = []; timers = []; follow = null; parts = null; sceneGen++;
   if (scene) {
     scene.traverse(o => {
       if (o.geometry) o.geometry.dispose();
@@ -745,20 +745,26 @@ function tickPulses(dt) {
     return true;
   });
 }
+// твин или таймер, заведённый внутри другого (lab.after в lab.after), не теряется: он попадает в список после прохода
 function tickTweens(dt) {
-  tweens = tweens.filter(h => {
+  const gen = sceneGen, tw = tweens; tweens = [];
+  const keepT = tw.filter(h => {
     if (h.done) return false;
     h.t += dt;
     const k = Math.min(1, h.t / h.sec);
     safe(() => h.fn(h.f(k), k), 'tween');
     return k < 1;
   });
-  timers = timers.filter(h => {
+  if (gen !== sceneGen) return; // партию перестроили прямо из твина: старые твины и таймеры не возвращаем
+  tweens = keepT.concat(tweens);
+  const tm = timers; timers = [];
+  const keep = tm.filter(h => {
     if (h.done) return false;
     if (lab.t < h.at) return true;
     safe(() => h.fn(), 'after');
     return false;
   });
+  if (gen === sceneGen) timers = keep.concat(timers);
 }
 function tickFlash(dt) { flashA = Math.max(0, flashA - dt * 1.8); $('#flash').style.opacity = String(flashA); }
 // новые меши сами отбрасывают и принимают тени (кроме помеченных lab.noShadow)
