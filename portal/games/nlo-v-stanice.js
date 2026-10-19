@@ -7,7 +7,10 @@
 //   Galaxian — флагман пикирует со звеном: собьёшь всё звено в пике — большая награда;
 //   Defender — похититель уносит жителя, сбей похитителя, пока луч тянет: здесь бурёнку с выгона;
 //   Missile Command — станица, которую защищаешь, видна и подсчитывается в конце каждой волны;
-//   Space Invaders Extreme — цепочка одного цвета: четыре НЛО одного ряда подряд — подарок (веер, пробой или взрыв);
+//   Space Invaders Extreme — цепочка одного цвета: четыре НЛО одного ряда подряд — подарок-подкова;
+//   Raiden, 1942, Gradius, Space Invaders Infinity Gene — ствол растёт по ступеням: ядро → двустволка → веер → очередь → разрывные.
+//            Ступень дают подкова с ярмарочного шара (как POW в 1942), подкова за цепочку и каждые levelScore очков (Infinity Gene);
+//            попадание по пушке отнимает ступень (как в Raiden), так что сильный ствол надо беречь;
 //   Space Invaders — стога-укрытия рассыпаются по блоку, золотое НЛО (тарелка-загадка) — здесь мини-босс с веером.
 // Выстрел собран по правилам стреляющего героя: заряд, ядро со следом, отдача, искры сквозь врага, вспышка, звук, последствия, очки.
 // Все НЛО — копии одной детали (InstancedMesh): 96 тарелок рисуются за 6 вызовов отрисовки, бурёнки — за один.
@@ -23,7 +26,8 @@
    Кривая партии: 0–9 с — строй влетает и шагает, первый выстрел НЛО на 4-й секунде, урон не раньше 9-й;
    9 с — первое пике; 12 с — золотое НЛО; 20 с — первый похититель; волна 2 — клин и звенья; после волны 2 — ночной налёт
    (передышка: НЛО не стреляют); волна 3 — броня заднего ряда; дальше формы строя чередуются, рядов больше, всё чаще.
-   События: пике, звено, похититель, спасение бурёнки, цепочка и подарок, золотое НЛО и его ярость, броня слетает,
+   Ствол растёт по ступеням (подкова с ярмарочного шара, за цепочку, за очки) и слабеет от попаданий: ядро, двустволка, веер, очередь, разрывные.
+   События: пике, звено, похититель, спасение бурёнки, цепочка и подкова, ярмарочный шар, новая ступень ствола, золотое НЛО и его ярость, броня слетает,
    набат «Станица в опасности», чистая волна, подсчёт бурёнок, ночной налёт и «Идеально!».
    Лицо игры: кубанская ночь при луне, белёные хаты с тёплыми окнами, холодные неоновые НЛО.
    Палитра: ночь #0b1233, хаты #f4efe4, солома #c9a24a, окна #ffc65a, лучи НЛО #5fe0ff #ff6ad5, луч похитителя #b6ff5c, опасность #ff4d5e.
@@ -71,8 +75,11 @@ const GAME = {
     cows: { value: 4, min: 0, max: 6, step: 1, label: 'Бурёнок на выгоне', restart: true },
     armorFrom: { value: 3, min: 0, max: 10, step: 1, label: 'Броня у заднего ряда с волны', hint: 'два попадания, как у босса Galaga; 0 — без брони' },
     bonusEvery: { value: 2, min: 0, max: 5, step: 1, label: 'Ночной налёт после каждой N-й волны', hint: 'как бонусный этап Galaga: НЛО не стреляют; 0 — без налётов' },
-    chain: { value: 4, min: 0, max: 8, step: 1, label: 'Цепочка: НЛО одного цвета подряд до подарка', hint: 'как в Space Invaders Extreme; 0 — без подарков' },
-    powerTime: { value: 8, min: 2, max: 20, step: 1, label: 'Подарок действует, с' },
+    chain: { value: 4, min: 0, max: 8, step: 1, label: 'Цепочка: НЛО одного цвета подряд до подарка', hint: 'как в Space Invaders Extreme: подарок — подкова, ствол на ступень сильнее; 0 — без подарков' },
+    weaponStart: { value: 1, min: 1, max: 5, step: 1, label: 'Ступень ствола в начале', hint: '1 — ядро, 2 — двустволка, 3 — веер, 4 — очередь, 5 — разрывные', restart: true },
+    balloonEvery: { value: 22, min: 0, max: 60, step: 1, label: 'Ярмарочный шар с подковой пролетает раз в, с', hint: 'как POW в 1942: сбей шар и поймай подкову; 0 — без шара' },
+    levelScore: { value: 3000, min: 0, max: 20000, step: 500, label: 'Ступень ствола за каждые N очков', hint: 'как эволюция в Space Invaders Infinity Gene; 0 — без ступеней за очки' },
+    loseLevel: { value: 1, min: 0, max: 4, step: 1, label: 'Попадание по пушке отнимает ступеней', hint: 'как в Raiden; 0 — ствол не слабеет' },
     rows: { value: 3, min: 1, max: 6, step: 1, label: 'Рядов НЛО в первой волне', hint: 'каждая следующая волна на ряд больше', restart: true },
     cols: { value: 8, min: 3, max: 10, step: 1, label: 'НЛО в ряду', restart: true },
     shields: { value: 4, min: 0, max: 5, step: 1, label: 'Стогов-укрытий', restart: true },
@@ -82,10 +89,10 @@ const GAME = {
     bossFan: { value: 3, min: 1, max: 7, step: 1, label: 'Золотое НЛО: снарядов в веере', hint: 'в ярости — на два больше' },
   },
   presets: {
-    'Новичок': { baseStep: 0.95, fireEvery: 2.2, telegraph: 0.8, bombSpeed: 5.5, rows: 2, lives: 5, bossHP: 6, diveEvery: 10, diveTime: 2.2, abductTime: 5, escortFrom: 3, armorFrom: 4 },
+    'Новичок': { baseStep: 0.95, fireEvery: 2.2, telegraph: 0.8, bombSpeed: 5.5, rows: 2, lives: 5, bossHP: 6, diveEvery: 10, diveTime: 2.2, abductTime: 5, escortFrom: 3, armorFrom: 4, balloonEvery: 16, loseLevel: 0 },
     'Без спрятанной механики': { speedup: 0 },
-    'Классика 1978': { diveEvery: 0, chain: 0, bossAt: 25, bossHP: 1, bossFan: 1, escortFrom: 0, abductEvery: 0, armorFrom: 0, bonusEvery: 0 },
-    'Безумие': { baseStep: 0.35, fireEvery: 0.6, telegraph: 0.3, bombSpeed: 11, fireRate: 5, bossFan: 7, bossAt: 5, diveEvery: 2.5, diveTime: 1, escortFrom: 1, abductEvery: 6, armorFrom: 1, bonusEvery: 1 },
+    'Классика 1978': { diveEvery: 0, chain: 0, bossAt: 25, bossHP: 1, bossFan: 1, escortFrom: 0, abductEvery: 0, armorFrom: 0, bonusEvery: 0, balloonEvery: 0, levelScore: 0, weaponStart: 1 },
+    'Безумие': { baseStep: 0.35, fireEvery: 0.6, telegraph: 0.3, bombSpeed: 11, fireRate: 5, bossFan: 7, bossAt: 5, diveEvery: 2.5, diveTime: 1, escortFrom: 1, abductEvery: 6, armorFrom: 1, bonusEvery: 1, weaponStart: 3, balloonEvery: 8 },
   },
 
   PLAYER_Z: 11, // ряд пушки: улица станицы
@@ -99,7 +106,13 @@ const GAME = {
     { color: '#a98bff', name: 'фиолетовых', points: 30 }, { color: '#ff8a3d', name: 'оранжевых', points: 30 },
   ],
   SHAPES: ['ряды', 'клин', 'две стаи', 'шахматы'], // форма строя по волнам, по кругу
-  POWERS: { fan: { name: 'Веер', color: '#7cf5a8' }, pierce: { name: 'Пробой', color: '#8fe8ff' }, boom: { name: 'Взрыв', color: '#ff7a5a' } },
+  WEAPONS: [ // ступени ствола: имя, что даёт, цвет следа и огонька на стволе, цвет ядра
+    { name: 'Ядро', tip: 'одно ядро', color: '#ff9a3d', core: '#fff3a0' },
+    { name: 'Двустволка', tip: 'два ядра рядом', color: '#ffd23f', core: '#fff6c8' },
+    { name: 'Веер', tip: 'три ядра веером', color: '#7cf5a8', core: '#d9ffe6' },
+    { name: 'Очередь', tip: 'веер, и стреляет чаще', color: '#5fe0ff', core: '#e6fbff' },
+    { name: 'Разрывные', tip: 'среднее ядро рвётся кругом', color: '#ff5a3d', core: '#ffe0d0' },
+  ],
   BEAM: '#b6ff5c', // луч похитителя — цвет, которого нет у строя
   POOL: 96, // мест в пачке копий НЛО: волна до 60 тарелок и сбитые прошлой волны, которые ещё падают
 
@@ -110,9 +123,10 @@ const GAME = {
       wave: 1, waveMul: 1, shots: 0, hits: 0, shieldTime: 0, closest: 99, hurtInWave: false,
       bullets: [], bombs: [], charges: [], caps: [], saucers: [], slots: new Array(this.POOL).fill(null),
       boss: null, bossT: lab.cfg.bossAt, bossKills: 0, combo: 0, bestCombo: 0, fireT: 5.5, note: 0, reload: 0, want: 0,
-      lastWarned: false, diveT: 9, dives: 0, diveKills: 0, flights: 0, flightsDone: 0, chainRow: -1, chainN: 0, chains: 0, power: null, powerT: 0, gifts: 0,
+      lastWarned: false, diveT: 9, dives: 0, diveKills: 0, flights: 0, flightsDone: 0, chainRow: -1, chainN: 0, chains: 0, gifts: 0,
+      gunLv: Math.round(lab.cfg.weaponStart), bestLv: Math.round(lab.cfg.weaponStart), ups: 0, downs: 0, nextLv: lab.cfg.levelScore, balloon: null, balloonT: 15, balloons: 0,
       abductT: 20, abducts: 0, saved: 0, lost: 0, armorBroken: 0, bonus: null, bonusBest: -1, bonusPerfect: 0, danger: false, bellT: 0, smokeT: 0,
-      scorchN: 0, geo: { core: new T.IcosahedronGeometry(1, 1), oct: new T.OctahedronGeometry(1), lane: new T.BoxGeometry(1, 0.02, 1) }, tmp: { m: new T.Matrix4(), q: new T.Quaternion(), e: new T.Euler(), s: new T.Vector3(), p: new T.Vector3(), c: new T.Color(), zero: new T.Matrix4().makeScale(0, 0, 0) },
+      scorchN: 0, geo: { core: new T.IcosahedronGeometry(1, 1), oct: new T.OctahedronGeometry(1), lane: new T.BoxGeometry(1, 0.02, 1), shoe: new T.TorusGeometry(0.42, 0.11, 6, 14, Math.PI * 1.35).rotateZ(-1.175 * Math.PI) }, tmp: { m: new T.Matrix4(), q: new T.Quaternion(), e: new T.Euler(), s: new T.Vector3(), p: new T.Vector3(), c: new T.Color(), zero: new T.Matrix4().makeScale(0, 0, 0) },
     });
     // ночь над станицей: лунный свет вместо солнца, тёплые окна хат — контраст с холодными лучами НЛО
     lab.light.sun.color.set('#c9d4ff'); lab.light.sun.intensity = 1.5;
@@ -120,6 +134,7 @@ const GAME = {
     this.scenery(lab, scene);
     this.stanica(lab);
     this.cannon(lab);
+    this.setWeapon(lab);
     this.saucerParts(lab);
     this.herd(lab);
     this.buildShields(lab);
@@ -139,12 +154,12 @@ const GAME = {
     c.g.visible = !lab.blink();
     // нажатие во время перезарядки не теряется: выстрел уйдёт, как только пушка готова
     st.reload -= dt; st.want = p.pressed.a ? 0.25 : st.want - dt;
-    const flying = st.bullets.filter(b => b.main).length; // в полёте не больше maxShots ядер: точный выстрел перезаряжает раньше, чем промах
-    if (st.want > 0 && st.reload <= 0 && (cfg.maxShots <= 0 || flying < cfg.maxShots)) this.shoot(lab);
-    const ready = 1 - lab.clamp(st.reload * cfg.fireRate, 0, 1);
+    const flying = st.bullets.filter(b => b.main).length; // в полёте не больше maxShots залпов: точный выстрел перезаряжает раньше, чем промах
+    if (st.want > 0 && st.reload <= 0 && (cfg.maxShots <= 0 || flying < cfg.maxShots + (st.gunLv >= 4 ? 1 : 0))) this.shoot(lab);
+    const ready = 1 - lab.clamp(st.reload * this.rate(lab), 0, 1);
     c.charge.scale.setScalar(0.3 + 0.9 * ready); // огонёк на стволе разгорается к концу перезарядки
     if (this.underShield(lab, c.g.position.x)) st.shieldTime += dt;
-    if (st.power && (st.powerT -= dt) <= 0) { st.power = null; lab.tone(500, 0.25, 'triangle', 0.06, 200); }
+    if (cfg.levelScore > 0 && lab.score >= st.nextLv) { st.nextLv = (Math.floor(lab.score / cfg.levelScore) + 1) * cfg.levelScore; this.levelUp(lab, 'очки'); } // эволюция за очки
     c.gunner.position.y = Math.abs(Math.sin(lab.t * 9)) * Math.min(0.12, Math.abs(c.vx) * 0.012);
 
     if (st.bonus) this.moveBonus(lab, dt);
@@ -154,6 +169,7 @@ const GAME = {
     this.moveBoss(lab, dt);
     this.moveWrecks(lab, dt);
     this.moveCaps(lab, dt);
+    this.moveBalloon(lab, dt);
     this.moveCows(lab, dt);
     this.drawSaucers(lab, dt);
     this.lifeOfStanica(lab, dt);
@@ -164,7 +180,8 @@ const GAME = {
     lab.hud('combo', st.combo >= 2 ? `Серия ${st.combo}` + (mult > 1 ? ` · очки ×${mult}` : '') : null);
     const R = this.ROWS[st.chainRow];
     lab.hud('chain', cfg.chain > 0 && R && st.chainN > 0 ? `Цепочка ${R.name}: ${'●'.repeat(st.chainN)}${'○'.repeat(Math.max(0, cfg.chain - st.chainN))}` : null);
-    lab.hud('power', st.power ? `${this.POWERS[st.power].name}: ${Math.ceil(st.powerT)} с` : null);
+    const ups = cfg.balloonEvery > 0 || cfg.levelScore > 0 || cfg.chain > 0 || st.gunLv > 1;
+    lab.hud('power', ups ? `Ствол: ${this.WEAPONS[st.gunLv - 1].name} (${st.gunLv}/${this.WEAPONS.length})` : null);
     const thief = st.saucers.some(s => s.alive && s.abduct && s.abduct.phase === 'beam');
     lab.hud('alarm', thief ? '🐄 Бурёнку уносят! Сбей похитителя' : st.danger ? '🔔 Станица в опасности!' : null);
   },
@@ -176,6 +193,7 @@ const GAME = {
     notes.push(`Под стогами ты провёл ${Math.round(100 * st.shieldTime / Math.max(0.1, lab.t))}% времени`);
     if (st.abducts) notes.push(`Похитители прилетали ${st.abducts} раз: бурёнок спасено ${st.saved}, украдено ${st.lost}`);
     if (st.dives) notes.push(`НЛО срывались в пике ${st.dives} раз, сбито в пике: ${st.diveKills}, звеньев целиком: ${st.flightsDone}. Цепочек одного цвета: ${st.chains}`);
+    if (st.ups || st.bestLv > 1) notes.push(`Ствол: лучшая ступень — ${this.WEAPONS[st.bestLv - 1].name} (${st.bestLv} из ${this.WEAPONS.length}), новых ступеней ${st.ups}, потеряно от попаданий ${st.downs}${st.balloons ? ', ярмарочных шаров сбито ' + st.balloons : ''}`);
     if (st.bonusBest >= 0) notes.push(`Ночной налёт: лучший — ${st.bonusBest} из 24${st.bonusPerfect ? ', идеально — ' + st.bonusPerfect + ' раз' : ''}`);
     if (st.bossKills) notes.push(`Золотых НЛО сбито: ${st.bossKills}`);
     else if (st.boss) notes.push(`Золотое НЛО выдержало ${st.boss.max - st.boss.hp} попаданий из ${st.boss.max}`);
@@ -321,10 +339,16 @@ const GAME = {
       lab.cyl(0.12, 0.12, 0.2, '#d9a441', { parent: w, rot: [0, 0, Math.PI / 2], metal: 0.6, shiny: true });
       wheels.push(w);
     }
-    // ствол — латунный, смотрит вдаль (−Z) и чуть вверх
-    const barrel = lab.group({ parent: g, at: [0, 0.95, -0.1], rot: [0.12, 0, 0] });
-    lab.cyl(0.17, 0.22, 1.4, '#d9a441', { parent: barrel, at: [0, 0, -0.55], rot: [-Math.PI / 2, 0, 0], sides: 10, metal: 0.7, shiny: true });
-    lab.cyl(0.24, 0.24, 0.16, '#a87a2c', { parent: barrel, at: [0, 0, -1.2], rot: [-Math.PI / 2, 0, 0], sides: 10, metal: 0.7, shiny: true });
+    // стволы — латунные, смотрят вдаль (−Z) и чуть вверх. Сколько их видно — столько ядер в залпе: ступень ствола видна на самой пушке
+    const barrel = lab.group({ parent: g, at: [0, 0.95, -0.1], rot: [0.12, 0, 0] }), tubes = [], muzzles = [];
+    for (const x of [-0.34, 0, 0.34]) {
+      const tube = lab.group({ parent: barrel, at: [x, 0, 0] }), r = x ? 0.8 : 1;
+      lab.cyl(0.17 * r, 0.22 * r, 1.4, '#d9a441', { parent: tube, at: [0, 0, -0.55], rot: [-Math.PI / 2, 0, 0], sides: 10, metal: 0.7, shiny: true });
+      muzzles.push(lab.cyl(0.24 * r, 0.24 * r, 0.16, '#a87a2c', { parent: tube, at: [0, 0, -1.2], rot: [-Math.PI / 2, 0, 0], sides: 10, metal: 0.7, shiny: true }));
+      tubes.push(tube);
+    }
+    const drum = lab.box(0.9, 0.22, 0.5, '#7a1f17', { parent: barrel, at: [0, 0.2, -0.2], round: 0.05 }); // короб с ядрами — у «Очереди»
+    lab.box(0.92, 0.06, 0.52, '#d9a441', { parent: drum, at: [0, 0.1, 0], metal: 0.6, shiny: true });
     const charge = lab.ball(0.2, '#ffb347', { parent: barrel, at: [0, 0, -1.36], glow: 1.4, shadow: false });
     // казак-наводчик в черкеске и папахе, повернулся к нам
     const gun = lab.group({ parent: g, at: [1.25, 0, 0.35] }), body = lab.group({ parent: gun, rot: 0.55 });
@@ -337,7 +361,7 @@ const GAME = {
     for (const s of [-1, 1]) lab.ball(0.04, '#111111', { parent: body, at: [s * 0.08, 1.36, 0.2], detail: 0, shiny: true });
     lab.box(0.22, 0.05, 0.04, '#3a2414', { parent: body, at: [0, 1.25, 0.21] }); // усы
     lab.hero(g);
-    lab.state.gun = { g, barrel, charge, wheels, gunner: gun, body, vx: 0 };
+    lab.state.gun = { g, barrel, tubes, muzzles, drum, charge, wheels, gunner: gun, body, vx: 0 };
   },
 
   // ---------- тарелка НЛО: шесть деталей, у каждой — пачка копий на все НЛО сразу ----------
@@ -533,7 +557,7 @@ const GAME = {
         lab.burst([s.x, s.y + 0.1, s.z], { count: 1, colors: ['#ff8a3d', '#ffd23f'], speed: 1, size: 0.18, life: 0.3, gravity: 0 });
         if (Math.abs(s.x - c.x) < 1.05 && Math.abs(s.z - c.z) < 0.8 && s.y < 1.8) { // таран: пушку подбили, тарелка разбилась сама
           lab.count('попадания по пушке'); st.combo = 0;
-          if (lab.hurt([c.x, 0.8, c.z], 'НЛО протаранило пушку')) st.hurtInWave = true;
+          if (lab.hurt([c.x, 0.8, c.z], 'НЛО протаранило пушку')) { st.hurtInWave = true; this.loseLevel(lab); }
           this.killSaucer(lab, s, { noScore: true });
           continue;
         }
@@ -665,17 +689,19 @@ const GAME = {
   },
 
   // ---------- выстрел пушки: заряд → ядро с огненным хвостом → искры сквозь врага ----------
+  // ступень ствола: 1 — ядро, 2 — двустволка, 3 — веер, 4 — очередь (веер чаще), 5 — разрывные (среднее ядро рвётся)
+  rate(lab) { return lab.cfg.fireRate * (lab.state.gunLv >= 4 ? 1.6 : 1); },
   shoot(lab) {
-    const st = lab.state, cfg = lab.cfg, c = st.gun.g.position;
-    const kind = st.power || 'shot', look = { shot: ['#fff3a0', '#ff9a3d'], fan: ['#d9ffe6', '#7cf5a8'], pierce: ['#e6fbff', '#8fe8ff'], boom: ['#ffe0d0', '#ff5a3d'] }[kind];
-    const dirs = kind === 'fan' ? [-0.2, 0, 0.2] : [0];
-    dirs.forEach(dx => {
-      const m = lab.mesh(st.geo.core, look[0], { at: [c.x, 1.05, c.z - 1.5], glow: 1.6, shadow: false }), r = kind === 'shot' || kind === 'fan' ? 0.22 : 0.3;
+    const st = lab.state, c = st.gun.g.position, lv = st.gunLv, w = this.WEAPONS[lv - 1];
+    const volley = lv === 1 ? [[0, 0]] : lv === 2 ? [[-0.34, 0], [0.34, 0]] : [[-0.2, -0.2], [0, 0], [0.2, 0.2]]; // [сдвиг ствола, наклон]
+    volley.forEach(([ox, dx], i) => {
+      const boom = lv >= 5 && i === 1, r = boom ? 0.3 : 0.22;
+      const m = lab.mesh(st.geo.core, boom ? '#ffe0d0' : w.core, { at: [c.x + ox, 1.05, c.z - 1.5], glow: 1.6, shadow: false });
       m.scale.setScalar(r * 0.5);
-      st.bullets.push({ m, r, dx, age: 0, main: dx === 0, pierce: kind === 'pierce', boom: kind === 'boom', hit: false, trail: lab.trail(m, { color: look[1], width: r === 0.3 ? 0.5 : 0.36, length: 12 }) });
+      st.bullets.push({ m, r, dx, age: 0, main: i === Math.floor((volley.length - 1) / 2), boom, hit: false, trail: lab.trail(m, { color: w.color, width: boom ? 0.5 : 0.36, length: 12 }) });
     });
-    st.shots++; st.reload = 1 / cfg.fireRate; st.want = 0; lab.count('выстрелы');
-    lab.burst([c.x, 1.05, c.z - 1.5], { count: 10, colors: [look[0], look[1]], speed: 5, size: 0.16, life: 0.18, gravity: 0, dir: [0, 0.3, -1] }); // дульная вспышка
+    st.shots++; st.reload = 1 / this.rate(lab); st.want = 0; lab.count('выстрелы');
+    lab.burst([c.x, 1.05, c.z - 1.5], { count: 8 + 3 * volley.length, colors: [w.core, w.color], speed: 5, size: 0.16, life: 0.18, gravity: 0, dir: [0, 0.3, -1] }); // дульная вспышка
     st.gun.g.position.z += 0.32; // отдача
     lab.pulse(st.gun.barrel, 1.4, 0.12);
     lab.sfx.shoot(); lab.tone(150, 0.07, 'sine', 0.1, 60);
@@ -688,14 +714,16 @@ const GAME = {
       p.z -= cfg.bulletSpeed * dt; p.x += bl.dx * cfg.bulletSpeed * dt; bl.age += dt;
       b.scale.setScalar(bl.r * Math.min(1.2, 0.5 + bl.age * 5)); // ядро разгорается в полёте
       if (p.z < -24 || Math.abs(p.x) > 16) return gone(true);
-      if (!bl.pierce && this.hitShield(lab, p.x, p.z)) return gone(true);
+      if (this.hitShield(lab, p.x, p.z)) return gone(true);
+      const ba = st.balloon;
+      if (ba && !ba.popped && Math.abs(ba.x - p.x) < 1.1 && Math.abs(ba.z - p.z) < 0.9) { bl.hit = true; this.popBalloon(lab); return gone(false); }
       for (const s of st.saucers) {
-        if (!s.alive || s.hidden || s.arrive > 0.3 || s.y > 2.8 || bl.last === s) continue;
+        if (!s.alive || s.hidden || s.arrive > 0.3 || s.y > 2.8) continue;
         if (Math.abs(s.x - p.x) < 1.15 && Math.abs(s.z - p.z) < 0.8) { // как видно: тарелка 2,3 м в ширину
-          bl.hit = true; bl.last = s;
+          bl.hit = true;
           if (bl.boom) { this.explode(lab, lab.v3(s.x, s.y, s.z)); return gone(false); }
           if (s.armor) this.breakArmor(lab, s); else this.killSaucer(lab, s);
-          if (!bl.pierce) return gone(false);
+          return gone(false);
         }
       }
       const bo = st.boss;
@@ -707,9 +735,9 @@ const GAME = {
       return true;
     });
   },
-  // подарок «Взрыв»: ядро рвётся кругом, круг виден, всё внутри сбито, броня — тоже
+  // разрывное ядро (ступень 5): рвётся кругом, круг виден, всё внутри сбито, броня — тоже
   explode(lab, at) {
-    const st = lab.state, R = 2.6;
+    const st = lab.state, R = 2.1;
     lab.ring([at.x, 0.05, at.z], { color: '#ff7a5a', radius: R, life: 0.4 });
     lab.burst(at, { count: 30, colors: ['#ff7a5a', '#ffd23f', '#ffffff'], speed: 10, size: 0.3, life: 0.5 });
     lab.flash('#ff7a5a', 0.12); lab.shake(0.3); lab.sfx.explode();
@@ -806,32 +834,111 @@ const GAME = {
     if (st.chainN < cfg.chain) { if (st.chainN > 1) lab.tone(660 * lab.pitch(st.chainN * 2), 0.08, 'triangle', 0.06); return; }
     st.chainN = 0; st.chains++; lab.count('цепочки');
     const R = this.ROWS[s.row % this.ROWS.length];
-    lab.popup([at.x, at.y + 1.6, at.z], 'Цепочка! Лови подарок', R.color, 24);
+    lab.popup([at.x, at.y + 1.6, at.z], 'Цепочка! Лови подкову', R.color, 24);
     lab.ring([at.x, 0.05, at.z], { color: R.color, radius: 3.5, life: 0.5 }); lab.sfx.power();
-    const kind = lab.pick(['fan', 'pierce', 'boom']), color = this.POWERS[kind].color;
-    const m = lab.mesh(st.geo.oct, color, { at: [at.x, 1, at.z], glow: 1.5, shiny: true, scale: 0.42, shadow: false });
+    this.dropShoe(lab, at);
+  },
+  // подкова на счастье: катится к пушке по светлой дорожке; поймал — ствол на ступень сильнее
+  dropShoe(lab, at) {
+    const st = lab.state, color = '#ffd23f';
+    const m = lab.mesh(st.geo.shoe, color, { at: [at.x, at.y, at.z], glow: 1.2, shiny: true, metal: 0.6, scale: 1.15, shadow: false });
     const lane = lab.mesh(st.geo.lane, lab.mat(color, { unlit: true, alpha: 0.25 }), { scale: [0.9, 1, 1], shadow: false });
-    st.caps.push({ m, lane, kind, color, x: lab.clamp(at.x, -this.EDGE, this.EDGE), z: at.z });
+    st.caps.push({ m, lane, color, x: lab.clamp(at.x, -this.EDGE, this.EDGE), y: at.y, z: at.z });
   },
   moveCaps(lab, dt) {
     const st = lab.state, c = st.gun.g.position;
     st.caps = st.caps.filter(cp => {
-      cp.z += 6 * dt;
-      cp.m.position.set(cp.x, 1 + Math.sin(lab.t * 6) * 0.2, cp.z); cp.m.rotation.y += dt * 4;
+      cp.z += 6 * dt; cp.y = lab.damp(cp.y, 1, 3, dt);
+      cp.m.position.set(cp.x, cp.y + Math.sin(lab.t * 6) * 0.2, cp.z); cp.m.rotation.y += dt * 4;
       const len = Math.max(0.1, this.PLAYER_Z - cp.z); // дорожка показывает, куда подарок прилетит
       cp.lane.scale.z = len; cp.lane.position.set(cp.x, 0.07, cp.z + len / 2);
       const done = () => { cp.m.removeFromParent(); cp.lane.removeFromParent(); return false; };
       if (Math.abs(cp.x - c.x) < 1.3 && Math.abs(cp.z - c.z) < 0.9) {
-        st.power = cp.kind; st.powerT = lab.cfg.powerTime; st.gifts++; lab.count('подарки');
-        lab.popup(st.gun.g, this.POWERS[cp.kind].name + '!', cp.color, 28);
+        st.gifts++; lab.count('подарки');
         lab.burst(cp.m, { count: 26, colors: [cp.color, '#ffffff'], speed: 7, up: 2 }); lab.ring([c.x, 0.05, c.z], { color: cp.color, radius: 3 });
-        lab.pulse(st.gun.g, 1.3, 0.2); lab.sfx.power(); lab.flash(cp.color, 0.15);
+        this.levelUp(lab, 'подкова');
         return done();
       }
       if (cp.z > this.PLAYER_Z + 2.5) { lab.burst(cp.m, { count: 8, color: '#667788', speed: 2 }); return done(); }
       return true;
     });
   },
+  // ---------- ступени ствола по мотивам Raiden и 1942: подкова — ступень вверх, попадание по пушке — ступень вниз ----------
+  // Видно = правда: сколько стволов на пушке, столько ядер в залпе; у «Очереди» короб с ядрами, у «Разрывных» дула раскалены.
+  setWeapon(lab) {
+    const st = lab.state, g = st.gun, lv = st.gunLv;
+    st.bestLv = Math.max(st.bestLv, lv);
+    g.tubes[0].visible = g.tubes[2].visible = lv >= 2; g.tubes[1].visible = lv !== 2;
+    g.drum.visible = lv >= 4;
+    const muzzle = lv >= 5 ? lab.mat('#ff5a3d', { glow: 0.8, metal: 0.5 }) : lab.mat('#a87a2c', { metal: 0.7, shiny: true });
+    g.muzzles.forEach(m => { m.material = muzzle; });
+    g.charge.material = lab.mat(this.WEAPONS[lv - 1].color, { glow: 1.4 }); // огонёк на стволе — цвета ступени
+  },
+  levelUp(lab) {
+    const st = lab.state, W = this.WEAPONS, c = st.gun.g.position;
+    if (st.gunLv >= W.length) { this.points(lab, 500, lab.v3(c.x, 2.4, c.z - 0.5), '#ffd23f'); lab.popup(st.gun.g, 'Ствол на пределе!', '#ffd23f', 24); lab.sfx.coin(); return; }
+    st.gunLv++; st.ups++; lab.count('ступени ствола');
+    this.setWeapon(lab);
+    const w = W[st.gunLv - 1];
+    lab.popup(st.gun.g, w.name + '!', w.color, 34);
+    lab.after(0.45, () => lab.popup(lab.v3(c.x, 2.6, c.z - 1.5), `Ствол ${st.gunLv}/${W.length}: ${w.tip}`, '#ffe08a', 18));
+    lab.burst([c.x, 1.2, c.z], { count: 30, colors: [w.color, w.core, '#ffffff'], speed: 8, up: 4 });
+    lab.ring([c.x, 0.05, c.z], { color: w.color, radius: 3.4, life: 0.5 });
+    lab.pulse(st.gun.g, 1.35, 0.25); lab.flash(w.color, 0.2); lab.hitstop(0.05);
+    [0, 4, 7, 12].forEach((n, i) => lab.tone(392 * Math.pow(2, (n + 2 * st.gunLv) / 12), 0.14, 'triangle', 0.07, 0, i * 0.07)); // восходящий аккорд: каждая ступень звенит выше
+  },
+  loseLevel(lab) {
+    const st = lab.state, n = Math.round(lab.cfg.loseLevel), c = st.gun.g.position;
+    if (n <= 0 || st.gunLv <= 1) return;
+    st.gunLv = Math.max(1, st.gunLv - n); st.downs++; lab.count('ступени потеряны');
+    this.setWeapon(lab);
+    lab.burst([c.x, 1.2, c.z - 0.6], { count: 12, colors: ['#a87a2c', '#d9a441', '#5a3d2b'], speed: 5, up: 3 }); // отлетели стволы
+    lab.after(0.4, () => lab.popup(st.gun.g, 'Ствол слабее: ' + this.WEAPONS[st.gunLv - 1].name, '#ff8a7a', 22));
+    lab.tone(520, 0.35, 'triangle', 0.06, 180, 0.1);
+  },
+
+  // ---------- ярмарочный шар по мотивам POW из 1942: плывёт над выгоном, под корзиной висит подкова ----------
+  // Сбил шар — подкова катится к пушке по дорожке, поймал — ствол на ступень сильнее. Шар закрывает строй: выстрел по нему — выбор.
+  moveBalloon(lab, dt) {
+    const st = lab.state, cfg = lab.cfg, b = st.balloon;
+    if (!b) {
+      if (cfg.balloonEvery > 0 && !st.bonus && (st.balloonT -= dt) <= 0) { st.balloonT = cfg.balloonEvery * lab.rand(0.85, 1.15); this.spawnBalloon(lab); }
+      return;
+    }
+    b.t += dt; b.x += b.dir * b.speed * dt;
+    b.g.position.set(b.x, b.y + Math.sin(b.t * 1.7) * 0.18, b.z);
+    b.g.rotation.z = Math.sin(b.t * 1.3) * 0.08; b.g.rotation.y += dt * 0.4;
+    if (Math.abs(b.x) > 18) { b.g.removeFromParent(); st.balloon = null; } // улетел
+  },
+  spawnBalloon(lab) {
+    const st = lab.state, dir = lab.chance(0.5) ? 1 : -1;
+    let front = -6; // шар летит перед строем, но не над стогами
+    for (const s of st.saucers) if (s.alive && !s.dive && !s.abduct) front = Math.max(front, s.bz + st.oz);
+    const z = lab.clamp(front + 2.8, -1, 5.6), x = -dir * 17, g = lab.group({ at: [x, 2, z] });
+    lab.ball(0.95, '#ff4d5e', { parent: g, at: [0, 1.05, 0], scale: [1, 1.15, 1] });
+    lab.cyl(0.99, 0.99, 0.26, '#ffd23f', { parent: g, at: [0, 1.05, 0], sides: 10 }); // жёлтый пояс
+    lab.cyl(0.62, 0.62, 0.2, '#ffffff', { parent: g, at: [0, 1.75, 0], sides: 10 });
+    lab.cyl(0.3, 0.42, 0.25, '#ff4d5e', { parent: g, at: [0, 0.05, 0], sides: 8 }); // горловина
+    for (const [rx, rz] of [[-0.2, -0.2], [0.2, -0.2], [-0.2, 0.2], [0.2, 0.2]]) lab.box(0.03, 0.55, 0.03, '#5a3d2b', { parent: g, at: [rx, -0.3, rz] });
+    lab.box(0.5, 0.36, 0.5, '#9a6b42', { parent: g, at: [0, -0.7, 0], round: 0.04 }); // корзина
+    lab.mesh(st.geo.shoe, '#ffd23f', { parent: g, at: [0, -1.2, 0], glow: 1.2, shiny: true, metal: 0.6, scale: 0.7, shadow: false });
+    st.balloon = { g, x, y: 2, z, dir, speed: 3.6, t: 0 };
+    lab.count('шары');
+    lab.popup([0, 4, z], 'Ярмарочный шар! Сбей и лови подкову', '#ffd23f', 22);
+    [660, 880, 1100].forEach((f, i) => lab.tone(f, 0.18, 'triangle', 0.05, 0, i * 0.12)); // ярмарочная дудка
+  },
+  popBalloon(lab) {
+    const st = lab.state, b = st.balloon, at = lab.v3(b.x, b.y + 1, b.z);
+    st.balloon = null; st.balloons++; lab.count('шары сбиты');
+    b.g.removeFromParent();
+    lab.burst(at, { count: 40, colors: ['#ff4d5e', '#ffd23f', '#ffffff', '#5fe0ff', '#7cf5a8'], speed: 9, size: 0.22, life: 0.8, gravity: 5 }); // конфетти
+    lab.burst([b.x, b.y - 0.7, b.z], { count: 10, colors: ['#9a6b42', '#5a3d2b'], speed: 3, gravity: 10 }); // щепки корзины
+    lab.ring([b.x, 0.05, b.z], { color: '#ffd23f', radius: 2.5, life: 0.4 });
+    lab.noise(0.12, 0.2, 3000); lab.tone(900, 0.12, 'square', 0.05, 300); lab.hitstop(0.04); lab.shake(0.15);
+    this.hit(lab); this.points(lab, 50, at, '#ffd23f');
+    this.dropShoe(lab, lab.v3(b.x, b.y - 1.2, b.z));
+  },
+
   // волна сбита: чистая волна, подсчёт бурёнок (как города в Missile Command), дальше — налёт или новая волна
   nextWave(lab) {
     const st = lab.state, cfg = lab.cfg, done = st.wave;
@@ -990,7 +1097,7 @@ const GAME = {
       if (this.hitShield(lab, p.x, p.z)) return done();
       if (Math.abs(p.x - c.x) < 0.85 && Math.abs(p.z - c.z) < 0.7) {
         lab.count('попадания по пушке'); st.combo = 0;
-        if (lab.hurt(p.clone(), 'Пушку подбили')) { st.hurtInWave = true; lab.tween(0.35, k => { st.gun.body.rotation.x = Math.sin(k * Math.PI) * -0.6; }, 'linear'); }
+        if (lab.hurt(p.clone(), 'Пушку подбили')) { st.hurtInWave = true; this.loseLevel(lab); lab.tween(0.35, k => { st.gun.body.rotation.x = Math.sin(k * Math.PI) * -0.6; }, 'linear'); }
         return done();
       }
       if (p.z > this.PLAYER_Z + 1.5 || Math.abs(p.x) > 16) { lab.burst([p.x, 0.3, p.z], { count: 6, colors: ['#ff4d5e', '#5a3d2b'], speed: 3 }); this.scorch(lab, p.x, p.z, 0.4); return done(); }
