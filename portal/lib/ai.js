@@ -183,11 +183,68 @@ function htmlPage(text) {
   return b && /<script/i.test(b[1]) ? `<!DOCTYPE html>\n<html lang="ru"><head><meta charset="utf-8"></head><body>\n${b[1].trim()}\n</body></html>` : '';
 }
 function syntaxError(code) {
-  if (isHtml(code)) return null;
-  try { new vm.Script(code, { filename: 'game.js' }); return null; } catch (e) {
-    const m = /game\.js:(\d+)/.exec(e.stack || '');
-    return { message: e.message, line: m ? Number(m[1]) : null };
+  if (isHtml(code)) return pageError(code);
+  return jsError(code, false);
+}
+// разбор кода без запуска; module — скрипт type="module": импорты и export убираются, тело — в async-функции (await на верхнем уровне)
+function jsError(code, module) {
+  let src = code;
+  if (module) {
+    src = src.replace(/^[ \t]*import\b(?!\s*\(|\.)[^;]*?(?:from\s*)?['"][^'"\n]+['"][ \t]*;?/gm, m => m.replace(/[^\n]/g, ' '))
+      .replace(/^([ \t]*)export\s+(default\s+)?/gm, '$1').replace(/\bimport\.meta\b/g, '({})');
+    src = '(async function(){"use strict";' + src + '\n})';
   }
+  try { new vm.Script(src, { filename: 'game.js' }); return null; } catch (e) {
+    const m = /game\.js:(\d+)/.exec(e.stack || '');
+    const line = m ? Number(m[1]) : null;
+    return { message: e.message, line, text: line ? (code.split('\n')[line - 1] || '').trim().slice(0, 160) : '' };
+  }
+}
+// скрипты страницы, которые браузер выполнит как JavaScript: без src, без type или type module / text/javascript
+// (шейдеры x-shader и importmap не трогаем); start — номер строки страницы, с которой начинается код скрипта
+function pageScripts(html) {
+  const out = [];
+  for (const m of html.matchAll(/<script\b([^>]*)>([\s\S]*?)<\/script>/gi)) {
+    const attrs = m[1], type = (/\btype\s*=\s*["']?([^"'\s>]+)/i.exec(attrs) || [])[1] || '';
+    if (/\bsrc\s*=/i.test(attrs) || (type && !/^(module|text\/javascript|application\/javascript)$/i.test(type))) continue;
+    const at = m.index + m[0].indexOf('>') + 1;
+    out.push({ code: m[2], at, module: /^module$/i.test(type), start: html.slice(0, at).split('\n').length });
+  }
+  return out;
+}
+// первая синтаксическая ошибка страницы: строка — в файле страницы, как её видит Qwen
+function pageError(html) {
+  for (const sc of pageScripts(html)) {
+    const e = jsError(sc.code, sc.module);
+    if (e) return Object.assign(e, { line: e.line ? sc.start + e.line - 1 : null });
+  }
+  return null;
+}
+// Qwen переносит в код типографику из задания: минус «−», неразрывный пробел, невидимые символы — «Invalid or unexpected token».
+// Чиним только скрипт, который без этого не разбирается, и только если после замены он разбирается.
+// Замены идут ступенями: сначала безопасные (минус, пробелы), потом кавычки “ ” ‘ ’, потом «×» между числами и именами — каждая следующая, только если без неё скрипт не разбирается.
+const TYPO = [
+  [[/−/g, '-'], [/[   ]/g, ' '], [/[​-‍⁠﻿]/g, '']],
+  [[/[“”„]/g, '"'], [/[‘’]/g, "'"]],
+  [[/([\w)\]])[ \t]*×[ \t]*(?=[\w(])/g, '$1 * ']],
+];
+function fixScript(code, module) {
+  if (!jsError(code, module)) return code;
+  let f = code;
+  for (const stage of TYPO) {
+    f = stage.reduce((x, [re, to]) => x.replace(re, to), f);
+    if (!jsError(f, module)) return f;
+  }
+  return code;
+}
+function fixTypography(code) {
+  if (!isHtml(code)) return fixScript(code, false);
+  let out = code;
+  for (const sc of pageScripts(code).reverse()) {
+    const f = fixScript(sc.code, sc.module);
+    if (f !== sc.code) out = out.slice(0, sc.at) + f + out.slice(sc.at + sc.code.length);
+  }
+  return out;
 }
 const FORBIDDEN = [/\bdocument\./, /\bwindow\./, /\blocalStorage\b/, /\bfetch\s*\(/, /\bXMLHttpRequest\b/, /\beval\s*\(/, /new\s+Function\b/, /\bimport\s*\(/, /^\s*import\s/m, /\bsetInterval\s*\(/, /\bMath\.random\s*\(/];
 function lint(code) { if (isHtml(code)) return ['страница HTML без оболочки Лаб3D: нет рекордов, ручек и автопочинки']; return FORBIDDEN.filter(r => r.test(code)).map(r => String(r).replace(/\\b|\\s\*|\\|\/|\^|\$/g, '').replace(/m$/, '')); }
@@ -260,8 +317,10 @@ async function chatProgram(kind, prompt, who, onProgress, base, secret) {
     } else {
       try { code = extractCode(text); } catch (e) { problem = 'В ответе нет кода игры. Пришли игру целиком: один файл HTML одним блоком ```html, без пояснений.'; }
     }
+    if (!problem) code = fixTypography(code);
     const err = !problem && syntaxError(code);
-    if (err) problem = `В коде ошибка: ${err.message}${err.line ? ', строка ' + err.line : ''}. Исправь и пришли игру целиком одним блоком \`\`\`html.`;
+    // ошибку разбора портал ловит сам и сразу пишет в тот же чат: игра не открывается ученику сломанной
+    if (err) problem = `Код не запускается: ${err.message}${err.line ? `, строка ${err.line}` : ''}${err.text ? ` («${err.text}»)` : ''}. Частая причина — символы из текста задания в коде: «−» вместо минуса, «×» вместо *, кавычки « » или “ ” вокруг строк, дробь с запятой, строка в кавычках, разорванная переносом. Исправь и пришли игру целиком одним блоком \`\`\`html.`;
     entry.ok = !problem; if (problem) entry.error = problem;
     attempts.push(log(entry));
     if (!problem) return { code, model: CHAT.model, attempts: attempts.length, warnings: chatWarnings(code, secret), ms: attempts.reduce((n, e) => n + e.ms, 0), rub: 0 };
@@ -619,4 +678,4 @@ async function playtestFix(code, report, wow, who, onProgress) {
   return Object.assign(await chatChange(code, 'исправь игру по отчёту бота-плейтестера:\n' + report.findings.map(f => '- ' + f).join('\n'), who, onProgress, 'правка по плейтесту'), { knob: 'secret' });
 }
 
-module.exports = { chatSharedText, chatPact, chatMove, chatAsk, chatRepair, chatPaste, CHAT, truncated, joinParts, isHtml, LINK_FIELDS, playtestFix, feedbackDraft, applyPatches, loadConfig, reloadConfig, demo, models, limits, listModels, producer, producerFix, wowLink, build, buildShared, change, fix, planText, extractCode, syntaxError };
+module.exports = { chatSharedText, chatPact, chatMove, chatAsk, chatRepair, chatPaste, CHAT, truncated, joinParts, isHtml, LINK_FIELDS, playtestFix, feedbackDraft, applyPatches, loadConfig, reloadConfig, demo, models, limits, listModels, producer, producerFix, wowLink, build, buildShared, change, fix, planText, extractCode, syntaxError, fixTypography };

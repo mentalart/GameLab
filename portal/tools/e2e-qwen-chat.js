@@ -61,7 +61,7 @@ const patch = (find, repl) => `<<<<<<< НАЙТИ\n${find}\n=======\n${repl}\n>>
     check('Сборка ждёт ответа из чата, задание одно', j.manual && j.manual.step === 1 && !j.manual.followUp && !('clear' in j.manual), j.manual && `${j.manual.chars} знаков`);
     const clear = await prompt(s, job);
     check('Задание: четыре части без образцов и объекта GAME, раздел «Картинка»', clear.startsWith(ai.CHAT.phrase) && /# Замысел геймдизайнера/.test(clear) && /# Картинка/.test(clear) && /# Что нужно порталу/.test(clear)
-      && /portal\.knobs/.test(clear) && /getGamepads/.test(clear) && !/const GAME/.test(clear) && clear.length < 8500, `${clear.length} знаков`); // +1500: спрятанная механика по шагам (howto); +1000: раздел «Картинка» (решения автора 18.10.2026)
+      && /portal\.knobs/.test(clear) && /getGamepads/.test(clear) && !/const GAME/.test(clear) && clear.length < 9000, `${clear.length} знаков`); // +1500: спрятанная механика по шагам (howto); +1000: раздел «Картинка» (решения автора 18.10.2026); +500: самопроверка кода (19.10.2026)
     // ответ оборвался: портал просит продолжение и склеивает части
     const answer = 'Вот игра:\n```js\n' + SAMPLE.trim() + '\n```\nГотово!';
     const cut = answer.indexOf('update(lab, dt)');
@@ -92,6 +92,14 @@ const patch = (find, repl) => `<<<<<<< НАЙТИ\n${find}\n=======\n${repl}\n>>
     check('В игру-страницу вставлен мост portal.js первым в <head>', /<head><script src="\/engine\/portal\.js"><\/script>\n<meta charset/.test(play));
     const dl = await (await fetch(`${base}/download/${g1.id}/${vHtml}.html`)).text();
     check('Скачанная игра-страница несёт мост внутри', /window\.portal = portal/.test(dl) && !/src="\/engine\/portal\.js"/.test(dl));
+
+    // скрипты страницы проверяются до запуска: типографика из задания чинится молча, разорванная строка — сообщение в чат со строкой
+    const fn = PAGE.indexOf('function frame');
+    const typo = PAGE.slice(0, fn) + 'const _t = 1 \u2212 2, _u = 2 \u00D7 3, _s = \u201Cура\u201D;\u00A0\n' + PAGE.slice(fn);
+    const fixed = ai.fixTypography(typo);
+    check('«−», «×», “ ” и неразрывный пробел в коде страницы портал чинит сам', ai.syntaxError(typo) && !ai.syntaxError(fixed) && /_t = 1 - 2, _u = 2 \* 3, _s = "ура"/.test(fixed) && ai.fixTypography(PAGE) === PAGE);
+    const torn = PAGE.slice(0, fn) + "const _bad = 'раз\nдва';\n" + PAGE.slice(fn), te = ai.syntaxError(torn);
+    check('Разорванная строка в странице: ошибка с номером строки страницы', te && torn.split('\n')[te.line - 1].includes("const _bad = 'раз") && ai.fixTypography(torn) === torn, te && `строка ${te.line}`);
 
     // правки страницы — по chat-prompt.md, без лимита
     let okChanges = 0, title = 'Кот на Луне';
