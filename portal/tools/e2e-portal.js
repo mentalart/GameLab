@@ -96,8 +96,9 @@ async function playRound(frame, { score = 0, hold = null, page = null, restart =
 }
 // сортировщик квиза: ждём, пока сменится карточка или квиз кончится, а не паузу на анимацию
 const nextItem = (page, step, prev) => page.waitForFunction(([s, p]) => { const e = document.querySelector(s + ' .item'); return !!document.querySelector(s + '.done') || !e || e.textContent.trim() !== p; }, [step, prev], { timeout: 15000 });
-// «Айсберг» (шаг 8 урока 1): нырять до дна последнего погружения, потом «Понятно»
+// «Айсберг» (шаг 8 урока 1): нырять до дна последнего погружения, потом «Понятно»; в уроках 2–8 шаг — обычный текст с «Понятно»
 async function storyDone(page) {
+  if (!(await page.locator('#step-secret-story [data-ice=dive]').count())) return page.click('#step-secret-story >> text=Понятно');
   for (let i = 0; i < 12 && !(await page.locator('#step-secret-story [data-ice=ok]:visible').count()); i++) await page.click('#step-secret-story [data-ice=dive]');
   await page.click('#step-secret-story [data-ice=ok]');
 }
