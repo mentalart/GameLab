@@ -831,3 +831,28 @@ ol.tsteps li.now{border-left:3px solid var(--info);padding-left:8px;margin-left:
 .ice-roles li{padding:8px 12px;border-radius:10px;background:var(--panel2);animation:iceIn .5s calc(var(--k) * .35s) both}
 .ice-roles li:last-child{background:var(--accent);color:var(--accent-ink);font-weight:800;font-size:17px}
 @media (prefers-reduced-motion:reduce){.ice-scene,.ice-l{transition:none}.ice-water,.ice-l.on .ice-body>*,.ice-l1.on .ice-rule b,.ice-l1.on .ice-lock,.ice-l2.on .ice-face,.ice-heart,.ice-roles li,.ice.up .ice-view{animation:none}}
+/* простые шаги урока 1 после перемены (автор, 19.10.2026: «понятно 12-летнему»): крупные плитки с эмодзи и лесенка шагов */
+.tiles{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px}
+.tile{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;min-height:96px;padding:12px 10px;border-radius:14px;border:2px solid var(--line2);background:var(--bg2);color:var(--text);font:inherit;font-weight:700;text-align:center;line-height:1.25;cursor:pointer;transition:transform .12s cubic-bezier(.2,.9,.3,1.4),border-color .12s}
+.tile .ti{font-size:32px;line-height:1}
+.tile small{font-weight:500;color:var(--muted);font-size:12px}
+.tile:hover{border-color:var(--accent);transform:translateY(-2px)}
+.tile:active{transform:scale(.96)}
+.tile.on{border-color:var(--accent);background:#0c2418;box-shadow:0 0 0 2px var(--accent) inset;animation:tilePop .3s}
+@keyframes tilePop{50%{transform:scale(1.06)}}
+.tiles.wide{grid-template-columns:repeat(auto-fill,minmax(220px,1fr))}
+.tiles.wide .tile{flex-direction:row;justify-content:flex-start;text-align:left;min-height:64px;gap:10px}
+.tiles.wide .tile .ti{font-size:26px}
+.ladder{display:flex;gap:6px;align-items:center;flex-wrap:wrap}
+.ladder span{display:inline-flex;align-items:center;gap:6px;padding:4px 10px;border-radius:999px;border:1px solid var(--line2);font-size:13px;color:var(--muted)}
+.ladder span b{display:inline-grid;place-items:center;width:20px;height:20px;border-radius:50%;background:var(--line);color:var(--text);font-size:12px}
+.ladder span.on{border-color:var(--accent);color:var(--text)}
+.ladder span.on b{background:var(--accent);color:var(--accent-ink)}
+.ladder span.ok b{background:#1d5b3a}
+.bigq{font-size:18px;font-weight:800}
+.pickline{font-size:17px;font-weight:700;padding:12px 14px;border-radius:12px;background:var(--panel2);border-left:4px solid var(--warm)}
+.simple-step{display:flex;flex-direction:column;gap:10px;padding:14px;border-radius:var(--r);border:1px solid var(--line2);background:var(--bg2)}
+.simple-step.wait{opacity:.5}
+.simple-step h4{margin:0;font-size:16px;display:flex;align-items:center;gap:8px}
+.simple-step h4 b{display:inline-grid;place-items:center;width:26px;height:26px;border-radius:50%;background:var(--accent);color:var(--accent-ink);font-size:14px}
+@media (prefers-reduced-motion:reduce){.tile,.tile.on{transition:none;animation:none}}

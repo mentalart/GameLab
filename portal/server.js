@@ -1365,7 +1365,7 @@ function ownGameCode(c) {
 }
 route('GET', '/api/chat/pact', (ctx) => { const c = needStudent(ctx); return { text: ai.chatPact(ownGameCode(c).code) }; });
 route('GET', '/api/chat/move', (ctx) => { const c = needStudent(ctx); const { code } = ownGameCode(c); return { text: ai.chatMove(code, { lesson: c.les.id }) }; });
-route('POST', '/api/chat/ask', (ctx) => { needStudent(ctx); return { text: ai.chatAsk(ctx.body || {}) }; });
+route('POST', '/api/chat/ask', (ctx) => { const c = needStudent(ctx), b = ctx.body || {}; return { text: ai.chatAsk(b, b.pact ? ownGameCode(c).code : null) }; });
 // «Вставить новую версию из чата»: в любой момент, без задания портала. Проверка та же, что у задания; не подошло или оборвалось —
 // окно Qwen с сообщением для того же чата. request — о чём просил ученик (причина версии для учителя); repair — что дописать в чат.
 route('POST', '/api/game/paste', (ctx) => {

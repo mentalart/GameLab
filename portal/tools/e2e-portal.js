@@ -302,18 +302,19 @@ async function run(browser, base, mode) {
   check('Шаг сборки закрыт самой сборкой: программист — Qwen в чате', /chat\.qwen\.ai/.test(await student.textContent('#step-sborka')));
 
   if (FULL1) { // --only=N: остальное в уроке 1 пропускаем (без сдвига отступов, чтобы не мешать параллельным правкам)
-  // после перемены: своя игра и «Совпало с задуманным чувством?» (урок 1, чекпоинт 5 «Разбор прототипа», 18.10.2026)
+  // после перемены: своя игра (урок 1, чекпоинт 5; упрощён 19.10.2026 — крупные плитки, разбор по шагам, правка в три шага)
   await student.click('.cp >> text=Своя игра');
   check('Над своей игрой — задуманное чувство', /Ты задумал: Страшно, когда шершни уже у ульев/.test(await student.textContent('#step-ruchki .recall')));
+  check('Своя игра: под игрой нет баланса, версий и вставки из чата', await student.locator('#step-ruchki [data-balance], #step-ruchki .versions, #step-ruchki .pastebox').count() === 0);
   await student.click('#step-ruchki .veil button');
   own = await gameFrame(student, '/play/', 0);
   await playRound(own);
   await student.click('#step-ruchki [data-match="Частично"]');
-  await student.click('#step-ruchki .chipbtn >> nth=1');
   await student.waitForSelector('#step-ruchki.done', { timeout: 10000 });
-  check('Первая партия и «Совпало с задуманным чувством?» засчитаны', true);
+  check('«Получилось чувство?» — одна плитка, и шаг засчитан', true);
 
-  // разбор прототипа: кривая партии (партия 6 секунд — счёт по секундам из оболочки) и своеволие ИИ, находки на доске
+  // разбор по шагам: 1) кривая игры (партия 6 секунд — счёт по секундам из оболочки), 2) что ИИ решил сам, 3) что починим
+  check('Разбор: лесенка из трёх шагов, первый — кривая', /Кривая игры.*Что ИИ решил сам.*Что починим/.test((await student.textContent('#step-razbor .ladder')).replace(/\s+/g, ' ')));
   await student.click('#step-razbor .veil button');
   own = await gameFrame(student, '/play/', 0);
   await student.locator('#step-razbor iframe').scrollIntoViewIfNeeded(); // рамка за краем экрана кадров не рисует — время партии стоит
@@ -325,41 +326,41 @@ async function run(browser, base, mode) {
   await at(6.5); await own.evaluate(() => window.__lab.end('lose', 'Проверка'));
   await student.waitForSelector('#step-razbor svg.curve', { timeout: 10000 });
   check('Разбор: кривая партии нарисована по счёту из оболочки', await student.locator('#step-razbor svg.curve polyline.now').count() === 1);
-  // отметка на кривой (кривая может быть ниже края окна); панель может перерисоваться после конца партии — тогда отмечаем ещё раз
-  for (let i = 0; i < 4 && (await student.locator('#step-razbor .toolpanel .chipbtn').count()) < 5; i++) {
+  for (let i = 0; i < 4 && !(await student.locator('#step-razbor [data-curve-next]').count()); i++) {
     const curve = student.locator('#step-razbor svg.curve'), box = await curve.boundingBox();
     if (box) await curve.click({ position: { x: box.width * 0.6, y: box.height / 2 } }); // click сам прокручивает к кривой
     await sleep(500);
   }
-  await student.click('#step-razbor .toolpanel .chipbtn >> nth=4');
-  await student.click('#step-razbor [data-curve="no"]');
-  await student.click('#step-razbor [data-offer] >> nth=0');
-  check('Кривая: «не тот момент» — находка на доске', await student.locator('#step-razbor [data-finding]').count() >= 1, await student.textContent('#step-razbor .toolpanel'));
-  await student.click('#step-razbor [data-done="curve"]');
-  await student.click('#step-razbor [data-tool="sort"]');
+  await shot(student, '5a-razbor-curve', true);
+  await student.click('#step-razbor [data-curve-next]');
   await student.click('#step-razbor [data-sort="start"]');
-  await student.waitForSelector('#step-razbor [data-bin], #step-razbor [data-keep], #step-razbor [data-done="sort"]');
+  await student.waitForSelector('#step-razbor [data-bin], #step-razbor [data-done]');
   for (let i = 0; i < 12 && await student.locator('#step-razbor [data-bin]').count(); i++) { await student.click('#step-razbor [data-bin="ai"]'); await sleep(100); }
   const kept = await student.locator('#step-razbor [data-keep="keep"]').count();
   for (let i = 0; i < kept; i++) await student.click(`#step-razbor [data-keep="${i ? 'keep' : 'drop'}"] >> nth=${i}`);
-  check('Своеволие ИИ: карточки разложены, решения программиста оставлены или убраны', kept >= 1 || mode === 'demo', `решений ИИ: ${kept}`);
-  if (!kept) await student.fill('#f-razborguess', 'Золотая тарелка');
-  await student.click('#step-razbor [data-done="sort"]');
-  await student.click('#step-razbor [data-finding]:has(.tag.card) >> nth=0'); // главная — 💬 просьба: она и пойдёт в правку
-  await student.click('#step-razbor [data-pillar="Угроза"]');
-  check('Разбор: «какая опора шатается?» — опора Угроза красная (П1)', await student.locator('#step-razbor .pil.weak[data-pillar="Угроза"]').count() === 1);
+  check('Что ИИ решил сам: карточки разложены, решения ИИ оставлены или убраны', kept >= 1 || mode === 'demo', `решений ИИ: ${kept}`);
+  await student.click('#step-razbor [data-done]');
+  const tilesText = (await student.textContent('#step-razbor .tiles')).replace(/\s+/g, ' ');
+  check('Что починим: плитки — находки кривой и ИИ, частые беды и «своими словами»', /Скучное начало/.test(tilesText) && /Своими словами/.test(tilesText) && (kept < 1 || /Убрать своеволие ИИ/.test(tilesText)), tilesText.slice(0, 200));
+  await student.click('#step-razbor [data-finding="tile-wow"]');
+  await shot(student, '5b-razbor-itog', true);
   await student.click('#step-razbor [data-razbor="done"]');
   await student.waitForSelector('#step-razbor.done', { timeout: 10000 });
-  check('Разбор готов: главная находка выбрана', true, (await student.textContent('#step-razbor [data-finding].on')).replace(/\s+/g, ' '));
+  check('Разбор готов: выбрано одно, что чиним', /сочности/.test(await student.textContent('#step-razbor .pickline')));
 
-  // правка 1: главная находка разбора уже в просьбе
+  // правка 1 в три шага: что меняем (выбранное в разборе — уже в поле) → скопировать для Qwen → вставить ответ
   await student.waitForFunction(() => { const i = document.querySelector('#step-masterskaya [data-ask=what]'); return i && i.value.length > 10; }, null, { timeout: 8000 }).catch(() => {});
   const pre = await student.inputValue('#step-masterskaya [data-ask=what]');
-  check('Правка 1: главная находка разбора — уже в просьбе', pre.length > 10 && await student.locator('#step-masterskaya [data-finding]').count() >= 1, pre);
+  check('Правка 1: то, что выбрал в разборе, — уже в просьбе', /сочности/.test(pre) && await student.locator('#step-masterskaya .simple-step').count() === 3, pre);
+  check('Правка 1: под игрой только версии, без баланса', await student.locator('#step-masterskaya [data-balance]').count() === 0 && await student.locator('#step-masterskaya .versions').count() === 1);
+  await student.click('#step-masterskaya [data-ask=copy]');
+  await student.waitForFunction(() => /Скопировано/.test(document.querySelector('.toasts') ? document.querySelector('.toasts').textContent : ''), null, { timeout: 5000 }).catch(() => {});
+  const firstAsk = await student.evaluate(() => Lab.api('/api/chat/ask', { what: 'проверка', pact: true }).then(r => r.text));
+  check('Первая просьба — вместе с договором, одним сообщением', /Дальше я буду просить/.test(firstAsk) && /Правка: проверка/.test(firstAsk) && !/Договорились/.test(firstAsk), firstAsk.slice(0, 80));
   await chatEdit(student, 'masterskaya', 'Пусть последний враг мигает красным');
-  check('Правка в чате Qwen: просьба своими словами, ответ вставлен — новая версия', true, await student.textContent('#step-masterskaya .versions'));
+  check('Правка в чате Qwen: просьба своими словами, ответ вставлен — новая версия', /Правка дала версию/.test(await student.textContent('#step-masterskaya')));
   if (mode === 'mock') check('Куски правки не легли — портал попросил в тот же чат, Qwen прислал игру целиком', mock.last.changeTries.join(',') === 'куски,целиком', mock.last.changeTries.join(','));
-  // проверка версии: «Хуже» — откат одной кнопкой; в демо — к v1, с ИИ — к починенной v2 (v1 нарочно падает, а в эту версию будут играть соседи)
+  // «Стало лучше?»: «Хуже» — откат одной кнопкой; в демо — к v1, с ИИ — к починенной v2 (v1 нарочно падает, а в эту версию будут играть соседи)
   const back = mode === 'mock' ? 2 : 1;
   await student.click('#step-proverka .veil button');
   await playRound(await gameFrame(student, '/play/', 0));
@@ -369,9 +370,7 @@ async function run(browser, base, mode) {
   await sleep(500);
   const cur = await student.textContent('#step-masterskaya .ver.cur');
   check(`«Хуже» — откат к версии ${back} одной кнопкой`, new RegExp('v' + back).test(cur), cur);
-  await shot(student, '6-workshop');
-
-  check('Кнопка «Сохранить мой баланс» есть и ждёт повёрнутой ручки', await student.$eval('#step-masterskaya [data-balance]', b => b.disabled));
+  await shot(student, '6-workshop', true);
 
   } // FULL1
   if (mode === 'mock' && (FULL1 || ONLY.some(n => n === 4 || n === 6))) await together(browser, base, code, teacher, student, errors, shot);
@@ -387,6 +386,7 @@ async function run(browser, base, mode) {
   const before2 = await student.locator('#step-masterskaya-2 .ver').count();
   await chatEdit(student, 'masterskaya-2', 'Пусть в середине партии прилетает вторая волна');
   check('Правка 2 дала новую версию', await student.locator('#step-masterskaya-2 .ver').count() > before2);
+  await shot(student, '6d-versiya2', true);
   check('Правок без лимита: чат бесплатный, окно правки осталось', await student.locator('#step-masterskaya-2 [data-paste=send]').count() === 1);
 
   // финал: турнир, сосед играет версию 2, линза, вопрос урока ещё раз, открытка; стена аркады урока на проекторе
@@ -410,18 +410,16 @@ async function run(browser, base, mode) {
   await shot(student, '7-final', true);
   await student.click('#step-otkrytie-den .opt >> nth=0');
   await student.click('#step-otkrytie-den >> text=Ответить');
-  await student.click('#step-plan-v2 .dicebtn');
-  await student.click('#step-plan-v2 >> text=Ответить');
-  await student.waitForSelector('#step-plan-v2.done');
+  await student.waitForSelector('#step-otkrytie-den.done');
+  check('Финал без «Плана следующей версии»: шагов шесть', await student.locator('#step-plan-v2').count() === 0 && lesson1.checkpoints.find(c => c.id === 'final').steps.length === 6);
   await projectorFinal(pj, shot);
   // «Моя студия»: полка, значки, журнал с планом версии 2, эмблема у ника в аркаде
   {
-    const planText = await student.textContent('#step-plan-v2 textarea, #step-plan-v2 .own').catch(() => '');
     const sp = await student.context().newPage(); watch(sp, errors);
     await sp.goto(base + '/studio'); await sp.waitForSelector('#badges .badge');
     const sv = await sp.evaluate(() => Lab.api('/api/studio'));
-    check('Моя студия: игра на полке, значок «Первая сборка», журнал с планом версии 2',
-      sv.games.length >= 1 && sv.badges.find(b => b.id === 'build').got && sv.journal.some(j => j.plan), `игр ${sv.games.length}, значков ${sv.badges.filter(b => b.got).length}; план: ${(sv.journal.find(j => j.plan) || {}).plan || planText}`);
+    check('Моя студия: игра на полке, значок «Первая сборка», открытие дня в журнале',
+      sv.games.length >= 1 && sv.badges.find(b => b.id === 'build').got && sv.journal.some(j => j.discovery), `игр ${sv.games.length}, значков ${sv.badges.filter(b => b.got).length}`);
     check('Моя студия: открытка первой игры на полке открыток', (sv.postcards || []).some(c => c.title === 'Пасека под огнём') && await sp.locator('#postcards .postcard').count() >= 1, `открыток ${(sv.postcards || []).length}`);
     await sp.click('#emblems .emblem >> nth=2');
     await sp.waitForFunction(() => /^\S+ Тестер/.test(document.querySelector('#nick').textContent), null, { timeout: 5000 });
@@ -2099,10 +2097,11 @@ async function together(browser, base, code, teacher, student, errors, shot) {
   await shot(student, '9-arcade-step', true);
 
   // плейтест тап-карточкой
+  check('Отзыв соседу: карточки касанием вместо полей с кубиком', await student.locator('#step-pleytest .dicebtn').count() === 0 && await student.locator('#step-pleytest [data-pt="like"]').count() >= 3);
   await student.click('#step-pleytest .emo >> nth=1');
-  await student.click('#step-pleytest .dicebtn >> nth=0');
+  await student.click('#step-pleytest [data-pt="like"] >> nth=0');
   await student.fill('#f-pleytestwant', 'Хочется видеть, откуда летят тучи');
-  await student.click('#step-pleytest .dicebtn >> nth=2');
+  await student.click('#step-pleytest [data-pt="whatif"] >> nth=1');
   await student.click('#step-pleytest >> text=Отправить автору');
   await student.waitForSelector('#step-pleytest.done');
   check('Плейтест-карточка отправлена автору', true);
@@ -2133,7 +2132,7 @@ async function together(browser, base, code, teacher, student, errors, shot) {
   await playRound(tf, { score: 30 });
   await nb.waitForSelector('#step-sosed.done', { timeout: 10000 });
   await nb.click('#step-pleytest .emo >> nth=0');
-  for (let i = 0; i < 3; i++) await nb.click(`#step-pleytest .dicebtn >> nth=${i}`);
+  for (const k of ['like', 'want', 'whatif']) await nb.click(`#step-pleytest [data-pt="${k}"] >> nth=0`);
   await nb.click('#step-pleytest >> text=Отправить автору');
   await nb.waitForSelector('#step-pleytest.done');
   await nb.click('#step-pleytest >> text=↻ Обновить');

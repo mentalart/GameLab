@@ -365,9 +365,11 @@ function chatMove(code, who) {
   return fill(chatTpl(isHtml(code) ? 'move' : 'move-game'), { 'картинка': chatTpl('look'), 'портал': chatTpl('portal'), 'код': code.trim(), 'договор': chatPact(code) });
 }
 // сообщение из конструктора просьбы: что не так, ради какого чувства, что не трогать
-function chatAsk({ what, why, keep }) {
-  return fill(chatTpl('ask'), { 'что': cleanLine(what), 'зачем': why ? 'Зачем: ' + cleanLine(why) : '', 'не трогай': keep ? 'Не трогай: ' + cleanLine(keep) : '' })
+// code — первая просьба в чате (простая правка урока 1): договор и просьба одним сообщением, без ответа «Договорились»
+function chatAsk({ what, why, keep }, code = null) {
+  const ask = fill(chatTpl('ask'), { 'что': cleanLine(what), 'зачем': why ? 'Зачем: ' + cleanLine(why) : '', 'не трогай': keep ? 'Не трогай: ' + cleanLine(keep) : '' })
     .replace(/^—\r?\n/gm, '').replace(/\n{2,}/g, '\n');
+  return code == null ? ask : chatPact(code).replace(/\n?Если понял[^\n]*$/, '').trim() + '\n\n' + ask;
 }
 const cleanLine = t => String(t || '').replace(/\s+/g, ' ').trim().slice(0, 600);
 // замечания проверки, которые ученик чинит сообщением в тот же чат (без них портал работает хуже)

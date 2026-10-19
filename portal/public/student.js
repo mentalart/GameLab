@@ -1740,7 +1740,8 @@ function balanceBar(h, gameId, onSaved, { why } = {}) {
   return el('div', { class: 'row balance' }, btn, line);
 }
 const gameChanged = () => S.hooks.forEach(fn => fn('game'));
-function ownGame({ onOver, onAgain, autostart, onReady, onBalance, balanceWhy, paste = true } = {}) {
+// lite — простые шаги урока 1: 'versions' — под игрой только версии, 'none' — только игра (без баланса, версий и вставки из чата)
+function ownGame({ onOver, onAgain, autostart, onReady, onBalance, balanceWhy, paste = true, lite = null } = {}) {
   const status = el('div', { class: 'small', 'aria-live': 'polite' });
   const versions = el('div', { class: 'versions' });
   let fixTries = 0;
@@ -1788,7 +1789,8 @@ function ownGame({ onOver, onAgain, autostart, onReady, onBalance, balanceWhy, p
   const bal = balanceBar(h, () => g().id, r => { S.game = r.game; fixTries = 0; gameChanged(); h.start(); if (onBalance) onBalance(r); }, { why: balanceWhy });
   // игры собираются в chat.qwen.ai: новую версию из того же чата можно вставить в любой момент
   const pasteBox = paste && S.me.chat ? el('details', { class: 'pastebox' }, el('summary', {}, '⬇ Вставить новую версию из чата'), chatPasteBox({ onDone: () => h.start() })) : null;
-  return { h, el: el('div', { class: 'stack' }, h.box, Games.bar(h), bal, el('div', { class: 'row' }, el('span', { class: 'small muted' }, 'Версии:'), versions), pasteBox, status), drawVersions };
+  const verRow = lite === 'none' ? null : el('div', { class: 'row' }, el('span', { class: 'small muted' }, 'Версии:'), versions);
+  return { h, el: el('div', { class: 'stack' }, ...[h.box, Games.bar(h), lite ? null : bal, verRow, lite ? null : pasteBox, lite ? null : status].filter(Boolean)), drawVersions };
 }
 
 // build: собрать можно в любой момент — пустые поля Фабрики, решений и ИГРА сервер дописывает кубиком и возвращает их сюда.
@@ -1848,6 +1850,15 @@ STEPS.build = ctx => {
 
 // ownplay: партии в своей игре и один вопрос о ней (урок 1: «Какая ручка сильнее всего меняет задуманное чувство?»).
 // Над игрой — задуманное чувство из решений автора. Готово, когда сыграно minRounds партий и есть ответ.
+// крупные плитки «эмодзи + слово» и лесенка шагов — простые шаги урока 1 после перемены (автор, 19.10.2026: «понятно 12-летнему»).
+// items — [{ id, icon, label, sub }]; attr — data-атрибут плитки со значением id (по нему шаги ищут e2e)
+function tiles(items, cur, onPick, { attr = 'data-tile', wide = false, label = '' } = {}) {
+  return el('div', { class: 'tiles' + (wide ? ' wide' : ''), role: 'radiogroup', 'aria-label': label },
+    items.map(it => el('button', { type: 'button', class: 'tile' + (cur === it.id ? ' on' : ''), role: 'radio', 'aria-checked': String(cur === it.id), [attr]: it.id, onclick: () => { beep('tick'); onPick(it); } },
+      el('span', { class: 'ti', 'aria-hidden': 'true' }, it.icon), el('span', {}, it.label, it.sub ? el('small', { style: 'display:block' }, it.sub) : null))));
+}
+const ladder = (names, at) => el('div', { class: 'ladder' }, names.map((n, k) => el('span', { class: k === at ? 'on' : k < at ? 'ok' : '' }, el('b', {}, k < at ? '✓' : String(k + 1)), n)));
+
 STEPS.ownplay = ctx => {
   const st = ctx.step, need = st.minRounds || 1;
   let v = Object.assign({ rounds: 0, answer: { text: '' } }, ctx.value);
@@ -1870,6 +1881,12 @@ STEPS.ownplay = ctx => {
     matchBox.innerHTML = '';
     if (!st.match || !v.rounds) return;
     const m = st.match, emo = v.emotions || [];
+    // icons — крупные плитки вместо кнопок и без эмоций (урок 1, 19.10.2026)
+    if (m.icons) {
+      matchBox.append(el('div', { class: 'bigq' }, m.question), tiles(m.options.map((o, k) => ({ id: o, icon: m.icons[k], label: (m.labels || [])[k] || o })), v.match,
+        it => { v.match = it.id; ctx.save(v, ready() ? true : null); drawMatch(); }, { attr: 'data-match', label: m.question }));
+      return;
+    }
     const seg = el('div', { class: 'seg', role: 'radiogroup', 'aria-label': m.question });
     m.options.forEach(o => seg.append(el('button', { type: 'button', class: 'opt' + (v.match === o ? ' on' : ''), 'aria-pressed': String(v.match === o), 'data-match': o,
       onclick: () => { v.match = o; beep('tick'); ctx.save(v, ready() ? true : null); drawMatch(); } }, o)));
@@ -1877,7 +1894,7 @@ STEPS.ownplay = ctx => {
       onclick: () => { v.emotions = emo.includes(x) ? emo.filter(y => y !== x) : emo.concat(x).slice(-2); beep('tick'); ctx.save(v, ready() ? true : null); drawMatch(); } }, x)));
     matchBox.append(el('label', { class: 'lbl' }, m.question), seg, m.emotions ? el('div', { class: 'small muted' }, 'Что ты почувствовал на самом деле? Одна-две эмоции.') : '', m.emotions ? emos : ''); // нативный append пишет null словом
   }
-  const og = ownGame({ onOver: () => { v.rounds++; show(); ctx.save(v, ready() ? true : null); } });
+  const og = ownGame({ lite: st.lite, onOver: () => { v.rounds++; show(); ctx.save(v, ready() ? true : null); } });
   if (feel) host.append(el('div', { class: 'recall' }, el('b', {}, 'Ты задумал: '), feel));
   host.append(og.el, el('div', { class: 'small' }, status), matchBox,
     st.question ? fieldEditor({ id: 'answer', label: st.question, deck: st.deck }, v.answer, nv => { v.answer = nv; ctx.save(v, ready() ? true : null); }, { idPrefix: st.id }) : '');
@@ -2066,7 +2083,122 @@ function curveSvg(line, { marks = [], prev = null, mark = null, onPick } = {}) {
   }
   return el('div', { class: 'curvebox' }, svg, el('div', { class: 'row small muted' }, el('span', {}, '0 с'), el('span', { class: 'grow', style: 'text-align:center' }, 'зелёная — счёт · жёлтые полосы — 8+ секунд без очков · голубые штрихи — сработала спрятанная механика'), el('span', {}, `${len} с`)));
 }
+// разбор попроще (урок 1, 19.10.2026: «понятно 12-летнему»): три шага по очереди, без вкладок, доски и опор.
+// 1 — кривая: сыграй и нажми, где было интереснее всего; 2 — что ИИ решил сам: «я просил / ИИ сам», потом оставить или убрать;
+// 3 — что починим первым: крупные плитки (находки кривой и ИИ, частые беды, своими словами). Значение то же, что у полного разбора
+// (findings, main), — правка и ответы класса его читают.
+const FIX_TILES = feel => [
+  { key: 'start', icon: '🐢', label: 'Скучное начало', text: 'Сделай, чтобы уже в первые 5 секунд партии что-то происходило: враги или награды сразу' },
+  { key: 'hard', icon: '😵', label: 'Слишком трудно', text: 'Сделай начало партии легче для новичка: меньше врагов и больше времени, чтобы понять игру' },
+  { key: 'unclear', icon: '🤔', label: 'Непонятно, что делать', text: 'Покажи в начале партии крупную подсказку: что делать и какие кнопки' },
+  { key: 'wow', icon: '💥', label: 'Мало «вау»', text: 'Добавь сочности: вспышки, частицы, тряску экрана и звук на каждое попадание' },
+  feel ? { key: 'feel', icon: '🎯', label: 'Не то чувство', text: `Сделай, чтобы игрок сильнее почувствовал: ${feel}` } : null,
+].filter(Boolean);
+function razborSimple(ctx) {
+  let v = Object.assign({ tools: {}, findings: [], main: null, stage: 0 }, ctx.value);
+  v.tools = Object.assign({ curve: {}, sort: {} }, v.tools);
+  const host = el('div', { class: 'stack' });
+  if (!hasGame()) { host.append(el('p', { class: 'muted' }, 'Сначала собери игру в чекпоинте «Фабрика и сборка».')); return host; }
+  const feel = myFeeling(), plan = planVars(), C = v.tools.curve, T = v.tools.sort;
+  const save = () => ctx.save(v, v.closed ? true : null);
+  const fid = () => 'f' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5);
+  // находки кривой и ИИ копятся молча: в шаге 3 они станут плитками рядом с частыми бедами
+  const put = (tool, key, label, text) => { if (!v.findings.some(f => f.key === key && f.text === text)) v.findings = v.findings.concat({ id: fid(), tool, key, label, text, kind: 'ask' }).slice(-12); };
+  const og = ownGame({ lite: 'none', onOver: m => {
+    v.rounds = (v.rounds || 0) + 1;
+    const line = ((m.tele || {}).line || []).slice(0, 600);
+    if (line.length) { C.lines = (C.lines || []).concat([line]).slice(-2); C.marks = ((m.tele || {}).marks || {})._secret || []; C.moment = null; }
+    save(); draw();
+  } });
+  const lad = el('div'), body = el('div', { class: 'stack' });
+  if (feel) host.append(el('div', { class: 'recall' }, el('b', {}, 'Ты задумал: '), feel));
+  host.append(lad, og.el, body);
+  const next = () => { v.stage++; beep('good'); save(); draw(); };
+  const nextBtn = (label, attr) => el('div', {}, el('button', { type: 'button', class: 'btn', [attr]: '1', onclick: next }, label));
+  function curve() {
+    const line = C.lines && C.lines[C.lines.length - 1];
+    body.append(el('div', { class: 'bigq' }, '📈 Кривая игры: как росли очки'));
+    if (!line) { body.append(el('p', { class: 'concept' }, 'Сыграй партию — портал нарисует её кривую.')); return; }
+    if (line.length < 5 || !Math.max(...line)) { body.append(el('p', {}, 'Кривую не нарисовать: партия была короткой или очки не росли. Ничего страшного.'), nextBtn('Дальше →', 'data-curve-next')); return; }
+    body.append(curveSvg(line, { marks: C.marks, prev: C.lines.length > 1 ? C.lines[0] : null, mark: C.moment, onPick: t => { C.moment = t; beep('tick'); save(); draw(); } }));
+    if (C.moment == null) { body.append(el('p', { class: 'concept' }, 'Нажми на кривую там, где тебе было интереснее всего.')); return; }
+    const f = lineFacts(line);
+    body.append(el('p', {}, el('b', {}, `⭐ ${C.moment}-я секунда. `), f.flat.length ? `Серые полосы — время, когда очки не росли: ${f.flat.map(([a, b]) => `${a}–${b} с`).join(', ')}.` : 'Пустого времени нет — очки росли всю партию.'));
+    f.flat.forEach(([a, b]) => put('curve', 'flat', 'Пустое время', `С ${a} по ${b} секунду очки не растут: игроку нечего делать. Добавь там событий`));
+    if (f.growing === false) put('curve', 'nogrowth', 'Нет нарастания', 'Напряжение не растёт к концу партии: сделай, чтобы к концу было опаснее и интереснее');
+    body.append(nextBtn('Дальше →', 'data-curve-next'));
+  }
+  function sort() {
+    body.append(el('div', { class: 'bigq' }, '🤖 Что ИИ решил сам?'));
+    if (!T.items) {
+      body.append(el('p', {}, 'ИИ-программист добавил в игру что-то, чего ты не просил. Найдём это!'),
+        el('div', {}, el('button', { type: 'button', class: 'btn', 'data-sort': 'start', onclick: async () => {
+          let notes = [];
+          try { notes = (await api('/api/game/notes')).notes || []; } catch (e) { toast(e.message, 'err'); return; }
+          const mine = ['hero', 'enemies', 'twist', 'world'].map(k => plan[k]).filter(Boolean).slice(0, 3);
+          T.items = notes.slice(0, 5).map(t => ({ text: t, bin: 'ai' })).concat(mine.map(t => ({ text: t, bin: 'me' }))).sort((a, b) => hashStr(a.text) - hashStr(b.text));
+          T.picks = {}; T.keep = {}; T.notes = notes.length; save(); draw();
+        } }, '▶ Начать')));
+      return;
+    }
+    if (!T.notes) { body.append(el('p', {}, 'ИИ не рассказал, что решил сам. Бывает! Идём дальше.'), nextBtn('Дальше →', 'data-done')); return; }
+    const left = T.items.filter(x => !T.picks[x.text]);
+    if (left.length) {
+      const it = left[0];
+      body.append(el('div', { class: 'small muted' }, `Карточка ${T.items.length - left.length + 1} из ${T.items.length}`), el('div', { class: 'sortcard' }, it.text),
+        tiles([{ id: 'me', icon: '🙋', label: 'Я просил' }, { id: 'ai', icon: '🤖', label: 'ИИ решил сам' }], null, b => {
+          T.picks[it.text] = b.id; const ok = b.id === it.bin; beep(ok ? 'good' : 'bad');
+          toast(ok ? 'Верно!' : it.bin === 'ai' ? 'Этого не было в твоём замысле — это решил ИИ.' : 'Это было в твоём замысле!', ok ? 'ok' : 'err');
+          save(); draw();
+        }, { attr: 'data-bin', label: 'Кто это решил?' }));
+      return;
+    }
+    const right = T.items.filter(x => T.picks[x.text] === x.bin).length;
+    body.append(el('p', {}, el('b', {}, `Верно ${right} из ${T.items.length}. `), 'Что из придуманного ИИ оставишь? Нисикадо тоже оставил то, чего не придумывал.'));
+    T.items.filter(x => x.bin === 'ai').forEach(x => body.append(el('div', { class: 'offer' }, el('span', { class: 'grow' }, '🤖 ' + x.text),
+      ...[['keep', '👍 Оставить'], ['drop', '🗑 Убрать']].map(([k, label]) => el('button', { type: 'button', class: 'chipbtn' + (T.keep[x.text] === k ? ' on' : ''), 'data-keep': k, onclick: () => {
+        T.keep[x.text] = k; beep('tick');
+        if (k === 'drop') put('sort', 'ai-remove', 'Убрать своеволие ИИ', 'Убери: ' + x.text); else v.findings = v.findings.filter(f => f.text !== 'Убери: ' + x.text);
+        save(); draw();
+      } }, label)))));
+    const all = T.items.filter(x => x.bin === 'ai').every(x => T.keep[x.text]);
+    body.append(el('div', {}, el('button', { type: 'button', class: 'btn', 'data-done': 'sort', disabled: all ? null : true, onclick: () => { T.done = true; T.right = right; next(); } }, all ? 'Дальше →' : 'Реши про каждую карточку')));
+  }
+  function pick() {
+    body.append(el('div', { class: 'bigq' }, '🛠 Что починим первым?'), el('p', { class: 'small muted' }, 'Выбери одно — самое главное. Это пойдёт в правку для ИИ.'));
+    const ICON = { flat: '😴', nogrowth: '📉', 'ai-remove': '🗑', own: '✍' };
+    const found = v.findings.filter(f => f.key !== 'own' && !f.tile).map(f => ({ id: f.id, icon: ICON[f.key] || '🔎', label: f.label, sub: f.text, f }));
+    const common = FIX_TILES(feel).map(t => ({ id: 'tile-' + t.key, icon: t.icon, label: t.label, t }));
+    const ownF = v.findings.find(f => f.key === 'own');
+    const items = found.concat(common, [{ id: 'own', icon: '✍', label: 'Своими словами', sub: ownF ? ownF.text : '' }]);
+    const chosen = v.findings.find(f => f.id === v.main);
+    const tileId = chosen ? (chosen.key === 'own' ? 'own' : chosen.tile ? 'tile-' + chosen.tile : chosen.id) : null;
+    body.append(tiles(items, tileId, it => {
+      if (it.f) v.main = it.f.id;
+      else if (it.t) { let f = v.findings.find(x => x.tile === it.t.key); if (!f) { f = { id: fid(), tool: null, key: it.t.key, tile: it.t.key, label: it.t.label, text: it.t.text, kind: 'ask' }; v.findings = v.findings.concat(f); } v.main = f.id; }
+      else { ownBox.hidden = false; ownIn.focus(); return; }
+      save(); draw();
+    }, { attr: 'data-finding', wide: true, label: 'Что починим первым?' }));
+    const ownIn = el('input', { type: 'text', maxlength: 200, placeholder: 'Что мешает твоему чувству?', 'data-own': 'text', value: ownF ? ownF.text : '' });
+    const ownBox = el('div', { class: 'row', hidden: !(ownF && v.main === ownF.id) }, el('div', { class: 'grow' }, ownIn), el('button', { type: 'button', class: 'btn ghost small', onclick: () => {
+      const t = ownIn.value.trim(); if (!t) { toast('Напиши, что мешает'); return; }
+      v.findings = v.findings.filter(f => f.key !== 'own').concat({ id: fid(), tool: null, key: 'own', label: 'Своя находка', text: t, kind: 'ask' }); v.main = v.findings[v.findings.length - 1].id; save(); draw();
+    } }, 'Выбрать'));
+    body.append(ownBox);
+    const main = v.findings.find(f => f.id === v.main);
+    if (main) body.append(el('div', { class: 'pickline' }, '➡ В правку: ', main.text));
+    body.append(el('div', {}, el('button', { type: 'button', class: 'btn', 'data-razbor': 'done', disabled: main ? null : true, onclick: () => { v.closed = true; ctx.save(v, true); toast('Готово: это пойдёт в правку', 'ok'); draw(); } }, ctx.done ? '✓ Готово' : main ? 'Готово: это в правку' : 'Выбери одно')));
+  }
+  function draw() {
+    lad.replaceChildren(ladder(['Кривая игры', 'Что ИИ решил сам', 'Что починим'], Math.min(v.stage, 2)));
+    body.innerHTML = '';
+    [curve, sort, pick][Math.min(v.stage, 2)]();
+  }
+  draw();
+  return host;
+}
 STEPS.razbor = ctx => {
+  if (ctx.step.simple) return razborSimple(ctx);
   const st = ctx.step, tools = (st.tools || Object.keys(RAZBOR_TOOLS)).filter(t => RAZBOR_TOOLS[t]), required = st.required || tools;
   let v = Object.assign({ tools: {}, findings: [], main: null }, ctx.value);
   tools.forEach(t => { v.tools[t] = Object.assign({ done: false }, v.tools[t]); });
@@ -2330,7 +2462,7 @@ function copyFromBtn(label, url, after) {
   } }, label);
 }
 // «Вставить новую версию из чата»: в любой момент; request — о чём просил. Сервер проверяет ответ; что пропало — сообщение для того же чата
-function chatPasteBox({ request, onDone } = {}) {
+function chatPasteBox({ request, onDone, simple = false } = {}) {
   const ta = el('textarea', { rows: 4, placeholder: 'Вставь сюда весь ответ Qwen: блок ```html целиком или куски НАЙТИ / ЗАМЕНИТЬ', 'data-paste': 'text', 'aria-label': 'Ответ из чата Qwen' });
   const why = el('input', { type: 'text', maxlength: 300, placeholder: 'Например: враги быстрее к концу партии', 'data-paste': 'request', 'aria-label': 'О чём просил' });
   if (request) why.value = typeof request === 'function' ? request() : request;
@@ -2350,6 +2482,7 @@ function chatPasteBox({ request, onDone } = {}) {
     } catch (e) { prog.innerHTML = ''; toast(e.message, 'err', 8000); }
     btn.disabled = false;
   });
+  if (simple) { btn.textContent = '⬇ Вставить'; return el('div', { class: 'stack chatpaste', style: 'gap:6px' }, ta, el('div', { class: 'row' }, btn), prog, out); } // «о чём просил» — из шага 1
   return el('div', { class: 'stack chatpaste', style: 'gap:6px' }, el('label', { class: 'lbl' }, 'Ответ из чата'), ta, el('label', { class: 'lbl' }, 'О чём просил'), why, el('div', { class: 'row' }, btn), prog, out);
 }
 // сообщение для того же чата: что пропало в новой версии
@@ -2387,6 +2520,35 @@ function chatWorkshop({ v, save, what, feel, keepDeck, onDone }) {
   return box;
 }
 
+// простая правка в чате (урок 1, 19.10.2026: «понятно 12-летнему»): три шага — что меняем (карточка или свои слова) →
+// скопировать для Qwen (в первый раз вместе с договором, одним сообщением) → вставить ответ. Зачем — задуманное чувство, само.
+function chatSimple({ v, save, choices, feel, onDone }) {
+  const box = el('div', { class: 'stack' });
+  let what = v.what != null ? v.what : (choices.find(c => c.main) || choices[0] || {}).text || '';
+  const inp = el('input', { type: 'text', maxlength: 300, placeholder: 'Например: пусть последний враг мигает красным', 'data-ask': 'what', value: what });
+  const cards = el('div', { class: 'cardopts' });
+  const paintCards = () => { cards.replaceChildren(...choices.map(c => el('button', { type: 'button', class: 'cardopt' + (c.text === what ? ' on' : ''), [c.attr || 'data-card']: c.key || '', onclick: () => {
+    what = c.text; inp.value = what; v.what = what; save(); beep('tick'); paintCards();
+  } }, c.tag ? el('b', {}, c.tag + ' ') : null, c.text))); };
+  inp.addEventListener('input', () => { what = inp.value; v.what = what; save(); paintCards(); });
+  paintCards();
+  const copyBtn = el('button', { type: 'button', class: 'btn', 'data-ask': 'copy', onclick: async () => {
+    if (!what.trim()) { toast('Выбери карточку или напиши, что изменить'); inp.focus(); return; }
+    try {
+      const r = await api('/api/chat/ask', { what, why: feel ? 'Чтобы игрок почувствовал: ' + feel : '', keep: '', pact: !v.pact });
+      copy(r.text); v.pact = true; v.copied = true; save(); beep('tick'); toast('Скопировано — вставь в чат Qwen', 'ok');
+    } catch (e) { toast(e.message, 'err'); }
+  } }, '📋 Скопировать для Qwen');
+  const part = (n, title, ...kids) => el('div', { class: 'simple-step' }, el('h4', {}, el('b', {}, String(n)), title), ...kids);
+  box.append(
+    part(1, 'Что меняем?', choices.length ? cards : null, el('label', { class: 'stack', style: 'gap:4px' }, el('span', { class: 'small muted' }, choices.length ? 'Нажми карточку или напиши своими словами — одно изменение:' : 'Напиши одно изменение своими словами:'), inp)),
+    part(2, 'Отправь Qwen', el('p', { class: 'small muted' }, 'Скопируй и вставь в тот же чат, где Qwen собрал твою игру.'),
+      el('div', { class: 'row' }, copyBtn, el('a', { class: 'btn ghost', href: QWEN_URL, target: '_blank', rel: 'noopener noreferrer' }, 'Открыть chat.qwen.ai ↗')),
+      el('details', { class: 'small' }, el('summary', {}, 'Чат потерялся?'), el('div', { style: 'margin-top:6px' }, copyFromBtn('🧳 Перенести игру в новый чат', '/api/chat/move', () => { v.pact = true; save(); })))),
+    part(3, 'Вставь ответ Qwen', chatPasteBox({ request: () => what.trim(), onDone, simple: true })));
+  return box;
+}
+
 // workshop: limit — правок в этом шаге (сервер считает правки урока по сумме limit всех шагов workshop);
 // cardsFrom — над просьбой карточки соседей из плейтеста моей игры («Хочется», «А что если»): касание берёт карточку в просьбу;
 // findingsFrom — id шага razbor: доска находок над просьбой, главная находка — уже в просьбе; находка-ручка — совет про Tab, правку не тратит.
@@ -2403,7 +2565,7 @@ STEPS.workshop = ctx => {
     host.innerHTML = '';
     if (live) { live.h.destroy(); live = null; }
     if (!S.game || !S.game.current) { host.append(el('p', { class: 'muted' }, 'Сначала собери игру в чекпоинте «Фабрика и сборка».')); return; }
-    const og = live = ownGame({ paste: !S.me.chat }); // в чате вставка — в окне правки ниже
+    const og = live = ownGame({ paste: !S.me.chat, lite: st.simple ? 'versions' : null }); // в чате вставка — в окне правки ниже
     const left = st.limit ? st.limit - v.requests.length : Infinity;
     const F = st.findingsFrom ? razborFindings(st.findingsFrom) : null;
     let pick = F && (F.list.find(f => f.id === v.pick) || F.main);
@@ -2424,6 +2586,20 @@ STEPS.workshop = ctx => {
     if (left <= 0) {
       host.append(...[og.el, repair, S.me.chat ? el('details', { class: 'pastebox' }, el('summary', {}, '⬇ Вставить новую версию из чата'), chatPasteBox({ onDone: () => og.h.start() })) : null].filter(Boolean)); // null у нативного append — слово «null»
       host.append(el('p', { class: 'concept' }, st.limit === 1 ? (several ? '✓ Правка этого шага использована.' : '✓ Правка урока использована.') + ' Числа можно и дальше крутить ручками (Tab).' : `✓ Все ${st.limit} правки ${several ? 'шага' : 'урока'} использованы. Числа можно и дальше крутить ручками (Tab).`));
+    } else if (S.me.chat && st.simple) {
+      // simple: карточки «что меняем» — находки разбора (главная первой), отзывы соседей (cardsFrom), колода шага
+      const choices = (F ? F.list.slice().sort((a, b) => (b === F.main) - (a === F.main)).filter(f => f.kind === 'ask').map(f => ({ key: f.key, attr: 'data-finding', tag: '🔎', text: f.text, main: f === F.main })) : [])
+        .concat((st.deck || []).map(t => ({ tag: '💡', text: t })));
+      const wsHost = el('div');
+      const paintWs = extra => wsHost.replaceChildren(chatSimple({ v, save: () => ctx.save(v), choices: extra.concat(choices), feel: myFeeling(),
+        onDone: (r, request) => { v.requests = v.requests.concat({ text: request || 'правка в чате', version: r.version, chat: true, repair: r.repair || null, warnings: r.warnings || [] }); v.what = null; ctx.save(v, true, true); draw(); if (live) live.h.start(); } }));
+      paintWs([]);
+      if (st.cardsFrom) api('/api/playtest/mine').then(r => {
+        const extra = ((r.discovery || {}).cards || []).flatMap(c => [['Хочется', c.want], ['А что если', c.whatif]].filter(([, x]) => valText(x)).map(([k, x]) => ({ tag: '👥 ' + k + ':', text: valText(x), attr: 'data-card' })));
+        if (extra.length && host.isConnected) paintWs(extra);
+      }).catch(() => {});
+      const last = v.requests[v.requests.length - 1];
+      host.append(...[og.el, repair, last ? el('p', { class: 'concept' }, `✓ Правка дала версию ${last.version}. Можно сделать ещё одну — снова по трём шагам.`) : null, wsHost].filter(Boolean));
     } else if (S.me.chat) {
       host.append(...[og.el, repair, boardHost, chatWorkshop({ v, save: () => ctx.save(v), what: pickText(), feel: myFeeling(), keepDeck: st.keepDeck,
         onDone: (r, request) => { v.requests = v.requests.concat({ text: request || 'правка в чате', version: r.version, chat: true, finding: pick ? pick.key : null, repair: r.repair || null, warnings: r.warnings || [] }); ctx.save(v, true, true); draw(); if (live) live.h.start(); } }),
@@ -2472,7 +2648,7 @@ STEPS.workshop = ctx => {
         bugBtn, bugBox,
         el('div', { class: 'row' }, send, st.limit ? el('span', { class: 'muted small' }, left === 1 ? (several ? 'Здесь одна правка: выбирай главное.' : 'На этом уроке одна правка: выбирай главное.') : `Осталось правок: ${left}`) : null), prog);
     }
-    if (v.requests.length) host.append(el('details', {}, el('summary', {}, `Мои правки (${v.requests.length})`), el('ol', {}, v.requests.map(r => el('li', {}, `${r.text}${r.dice ? ' [кубик]' : ''} → v${r.version}`)))));
+    if (v.requests.length && !st.simple) host.append(el('details', {}, el('summary', {}, `Мои правки (${v.requests.length})`), el('ol', {}, v.requests.map(r => el('li', {}, `${r.text}${r.dice ? ' [кубик]' : ''} → v${r.version}`)))));
   }
   async function loadCards(box) {
     let r;
@@ -2502,13 +2678,13 @@ STEPS.verify = ctx => {
   const host = el('div', { class: 'stack' });
   let live = null, played = null, drawAsk = () => {};
   const cur = () => S.game && S.game.versions.find(x => x.n === S.game.current);
-  const VERD = [['yes', 'Да, ближе'], ['unknown', 'Не знаю'], ['worse', 'Хуже']];
+  const VERD = [['yes', 'Да, ближе', '👍'], ['unknown', 'Не знаю', '🤷'], ['worse', 'Хуже', '👎']];
   function draw() {
     host.innerHTML = '';
     if (live) { live.h.destroy(); live = null; }
     if (!S.game || !S.game.current) { host.append(el('p', { class: 'muted' }, 'Сначала собери игру в чекпоинте «Фабрика и сборка».')); return; }
     const feel = myFeeling();
-    live = ownGame({ onOver: () => { played = S.game.current; drawAsk(); } });
+    live = ownGame({ lite: ctx.step.lite, onOver: () => { played = S.game.current; drawAsk(); } });
     const ask = el('div', { class: 'stack', style: 'gap:8px' }), head = el('p', { class: 'small muted' });
     if (feel) host.append(el('div', { class: 'recall' }, el('b', {}, 'Ты задумал: '), feel));
     host.append(head, live.el, ask);
@@ -2518,15 +2694,16 @@ STEPS.verify = ctx => {
       head.textContent = `Сейчас версия ${ver.n}` + (ver.request ? ` — правка: «${ver.request}»` : ver.kind ? ` · ${ver.kind}` : '') + '.';
       const mine = v.log.filter(x => x.version === ver.n).pop();
       if (ver.kind !== 'правка') { ask.append(el('p', { class: 'small muted' }, 'Эта версия не из правки. Сделай правку в шаге выше и вернись сюда.')); return; }
-      if (played !== ver.n && !mine) { ask.append(el('p', { class: 'concept' }, 'Сыграй партию в новую версию — потом ответь, стало ли ближе к чувству.')); return; }
-      const seg = el('div', { class: 'seg', role: 'radiogroup', 'aria-label': 'Ближе к задуманному чувству?' }, VERD.map(([k, label]) => el('button', { type: 'button', class: 'opt' + (mine && mine.verdict === k ? ' on' : ''), 'data-verdict': k, onclick: () => {
+      if (played !== ver.n && !mine) { ask.append(el('p', { class: 'concept' }, 'Сыграй партию в новую версию — потом ответь.')); return; }
+      const pick = k => {
         v.log = v.log.filter(x => x.version !== ver.n).concat({ version: ver.n, verdict: k, request: ver.request || '' }).slice(-20);
         ctx.save(v, true); beep(k === 'yes' ? 'good' : k === 'worse' ? 'bad' : 'tick'); drawAsk();
-      } }, label)));
-      ask.append(el('label', { class: 'lbl' }, `Версия ${ver.n} ближе к задуманному чувству?`), seg);
+      };
+      ask.append(el('div', { class: 'bigq' }, 'Стало ближе к твоему чувству?'),
+        tiles(VERD.map(([id, label, icon]) => ({ id, label, icon })), mine && mine.verdict, it => pick(it.id), { attr: 'data-verdict', label: 'Ближе к задуманному чувству?' }));
       if (!mine) return;
-      if (mine.verdict === 'yes') ask.append(el('p', { class: 'concept' }, '✓ Правка сработала. Дальше — числа ручками (Tab) и «Сохранить мой баланс».'));
-      if (mine.verdict === 'unknown') ask.append(el('p', { class: 'small muted' }, 'Сыграй ещё партию и сравни с прошлой версией: кнопки версий над игрой.'));
+      if (mine.verdict === 'yes') ask.append(el('p', { class: 'concept' }, '🎉 Правка сработала!'));
+      if (mine.verdict === 'unknown') ask.append(el('p', { class: 'small muted' }, 'Сыграй ещё раз и сравни: кнопки версий — над игрой.'));
       if (mine.verdict === 'worse') {
         const back = ver.from || ver.n - 1;
         ask.append(el('div', { class: 'row' }, el('button', { type: 'button', class: 'btn', 'data-verify': 'back', onclick: async () => {
@@ -2635,7 +2812,17 @@ STEPS.playtest = ctx => {
       grid.append(b);
     });
     box.append(el('div', { class: 'eyebrow' }, 'Что ты чувствовал? Одна-две кнопки'), grid);
-    [['like', 'Нравится', 'Что было лучше всего?'], ['want', 'Хочется', 'Чего не хватило?'], ['whatif', 'А что если', 'Одна смелая идея для версии 2']].forEach(([k, label, hint]) =>
+    const FIELDS = [['like', 'Нравится', 'Что было лучше всего?', '👍'], ['want', 'Хочется', 'Чего не хватило?', '🙏'], ['whatif', 'А что если', 'Одна смелая идея для версии 2', '💡']];
+    // simple (урок 1): карточки колоды касанием, свои слова — одной строкой под ними
+    if (st.simple) FIELDS.forEach(([k, label, hint, icon]) => {
+      const inp = el('input', { type: 'text', maxlength: 200, id: 'f-' + st.id + k, placeholder: 'или своими словами', value: valText(v[k]) || '' });
+      const cards = el('div', { class: 'cardopts' });
+      const paint = () => cards.replaceChildren(...(decks[k] || []).map(t => el('button', { type: 'button', class: 'cardopt' + (valText(v[k]) === t ? ' on' : ''), 'data-pt': k, onclick: () => { v[k] = { text: t }; inp.value = t; ctx.save(v); beep('tick'); paint(); } }, t)));
+      inp.addEventListener('input', () => { v[k] = { text: inp.value }; ctx.save(v); paint(); });
+      paint();
+      box.append(el('div', { class: 'stack', style: 'gap:6px' }, el('div', { class: 'bigq', style: 'font-size:16px' }, `${icon} ${label}`, el('span', { class: 'small muted', style: 'font-weight:400;margin-left:8px' }, hint)), cards, inp));
+    });
+    else FIELDS.forEach(([k, label, hint]) =>
       box.append(fieldEditor({ id: k, label, hint, deck: decks[k] }, v[k], nv => { v[k] = nv; ctx.save(v); }, { idPrefix: st.id })));
     const send = el('button', { class: 'btn', type: 'button' }, v.sent ? 'Отправить заново' : 'Отправить автору');
     send.addEventListener('click', async () => {
@@ -2660,13 +2847,13 @@ STEPS.playtest = ctx => {
     if (!r.game) mineHost.append(el('p', { class: 'muted' }, 'Ты ещё не собрал игру — открытие плейтеста появится, когда в неё сыграют соседи.'));
     else {
       mineHost.append(Games.discovery(r.discovery));
-      if (r.juice) mineHost.append(el('p', { class: 'concept' }, el('b', {}, 'Слепая проба сочности твоей игры. '),
+      if (r.juice && !st.simple) mineHost.append(el('p', { class: 'concept' }, el('b', {}, 'Слепая проба сочности твоей игры. '),
         `Вернуться в сочную захотели ${r.juice.juicy}, в сухую — ${r.juice.dry}, разницы не почувствовали ${r.juice.same}. `,
         r.juice.juicy > r.juice.dry + r.juice.same ? 'Сочность работает.' : 'Сочность пока не тянет назад: может, эффекты мешают видеть главное или их мало?'));
       // открытие плейтеста — повод для решения: проверить ручкой (без ИИ) или попросить программиста
       const go = type => { const cp = S.lesson.checkpoints.find(c => c.steps.some(x => x.type === type)); return cp ? () => { S.cpId = cp.id; render(); const sx = cp.steps.find(x => x.type === type); setTimeout(() => { const n = document.getElementById('step-' + sx.id); if (n) n.scrollIntoView({ block: 'start' }); }, 50); } : null; };
       const toKnob = go('experiment'), toCoder = go('workshop');
-      if (r.discovery && r.discovery.rounds && (toKnob || toCoder)) mineHost.append(el('div', { class: 'row' }, el('span', { class: 'small' }, el('b', {}, 'Что сделаешь с открытием?')),
+      if (!st.simple && r.discovery && r.discovery.rounds && (toKnob || toCoder)) mineHost.append(el('div', { class: 'row' }, el('span', { class: 'small' }, el('b', {}, 'Что сделаешь с открытием?')),
         toKnob ? el('button', { class: 'btn ghost small', type: 'button', 'data-act': 'knob', onclick: toKnob }, '🎚 Проверю ручкой') : null,
         toCoder ? el('button', { class: 'btn ghost small', type: 'button', 'data-act': 'coder', onclick: toCoder }, '🛠 Попрошу программиста') : null));
     }
