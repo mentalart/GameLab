@@ -281,7 +281,8 @@ const chatTpl = name => promptSection('chat-prompt.md', `<!-- chat:${name}:start
 const chatPatch = code => (isHtml(code) ? chatTpl('patch') : chatTpl('patch').replace(/```html/g, '```js'));
 // пустое поле замысла fill превращает в «—»: такие строки в задании для чата не нужны
 // раздел «Картинка» (look) — что значит «ярко» по пунктам: во всех заданиях на новую игру и в переносе в новый чат (решение автора 18.10.2026)
-const chatTask = middle => [CHAT.phrase, middle.replace(/^—\r?\n/gm, '').replace(/\n—\s*$/, '').trim(), chatTpl('look'), chatTpl('portal')].join('\n\n');
+// look = false — раздел «Картинка» уже внутри middle (игра класса: картинка сразу после ответов класса, до рецепта — 19.10.2026)
+const chatTask = (middle, look = true) => [CHAT.phrase, middle.replace(/^—\r?\n/gm, '').replace(/\n—\s*$/, '').trim(), look ? chatTpl('look') : '', chatTpl('portal')].filter(Boolean).join('\n\n');
 // спрятанная механика в задании Clear: без API оболочки Лаб3D (звук спрятанной механики «ритм» игра пишет сама)
 // [база] — что из обычных правил игры делает только спрятанная механика (поле base колоды спрятанных механик урока): без неё копия «Без спрятанной механики» содержит тот же эффект
 const SECRET_BASE = 'всё, что в остальных правилах похоже на эту спрятанную механику.';
@@ -342,10 +343,10 @@ function chatBuild(plan, who, onProgress, kind) {
 // wow.world — мир с карты «Мир» (цвета, что собираем, декор), wow.move — ход угрозы мира: по нему рецепт выбирает тип врага (вау-старт 2.0)
 const chatSharedText = wow => chatTask(fill(chatTpl('wow'), {
     'герой': wow.cards.hero, 'действие': wow.cards.action, 'место': wow.cards.place, 'угроза': wow.cards.threat || 'нет карты — придумай по месту', 'поворот': wow.cards.twist,
-    'рецепт': recipeText(wow.genre, wow.cards, wow.move, wow.world), 'лучшие': bestText(wow.genre), 'мир': worldText(wow.world), 'проверь': checksText(wow.genre),
+    'картинка': wowLook(wow), 'рецепт': recipeText(wow.genre, wow.cards, wow.move, wow.world), 'лучшие': bestText(wow.genre), 'проверь': checksText(wow.genre),
     'сочность': wow.genre && wow.genre.juice ? `Сочность жанра — без неё игра выглядит картонной, сделай всё: ${wow.genre.juice}.` : '',
     'связка': wow.link ? `Гейм дизайн документ (класс принял его${wow.genre && wow.genre.recipe ? '; правила, кнопки и числа — из рецепта, документ задаёт фразу игры и подачу' : ', строй игру по нему'}):\n` + LINK_FIELDS.filter(([k]) => wow.link[k]).map(([k, label]) => `- ${label}: ${wow.link[k]}`).join('\n') : '',
-  }) + chatSecret(wow.secret, wow.base, wow.howto));
+  }) + chatSecret(wow.secret, wow.base, wow.howto), false);
 async function chatShared(wow, who, onProgress) {
   return Object.assign(await chatProgram('общая игра', chatSharedText(wow), who, onProgress, null, true), { knob: 'secret' });
 }
@@ -537,14 +538,20 @@ const bestText = g => (g && g.best ? [`Как у лучших в жанре — 
   ...g.beats.map(l => '- ' + l),
   `- большое событие: ${g.boss}`].join('\n') : '');
 // мир с карты «Мир» данными (вау-старт 2.0): Qwen по одной строке карты рисовал мир наугад
+// пол — словами и двумя тонами, ориентиры — внутри кадра: Qwen ставил 38 предметов декора за краем поля, а пол делал одноцветным (19.10.2026)
 const worldText = w => (w ? [`Мир «${w.name}»:`,
-  `- цвета: небо — градиент от ${w.sky[0]} сверху к ${w.sky[1]} у горизонта, туман в цвет горизонта; земля ${w.ground}; дальний план ${w.far}; акцент для бонусов и вспышек ${w.acc}`,
+  `- цвета: небо — градиент от ${w.sky[0]} сверху к ${w.sky[1]} у горизонта, туман в цвет горизонта; дальний план ${w.far}; акцент для бонусов и вспышек ${w.acc}`,
+  w.floor ? `- пол: ${w.floor[0]}, тона ${w.floor[1]} и ${w.floor[2]} — узором на CanvasTexture` : `- земля ${w.ground}`,
+  w.landmarks ? `- крупные ориентиры, по которым мир узнают с одного кадра, — внутри игрового поля или прямо за ним, в кадре: ${w.landmarks}` : '',
+  `- декор — в кадре, на поле и вокруг него, лоуполи из примитивов: ${w.decorNames}`,
   `- что собираем: ${w.itemName} ${w.item} — монетки, кристаллы, мишени и бонусы рецепта в этой игре выглядят так (лоуполи, крутятся и светятся)`,
-  `- декор вокруг поля, лоуполи из примитивов, всего не меньше 30: ${w.decorNames}`,
-  '- герой — самый яркий в кадре и не сливается с землёй; угроза тёмная или красная, с подсветкой, её видно издалека'].join('\n') : '');
+  '- герой — самый яркий в кадре и не сливается с полом; угроза тёмная или красная, с подсветкой, её видно издалека'].filter(Boolean).join('\n') : '');
+// раздел «Картинка» игры класса: общие правила, мир данными и кадр жанра
+const wowLook = wow => [chatTpl('look'), worldText(wow.world), wow.genre && wow.genre.shot ? `Кадр в этой игре: ${wow.genre.shot}.` : ''].filter(Boolean).join('\n');
 // что проверить перед ответом: проверки рецепта и две общие — Qwen-Flash чаще ошибается в порядке объявлений и в конце партии
 const checksText = genre => (genre && genre.checks ? ['Проверь перед ответом — всё это работает в первой же партии:', ...genre.checks.map(c => '- ' + c),
   genre.beats ? '- с 12-й секунды каждые 8–10 с случается новое событие из «Как у лучших в жанре», к 30-й секунде — первое большое событие' : '',
+  genre.shot ? '- картинка: пол с узором, в кадре ориентир мира и не меньше 8 предметов декора; у героя и врагов глаза и тёмная обводка' : '',
   '- код без ошибок: three.js подключён через importmap, каждая переменная и функция объявлена до первого кадра, в консоли нет ошибок',
   '- партия заканчивается экраном конца, новая партия начинается по Enter, R или Start'].filter(Boolean).join('\n') : '');
 async function wowLink(cards, prev, who, genre, move) {

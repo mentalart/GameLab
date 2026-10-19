@@ -61,7 +61,7 @@ const patch = (find, repl) => `<<<<<<< НАЙТИ\n${find}\n=======\n${repl}\n>>
     check('Сборка ждёт ответа из чата, задание одно', j.manual && j.manual.step === 1 && !j.manual.followUp && !('clear' in j.manual), j.manual && `${j.manual.chars} знаков`);
     const clear = await prompt(s, job);
     check('Задание: четыре части без образцов и объекта GAME, раздел «Картинка»', clear.startsWith(ai.CHAT.phrase) && /# Замысел геймдизайнера/.test(clear) && /# Картинка/.test(clear) && /# Что нужно порталу/.test(clear)
-      && /portal\.knobs/.test(clear) && /getGamepads/.test(clear) && !/const GAME/.test(clear) && clear.length < 9000, `${clear.length} знаков`); // +1500: спрятанная механика по шагам (howto); +1000: раздел «Картинка» (решения автора 18.10.2026); +500: самопроверка кода (19.10.2026)
+      && /portal\.knobs/.test(clear) && /getGamepads/.test(clear) && !/const GAME/.test(clear) && clear.length < 10500, `${clear.length} знаков`); // +1500: спрятанная механика по шагам (howto); +1000: раздел «Картинка» (решения автора 18.10.2026); +500: самопроверка кода; +1500: картинка числами — кадр, пол, персонажи, эффекты (19.10.2026)
     // ответ оборвался: портал просит продолжение и склеивает части
     const answer = 'Вот игра:\n```js\n' + SAMPLE.trim() + '\n```\nГотово!';
     const cut = answer.indexOf('update(lab, dt)');

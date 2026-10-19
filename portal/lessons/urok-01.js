@@ -144,10 +144,10 @@ module.exports = {
     formula: 'Донор × мир × герой × угроза × твист',
     // жанр карты действия → каркас и камера движка: подсказка связке и образец каркаса программисту, если связки нет
     genres: GENRES.map(g => Object.assign({ card: genreCard(g), name: g.genre, frame: g.frame, juice: g.juice },
-      g.recipe && { recipe: g.recipe, types: slotsOf(g.threats, 'type'), rules: slotsOf(g.twists, 'rule'), moves: g.moves, luck: g.luck, checks: g.checks, best: g.best, show: g.show, beats: g.beats, boss: g.boss })),
+      g.recipe && { recipe: g.recipe, types: slotsOf(g.threats, 'type'), rules: slotsOf(g.twists, 'rule'), moves: g.moves, luck: g.luck, checks: g.checks, best: g.best, show: g.show, beats: g.beats, boss: g.boss, shot: g.shot })),
     // мир и ход угрозы для задания Qwen (вау-старт 2.0): мир на карте «Мир» уходит в задание цветами, предметом и декором,
     // ход угрозы мира (moves) выбирает её тип врага в рецепте игры (genres[].moves)
-    worlds: Object.fromEntries(WORLDS.map(w => [w.card, { name: w.name, sky: w.sky, ground: w.ground, far: w.far, acc: w.acc, item: w.item, itemName: w.itemName, decorNames: w.decorNames }])),
+    worlds: Object.fromEntries(WORLDS.map(w => [w.card, { name: w.name, sky: w.sky, ground: w.ground, far: w.far, acc: w.acc, item: w.item, itemName: w.itemName, decorNames: w.decorNames, floor: w.floor, landmarks: w.landmarks }])),
     moves: Object.fromEntries(WORLDS.flatMap(w => w.threats.map(([, t, m]) => [t, m]))),
     // ask — вау-старт вопросами (решение автора 19.10.2026): карты идут по порядку, на каждую учитель задаёт классу вопрос (q),
     // крупно объясняет зачем (why), портал выкладывает offer карт из колоды, класс голосует seconds секунд, победитель встаёт опорой pillar.
