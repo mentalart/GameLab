@@ -1098,6 +1098,7 @@ STEPS.sort = ctx => {
     if (!active || !locked) return;
     nextBtn.hidden = true;
     binBtns.forEach(b => b.classList.remove('flash-good', 'flash-bad')); i++; next();
+    if (active) box.focus(); // после щелчка по «Далее» клавиши 1 2 3 снова идут в квиз
   }
   function finish() {
     active = false; cancelAnimationFrame(raf);

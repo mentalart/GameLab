@@ -790,7 +790,7 @@ ol.tsteps li.now{border-left:3px solid var(--info);padding-left:8px;margin-left:
 .ice-scene{position:absolute;inset:0 0 auto;height:300%;transform:translateY(calc(var(--layer,0) * -100% / 3));transition:transform .9s cubic-bezier(.65,0,.35,1);
   background:linear-gradient(#24447a 0%,#3a6ea8 30%,#0e3d5c 33.4%,#082a42 60%,#03101e 100%)}
 .ice-berg{position:absolute;inset:0;pointer-events:none;
-  clip-path:polygon(66% 22%,72% 30.5%,90% 42%,97% 66%,86% 96%,18% 98%,3% 74%,10% 50%,36% 35%,58% 31%);
+  clip-path:polygon(80% 24%,85% 31%,93% 42%,97% 66%,86% 96%,18% 98%,3% 74%,10% 50%,40% 36%,68% 31.5%);
   background:linear-gradient(#f4fbff 0%,#d7f0ff 31%,rgba(150,215,255,.22) 33.4%,rgba(110,180,240,.12) 70%,rgba(80,140,210,.08) 100%)}
 .ice-water{position:absolute;left:0;right:0;top:calc(100% / 3 - 10px);height:20px;pointer-events:none;opacity:.85;
   background:radial-gradient(circle at 12px 0,transparent 9px,rgba(95,224,255,.55) 10px,rgba(95,224,255,.15) 12px,transparent 13px) repeat-x 0 0/24px 20px;animation:iceWave 3s linear infinite}
