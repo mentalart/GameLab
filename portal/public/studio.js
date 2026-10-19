@@ -12,7 +12,19 @@ async function load() {
   }
   $('#nick').textContent = (D.emblem ? D.emblem + ' ' : '') + D.nick + ' · класс ' + D.class.code;
   $('#className').textContent = D.class.name;
-  drawEmblems(); drawShelf(); drawBadges(); drawDeck(); drawJournal(); drawIdeas();
+  drawEmblems(); drawShelf(); drawPostcards(); drawBadges(); drawDeck(); drawJournal(); drawIdeas();
+}
+
+// полка открыток (И3): открытка первой игры каждого урока, тот же вид, что в шаге урока
+function drawPostcards() {
+  const host = $('#postcards'); host.innerHTML = '';
+  if (!(D.postcards || []).length) { host.append(el('p', { class: 'muted' }, 'Открытка появится в финале урока: «Открытка первой игры».')); return; }
+  D.postcards.forEach(c => host.append(el('div', { class: 'postcard' },
+    el('div', { class: 'pc-top' }, el('span', { class: 'pc-emb' }, c.emblem || '🎮'), el('div', {}, el('div', { class: 'eyebrow' }, `Урок ${c.lesson} · v${c.version}`), el('h3', {}, c.title))),
+    c.feeling ? el('div', {}, el('span', { class: 'small muted' }, 'Задумал: '), c.feeling) : null,
+    el('div', {}, el('span', { class: 'small muted' }, 'Соседи почувствовали: '), (c.emotions || []).length ? c.emotions.join(' ') : '—'),
+    c.secret ? el('div', {}, el('span', { class: 'small muted' }, 'Спрятано: '), c.secret, c.voted ? el('span', { class: 'tag', style: 'margin-left:6px' }, `заметили ${c.felt} из ${c.voted}`) : null) : null,
+    el('div', { class: 'pc-foot' }, c.record ? `🏆 Рекорд ${c.record.score} · ${c.record.nick}` : '🏆 Рекорда пока нет', el('span', { class: 'grow' }), c.at || ''))));
 }
 
 function drawEmblems() {
@@ -57,7 +69,7 @@ function drawJournal() {
   if (!D.journal.length) { host.append(el('p', { class: 'muted' }, 'В конце каждого урока ты записываешь открытие дня и план версии 2. Они соберутся здесь.')); return; }
   D.journal.slice().reverse().forEach(j => {
     const rows = [
-      j.twist ? ['Поворот', j.twist] : null,
+      j.twist ? ['Твист', j.twist] : null,
       j.decisions && j.decisions.feeling ? ['Что почувствует игрок', j.decisions.feeling] : null,
       ...(j.experiments || []).map(x => ['Эксперимент', x]),
       j.discovery ? ['Открытие дня', j.discovery] : null,

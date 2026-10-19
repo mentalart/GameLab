@@ -114,10 +114,13 @@ async function refreshPoll() {
   host.append(el('div', { class: 'row pj-pollchips' }, el('span', { class: 'eyebrow' }, 'Ответы класса · без имён'), list.map(x => el('button', { type: 'button', class: 'chipbtn' + (view.includes(x) ? ' on' : ''),
     onclick: () => { P.pollStep = P.pollStep === x.id ? null : x.id; P.pollKey = null; refreshPoll(); } }, `${x.title} · ${x.n}`))));
   host.append(el('div', { class: 'pj-polls' }, view.map(x => {
-    const max = Math.max(1, x.n);
+    const max = Math.max(1, x.n, x.compare ? x.compare.n : 0);
+    // compare: под каждой полоской — тонкая полоска «тогда» (предсказание или ответ в начале урока) на той же шкале
     return el('div', { class: 'card stack pj-pollcard' }, el('div', { class: 'row' }, el('h2', { class: 'grow' }, x.title), el('span', { class: 'pj-sub' }, `ответили: ${x.n}`)),
-      el('div', { class: 'bars' }, x.bars.map(b => el('div', { class: 'barrow' }, el('span', { class: 'bl' }, b.label),
-        el('span', { class: 'bt' }, el('i', { style: `width:${Math.round(100 * b.n / max)}%` })), el('b', {}, String(b.n))))),
+      x.compare ? el('p', { class: 'pj-sub' }, `Тонкая полоска — «${x.compare.title}»: ${x.compare.n} ответов. Толстая — сейчас.`) : null,
+      el('div', { class: 'bars' }, x.bars.map(b => el('div', { class: 'barrow' + (b.before != null ? ' cmp' : '') }, el('span', { class: 'bl' }, b.label),
+        el('span', { class: 'bt' }, el('i', { style: `width:${Math.round(100 * b.n / max)}%` }), b.before != null ? el('em', { style: `width:${Math.round(100 * b.before / max)}%` }) : null),
+        el('b', {}, b.before != null ? `${b.before} → ${b.n}` : String(b.n))))),
       x.kind === 'secret' && x.n ? el('p', { class: 'concept' }, `Спрятанную механику почувствовали вслепую ${x.bars[0].n} из ${x.n}.`) : null,
       (x.own || []).length ? el('div', { class: 'pj-own' }, x.own.map(t => el('span', { class: 'tag' }, '«' + t + '»'))) : null);
   })));
