@@ -1565,6 +1565,11 @@ route('GET', '/api/teacher/poll', (ctx) => {
         bars: x.options.map(o => Object.assign({ label: o, n: list.filter(v => (v.selected || []).includes(o)).length }, prev && { before: prev.filter(v => (v.selected || []).includes(o)).length }))
           .concat(own.length ? [{ label: 'Свои слова', n: own.length }] : []),
         own: own.slice(-6), compare: prev ? { title: prevStep ? prevStep.step.title : '', n: prev.length } : null });
+      // questions — ещё вопросы на том же шаге (входная анкета): у каждого своя полоска на проекторе
+      for (const q of x.questions || []) {
+        const qs = list.map(v => (v.more || {})[q.id] || []).filter(s => s.length);
+        steps.push({ cp: cp.id, id: x.id + ':' + q.id, title: q.q, kind: 'choice', n: qs.length, bars: q.options.map(o => ({ label: o, n: qs.filter(s => s.includes(o)).length })), own: [] });
+      }
     } else if (x.type === 'abtest' || (x.type === 'blindpair' && x.mode === 'secret')) {
       const list = done(x.id).filter(v => v.vote), felt = x.type === 'abtest' ? list.filter(v => v.vote === v.side).length : list.filter(v => v.felt).length, same = list.filter(v => v.vote === 'same').length;
       steps.push({ cp: cp.id, id: x.id, title: x.title, kind: 'secret', n: list.length,

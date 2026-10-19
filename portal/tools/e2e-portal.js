@@ -198,6 +198,15 @@ async function run(browser, base, mode) {
   await student.click('#step-donor-hook .opt >> nth=0');
   await student.click('#step-donor-hook >> text=Ответить');
   await student.waitForSelector('#step-donor-hook.done');
+  // входная анкета (19.10.2026): любимые игры и ещё вопросы про игровой опыт — без ответа на все вопросы шаг не закрывается
+  await student.click('#step-anketa .opts:not([data-q]) .opt >> nth=0');
+  await student.click('#step-anketa >> text=Ответить');
+  const ankNotDone = !(await student.locator('#step-anketa.done').count());
+  for (const q of await student.locator('#step-anketa [data-q]').evaluateAll(g => g.map(x => x.dataset.q))) await student.click(`#step-anketa [data-q="${q}"] .opt >> nth=0`);
+  await student.click('#step-anketa >> text=Ответить');
+  await student.waitForSelector('#step-anketa.done');
+  const ankPoll = await teacher.evaluate(async c => (await Lab.api('/api/teacher/poll?code=' + encodeURIComponent(c))).steps.filter(x => x.id.startsWith('anketa')), code.trim());
+  check('Входная анкета: любимые игры и ещё шесть вопросов, без ответов шаг не закрывается, на проекторе полоска на каждый вопрос', ankNotDone && ankPoll.length === 7 && ankPoll.every(x => x.n === 1), ankPoll.map(x => x.title + ' ' + x.n).join('; '));
   // вопрос урока (П2): в начале и тот же в конце
   await student.click('#step-vopros-uroka .opt >> nth=1');
   await student.click('#step-vopros-uroka >> text=Ответить');

@@ -847,7 +847,8 @@ STEPS.secret = ctx => {
 const choiceText = id => { const x = ans(id).value || {}; return [(x.selected || []).join('; '), valText(x.own)].filter(Boolean).join(' · '); };
 STEPS.choice = ctx => {
   const st = ctx.step;
-  let v = Object.assign({ selected: [], own: { text: '' } }, ctx.value);
+  let v = Object.assign({ selected: [], own: { text: '' }, more: {} }, ctx.value);
+  if (!v.more) v.more = {};
   const wrap = el('div', { class: 'stack' });
   if (st.recall) {
     const was = choiceText(st.recall), rs = stepById(st.recall);
@@ -870,8 +871,30 @@ STEPS.choice = ctx => {
     wrap.append(grid);
   }
   if (st.own) wrap.append(fieldEditor({ id: st.id, label: st.ownLabel || (st.options && st.options.length ? 'Или своими словами' : 'Твой ответ'), deck: st.deck }, v.own, nv => { v.own = nv; ctx.save(v); }));
+  // questions — ещё вопросы на том же шаге (входная анкета): ответы в v.more[id]
+  (st.questions || []).forEach(q => {
+    const grid = el('div', { class: 'opts', role: q.multi ? 'group' : 'radiogroup', 'aria-label': q.q, 'data-q': q.id });
+    const sel = () => v.more[q.id] || [];
+    q.options.forEach(o => {
+      const b = el('button', { type: 'button', class: 'opt' + (sel().includes(o) ? ' on' : ''), 'aria-pressed': String(sel().includes(o)) }, o);
+      b.addEventListener('click', () => {
+        let s = sel();
+        if (q.multi) {
+          if (s.includes(o)) s = s.filter(x => x !== o);
+          else { if (q.max && s.length >= q.max) { toast(`Можно выбрать не больше ${q.max}`); return; } s = s.concat(o); }
+        } else s = s[0] === o ? [] : [o];
+        v.more[q.id] = s;
+        grid.querySelectorAll('.opt').forEach(x => { const on = s.includes(x.textContent); x.classList.toggle('on', on); x.setAttribute('aria-pressed', String(on)); });
+        beep('tick'); ctx.save(v);
+      });
+      grid.append(b);
+    });
+    wrap.append(el('h4', { class: 'q-more' }, q.q + (q.multi ? (q.max ? ` (до ${q.max})` : ' (можно несколько)') : '')), grid);
+  });
   wrap.append(el('div', {}, el('button', { class: 'btn', type: 'button', onclick: () => {
     if (!v.selected.length && !valText(v.own)) { toast('Выбери карточку или напиши ответ'); return; }
+    const miss = (st.questions || []).find(q => !(v.more[q.id] || []).length);
+    if (miss) { toast(`Ответь ещё: «${miss.q}»`); return; }
     ctx.save(v, true);
   } }, 'Ответить')));
   return wrap;
@@ -3116,7 +3139,8 @@ function stepSummary(step) {
     case 'secret': return v.secret ? `догадка: ${v.guess} — ${v.correct ? 'угадал' : v.trap ? 'ловушка: это было на картах' : 'не угадал'}; спрятанная механика: ${v.secret.title}` : 'не отвечал';
     case 'teacher-demo': return `партий ${v.rounds || 0}, лучший счёт ${v.best || 0}`;
     case 'rounds': return v.total ? `верно ${v.correct} из ${v.total}, очки ${v.score}, серия ${v.bestStreak}` + ((v.mistakes || []).length ? '; ошибки: ' + v.mistakes.join('; ') : '') : 'не пройден';
-    case 'choice': return [(v.selected || []).join('; '), valText(v.own) ? 'свои слова: ' + f(v.own) : ''].filter(Boolean).join(' · ') || '—';
+    case 'choice': return [(v.selected || []).join('; '), valText(v.own) ? 'свои слова: ' + f(v.own) : ''].filter(Boolean).join(' · ')
+      + (step.questions || []).map(q => `\n${q.q} ${((v.more || {})[q.id] || []).join('; ') || '—'}`).join('') || '—';
     case 'cycle': return v.total ? `без ошибок ${v.perfect} из ${v.total}, очки ${v.score}, серия ${v.bestStreak}` + ((v.mistakes || []).length ? '; трудно: ' + v.mistakes.join('; ') : '') : 'не пройден';
     case 'release': return v.released ? `выпущена версия 1.0: «${v.released.title}» (урок ${v.released.lesson}, v${v.released.version}); что изменено: ${f(v.note)}` : `не выпущена; отмечено пунктов: ${Object.values(v.checks || {}).filter(Boolean).length}`;
     case 'blindpair': if (step.mode === 'secret' && v.game) return v.noSecret ? `игра «${v.title}» (автор ${v.author}) без спрятанной механики` : `игра «${v.title}» (автор ${v.author}); спрятанная механика была в ${v.dry === 'A' ? 'Б' : 'А'}; выбрал: ${v.vote ? (v.vote === 'same' ? 'разницы нет' : v.vote === 'A' ? 'в А' : 'в Б') : '—'}${v.felt ? ' — почувствовал спрятанную механику' : ''}`;
