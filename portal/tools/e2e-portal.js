@@ -481,7 +481,15 @@ async function wowStart(teacher, student, mode, shot) {
   const c1 = await wowCards();
   check('Угроза и поворот — из колоды жанра на карте действия', byGenre('threat', c1) && byGenre('twist', c1), c1.action.split(' — ')[0]);
   const c2 = await teacher.evaluate(async c => (await Lab.api('/api/teacher/wow/draw', { code: c, card: 'action' })).wow.cards, wcode);
-  check('Новое действие перетянуло угрозу и поворот под свой жанр', c2.action !== c1.action && byGenre('threat', c2) && byGenre('twist', c2) && c2.hero === c1.hero && c2.place === c1.place, c2.action.split(' — ')[0]);
+  check('Новое действие перетянуло угрозу и поворот под свой жанр', c2.action !== c1.action && byGenre('threat', c2) && byGenre('twist', c2) && c2.hero.split(' — ')[0] === c1.hero.split(' — ')[0] && c2.place === c1.place, c2.action.split(' — ')[0]);
+  // пилот «рецепт + слоты»: у жанра с рецептом особенность героя — ручка жанра, рецепт и слоты карт уходят в задание Qwen
+  const rg = lesson1.wow.genres.find(g => g.recipe), heroCard = lesson1.wow.cards.find(x => x.id === 'hero');
+  const rc = { action: rg.card, hero: heroCard.decks[rg.card][0], place: 'на крыше — ветер', threat: Object.keys(rg.types)[0], twist: Object.keys(rg.rules)[0] };
+  check('Жанр с рецептом: герой с ручкой жанра, у прочих жанров — общая колода', heroCard.decks[rg.card].every(h => /^[^—]+ — /.test(h)) && !heroCard.decks[lesson1.wow.genres.find(g => !g.recipe).card], rc.hero);
+  const rtask = ai.chatSharedText({ cards: rc, genre: rg, secret: 'секрет', link: null });
+  check('Задание Qwen: рецепт жанра слово в слово, тип угрозы и что меняет поворот', rtask.includes(`Рецепт жанра «${rg.name}»`) && rg.recipe.every(l => rtask.includes(l)) && rtask.includes(`враг типа «${rg.types[rc.threat]}»`) && rtask.includes(rg.rules[rc.twist]), rg.name);
+  const plain = lesson1.wow.genres.find(g => !g.recipe);
+  check('Жанр без рецепта: задание без строки рецепта', !/Рецепт жанра/.test(ai.chatSharedText({ cards: Object.assign({}, rc, { action: plain.card }), genre: plain, secret: 'секрет', link: null })));
   // спрятанная механика скрыта, пока учитель её не откроет; в уроке 1 она одна на все классы — ни кубика, ни замены
   check('Спрятанная механика скрыта у учителя, пока он её не откроет', !(await teacher.textContent('#wowSecret')).includes(SECRET1));
   await teacher.click('#wowSecret >> text=Показать');

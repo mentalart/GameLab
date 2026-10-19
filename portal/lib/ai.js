@@ -277,12 +277,14 @@ function chatBuild(plan, who, onProgress, kind) {
   }) + chatSecret(plan.secret && plan.secret.prompt, plan.secret && plan.secret.base, plan.secret && plan.secret.howto);
   return chatProgram(kind || 'сборка', chatTask(text), who, onProgress, null, !!plan.secret);
 }
-async function chatShared(wow, who, onProgress) {
-  const text = fill(chatTpl('wow'), {
+// задание Qwen для игры класса целиком (tools/pilot-zadaniya.js собирает им задания для прогона колоды)
+const chatSharedText = wow => chatTask(fill(chatTpl('wow'), {
     'герой': wow.cards.hero, 'действие': wow.cards.action, 'место': wow.cards.place, 'угроза': wow.cards.threat || 'нет карты — придумай по месту', 'поворот': wow.cards.twist,
+    'рецепт': recipeText(wow.genre, wow.cards),
     'связка': wow.link ? 'Гейм дизайн документ (класс принял его, строй игру по нему):\n' + LINK_FIELDS.filter(([k]) => wow.link[k]).map(([k, label]) => `- ${label}: ${wow.link[k]}`).join('\n') : '',
-  }) + chatSecret(wow.secret, wow.base, wow.howto);
-  return Object.assign(await chatProgram('общая игра', chatTask(text), who, onProgress, null, true), { knob: 'secret' });
+  }) + chatSecret(wow.secret, wow.base, wow.howto));
+async function chatShared(wow, who, onProgress) {
+  return Object.assign(await chatProgram('общая игра', chatSharedText(wow), who, onProgress, null, true), { knob: 'secret' });
 }
 // правка идёт в тот же чат, где Qwen писал игру: код он уже видел, поэтому сообщение — только просьба и формат (решение автора 18.10.2026);
 // игру в новый чат переносит сообщение chatMove
@@ -454,11 +456,24 @@ function parseLink(text) {
 }
 // genre — жанр карты действия из сценария урока ({ name, frame }): каркас жанра — подсказка связке
 const genreLine = genre => (genre ? `Жанр игры — ${genre.name}, каркас жанра — ${genre.frame}. Угроза и поворот взяты из колоды этого жанра.` : '');
+// рецепт жанра (пилот «рецепт + слоты», 19.10.2026): готовая мини-игра строками и как в неё встают карты — в связку и в задание Qwen слово в слово
+const recipeOf = (genre, start) => ((genre && genre.recipe) || []).find(l => l.startsWith(start + ':')) || '';
+function recipeText(genre, cards) {
+  if (!genre || !genre.recipe) return '';
+  const type = (genre.types || {})[cards.threat], rule = (genre.rules || {})[cards.twist];
+  return [`Рецепт жанра «${genre.name}» — основа игры. Цикл, очки, проигрыш, нарастание и числа бери из него как есть; новых механик сверх рецепта и карт не добавляй.`,
+    ...genre.recipe.map(l => '- ' + l),
+    'Как карты встают в рецепт:',
+    '- Герой: облик и звук — по имени с карты; после тире — ручка героя из этого жанра, единственное, чем он отличается.',
+    '- Место: только облик мира, цвета и звуки; правило места после тире в игру не бери.',
+    type ? `- Угроза: враг типа «${type}» из рецепта, облик и поведение — с карты.` : '',
+    rule ? `- Поворот меняет в рецепте одно: ${rule}.` : ''].filter(Boolean).join('\n');
+}
 async function wowLink(cards, prev, who, genre) {
   if (demo()) return demoLink(cards, who, genre);
   const model = models().link;
   const t0 = Date.now();
-  const user = ['Карты:', `- Герой: ${cards.hero}`, `- Действие: ${cards.action}`, `- Место: ${cards.place}`, `- Угроза: ${cards.threat || 'нет карты — придумай сам по месту'}`, `- Поворот: ${cards.twist}`, genreLine(genre),
+  const user = ['Карты:', `- Герой: ${cards.hero}`, `- Действие: ${cards.action}`, `- Место: ${cards.place}`, `- Угроза: ${cards.threat || 'нет карты — придумай сам по месту'}`, `- Поворот: ${cards.twist}`, genreLine(genre), recipeText(genre, cards),
     prev ? `\nУчитель попросил другую связку. Прошлая была: «${prev.phrase}»${prev.frame ? ` (${prev.frame})` : ''} — найди другое чтение карт: другой цикл, риск или смешной момент в том же жанре.` : ''].filter(Boolean).join('\n');
   try {
     const { text, entry } = await call('связка карт', who, model, [
@@ -471,11 +486,19 @@ async function wowLink(cards, prev, who, genre) {
     return Object.assign(link, { model });
   } catch (e) { if (!/не по форме/.test(e.message)) log(Object.assign({ kind: 'связка карт', model, ms: Date.now() - t0, ok: false, error: e.message }, meta(who))); throw e; }
 }
+// демо-документ жанра с рецептом: поля берутся из строк рецепта
+function demoRecipe(genre, cards) {
+  const tail = start => recipeOf(genre, start).replace(/^[^:]+:\s*/, '');
+  const type = (genre.types || {})[cards.threat], rule = (genre.rules || {})[cards.twist];
+  return { frame: `${genre.name}: ${tail('Камера и поле')}`, controls: tail('Кнопки'), risk: tail('Цель и очки'), curve: tail('Нарастание'),
+    threats: `${cards.threat}${type ? ` — враг типа «${type}»` : ''}. ${tail('Проигрыш')}`, twist: rule ? `Поворот меняет одно: ${rule}.` : `Поворот «${cards.twist}».` };
+}
 function demoLink(cards, who, genre) {
   log(Object.assign({ kind: 'связка карт', model: 'демо', ms: 0, ok: true, demo: true }, meta(who)));
   return {
     phrase: `Ты — ${cards.hero}. Главное действие: ${cards.action}. Место: «${cards.place}». Мешает: ${cards.threat || 'всё вокруг'}. Поворот: ${cards.twist}. Цель — продержаться и набрать рекорд класса.`,
     frame: genre ? `${genre.name}: ${genre.frame}.` : 'Арена, изометрия: всё поле видно целиком, герой бегает по нему.',
+    ...(genre && genre.recipe ? demoRecipe(genre, cards) : {}),
     controls: `Движение — бегать, A — ${String(cards.action).split(' — ').pop()}, B не нужна.`,
     loop: `Каждые несколько секунд: ${cards.action} — и сразу видно, попал ли ты; промах стоит времени.`,
     risk: 'Действие рядом с опасностью даёт очки ×2.',
@@ -585,4 +608,4 @@ async function playtestFix(code, report, wow, who, onProgress) {
   return Object.assign(await chatChange(code, 'исправь игру по отчёту бота-плейтестера:\n' + report.findings.map(f => '- ' + f).join('\n'), who, onProgress, 'правка по плейтесту'), { knob: 'secret' });
 }
 
-module.exports = { chatPact, chatMove, chatAsk, chatRepair, chatPaste, CHAT, truncated, joinParts, isHtml, LINK_FIELDS, playtestFix, feedbackDraft, applyPatches, loadConfig, reloadConfig, demo, models, limits, listModels, producer, producerFix, wowLink, build, buildShared, change, fix, planText, extractCode, syntaxError };
+module.exports = { chatSharedText, chatPact, chatMove, chatAsk, chatRepair, chatPaste, CHAT, truncated, joinParts, isHtml, LINK_FIELDS, playtestFix, feedbackDraft, applyPatches, loadConfig, reloadConfig, demo, models, limits, listModels, producer, producerFix, wowLink, build, buildShared, change, fix, planText, extractCode, syntaxError };

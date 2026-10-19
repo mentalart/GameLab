@@ -916,12 +916,18 @@ route('POST', '/api/teacher/wow/draw', (ctx) => {
   const list = ctx.body.card === 'all' ? les.wow.cards : les.wow.cards.filter(c => c.id === ctx.body.card);
   if (!list.length) throw Object.assign(new Error('Нет такой карты'), { status: 400 });
   const seen = ((cls.wowSeen = cls.wowSeen || {})[les.id] = cls.wowSeen[les.id] || {});
-  // угроза и поворот (by: 'action') тянутся из колоды жанра на карте действия: без действия сначала тянется оно,
-  // а новое действие перетягивает уже лежащие угрозу и поворот под свой жанр
+  // угроза, поворот и герой (by: 'action') тянутся из колоды жанра на карте действия: без действия сначала тянется оно,
+  // а новое действие перетягивает те зависимые карты, которых нет в колоде нового жанра (угрозу и поворот всегда, героя — при смене ручек жанра)
   const todo = new Set(list.map(c => c.id));
   for (const c of les.wow.cards) if (todo.has(c.id) && c.by && !w.cards[c.by]) todo.add(c.by);
-  for (const c of les.wow.cards) if (c.by && todo.has(c.by) && w.cards[c.id]) todo.add(c.id);
-  for (const c of les.wow.cards.filter(x => todo.has(x.id))) { w.cards[c.id] = drawFresh(seen, c.id, cardDeck(c, w), w.cards[c.id]); w.votes[c.id] = []; }
+  const draw = c => { w.cards[c.id] = drawFresh(seen, c.id, cardDeck(c, w), w.cards[c.id]); w.votes[c.id] = []; };
+  for (const c of les.wow.cards.filter(x => !x.by && todo.has(x.id))) draw(c);
+  // карта с тем же именем в колоде нового жанра остаётся собой: герой меняет только ручку жанра
+  const sameName = c => { const name = String(w.cards[c.id]).split(' — ')[0]; return cardDeck(c, w).find(x => x.split(' — ')[0] === name); };
+  for (const c of les.wow.cards.filter(x => x.by)) {
+    if (todo.has(c.id)) draw(c);
+    else if (todo.has(c.by) && w.cards[c.id] && !cardDeck(c, w).includes(w.cards[c.id])) { const keep = c.parts && sameName(c); if (keep) w.cards[c.id] = keep; else draw(c); }
+  }
   w.link = null; // новые карты — связка устарела
   if (!w.given && w.status !== 'building') w.status = 'cards';
   store.saveClass(cls); wowChanged(cls, les);
