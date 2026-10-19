@@ -26,6 +26,8 @@ Claude Code подхватывает эти папки сам в каждом ч
 | `game-jam` | там же, `skills/workflows/game-jam` | `0a70cfc`, 09.10.2026 | Apache-2.0 |
 | `frontend-design` | [anthropics/skills](https://github.com/anthropics/skills), `skills/frontend-design` | `dbd4588`, 09.10.2026 | Apache-2.0 |
 
+Пересказаны своими словами, без копирования (у источника нет лицензии): `lab3d-igra/planka.md` — по справочникам скилла `gamemaker` из [studioigor/game-exp-skills](https://github.com/studioigor/game-exp-skills), 19.10.2026. Сами скиллы `gamemaker` и `gauntlet-loop` не ставим: это ночные прогоны под `/loop` на сотни миллионов токенов.
+
 Обновлять вручную: скачать новую версию, прочитать целиком (особенно скрипты, если появятся), заменить папку, поправить строку таблицы.
 
 Портал skills не видит: Sonnet в портале вызывается обычным запросом (`portal/lib/ai.js`). Полезное из этих skills попадает к ИИ портала только через промпт `portal/ai/claude-prompt.md`.
