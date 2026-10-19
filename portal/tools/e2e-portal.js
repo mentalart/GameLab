@@ -1364,8 +1364,10 @@ async function lessonFour(mode, teacher, student, shot) {
   await gf.evaluate(() => window.__lab.confirm());
   await gf.locator('#cv').focus();
   await sleep(400);
-  await student.keyboard.press('KeyG'); await sleep(400); // игрок 1 роняет камень
-  await student.keyboard.press('KeyL'); await sleep(600); // игрок 2 роняет камень
+  // ждём по состоянию игры, а не по часам: без видеокарты кадр бывает дольше секунды
+  const laid = i => gf.waitForFunction(i => window.__lab.lab.state.wells[i].grid.flat().filter(Boolean).length >= 4, i, { timeout: 15000 }).catch(() => {});
+  await student.keyboard.press('KeyG'); await laid(0); // игрок 1 роняет камень
+  await student.keyboard.press('KeyL'); await laid(1); // игрок 2 роняет камень
   const dropped = await gf.evaluate(() => window.__lab.lab.state.wells.map(w => w.grid.flat().filter(Boolean).length));
   check('Дуэль: каждый игрок роняет камень своей клавишей', dropped[0] === 4 && dropped[1] === 4, `камней в стаканах: ${dropped.join(' и ')}`);
   await gf.evaluate(() => window.__lab.end('win', 'Проверка'));
