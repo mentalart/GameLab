@@ -184,7 +184,7 @@ const Opory = (() => {
         hx = 400 + Math.cos(t * 0.9) * 140; hy = 320 + Math.sin(t * 1.3) * 40; sq = Math.abs(Math.sin(t * 7)) * 0.12;
         enemies = [0, 1, 2, 3].map(i => { const a = t * 0.5 + i * 1.6; return [hx + Math.cos(a) * 190, hy + Math.sin(a) * 70]; });
         items = [[220, 300], [600, 350]];
-        if (has('threat')) { cx.strokeStyle = '#fff'; cx.lineWidth = 4; const e = enemies[Math.floor(t * 2) % 4]; cx.beginPath(); cx.moveTo(hx, hy); cx.lineTo(e[0], e[1]); cx.stroke(); }
+        if (has('threat')) { cx.strokeStyle = '#fff'; cx.lineWidth = 4; const e = enemies[((Math.floor(t * 2) % 4) + 4) % 4]; cx.beginPath(); cx.moveTo(hx, hy); cx.lineTo(e[0], e[1]); cx.stroke(); }
       }
       items.forEach(([x, y, s]) => itemAt(x, y, s || 30));
       enemies.forEach(([x, y, s]) => enemyAt(x, y, s || 46));
@@ -212,10 +212,11 @@ const Opory = (() => {
     let prev = performance.now(), last = 0, was = false;
     // сцену убрали со страницы (шаг ученика или вкладка проектора перерисованы) — её кадры больше не нужны, иначе циклы копятся.
     // В проверке без видеокарты (LAB_LOWRES) набросок рисуется 10 раз в секунду: три страницы по 60 кадров душили процессор и замирали
+    // dt не меньше нуля: отметка rAF бывает раньше prev, и отрицательный dt уводил t ниже нуля (набросок падал на enemies[-1])
     const loop = now => {
       if (!S.alive) return;
       if (cv.isConnected) was = true; else if (was) { S.alive = false; return; }
-      if (cv.isConnected && !(window.LAB_LOWRES && now - last < 100)) { const dt = Math.min(0.05, (now - prev) / 1000); prev = now; last = now; frame(dt); }
+      if (cv.isConnected && !(window.LAB_LOWRES && now - last < 100)) { const dt = Math.max(0, Math.min(0.05, (now - prev) / 1000)); prev = now; last = now; frame(dt); }
       S.raf = requestAnimationFrame(loop);
     };
     S.raf = requestAnimationFrame(loop);

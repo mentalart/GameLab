@@ -144,7 +144,7 @@ module.exports = {
     formula: 'Донор × мир × герой × угроза × твист',
     // жанр карты действия → каркас и камера движка: подсказка связке и образец каркаса программисту, если связки нет
     genres: GENRES.map(g => Object.assign({ card: genreCard(g), name: g.genre, frame: g.frame, juice: g.juice },
-      g.recipe && { recipe: g.recipe, types: slotsOf(g.threats, 'type'), rules: slotsOf(g.twists, 'rule'), moves: g.moves, luck: g.luck, checks: g.checks, best: g.best, show: g.show, beats: g.beats, boss: g.boss, shot: g.shot })),
+      g.recipe && { recipe: g.recipe, types: slotsOf(g.threats, 'type'), rules: slotsOf(g.twists, 'rule'), moves: g.moves, luck: g.luck, checks: g.checks, best: g.best, show: g.show, beats: g.beats, boss: g.boss, shot: g.shot, controls: g.controls })),
     // мир и ход угрозы для задания Qwen (вау-старт 2.0): мир на карте «Мир» уходит в задание цветами, предметом и декором,
     // ход угрозы мира (moves) выбирает её тип врага в рецепте игры (genres[].moves)
     worlds: Object.fromEntries(WORLDS.map(w => [w.card, { name: w.name, sky: w.sky, ground: w.ground, far: w.far, acc: w.acc, item: w.item, itemName: w.itemName, decorNames: w.decorNames, floor: w.floor, landmarks: w.landmarks }])),
