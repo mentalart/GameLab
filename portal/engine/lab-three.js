@@ -311,7 +311,8 @@ const lab = {
   toScreen(at) { const s = projectToScreen(posOf(at)); return { x: s.x, y: s.y, visible: s.z > -1 && s.z < 1 }; },
 
   // интерфейс и телеметрия
-  hud(key, text) { if (text == null) delete hudLines[key]; else hudLines[key] = String(text); },
+  // o: { color: '#rrggbb', size: 10..32 } — строка своего цвета и размера (цепочка цвета ряда, ступень ствола, тревога)
+  hud(key, text, o) { if (text == null) delete hudLines[key]; else hudLines[key] = { text: String(text), color: o && hexOk(o.color), size: o && o.size ? Math.min(32, Math.max(10, Number(o.size) || 13)) : 0 }; },
   // имя с «_» — скрытый счётчик: уходит порталу, на экран конца партии не попадает; его моменты (секунда партии) копятся в marks для раскрытия спрятанной механики
   count(name, n = 1) {
     tele.custom[name] = (tele.custom[name] || 0) + n;
@@ -917,11 +918,13 @@ function labels() {
   $('#resumeBtn').textContent = padMode ? 'Продолжить · Start' : 'Продолжить · P';
   $('#knobsBtn').textContent = padMode ? 'Ручки · Select' : 'Ручки · Tab';
 }
+const hexOk = c => typeof c === 'string' && /^#[0-9a-f]{3,8}$/i.test(c) ? c : null; // цвет в стиль строки — только #hex
 const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 function applyMeta() {
   document.title = G.title || 'Лаборатория игр';
   $('#gTitle').textContent = G.title || 'Игра';
   $('#gSub').textContent = G.subtitle || '';
+  $('#hudScore').style.color = hexOk(G.scoreColor) || ''; // счёт цветом игры (золотом у «НЛО в станице»)
   $('#eyebrow').textContent = G.donor ? 'Лаборатория игр · по мотивам механики ' + G.donor : 'Лаборатория игр';
   const dec = (G.decisions || []).filter(Boolean);
   $('#decBox').hidden = !dec.length;
@@ -962,7 +965,7 @@ function hudTick() {
     shownScore = sc;
   }
   $('#hudLives').textContent = lab.lives > 0 ? (lab.lives <= 8 ? '♥'.repeat(lab.lives) : '♥ × ' + lab.lives) : '';
-  $('#hudExtra').innerHTML = Object.values(hudLines).map(esc).join('<br>');
+  $('#hudExtra').innerHTML = Object.values(hudLines).map(h => h.color || h.size ? `<span style="${h.color ? 'color:' + h.color + ';' : ''}${h.size ? 'font-size:' + h.size + 'px;font-weight:700;' : ''}">${esc(h.text)}</span>` : esc(h.text)).join('<br>');
   $('#hudBest').textContent = lab.best ? 'Мой рекорд: ' + lab.best : '';
   const gh = $('#hudGhost'), g = ghostNow();
   gh.hidden = !g;

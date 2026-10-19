@@ -29,7 +29,9 @@
    Ствол растёт по ступеням (подкова с ярмарочного шара, за цепочку, за очки) и слабеет от попаданий: ядро, двустволка, веер, очередь, разрывные.
    События: пике, звено, похититель, спасение бурёнки, цепочка и подкова, ярмарочный шар, новая ступень ствола, золотое НЛО и его ярость, броня слетает,
    набат «Станица в опасности», чистая волна, подсчёт бурёнок, ночной налёт и «Идеально!».
-   Лицо игры: кубанская ночь при луне, белёные хаты с тёплыми окнами, холодные неоновые НЛО.
+   Лицо игры: кубанская ночь при луне, белёные хаты с тёплыми окнами, холодные неоновые НЛО на фоне большой луны.
+   Арт (разбор 19.10.2026): «тёплая станица против холодного неона» — три слоя яркости: станица и поле приглушены, неон строя и луна
+   ярче всего, пушка — в своём пятне света. Длиннофокусная камера, задник с луной и тополями-силуэтами, три силуэта тарелок по рядам.
    Палитра: ночь #0b1233, хаты #f4efe4, солома #c9a24a, окна #ffc65a, лучи НЛО #5fe0ff #ff6ad5, луч похитителя #b6ff5c, опасность #ff4d5e.
    Три фирменных приёма: луч под каждым НЛО его цвета (краснеет перед выстрелом); тёплые окна хат, которые мигают набатом;
    бурёнка, которая плывёт вверх в зелёном луче.
@@ -44,12 +46,13 @@ const GAME = {
     { input: 'move', text: 'катить пушку' },
     { input: 'a', text: 'выстрел' },
   ],
-  camera: { type: 'iso', tilt: 1.08, target: [0, 0, 1] }, // ниже обычного «iso»: видно и горы с луной, и хаты станицы за пушкой
-  field: { w: 26, h: 33 },
+  camera: { type: 'iso', tilt: 1.08, target: [0, 0, 0.5], fov: 0.55 }, // длиннофокусная: перспектива сжата, строй крупнее, хаты ниже и уже
+  field: { w: 25, h: 27 }, // камера держит в кадре поле до улицы: хаты за пушкой видны крышами, бой — крупно
   shadowSize: 26,
   sky: ['#0b1233', '#5b3f72'],
   fog: 0.008,
   accent: '#ffe08a',
+  scoreColor: '#ffd23f', // счёт золотом
   decisions: [
     'Чувство: напряжение растёт к концу волны, последнее НЛО несётся как сумасшедшее, а за спиной — хаты, которые надо уберечь',
     'Честность: перед выстрелом луч под НЛО краснеет, путь снаряда виден на земле, перед пике и похищением — круг на земле',
@@ -99,6 +102,8 @@ const GAME = {
   LINE_Z: 9.2, // плетень станицы: если НЛО дошло сюда — партия проиграна
   SHIELD_Z: 7.4,
   HUT_Z: 15.4, // ряд хат за пушкой
+  SKY_Z: -19.5, // задник с небом и луной: за ним — «за горизонтом»
+  MOON: { x: 3.5, y: 3.1, r: 2.7 },
   EDGE: 12, // край, до которого катится пушка и шагает строй
   ROWS: [ // цвет ряда, его имя для цепочки и очки (дальние ряды дороже, как в оригинале)
     { color: '#5fe0ff', name: 'голубых', points: 10 }, { color: '#7cf5a8', name: 'зелёных', points: 10 },
@@ -129,8 +134,8 @@ const GAME = {
       scorchN: 0, geo: { core: new T.IcosahedronGeometry(1, 1), oct: new T.OctahedronGeometry(1), lane: new T.BoxGeometry(1, 0.02, 1), shoe: new T.TorusGeometry(0.42, 0.11, 6, 14, Math.PI * 1.35).rotateZ(-1.175 * Math.PI) }, tmp: { m: new T.Matrix4(), q: new T.Quaternion(), e: new T.Euler(), s: new T.Vector3(), p: new T.Vector3(), c: new T.Color(), zero: new T.Matrix4().makeScale(0, 0, 0) },
     });
     // ночь над станицей: лунный свет вместо солнца, тёплые окна хат — контраст с холодными лучами НЛО
-    lab.light.sun.color.set('#c9d4ff'); lab.light.sun.intensity = 1.5;
-    lab.light.hemi.intensity = 1.0;
+    lab.light.sun.color.set('#aebcff'); lab.light.sun.intensity = 1.25;
+    lab.light.hemi.intensity = 0.85;
     this.scenery(lab, scene);
     this.stanica(lab);
     this.cannon(lab);
@@ -139,7 +144,36 @@ const GAME = {
     this.herd(lab);
     this.buildShields(lab);
     this.buildWave(lab);
-    lab.hud('wave', 'Волна 1');
+    lab.hud('wave', 'Волна 1', { color: '#c4b2ff', size: 15 });
+    const v = lab.view; // живая камера: база — расстояние, которое подобрала оболочка
+    st.cam = { d: v.distance, k: 1, punch: 0, tx: v.target.x, tz: v.target.z, tilt: v.tilt, last: v.distance };
+    if (!lab.playing) this.poster(lab);
+  },
+  // афиша в меню: строй на местах на фоне луны, похититель тянет бурёнку, камера ближе. Первый кадр партии всё возвращает:
+  // меню рисует то, что поставлено здесь, а партия начинается с влёта волны, и камера плавно отъезжает на место
+  poster(lab) {
+    const st = lab.state, v = lab.view, C = st.cam, keep = st.saucers.map(s => [s.x, s.y, s.z]);
+    st.saucers.forEach(s => { s.x = s.bx; s.y = 1.45; s.z = s.bz; });
+    const w = st.cows[1] || st.cows[0], front = st.saucers.filter(s => s.row === 0);
+    const thief = w && front.length ? front.reduce((a, b) => (Math.abs(b.bx - w.x) < Math.abs(a.bx - w.x) ? b : a)) : null;
+    if (thief) { thief.x = w.x; thief.z = w.z; thief.y = 2.4; thief.abduct = { phase: 'beam', cow: w }; w.state = 'lift'; w.y = 0.7; }
+    this.drawSaucers(lab, 0); this.moveCows(lab, 0);
+    st.saucers.forEach((s, i) => { [s.x, s.y, s.z] = keep[i]; });
+    if (thief) { thief.abduct = null; w.state = 'graze'; w.y = 0; }
+    C.k = 0.86; v.distance = C.d * C.k; C.last = v.distance; v.tilt = C.tilt + 0.04; v.target.set(2, 1.5, -5.5);
+  },
+  // живая камера: еле заметно дышит, к последнему НЛО волны наезжает и ведёт его, от сбитого золотого НЛО — короткий толчок
+  liveCamera(lab, dt) {
+    const st = lab.state, v = lab.view, C = st.cam;
+    if (!v || !C) return;
+    if (Math.abs(v.distance - C.last) > 0.01) C.d = v.distance / C.k; // окно поменяло размер — оболочка подобрала новое расстояние
+    const last = !st.bonus && st.alive === 1 ? st.saucers.find(s => s.alive && !s.hidden) : null;
+    C.punch = Math.max(0, C.punch - dt * 1.5);
+    C.k = lab.damp(C.k, (last ? 0.93 : 1) * (1 - 0.07 * C.punch), 2.2, dt);
+    const tx = C.tx + Math.sin(lab.t * 0.31) * 0.3 + (last ? (last.x - C.tx) * 0.22 : 0), tz = C.tz + Math.sin(lab.t * 0.23) * 0.2 + (last ? (last.z - C.tz) * 0.15 : 0);
+    v.target.set(lab.damp(v.target.x, tx, 2.2, dt), lab.damp(v.target.y, 0, 2.2, dt), lab.damp(v.target.z, tz, 2.2, dt));
+    v.tilt = lab.damp(v.tilt, C.tilt, 2.2, dt);
+    v.distance = C.d * C.k; C.last = v.distance;
   },
 
   // ---------- каждый кадр ----------
@@ -173,17 +207,21 @@ const GAME = {
     this.moveCows(lab, dt);
     this.drawSaucers(lab, dt);
     this.lifeOfStanica(lab, dt);
+    this.liveCamera(lab, dt);
 
     lab.stat('под стогом, %', Math.round(100 * st.shieldTime / Math.max(0.1, lab.t)));
-    lab.hud('left', st.bonus ? `Сбито ${st.bonus.killed} из ${st.bonus.total}` : 'НЛО: ' + st.alive);
+    // HUD в цветах игры: волна сиреневым, стадо зелёным лучом, цепочка — цветом своего ряда, ствол — цветом ступени, тревога — красным
+    lab.hud('left', st.bonus ? `Сбито ${st.bonus.killed} из ${st.bonus.total}` : 'НЛО: ' + st.alive, { color: '#c9d4ff' });
+    const herd = st.cows.filter(w => w.state !== 'gone').length;
+    lab.hud('herd', st.cows.length ? `🐄 × ${herd}` : null, { color: herd ? this.BEAM : '#ff8a7a' });
     const mult = this.mult(lab);
-    lab.hud('combo', st.combo >= 2 ? `Серия ${st.combo}` + (mult > 1 ? ` · очки ×${mult}` : '') : null);
+    lab.hud('combo', st.combo >= 2 ? `Серия ${st.combo}` + (mult > 1 ? ` · очки ×${mult}` : '') : null, { color: '#7cf5a8', size: mult > 1 ? 15 : 13 });
     const R = this.ROWS[st.chainRow];
-    lab.hud('chain', cfg.chain > 0 && R && st.chainN > 0 ? `Цепочка ${R.name}: ${'●'.repeat(st.chainN)}${'○'.repeat(Math.max(0, cfg.chain - st.chainN))}` : null);
+    lab.hud('chain', cfg.chain > 0 && R && st.chainN > 0 ? `Цепочка ${R.name}: ${'●'.repeat(st.chainN)}${'○'.repeat(Math.max(0, cfg.chain - st.chainN))}` : null, { color: R ? R.color : null });
     const ups = cfg.balloonEvery > 0 || cfg.levelScore > 0 || cfg.chain > 0 || st.gunLv > 1;
-    lab.hud('power', ups ? `Ствол: ${this.WEAPONS[st.gunLv - 1].name} (${st.gunLv}/${this.WEAPONS.length})` : null);
+    lab.hud('power', ups ? `Ствол: ${this.WEAPONS[st.gunLv - 1].name} (${st.gunLv}/${this.WEAPONS.length})` : null, { color: this.WEAPONS[st.gunLv - 1].color, size: 14 });
     const thief = st.saucers.some(s => s.alive && s.abduct && s.abduct.phase === 'beam');
-    lab.hud('alarm', thief ? '🐄 Бурёнку уносят! Сбей похитителя' : st.danger ? '🔔 Станица в опасности!' : null);
+    lab.hud('alarm', thief ? '🐄 Бурёнку уносят! Сбей похитителя' : st.danger ? '🔔 Станица в опасности!' : null, { color: thief ? this.BEAM : '#ff6a5a', size: 16 });
   },
 
   overNote(lab) {
@@ -202,50 +240,74 @@ const GAME = {
     return notes;
   },
 
-  // ---------- мир: горы, тополя, выгон, плетень с подсолнухами ----------
+  // ---------- мир: задник с луной, тополя, живой выгон, плетень с подсолнухами ----------
+  // Три слоя яркости: станица и поле приглушены, холодный неон строя — самое яркое, луна за строем даёт тарелкам силуэт.
   scenery(lab, scene) {
-    const T = lab.THREE, Z = this.LINE_Z;
-    lab.ground({ w: 160, h: 160, color: '#2f5a35', bumps: 4, flat: 0.3 });
-    lab.box(27, 0.05, 25, '#447a3e', { at: [0, 0.025, -3.5], shadow: false }); // выгон, где идёт бой
-    lab.box(30, 0.04, 5.6, '#6b5a44', { at: [0, 0.03, 12.6], shadow: false }); // улица станицы, по ней катится пушка
+    const T = lab.THREE, st = lab.state, Z = this.LINE_Z;
+    lab.ground({ w: 160, h: 160, color: '#22413a', bumps: 4, flat: 0.3 });
+    lab.box(27, 0.05, 25, '#2f5a40', { at: [0, 0.025, -3.5], shadow: false }); // выгон, где идёт бой
+    lab.box(30, 0.04, 5.6, '#8a7a62', { at: [0, 0.03, 12.6], shadow: false }); // светлая пыльная улица: пушку на ней видно
     // борозды поперёк поля: по ним видно, сколько осталось НЛО до станицы
-    const fur = lab.instances(new T.BoxGeometry(26, 0.06, 0.45), '#52894a', 12, { shadow: false });
+    const fur = lab.instances(new T.BoxGeometry(26, 0.06, 0.45), '#3a6a48', 12, { shadow: false });
     for (let i = 0; i < 12; i++) lab.place(fur, i, [0, 0.06, -16 + i * 2]);
-    // колеи на улице
-    const rut = lab.instances(new T.BoxGeometry(30, 0.05, 0.22), '#54452f', 2, { shadow: false });
+    const rut = lab.instances(new T.BoxGeometry(30, 0.05, 0.22), '#6e5e46', 2, { shadow: false }); // колеи на улице
     lab.place(rut, 0, [0, 0.06, this.PLAYER_Z - 0.55]); lab.place(rut, 1, [0, 0.06, this.PLAYER_Z + 0.65]);
-    // горы Кавказа на горизонте со снежными шапками — слиты в один меш на цвет
+    // живое поле: кочки травы и редкие цветы, всё низкое и тёмное — фон для строя
+    const tuft = lab.instances(new T.ConeGeometry(0.13, 0.42, 4), '#ffffff', 240, { shadow: false });
+    for (let i = 0; i < 240; i++) lab.place(tuft, i, [lab.rand(-13, 13), 0.2, lab.rand(-16.5, 8.5)], { rot: lab.rand(0, 3), scale: [1, lab.rand(0.6, 1.3), 1], color: lab.pick(['#3f7a4e', '#4a8a55', '#356a46', '#2f5e40']) });
+    const flower = lab.instances(new T.IcosahedronGeometry(0.08, 0), '#ffffff', 70, { shadow: false });
+    for (let i = 0; i < 70; i++) lab.place(flower, i, [lab.rand(-13, 13), 0.3, lab.rand(-16, 8.5)], { color: lab.pick(['#e8e4ff', '#ffe27a', '#ff9ec7', '#9fc4ff']) });
+    // задник: небо от горизонта до верха кадра — строй летит на его фоне, налёты и похитители уходят «за горизонт»
+    const sky = new T.PlaneGeometry(130, 30, 1, 6), col = [], top = new T.Color('#0b1233'), hor = new T.Color('#5a3f78');
+    for (let i = 0; i < sky.attributes.position.count; i++) { const k = (sky.attributes.position.getY(i) + 15) / 30, c = hor.clone().lerp(top, Math.min(1, k * 1.6)); col.push(c.r, c.g, c.b); }
+    sky.setAttribute('color', new T.Float32BufferAttribute(col, 3));
+    const back = new T.Mesh(sky, new T.MeshBasicMaterial({ vertexColors: true, fog: false }));
+    back.position.set(0, 13, this.SKY_Z); back.userData.noShadow = true; scene.add(back);
+    // большая луна за строем: с ореолом и пятнами, тарелки читаются на ней силуэтом
+    const M = this.MOON;
+    const halo = lab.mesh(new T.CircleGeometry(M.r * 1.9, 40), lab.mat('#3a2f2a', { unlit: true, add: true }), { at: [M.x, M.y, this.SKY_Z + 0.1], shadow: false });
+    const moon = lab.mesh(new T.CircleGeometry(M.r, 40), lab.mat('#fff1c2', { unlit: true, glow: 0.3 }), { at: [M.x, M.y, this.SKY_Z + 0.2], shadow: false });
+    const spots = lab.addons.BufferGeometryUtils.mergeGeometries([[-0.95, 0.7, 0.55], [0.85, -0.3, 0.75], [-0.25, -1.2, 0.4], [1.25, 1.1, 0.32]].map(([dx, dy, r]) => new T.CircleGeometry(r, 16).translate(dx, dy, 0)));
+    lab.mesh(spots, lab.mat('#ead9a6', { unlit: true }), { at: [M.x, M.y, this.SKY_Z + 0.25], shadow: false }).material.fog = false; // пятна на луне — одна деталь
+    halo.material.fog = false; moon.material.fog = false;
+    // звёзды на заднике
+    const pts = [];
+    for (let i = 0; i < 140; i++) { const x = lab.rand(-60, 60), y = lab.rand(3, 27); if (Math.hypot(x - M.x, y - M.y) > M.r * 2) pts.push(x, y, this.SKY_Z + 0.3); }
+    const g = new T.BufferGeometry(); g.setAttribute('position', new T.Float32BufferAttribute(pts, 3));
+    scene.add(new T.Points(g, new T.PointsMaterial({ color: '#dfe6ff', size: 0.16, fog: false })));
+    // горы Кавказа по краям задника, луна — в просвете между ними
     const hills = [];
-    for (let i = 0; i < 10; i++) {
-      const x = -90 + i * 20 + lab.rand(-5, 5), z = -62 - lab.rand(0, 16), r = lab.rand(13, 21), h = lab.rand(20, 36);
-      hills.push(lab.cone(r, h, '#33406b', { at: [x, h / 2 - 1, z], sides: 6, rot: lab.rand(0, 3) }));
-      hills.push(lab.cone(r * 0.36, h * 0.36, '#eef3ff', { at: [x, h - 1 - h * 0.18 + 0.05, z], sides: 6, rot: lab.rand(0, 3) }));
+    for (let i = 0; i < 12; i++) {
+      const side = i % 2 ? 1 : -1, x = side * lab.rand(11 + (i >> 1) * 0.6, 46), r = lab.rand(2.5, 4.5), h = lab.rand(2.2, 4.2);
+      hills.push(lab.cone(r, h, '#1c2346', { at: [x, h / 2 - 0.5, this.SKY_Z + 1.2], sides: 6, rot: lab.rand(0, 3) }));
+      hills.push(lab.cone(r * 0.34, h * 0.34, '#8f9cc4', { at: [x, h - 0.5 - h * 0.17 + 0.05, this.SKY_Z + 1.2], sides: 6, rot: lab.rand(0, 3) }));
     }
     lab.noShadow(lab.merge(hills));
-    // луна и звёзды
-    lab.ball(6, '#fff3c4', { at: [-34, 19, -100], unlit: true, glow: 0.9, detail: 2, shadow: false });
-    const pts = [];
-    for (let i = 0; i < 360; i++) { const a = lab.rand(0, Math.PI * 2), e = lab.rand(0.12, 1.3); pts.push(Math.cos(a) * Math.cos(e) * 170, Math.sin(e) * 170, Math.sin(a) * Math.cos(e) * 170 - 40); }
-    const g = new T.BufferGeometry(); g.setAttribute('position', new T.Float32BufferAttribute(pts, 3));
-    scene.add(new T.Points(g, new T.PointsMaterial({ color: '#ffffff', size: 0.9, fog: false })));
-    // пирамидальные тополя — копии одного дерева по краям поля и за станицей
-    const N = 46, crown = lab.instances(new T.ConeGeometry(1, 1, 7), '#2b5a3a', N), trunk = lab.instances(new T.CylinderGeometry(0.15, 0.22, 1, 5), '#5a3d2b', N);
+    // туман над дальним краем поля: тянется полосами
+    const mg = new T.PlaneGeometry(36, 1.4, 12, 2), mc = [], mist = new T.Color('#1a2036'); // края гаснут в чёрный: при сложении цвета полоса без краёв
+    for (let i = 0; i < mg.attributes.position.count; i++) { const k = (1 - Math.abs(mg.attributes.position.getX(i)) / 18) * (1 - Math.abs(mg.attributes.position.getY(i)) / 0.7); mc.push(mist.r * k, mist.g * k, mist.b * k); }
+    mg.setAttribute('color', new T.Float32BufferAttribute(mc, 3));
+    const mm = new T.MeshBasicMaterial({ vertexColors: true, transparent: true, blending: T.AdditiveBlending, depthWrite: false });
+    st.mist = [0, 1].map(i => { const m = new T.Mesh(mg, mm); m.position.set(lab.rand(-4, 4), 0.5 + i * 0.3, -13.5 - i * 1.8); m.userData.noShadow = true; scene.add(m); return m; });
+    // пирамидальные тополя — тонкие, синие в лунном свете; дальний ряд стоит силуэтами на фоне луны
+    const N = 44, crown = lab.instances(new T.ConeGeometry(1, 1, 7), '#1f3550', N), trunk = lab.instances(new T.CylinderGeometry(0.12, 0.18, 1, 5), '#3a2c2a', N);
     for (let i = 0; i < N; i++) {
       let x, z;
-      if (i < 24) { x = (i % 2 ? 1 : -1) * lab.rand(16.5, 36); z = lab.rand(-30, 10); } else if (i < 36) { x = lab.rand(-45, 45); z = lab.rand(-50, -36); } else { x = (i % 2 ? 1 : -1) * lab.rand(15.5, 22); z = lab.rand(13, 22); }
-      const h = lab.rand(4, 7);
+      const far = i >= 22 && i < 34;
+      if (i < 22) { x = (i % 2 ? 1 : -1) * lab.rand(18, 32); z = lab.rand(-17, 8); } else if (far) { x = lab.rand(-26, 26); z = this.SKY_Z + lab.rand(1.6, 3); } else { x = (i % 2 ? 1 : -1) * lab.rand(16, 22); z = lab.rand(13, 22); }
+      const h = far ? lab.rand(2.2, 3.8) : lab.rand(3.5, 6);
       lab.place(trunk, i, [x, 0.6, z], { scale: [1, 1.2, 1] });
-      lab.place(crown, i, [x, 1.1 + h / 2, z], { scale: [h * 0.24, h, h * 0.24], rot: lab.rand(0, 3), color: lab.pick(['#ffffff', '#d8f0d0', '#c2e0bb']) });
+      lab.place(crown, i, [x, 1.1 + h / 2, z], { scale: [h * 0.15, h * 1.1, h * 0.15], rot: lab.rand(0, 3), color: lab.pick(['#ffffff', '#d6e2f0', '#c4d4e6']) });
     }
     // плетень — граница станицы. «Видно = правда»: НЛО, дошедшее до плетня, садится на станицу
-    const posts = lab.instances(new T.CylinderGeometry(0.06, 0.08, 0.95, 5), '#7a5232', 24);
+    const posts = lab.instances(new T.CylinderGeometry(0.06, 0.08, 0.95, 5), '#6a4a32', 24);
     for (let i = 0; i < 24; i++) lab.place(posts, i, [-12.6 + i * 1.1, 0.47, Z + 0.4], { rot: lab.rand(-0.1, 0.1) });
     const rails = [];
-    for (const y of [0.25, 0.48, 0.71]) rails.push(lab.box(25.6, 0.14, 0.09, '#9a6b42', { at: [0, y, Z + 0.4], rot: [lab.rand(-0.01, 0.01), 0, 0] }));
+    for (const y of [0.25, 0.48, 0.71]) rails.push(lab.box(25.6, 0.14, 0.09, '#86603e', { at: [0, y, Z + 0.4], rot: [lab.rand(-0.01, 0.01), 0, 0] }));
     lab.merge(rails);
     // подсолнухи у плетня и во дворах хат
-    const F = 24, stem = lab.instances(new T.CylinderGeometry(0.04, 0.05, 1.3, 4), '#3f8a3a', F);
-    const petals = lab.instances(new T.CylinderGeometry(0.3, 0.3, 0.06, 9), '#ffcc22', F), heart = lab.instances(new T.CylinderGeometry(0.15, 0.15, 0.08, 8), '#5a3d2b', F);
+    const F = 24, stem = lab.instances(new T.CylinderGeometry(0.04, 0.05, 1.3, 4), '#2f6e3a', F);
+    const petals = lab.instances(new T.CylinderGeometry(0.3, 0.3, 0.06, 9), '#e0b020', F), heart = lab.instances(new T.CylinderGeometry(0.15, 0.15, 0.08, 8), '#4a3220', F);
     for (let i = 0; i < F; i++) {
       const yard = i >= 16, x = yard ? [-9, -4.5, 4.5, 9][(i - 16) % 4] + ((i - 16) < 4 ? -0.35 : 0.35) : -12.2 + i * 1.62 + lab.rand(-0.2, 0.2);
       const z = yard ? this.HUT_Z - 0.9 + lab.rand(-0.2, 0.2) : Z + 0.95, h = lab.rand(0.9, 1.25);
@@ -253,6 +315,12 @@ const GAME = {
       lab.place(petals, i, [x, 1.3 * h, z + 0.05], { rot: [1.15, 0, 0] });
       lab.place(heart, i, [x, 1.31 * h, z + 0.09], { rot: [1.15, 0, 0] });
     }
+    // светлячки над плетнём и во дворах
+    st.flies = [...Array(26)].map(() => ({ x: lab.rand(-13, 13), y: lab.rand(0.4, 1.8), z: lab.rand(8.6, 15), ph: lab.rand(0, 6) }));
+    const fg = new T.BufferGeometry(); fg.setAttribute('position', new T.Float32BufferAttribute(new Float32Array(st.flies.length * 3), 3));
+    st.fliesPts = new T.Points(fg, new T.PointsMaterial({ color: '#fff27a', size: 0.22, transparent: true, blending: T.AdditiveBlending, depthWrite: false }));
+    st.flies.forEach((f, i) => fg.attributes.position.setXYZ(i, f.x, f.y, f.z));
+    st.fliesPts.frustumCulled = false; scene.add(st.fliesPts);
   },
 
   // ---------- станица за пушкой: ряд белёных хат под соломой, как в первой версии игры ----------
@@ -262,17 +330,17 @@ const GAME = {
     st.huts = [];
     [[-11.2, 0.12], [-6.8, -0.08], [-2.3, 0.05], [2.3, -0.05], [6.8, 0.1], [11.2, -0.12]].forEach(([x0, r], n) => {
       const x = x0 + lab.rand(-0.25, 0.25), z = Z + lab.rand(-0.3, 0.3), h = lab.group({ at: [x, 0, z], rot: Math.PI + r });
-      lab.box(2.6, 1.6, 2, n % 2 ? '#e7eefc' : '#f4efe4', { parent: h, at: [0, 0.8, 0] }); // стены: белёные, у каждой второй — с синькой
-      lab.box(2.8, 0.18, 2.2, '#8a6a4a', { parent: h, at: [0, 0.09, 0] }); // призба
-      lab.cone(2.25, 1.5, n % 3 ? '#b38a3c' : '#c29a4a', { parent: h, at: [0, 2.35, 0], sides: 4, rot: Math.PI / 4, scale: [1.05, 1, 0.85] });
-      lab.box(0.35, 0.8, 0.35, '#b3a089', { parent: h, at: [0.6, 2.7, 0.2] }); // труба
+      lab.box(2.6, 1.6, 2, n % 2 ? '#aeb6cc' : '#bdbcc0', { parent: h, at: [0, 0.8, 0] }); // стены: белёные, в лунном свете холодные и тише неона
+      lab.box(2.8, 0.18, 2.2, '#6a5442', { parent: h, at: [0, 0.09, 0] }); // призба
+      lab.cone(2.25, 1.5, n % 3 ? '#76684a' : '#827250', { parent: h, at: [0, 2.35, 0], sides: 4, rot: Math.PI / 4, scale: [1.05, 1, 0.85] }); // солома при луне — тёмная
+      lab.box(0.35, 0.8, 0.35, '#8a8090', { parent: h, at: [0.6, 2.7, 0.2] }); // труба
       lab.box(0.5, 1.0, 0.06, '#7a4a2a', { parent: h, at: [0.9, 0.62, -1.02] }); // дверь
       for (const wx of [-0.75, 0.15]) {
         lab.box(0.46, 0.46, 0.06, '#ffc65a', { parent: h, at: [wx, 0.98, -1.02], unlit: true, glow: 0.9 });
-        lab.box(0.74, 0.54, 0.04, '#3b6fd1', { parent: h, at: [wx, 0.98, -1.01] }); // ставни
+        lab.box(0.74, 0.54, 0.04, '#2c4f96', { parent: h, at: [wx, 0.98, -1.01] }); // ставни
       }
       parts.push(h);
-      st.huts.push({ x, z, chimney: [x - 0.6 * Math.cos(r), 3.15, z - 0.2] });
+      st.huts.push({ x, z, r, chimney: [x - 0.6 * Math.cos(r), 3.15, z - 0.2] });
     });
     // колодец посреди станицы: низкий сруб с двускатной крышей, пушку не закрывает
     const w = lab.group({ at: [0, 0, Z + 0.4] });
@@ -306,6 +374,17 @@ const GAME = {
       const pumpkin = i % 3 === 0, x = lab.pick([-13.4, -9, -4.5, 4.5, 9, 13.4]) + lab.rand(-0.6, 0.6);
       lab.place(veg, i, [x, 0.2, Z - 1 + lab.rand(-0.3, 0.6)], { scale: pumpkin ? [1.3, 0.9, 1.3] : [1, 0.85, 1], rot: lab.rand(0, 6), color: pumpkin ? '#ff9a2e' : lab.pick(['#7fcf6a', '#9ad97c', '#6cbf5e']) });
     }
+    // тёплые пятна света от окон на улице и фонарь у колодца: станицу видно уютной, и под набатом пятна краснеют вместе с окнами
+    st.poolMat = new T.MeshBasicMaterial({ color: '#4a2e10', transparent: true, blending: T.AdditiveBlending, depthWrite: false });
+    st.poolWarm = st.poolMat.color.clone(); st.poolRed = new T.Color('#5a1410');
+    const pools = lab.instances(new T.CircleGeometry(1, 18).rotateX(-Math.PI / 2), st.poolMat, 14, { shadow: false });
+    let k = 0;
+    for (const h of st.huts) for (const wx of [-0.75, 0.15]) lab.place(pools, k++, [h.x - wx * Math.cos(h.r), 0.08, h.z - 1.9], { scale: [0.9, 1, 1.3] });
+    const lx = 1.5, lz = Z - 1.1; // фонарь на столбе у колодца
+    lab.place(pools, k++, [lx, 0.08, lz], { scale: 2.2 });
+    lab.place(pools, k++, [0, 0.08, this.PLAYER_Z], { scale: 0 }); // запас
+    lab.merge([lab.cyl(0.06, 0.08, 2.2, '#3a2c22', { at: [lx, 1.1, lz], sides: 6 }), lab.box(0.5, 0.06, 0.06, '#3a2c22', { at: [lx - 0.2, 2.15, lz] })]);
+    lab.box(0.24, 0.3, 0.24, '#ffc65a', { at: [lx - 0.42, 1.95, lz], unlit: true, glow: 1.2, shadow: false });
     st.windows = lab.mat('#ffc65a', { unlit: true, glow: 0.9 });
     st.winWarm = st.windows.color.clone(); // тёплый свет окна вместе со свечением; набат мигает красным той же яркости
     st.winRed = new T.Color('#ff5a3d').multiplyScalar(st.winWarm.r / new T.Color('#ffc65a').r);
@@ -321,13 +400,22 @@ const GAME = {
     const w = st.windows;
     if (st.danger) {
       if ((st.bellT -= dt) <= 0) { st.bellT = 0.75; lab.tone(880, 0.35, 'sine', 0.07, 860); lab.tone(1320, 0.25, 'sine', 0.035, 1300); }
-      w.color.copy(Math.sin(lab.t * 14) > 0 ? st.winRed : st.winWarm);
-    } else w.color.copy(st.winWarm);
+      const red = Math.sin(lab.t * 14) > 0;
+      w.color.copy(red ? st.winRed : st.winWarm); st.poolMat.color.copy(red ? st.poolRed : st.poolWarm);
+    } else { w.color.copy(st.winWarm); st.poolMat.color.copy(st.poolWarm); }
+    // туман тянется над дальним краем поля, светлячки кружат над плетнём
+    st.mist.forEach((m, i) => { m.position.x = Math.sin(lab.t * (0.05 + i * 0.02) + i * 2) * 5; });
+    const a = st.fliesPts.geometry.attributes.position;
+    st.flies.forEach((f, i) => a.setXYZ(i, f.x + Math.sin(lab.t * 0.7 + f.ph) * 0.8, f.y + Math.sin(lab.t * 1.3 + f.ph * 2) * 0.3, f.z + Math.cos(lab.t * 0.5 + f.ph) * 0.6));
+    a.needsUpdate = true;
+    st.fliesPts.material.opacity = 0.55 + 0.45 * Math.sin(lab.t * 3);
   },
 
   // ---------- пушка и казак-наводчик ----------
   cannon(lab) {
-    const g = lab.group({ at: [0, 0, this.PLAYER_Z] });
+    const T = lab.THREE, g = lab.group({ at: [0, 0, this.PLAYER_Z], scale: 1.25 }); // пушка-герой крупнее жизни: видно краем глаза
+    // тёплое пятно света под пушкой — её видно на любой части улицы
+    lab.mesh(new T.CircleGeometry(1.5, 20).rotateX(-Math.PI / 2), new T.MeshBasicMaterial({ color: '#4a3414', transparent: true, blending: T.AdditiveBlending, depthWrite: false }), { parent: g, at: [0, 0.07, 0], shadow: false });
     lab.box(1.5, 0.42, 1.2, '#c0392b', { parent: g, at: [0, 0.55, 0], round: 0.08 });
     lab.box(1.62, 0.08, 1.3, '#7a1f17', { parent: g, at: [0, 0.78, 0] });
     const wheels = [];
@@ -364,50 +452,84 @@ const GAME = {
     lab.state.gun = { g, barrel, tubes, muzzles, drum, charge, wheels, gunner: gun, body, vx: 0 };
   },
 
-  // ---------- тарелка НЛО: шесть деталей, у каждой — пачка копий на все НЛО сразу ----------
+  // ---------- НЛО: три силуэта по рядам, у каждого силуэта — пачка копий на все НЛО сразу ----------
+  // Ближние ряды — плоская «сковородка» на ножках, средние — тарелка с куполом, дальние — высокий «колокол» с антенной.
+  // Корпус — матовый тёмный металл, светится только узкий неоновый обод цвета ряда и лампы: строй читается рисунком, а не облаком свечения.
+  SHAPE_OF: [0, 0, 1, 1, 2, 2], // силуэт по номеру ряда
   saucerParts(lab) {
     const T = lab.THREE, st = lab.state, n = this.POOL, BGU = lab.addons.BufferGeometryUtils;
-    const lights = BGU.mergeGeometries([...Array(8)].map((_, i) => { const a = i / 8 * Math.PI * 2; return new T.BoxGeometry(0.16, 0.12, 0.16).translate(Math.cos(a) * 0.86, -0.08, Math.sin(a) * 0.86); }));
+    const tint = (g, hex) => { g = g.toNonIndexed(); g.deleteAttribute('uv'); const c = new T.Color(hex), a = new Float32Array(g.attributes.position.count * 3); for (let i = 0; i < a.length; i += 3) { a[i] = c.r; a[i + 1] = c.g; a[i + 2] = c.b; } g.setAttribute('color', new T.BufferAttribute(a, 3)); return g; };
+    const plain = g => { g = g.toNonIndexed(); g.deleteAttribute('uv'); return g; };
+    const ring = (k, r, y, size) => [...Array(k)].map((_, i) => { const a = i / k * Math.PI * 2; return plain(new T.BoxGeometry(size, size * 0.8, size).translate(Math.cos(a) * r, y, Math.sin(a) * r)); });
+    const half = (r, y, sy) => new T.SphereGeometry(r, 12, 6, 0, Math.PI * 2, 0, Math.PI / 2).scale(1, sy, 1).translate(0, y, 0);
+    const legs = [0, 1, 2].map(i => { const a = i / 3 * Math.PI * 2 + 0.5; return tint(new T.BoxGeometry(0.07, 0.36, 0.07).translate(Math.cos(a) * 0.5, -0.3, Math.sin(a) * 0.5), '#232637'); });
+    const shapes = [
+      { // «сковородка»: широкая и плоская, на трёх ножках
+        hull: [tint(new T.CylinderGeometry(0.62, 0.86, 0.16, 14), '#3d4258'), tint(new T.ConeGeometry(0.62, 0.2, 14).rotateX(Math.PI).translate(0, -0.18, 0), '#2a2e40'), ...legs],
+        neon: [plain(new T.CylinderGeometry(0.9, 0.9, 0.07, 18).translate(0, -0.04, 0))],
+        dome: half(0.32, 0.07, 0.6),
+      },
+      { // классическая тарелка с куполом и лампами по нижнему кольцу
+        hull: [tint(new T.CylinderGeometry(0.55, 0.82, 0.3, 14), '#4a5068'), tint(new T.CylinderGeometry(0.5, 0.3, 0.16, 12).translate(0, -0.23, 0), '#2e3246')],
+        neon: [plain(new T.CylinderGeometry(0.88, 0.88, 0.07, 18).translate(0, -0.1, 0)), ...ring(6, 0.42, -0.31, 0.11)],
+        dome: half(0.42, 0.12, 1),
+      },
+      { // высокий «колокол» с антенной
+        hull: [tint(new T.CylinderGeometry(0.3, 0.7, 0.66, 12).translate(0, 0.14, 0), '#4a4460'), tint(new T.CylinderGeometry(0.78, 0.7, 0.12, 14).translate(0, -0.2, 0), '#2e2a40'), tint(new T.CylinderGeometry(0.025, 0.025, 0.5, 4).translate(0, 0.72, 0), '#8a8aa0')],
+        neon: [plain(new T.CylinderGeometry(0.84, 0.84, 0.06, 18).translate(0, -0.14, 0)), plain(new T.CylinderGeometry(0.52, 0.58, 0.06, 14).translate(0, 0.12, 0)), plain(new T.IcosahedronGeometry(0.09, 0).translate(0, 0.98, 0))],
+        dome: half(0.27, 0.46, 0.9),
+      },
+    ];
+    const mk = (geo, m, shadow) => { const im = lab.instances(geo, m, n); im.frustumCulled = false; if (!shadow) lab.noShadow(im); im.setColorAt(0, st.tmp.c.set('#ffffff')); for (let i = 1; i < n; i++) im.setColorAt(i, st.tmp.c); for (let i = 0; i < n; i++) im.setMatrixAt(i, st.tmp.zero); return im; };
+    const hullMat = new T.MeshStandardMaterial({ vertexColors: true, flatShading: true, roughness: 0.55, metalness: 0.45 });
+    st.shapes = shapes.map(sh => ({
+      hull: mk(BGU.mergeGeometries(sh.hull), hullMat, true),
+      neon: mk(BGU.mergeGeometries(sh.neon), lab.mat('#ffffff', { unlit: true, glow: 0.7 }), false),
+      dome: mk(sh.dome, lab.mat('#ffffff', { shiny: true }), true),
+    }));
     const armor = BGU.mergeGeometries([new T.CylinderGeometry(0.3, 0.52, 0.34, 8).translate(0, 0.32, 0), ...[0, 1, 2, 3].map(i => new T.ConeGeometry(0.08, 0.3, 4).translate(Math.cos(i * Math.PI / 2) * 0.32, 0.5, Math.sin(i * Math.PI / 2) * 0.32))].map(g => g.toNonIndexed()));
-    const beamGeo = new T.ConeGeometry(0.8, 1.35, 14, 1, true).translate(0, -0.78, 0);
-    const mk = (geo, m, shadow) => { const im = lab.instances(geo, m, n); im.frustumCulled = false; if (!shadow) lab.noShadow(im); im.setColorAt(0, st.tmp.c.set('#ffffff')); for (let i = 1; i < n; i++) im.setColorAt(i, st.tmp.c); return im; };
     st.parts = {
-      body: mk(new T.CylinderGeometry(0.55, 0.82, 0.3, 12), lab.mat('#c9cfdc', { shiny: true, metal: 0.35 }), true),
-      rim: mk(new T.CylinderGeometry(0.92, 0.92, 0.1, 12).translate(0, -0.1, 0), lab.mat('#6f7892', { metal: 0.4 }), true),
-      dome: mk(new T.SphereGeometry(0.42, 12, 6, 0, Math.PI * 2, 0, Math.PI / 2).translate(0, 0.12, 0), lab.mat('#ffffff', { shiny: true }), true),
-      lights: mk(lights, lab.mat('#ffffff', { unlit: true, glow: 1 }), false),
-      beam: mk(beamGeo, lab.mat('#ffffff', { unlit: true, add: true, side: 'double' }), false),
+      beam: mk(new T.ConeGeometry(0.8, 1.35, 14, 1, true).translate(0, -0.78, 0), lab.mat('#ffffff', { unlit: true, add: true, side: 'double' }), false),
       armor: mk(armor, lab.mat('#dfe4f2', { metal: 0.6, shiny: true }), false), // броня броненосца: шлем с шипами
+      pool: mk(new T.CircleGeometry(1, 16).rotateX(-Math.PI / 2), new T.MeshBasicMaterial({ color: '#ffffff', transparent: true, blending: T.AdditiveBlending, depthWrite: false }), false), // пятно света на траве
     };
     st.geo.armor = armor;
   },
   // каждый кадр: место, поворот, сжатие и цвета всех копий
   drawSaucers(lab, dt) {
-    const st = lab.state, P = st.parts, t = st.tmp;
+    const st = lab.state, P = st.parts, t = st.tmp, S = st.shapes;
     for (let i = 0; i < this.POOL; i++) {
       const s = st.slots[i];
+      const shape = s ? this.SHAPE_OF[s.row % this.SHAPE_OF.length] : -1;
+      for (let k = 0; k < S.length; k++) if (k !== shape || !s || s.hidden) { S[k].hull.setMatrixAt(i, t.zero); S[k].neon.setMatrixAt(i, t.zero); S[k].dome.setMatrixAt(i, t.zero); }
       if (!s || s.hidden) { for (const k in P) P[k].setMatrixAt(i, t.zero); continue; }
+      const H = S[shape];
       s.flash = Math.max(0, s.flash - dt); s.squash = lab.damp(s.squash, 1, 12, dt);
       const sc = s.scale;
       t.p.set(s.x, s.y, s.z); t.q.setFromEuler(t.e.set(s.rx, s.ry, s.rz)); t.s.set(sc * (2 - s.squash), sc * s.squash, sc * (2 - s.squash));
       t.m.compose(t.p, t.q, t.s);
-      for (const k of ['body', 'rim', 'dome', 'lights']) P[k].setMatrixAt(i, t.m);
+      H.hull.setMatrixAt(i, t.m); H.neon.setMatrixAt(i, t.m); H.dome.setMatrixAt(i, t.m);
       P.armor.setMatrixAt(i, s.armor && !s.wreck ? t.m : t.zero);
       // луч под тарелкой: тусклый, пока НЛО спокойно; краснеет и разгорается перед выстрелом; у похитителя — длинный зелёный до земли
       const ab = s.abduct, pull = ab && (ab.phase === 'beam') ? 1 : 0;
       const beam = s.wreck ? 0 : pull ? 1.5 : s.charging ? 1.3 : s.diveWarn || ab ? 1.1 : 0.55;
       t.q.identity(); t.s.set(sc * beam, sc * (s.wreck ? 0 : pull ? s.y / 1.5 : 1), sc * beam);
       t.m.compose(t.p, t.q, t.s); P.beam.setMatrixAt(i, t.m);
+      // пятно света на траве под тарелкой: растёт, когда НЛО снижается — пике видно по земле
+      const low = lab.clamp(1 - (s.y - 0.9) / 4, 0, 1), pr = s.wreck || s.y > 5 ? 0 : sc * (0.55 + 0.9 * low) * (pull ? 1.3 : 1);
+      t.p.set(s.x, 0.09, s.z); t.s.set(pr, 1, pr); t.m.compose(t.p, t.q, t.s); P.pool.setMatrixAt(i, t.m);
       const R = this.ROWS[s.row % this.ROWS.length].color, f = s.flash > 0 ? 3 : 1;
-      P.body.setColorAt(i, t.c.set(s.wreck ? '#5a5048' : '#ffffff').multiplyScalar(f));
-      P.dome.setColorAt(i, t.c.set(s.wreck ? '#3a3036' : ab ? this.BEAM : R).multiplyScalar(f));
+      H.hull.setColorAt(i, t.c.set(s.wreck ? '#7a5a48' : '#ffffff').multiplyScalar(f));
+      H.dome.setColorAt(i, t.c.set(s.wreck ? '#3a3036' : ab ? this.BEAM : R).multiplyScalar(0.8 * f));
       P.armor.setColorAt(i, t.c.set('#ffffff').multiplyScalar(f));
       const warnBlink = s.charging || s.diveWarn || (ab && ab.phase === 'warn');
       const blink = warnBlink ? (Math.sin(lab.t * 40) > 0 ? 1.6 : 0.4) : 1;
-      P.lights.setColorAt(i, t.c.set(s.wreck ? '#ff6a2a' : ab ? this.BEAM : s.charging || s.diveWarn ? '#ff4d5e' : R).multiplyScalar(blink));
+      H.neon.setColorAt(i, t.c.set(s.wreck ? '#ff6a2a' : ab ? this.BEAM : s.charging || s.diveWarn ? '#ff4d5e' : R).multiplyScalar(blink * (s.wreck ? 0.6 : 1)));
       P.beam.setColorAt(i, pull ? t.c.set(this.BEAM).multiplyScalar(0.35 + 0.15 * Math.sin(lab.t * 18)) : s.charging ? t.c.set('#ff2f45').multiplyScalar(0.5 + 0.3 * Math.sin(lab.t * 30)) : s.diveWarn ? t.c.set('#ff8a3d').multiplyScalar(0.45) : ab ? t.c.set(this.BEAM).multiplyScalar(0.2) : t.c.set(R).multiplyScalar(0.09));
+      P.pool.setColorAt(i, t.c.set(pull ? this.BEAM : s.charging ? '#ff2f45' : s.dive ? '#ff8a3d' : R).multiplyScalar(pull ? 0.35 : s.dive || s.charging ? 0.3 : 0.06));
     }
     for (const k in P) { P[k].instanceMatrix.needsUpdate = true; P[k].instanceColor.needsUpdate = true; }
+    for (const H of S) for (const k in H) { H[k].instanceMatrix.needsUpdate = true; H[k].instanceColor.needsUpdate = true; }
   },
 
   // ---------- стога-укрытия из блоков сена: одна пачка копий ----------
@@ -462,7 +584,7 @@ const GAME = {
       if (shape === 'шахматы' && r % 2) bx += 1.15;
       const armor = r >= rows - armored;
       // новая волна влетает сверху: каждая тарелка опускается на своё место по очереди
-      const s = { slot, bx, bz, row: r, col: c, alive: true, x: bx, y: 9 + r * 0.6, z: bz - 6, rx: 0, ry: lab.rand(0, 6), rz: 0, scale: armor ? 1.35 : 1.25, squash: 1, flash: 0, phase: lab.rand(0, 6.28), points: this.ROWS[r].points * (armor ? 2 : 1), armor, arrive: 0.5 + (r * cols + c) * 0.025 };
+      const s = { slot, bx, bz, row: r, col: c, alive: true, x: bx, y: 9 + r * 0.6, z: bz - 6, rx: 0, ry: lab.rand(0, 6), rz: 0, scale: armor ? 1.4 : 1.3, squash: 1, flash: 0, phase: lab.rand(0, 6.28), points: this.ROWS[r].points * (armor ? 2 : 1), armor, arrive: 0.5 + (r * cols + c) * 0.025 };
       st.slots[slot] = s; st.saucers.push(s);
     }
     st.total = st.saucers.length; st.alive = st.total; st.lastWarned = false; st.hurtInWave = false;
@@ -555,7 +677,7 @@ const GAME = {
         s.rz = lab.clamp((nx - s.x) * -1.5, -0.8, 0.8); s.rx = 0.5; s.ry += dt * 9;
         s.x = nx; s.y = q <= 1 ? lab.lerp(p0[1], 0.95, Math.min(1, q * 1.2)) : 0.95 + (q - 1) * 14; s.z = nz; // за пушкой взмывает над крышами
         lab.burst([s.x, s.y + 0.1, s.z], { count: 1, colors: ['#ff8a3d', '#ffd23f'], speed: 1, size: 0.18, life: 0.3, gravity: 0 });
-        if (Math.abs(s.x - c.x) < 1.05 && Math.abs(s.z - c.z) < 0.8 && s.y < 1.8) { // таран: пушку подбили, тарелка разбилась сама
+        if (Math.abs(s.x - c.x) < 1.2 && Math.abs(s.z - c.z) < 0.9 && s.y < 1.8) { // таран: пушку подбили, тарелка разбилась сама
           lab.count('попадания по пушке'); st.combo = 0;
           if (lab.hurt([c.x, 0.8, c.z], 'НЛО протаранило пушку')) { st.hurtInWave = true; this.loseLevel(lab); }
           this.killSaucer(lab, s, { noScore: true });
@@ -696,12 +818,12 @@ const GAME = {
     const volley = lv === 1 ? [[0, 0]] : lv === 2 ? [[-0.34, 0], [0.34, 0]] : [[-0.2, -0.2], [0, 0], [0.2, 0.2]]; // [сдвиг ствола, наклон]
     volley.forEach(([ox, dx], i) => {
       const boom = lv >= 5 && i === 1, r = boom ? 0.3 : 0.22;
-      const m = lab.mesh(st.geo.core, boom ? '#ffe0d0' : w.core, { at: [c.x + ox, 1.05, c.z - 1.5], glow: 1.6, shadow: false });
+      const m = lab.mesh(st.geo.core, boom ? '#ffe0d0' : w.core, { at: [c.x + ox * 1.25, 1.2, c.z - 1.8], glow: 1.6, shadow: false });
       m.scale.setScalar(r * 0.5);
       st.bullets.push({ m, r, dx, age: 0, main: i === Math.floor((volley.length - 1) / 2), boom, hit: false, trail: lab.trail(m, { color: w.color, width: boom ? 0.5 : 0.36, length: 12 }) });
     });
     st.shots++; st.reload = 1 / this.rate(lab); st.want = 0; lab.count('выстрелы');
-    lab.burst([c.x, 1.05, c.z - 1.5], { count: 8 + 3 * volley.length, colors: [w.core, w.color], speed: 5, size: 0.16, life: 0.18, gravity: 0, dir: [0, 0.3, -1] }); // дульная вспышка
+    lab.burst([c.x, 1.2, c.z - 1.8], { count: 8 + 3 * volley.length, colors: [w.core, w.color], speed: 5, size: 0.16, life: 0.18, gravity: 0, dir: [0, 0.3, -1] }); // дульная вспышка
     st.gun.g.position.z += 0.32; // отдача
     lab.pulse(st.gun.barrel, 1.4, 0.12);
     lab.sfx.shoot(); lab.tone(150, 0.07, 'sine', 0.1, 60);
@@ -762,9 +884,11 @@ const GAME = {
     }, 'linear');
   },
   // взрыв попадания: вспышка, искры летят дальше по направлению выстрела (сквозь врага), волна, глухой «бум»
+  // три слоя: белая вспышка, искры сквозь врага, осколки корпуса цвета ряда падают в траву
   impact(lab, at, colors) {
-    lab.burst(at, { count: 16, colors, speed: 9, size: 0.22, life: 0.45, gravity: 4, dir: [0, 0.3, -1] });
-    lab.burst(at, { count: 5, colors: ['#ffffff'], speed: 3, size: 0.5, life: 0.12, gravity: 0 });
+    lab.burst(at, { count: 5, colors: ['#ffffff'], speed: 3, size: 0.55, life: 0.12, gravity: 0 });
+    lab.burst(at, { count: 14, colors, speed: 9, size: 0.2, life: 0.4, gravity: 4, dir: [0, 0.3, -1] });
+    lab.burst(at, { count: 9, colors: [colors[0], '#3d4258', '#2a2e40'], speed: 5, size: 0.3, life: 0.9, gravity: 14, up: 3 });
     lab.ring([at.x, 0.05, at.z], { color: colors[0], radius: 1.6, life: 0.3 });
     lab.noise(0.16, 0.18, 1400); lab.tone(170, 0.14, 'sine', 0.14, 50);
   },
@@ -950,7 +1074,7 @@ const GAME = {
     });
     st.wave++; st.waveMul *= 0.88; st.danger = false;
     lab.count('волны');
-    lab.sfx.win(); lab.flash('#7cf5a8', 0.25); lab.slowmo(0.6, 0.3); // последний сбитый — в замедлении
+    lab.sfx.win(); lab.flash('#7cf5a8', 0.25); lab.slowmo(0.6, 0.3); st.cam.punch = 0.6; // последний сбитый — в замедлении и с толчком камеры
     lab.tween(0.5, k => { st.gun.body.position.y = Math.sin(k * Math.PI) * 0.5; }, 'linear'); // наводчик подпрыгивает от радости
     st.bombs.forEach(b => this.dropBomb(b)); st.bombs = [];
     st.charges.forEach(ch => ch.dispose()); st.charges = [];
@@ -959,10 +1083,10 @@ const GAME = {
   },
   startWave(lab) {
     const st = lab.state;
-    lab.popup(lab.v3(0, 3, -6), 'Волна ' + st.wave, '#7cf5a8', 30);
+    lab.popup(lab.v3(0, 3.5, -4), 'Волна ' + st.wave, '#c4b2ff', 40); // название волны крупно посередине
     this.buildShields(lab);
     this.buildWave(lab);
-    lab.hud('wave', 'Волна ' + st.wave);
+    lab.hud('wave', 'Волна ' + st.wave, { color: '#c4b2ff', size: 15 });
   },
 
   // ---------- ночной налёт по мотивам бонусного этапа Galaga: три стаи пролетают петлями и не стреляют ----------
@@ -978,14 +1102,14 @@ const GAME = {
     for (let g = 0; g < 3; g++) for (let i = 0; i < 8; i++) {
       const slot = st.slots.indexOf(null);
       if (slot < 0) break;
-      const s = { slot, row: [0, 3, 2][g], bx: 0, bz: 0, alive: true, hidden: true, x: 0, y: 1.45, z: -30, rx: 0, ry: 0, rz: 0, scale: 1.2, squash: 1, flash: 0, phase: lab.rand(0, 6), points: 100, arrive: 0, path: { curve: curves[g], t0: 1.6 + g * 4 + i * 0.24, dur: 5.6 } };
+      const s = { slot, row: [0, 3, 2][g], bx: 0, bz: 0, alive: true, hidden: true, x: 0, y: 1.45, z: -30, rx: 0, ry: 0, rz: 0, scale: 1.25, squash: 1, flash: 0, phase: lab.rand(0, 6), points: 100, arrive: 0, path: { curve: curves[g], t0: 1.6 + g * 4 + i * 0.24, dur: 5.6 } };
       st.slots[slot] = s; st.saucers.push(s);
     }
     st.total = st.saucers.length; st.alive = st.total;
     st.bonus = { t: 0, total: st.total, killed: 0, note: 0, noteT: 0 };
     lab.popup(lab.v3(0, 4, -6), 'Ночной налёт!', '#ffd23f', 32);
     lab.after(0.8, () => lab.popup(lab.v3(0, 3, -4), 'НЛО не стреляют — сбей всех', '#ffe08a', 22));
-    lab.hud('wave', 'Ночной налёт'); lab.count('налёт'); lab.sfx.power();
+    lab.hud('wave', 'Ночной налёт', { color: '#ffd23f', size: 15 }); lab.count('налёт'); lab.sfx.power();
   },
   moveBonus(lab, dt) {
     const st = lab.state, b = st.bonus, t = st.tmp;
@@ -1067,7 +1191,7 @@ const GAME = {
       this.placeLane(ch.lane, s.x, s.z, 0, 1, this.PLAYER_Z + 1);
       if ((ch.t -= dt) > 0) return true;
       s.charging = false;
-      this.addBomb(lab, s.x, s.z + 0.6, 0, 1, ch.lane, '#ff4d5e', 0.28);
+      this.addBomb(lab, s.x, s.z + 0.6, 0, 1, ch.lane, '#ff5a4a', 0.34);
       return false;
     });
   },
@@ -1079,12 +1203,14 @@ const GAME = {
     lane.position.set((x + ex) / 2, 0.06, (z + ez) / 2);
   },
   addBomb(lab, x, z, dx, dz, lane, color, size, k = 1) {
-    const m = lab.mesh(lab.state.geo.oct, color, { at: [x, 1.0, z], glow: 1.3, scale: size, shadow: false });
-    lab.state.bombs.push({ m, lane, dx, dz, k, dead: false, trail: lab.trail(m, { color, width: size * 1.2, length: 8 }) });
+    const st = lab.state, m = lab.mesh(st.geo.oct, color, { at: [x, 1.0, z], glow: 1.3, scale: size, shadow: false });
+    if (!st.geo.shadow) { st.geo.shadow = new lab.THREE.CircleGeometry(1, 12).rotateX(-Math.PI / 2); st.shadowMat = lab.mat('#000000', { unlit: true, alpha: 0.5 }); }
+    const shadow = lab.mesh(st.geo.shadow, st.shadowMat, { at: [x, 0.08, z], scale: size * 1.8, shadow: false }); // тень на земле: видно, где пройдёт снаряд
+    st.bombs.push({ m, shadow, size, lane, dx, dz, k, dead: false, trail: lab.trail(m, { color, width: size * 1.3, length: 9 }) });
     lab.burst([x, 1, z], { count: 6, colors: [color, '#ffffff'], speed: 3, size: 0.15, life: 0.2, gravity: 0 });
     lab.tone(320, 0.12, 'square', 0.04, 160);
   },
-  dropBomb(b) { b.lane.removeFromParent(); b.m.removeFromParent(); },
+  dropBomb(b) { b.lane.removeFromParent(); b.m.removeFromParent(); b.shadow.removeFromParent(); },
   moveBombs(lab, dt) {
     const st = lab.state, cfg = lab.cfg, c = st.gun.g.position;
     st.bombs = st.bombs.filter(b => {
@@ -1092,10 +1218,11 @@ const GAME = {
       if (b.dead) return done();
       const v = cfg.bombSpeed * b.k, p = b.m.position;
       p.x += b.dx * v * dt; p.z += b.dz * v * dt;
-      b.m.rotation.y += dt * 6; b.m.rotation.x += dt * 4;
+      b.m.rotation.y += dt * 6; b.m.rotation.x += dt * 4; b.m.scale.setScalar(b.size * (1 + 0.18 * Math.sin(lab.t * 22))); // снаряд пульсирует
+      b.shadow.position.set(p.x, 0.08, p.z);
       this.placeLane(b.lane, p.x, p.z, b.dx, b.dz, this.PLAYER_Z + 1);
       if (this.hitShield(lab, p.x, p.z)) return done();
-      if (Math.abs(p.x - c.x) < 0.85 && Math.abs(p.z - c.z) < 0.7) {
+      if (Math.abs(p.x - c.x) < 0.95 && Math.abs(p.z - c.z) < 0.75) { // пушка в 1,25 раза крупнее: попадание по ней — как видно
         lab.count('попадания по пушке'); st.combo = 0;
         if (lab.hurt(p.clone(), 'Пушку подбили')) { st.hurtInWave = true; this.loseLevel(lab); lab.tween(0.35, k => { st.gun.body.rotation.x = Math.sin(k * Math.PI) * -0.6; }, 'linear'); }
         return done();
@@ -1115,7 +1242,8 @@ const GAME = {
     lab.cyl(0.55, 0.82, 0.3, '#ffd23f', { parent: g, sides: 12, shiny: true, metal: 0.6 });
     lab.cyl(0.95, 0.95, 0.1, '#b8860b', { parent: g, at: [0, -0.1, 0], sides: 12, metal: 0.5 });
     lab.mesh(new lab.THREE.SphereGeometry(0.42, 12, 6, 0, Math.PI * 2, 0, Math.PI / 2), '#fff3a0', { parent: g, at: [0, 0.12, 0], glow: 0.5, shiny: true });
-    for (let i = 0; i < 10; i++) { const a = i / 10 * Math.PI * 2; lab.box(0.15, 0.12, 0.15, '#ffd23f', { parent: g, at: [Math.cos(a) * 0.9, -0.08, Math.sin(a) * 0.9], unlit: true, glow: 1.4, shadow: false }); }
+    const lamps = lab.addons.BufferGeometryUtils.mergeGeometries([...Array(10)].map((_, i) => { const a = i / 10 * Math.PI * 2; return new lab.THREE.BoxGeometry(0.15, 0.12, 0.15).translate(Math.cos(a) * 0.9, -0.08, Math.sin(a) * 0.9); }));
+    lab.mesh(lamps, '#ffd23f', { parent: g, unlit: true, glow: 1.4, shadow: false }); // десять ламп по ободу — одна деталь
     const back = lab.box(3, 0.2, 0.06, '#2b2f3a', { shadow: false }), bar = lab.box(3, 0.22, 0.1, '#ffd23f', { glow: 1, shadow: false });
     st.boss = { g, back, bar, hp: cfg.bossHP, max: cfg.bossHP, t: 0, x: 0, z: -20, y: 3, kick: 0, burn: 0, fireT: 2.5, charge: null, rage: false, away: false };
     lab.popup(lab.v3(0, 4, -10), 'Золотое НЛО!', '#ffd23f', 30); lab.flash('#ffd23f', 0.2);
@@ -1157,7 +1285,7 @@ const GAME = {
     ch.orb.position.set(p.x, p.y - 0.7, p.z + 0.6); ch.orb.scale.setScalar(0.2 + 0.7 * (1 - ch.t / ch.total));
     lab.burst(ch.orb, { count: 1, colors: ['#ffd23f', '#ffffff'], speed: 2, size: 0.15, life: 0.3, gravity: 0 });
     if ((ch.t -= dt) > 0) return;
-    ch.dirs.forEach(([dx, dz], i) => this.addBomb(lab, p.x, p.z + 0.6, dx, dz, ch.lanes[i], '#ffd23f', 0.34, 0.85));
+    ch.dirs.forEach(([dx, dz], i) => this.addBomb(lab, p.x, p.z + 0.6, dx, dz, ch.lanes[i], '#ffd23f', 0.38, 0.85));
     ch.orb.removeFromParent(); bo.charge = null; bo.fireT = cfg.fireEvery * (bo.rage ? 1.2 : 1.8);
     lab.sfx.shoot(); lab.noise(0.2, 0.12, 2500); lab.pulse(m, 1.25, 0.18);
   },
@@ -1177,6 +1305,7 @@ const GAME = {
     lab.hitstop(0.14); lab.flash('#ffd23f', 0.5); lab.shake(0.8); lab.sfx.explode(); lab.sfx.power(); lab.slowmo(0.5, 0.35);
     lab.burst(pos, { count: 50, colors: ['#ffd23f', '#fff3a0', '#ffffff', '#ff7a2f'], speed: 12, size: 0.3, life: 0.8 });
     lab.burst(pos, { count: 20, colors: ['#ffd23f'], speed: 14, dir: [0, 0.3, -1] });
+    lab.burst(pos, { count: 26, colors: ['#ffd23f', '#ffe9a0', '#c98a16'], speed: 7, size: 0.26, life: 1.2, gravity: 13, up: 7 }); // золотые монетки
     lab.ring([pos.x, 0.05, pos.z], { color: '#ffd23f', radius: 6, life: 0.6 });
     this.points(lab, 300, lab.v3(pos.x, pos.y + 1, pos.z), '#ffd23f');
     if (lab.lives < 9) { lab.lives++; lab.popup(st.gun.g, '+1 жизнь', '#7cf5a8', 26); }
@@ -1188,6 +1317,7 @@ const GAME = {
       fall.vy -= 14 * lab.dt; bo.g.position.y = Math.max(0.3, bo.g.position.y + fall.vy * lab.dt); bo.g.rotation.z += fall.spin * lab.dt;
       if (raw >= 1) { lab.burst(bo.g, { count: 30, colors: ['#ff7a2f', '#ffd23f', '#5a4a3a'], speed: 8, up: 3 }); this.scorch(lab, bo.g.position.x, bo.g.position.z, 2); bo.g.removeFromParent(); lab.shake(0.4); lab.sfx.explode(); }
     }, 'linear');
+    st.cam.punch = 1;
     st.boss = null; st.bossT = lab.cfg.bossAt * 2; st.bossKills++; lab.count('золотые НЛО');
   },
 };
