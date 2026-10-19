@@ -497,39 +497,40 @@ const GAME = {
   },
   // каждый кадр: место, поворот, сжатие и цвета всех копий
   drawSaucers(lab, dt) {
-    const st = lab.state, P = st.parts, t = st.tmp, S = st.shapes;
+    // копии пишутся подряд и count = сколько видно: без пустых мест пачка не гоняет 96 копий каждого силуэта через тени и свет
+    const st = lab.state, P = st.parts, t = st.tmp, S = st.shapes, n = S.map(() => 0);
+    let b = 0, a = 0;
     for (let i = 0; i < this.POOL; i++) {
       const s = st.slots[i];
-      const shape = s ? this.SHAPE_OF[s.row % this.SHAPE_OF.length] : -1;
-      for (let k = 0; k < S.length; k++) if (k !== shape || !s || s.hidden) { S[k].hull.setMatrixAt(i, t.zero); S[k].neon.setMatrixAt(i, t.zero); S[k].dome.setMatrixAt(i, t.zero); }
-      if (!s || s.hidden) { for (const k in P) P[k].setMatrixAt(i, t.zero); continue; }
-      const H = S[shape];
+      if (!s || s.hidden) continue;
+      const H = S[this.SHAPE_OF[s.row % this.SHAPE_OF.length]], j = n[this.SHAPE_OF[s.row % this.SHAPE_OF.length]]++;
       s.flash = Math.max(0, s.flash - dt); s.squash = lab.damp(s.squash, 1, 12, dt);
       const sc = s.scale;
       t.p.set(s.x, s.y, s.z); t.q.setFromEuler(t.e.set(s.rx, s.ry, s.rz)); t.s.set(sc * (2 - s.squash), sc * s.squash, sc * (2 - s.squash));
       t.m.compose(t.p, t.q, t.s);
-      H.hull.setMatrixAt(i, t.m); H.neon.setMatrixAt(i, t.m); H.dome.setMatrixAt(i, t.m);
-      P.armor.setMatrixAt(i, s.armor && !s.wreck ? t.m : t.zero);
-      // луч под тарелкой: тусклый, пока НЛО спокойно; краснеет и разгорается перед выстрелом; у похитителя — длинный зелёный до земли
-      const ab = s.abduct, pull = ab && (ab.phase === 'beam') ? 1 : 0;
-      const beam = s.wreck ? 0 : pull ? 1.5 : s.charging ? 1.3 : s.diveWarn || ab ? 1.1 : 0.55;
-      t.q.identity(); t.s.set(sc * beam, sc * (s.wreck ? 0 : pull ? s.y / 1.5 : 1), sc * beam);
-      t.m.compose(t.p, t.q, t.s); P.beam.setMatrixAt(i, t.m);
-      // пятно света на траве под тарелкой: растёт, когда НЛО снижается — пике видно по земле
-      const low = lab.clamp(1 - (s.y - 0.9) / 4, 0, 1), pr = s.wreck || s.y > 5 ? 0 : sc * (0.55 + 0.9 * low) * (pull ? 1.3 : 1);
-      t.p.set(s.x, 0.09, s.z); t.s.set(pr, 1, pr); t.m.compose(t.p, t.q, t.s); P.pool.setMatrixAt(i, t.m);
-      const R = this.ROWS[s.row % this.ROWS.length].color, f = s.flash > 0 ? 3 : 1;
-      H.hull.setColorAt(i, t.c.set(s.wreck ? '#7a5a48' : '#ffffff').multiplyScalar(f));
-      H.dome.setColorAt(i, t.c.set(s.wreck ? '#3a3036' : ab ? this.BEAM : R).multiplyScalar(0.8 * f));
-      P.armor.setColorAt(i, t.c.set('#ffffff').multiplyScalar(f));
+      H.hull.setMatrixAt(j, t.m); H.neon.setMatrixAt(j, t.m); H.dome.setMatrixAt(j, t.m);
+      const f = s.flash > 0 ? 3 : 1;
+      if (s.armor && !s.wreck) { P.armor.setMatrixAt(a, t.m); P.armor.setColorAt(a++, t.c.set('#ffffff').multiplyScalar(f)); }
+      const R = this.ROWS[s.row % this.ROWS.length].color, ab = s.abduct, pull = ab && (ab.phase === 'beam') ? 1 : 0;
+      H.hull.setColorAt(j, t.c.set(s.wreck ? '#7a5a48' : '#ffffff').multiplyScalar(f));
+      H.dome.setColorAt(j, t.c.set(s.wreck ? '#3a3036' : ab ? this.BEAM : R).multiplyScalar(0.8 * f));
       const warnBlink = s.charging || s.diveWarn || (ab && ab.phase === 'warn');
       const blink = warnBlink ? (Math.sin(lab.t * 40) > 0 ? 1.6 : 0.4) : 1;
-      H.neon.setColorAt(i, t.c.set(s.wreck ? '#ff6a2a' : ab ? this.BEAM : s.charging || s.diveWarn ? '#ff4d5e' : R).multiplyScalar(blink * (s.wreck ? 0.6 : 1)));
-      P.beam.setColorAt(i, pull ? t.c.set(this.BEAM).multiplyScalar(0.35 + 0.15 * Math.sin(lab.t * 18)) : s.charging ? t.c.set('#ff2f45').multiplyScalar(0.5 + 0.3 * Math.sin(lab.t * 30)) : s.diveWarn ? t.c.set('#ff8a3d').multiplyScalar(0.45) : ab ? t.c.set(this.BEAM).multiplyScalar(0.2) : t.c.set(R).multiplyScalar(0.09));
-      P.pool.setColorAt(i, t.c.set(pull ? this.BEAM : s.charging ? '#ff2f45' : s.dive ? '#ff8a3d' : R).multiplyScalar(pull ? 0.35 : s.dive || s.charging ? 0.3 : 0.06));
+      H.neon.setColorAt(j, t.c.set(s.wreck ? '#ff6a2a' : ab ? this.BEAM : s.charging || s.diveWarn ? '#ff4d5e' : R).multiplyScalar(blink * (s.wreck ? 0.6 : 1)));
+      if (s.wreck) continue; // у падающего обломка нет луча и пятна света
+      // луч под тарелкой: тусклый, пока НЛО спокойно; краснеет и разгорается перед выстрелом; у похитителя — длинный зелёный до земли
+      const beam = pull ? 1.5 : s.charging ? 1.3 : s.diveWarn || ab ? 1.1 : 0.55;
+      t.q.identity(); t.s.set(sc * beam, sc * (pull ? s.y / 1.5 : 1), sc * beam);
+      t.m.compose(t.p, t.q, t.s); P.beam.setMatrixAt(b, t.m);
+      P.beam.setColorAt(b, pull ? t.c.set(this.BEAM).multiplyScalar(0.35 + 0.15 * Math.sin(lab.t * 18)) : s.charging ? t.c.set('#ff2f45').multiplyScalar(0.5 + 0.3 * Math.sin(lab.t * 30)) : s.diveWarn ? t.c.set('#ff8a3d').multiplyScalar(0.45) : ab ? t.c.set(this.BEAM).multiplyScalar(0.2) : t.c.set(R).multiplyScalar(0.09));
+      // пятно света на траве под тарелкой: растёт, когда НЛО снижается — пике видно по земле
+      const low = lab.clamp(1 - (s.y - 0.9) / 4, 0, 1), pr = s.y > 5 ? 0 : sc * (0.55 + 0.9 * low) * (pull ? 1.3 : 1);
+      t.p.set(s.x, 0.09, s.z); t.s.set(pr, 1, pr); t.m.compose(t.p, t.q, t.s); P.pool.setMatrixAt(b, t.m);
+      P.pool.setColorAt(b++, t.c.set(pull ? this.BEAM : s.charging ? '#ff2f45' : s.dive ? '#ff8a3d' : R).multiplyScalar(pull ? 0.35 : s.dive || s.charging ? 0.3 : 0.06));
     }
+    S.forEach((H, k) => { for (const m of [H.hull, H.neon, H.dome]) { m.count = n[k]; m.instanceMatrix.needsUpdate = true; m.instanceColor.needsUpdate = true; } });
+    P.beam.count = P.pool.count = b; P.armor.count = a;
     for (const k in P) { P[k].instanceMatrix.needsUpdate = true; P[k].instanceColor.needsUpdate = true; }
-    for (const H of S) for (const k in H) { H[k].instanceMatrix.needsUpdate = true; H[k].instanceColor.needsUpdate = true; }
   },
 
   // ---------- стога-укрытия из блоков сена: одна пачка копий ----------
