@@ -20,6 +20,7 @@ const TYPES = {
 /* ---------------- уроки ---------------- */
 // LAB_LESSONS — дополнительная папка сценариев (e2e-portal.js кладёт туда урок-проверку новых типов шагов).
 const MODULES = require('./lessons/moduli');
+const SLOVAR = require('./lessons/slovar'); // словарик по месту (С2)
 const answers = require('./lib/answers');
 const lessonEdit = require('./lib/lesson-edit');
 const LESSON_DIRS = [path.join(PORTAL, 'lessons')].concat(process.env.LAB_LESSONS ? [path.resolve(process.env.LAB_LESSONS)] : []);
@@ -34,14 +35,22 @@ function lessons() {
 const publicHunt = h => ({ question: h.question, options: h.options, compare: h.compare, after: h.after });
 // Поле Фабрики с secrets: true — карта спрятанной механики своей игры: колода — названия спрятанных механик урока (со звуком — только при наушниках).
 // Сценарий учителя у чекпоинта (teacher) ученику не нужен.
+// Вопрос слепого теста по эффекту спрятанной механики (questions: { эффект: вопрос }, К4 19.10.2026): у abtest — эффект спрятанной механики игры класса;
+// blindpair берёт вопрос по эффекту игры соседа (effect в карточке игры), поэтому получает всю карту questions.
+const secretEffect = (les, title) => { const d = les.wow && les.wow.secrets.find(x => x.id === title || x.title === title); return d ? d.effect || '' : ''; };
+// словарик урока: слова из lessons/slovar.js с примерами этого урока (С2)
+const glossaryOf = les => Object.entries(les.glossary || {}).filter(([id]) => SLOVAR[id]).map(([id, example]) => Object.assign({ id, example }, SLOVAR[id]));
 function studentLesson(les, cls) {
   const step = s => {
+    if (s.teacher) { s = Object.assign({}, s); delete s.teacher; } // сценарий учителя по шагам ученику не уходит
     if (s.hunt) return Object.assign({}, s, { hunt: publicHunt(s.hunt) });
+    if (s.type === 'abtest' && s.questions) { const q = s.questions[secretEffect(les, les.wow && les.wow.classSecret)]; const o = Object.assign({}, s, { question: q || s.question }); delete o.questions; return o; }
     if (s.type === 'factory' && les.wow && s.fields.some(f => f.secrets)) return Object.assign({}, s, { fields: s.fields.map(f => (f.secrets ? Object.assign({}, f, { deck: diceSecrets(cls, les).map(x => x.title) }) : f)) });
     return s;
   };
   const out = Object.assign({}, les, { checkpoints: les.checkpoints.map(cp => { const c = Object.assign({}, cp, { steps: cp.steps.map(step) }); delete c.teacher; return c; }) });
   if (les.wow) out.wow = { formula: les.wow.formula, ask: les.wow.ask || null, look: les.wow.look || null, cards: les.wow.cards.map(cardMeta) };
+  if (les.glossary) out.glossary = glossaryOf(les);
   return out;
 }
 // urok-01-v2 — прежняя версия 2 урока 1 (Qwen в чате, 18.10.2026): теперь это и есть урок 1, классы с ней открывают его
@@ -443,7 +452,7 @@ function gameCard(code, g, viewer) {
     plays: store.plays(g.id).filter(p => p.type === 'over' && p.nick !== g.nick).length,
     again: store.plays(g.id).filter(p => p.type === 'again' && p.nick !== g.nick).length, // «ещё раз» чужих игроков — главный тест курса
     poster: g.poster ? `/poster/${g.id}.jpg?v=${g.poster.version}` : null,
-    hidden: !!g.hidden, mine: g.nick === viewer, knob: g.knob || null, emblem: (store.getStudent(code, g.nick) || {}).emblem || '',
+    hidden: !!g.hidden, mine: g.nick === viewer, knob: g.knob || null, effect: les && g.plan && g.plan.secret ? secretEffect(les, g.plan.secret.title) : '', emblem: (store.getStudent(code, g.nick) || {}).emblem || '',
   };
 }
 // игра соседа по кругу: следующий по алфавиту автор после after (по умолчанию — после меня); игры этого урока — первыми
@@ -540,6 +549,8 @@ function studio(w, cls, s) {
   return {
     nick: w.nick, class: { code: cls.code, name: cls.name }, emblem: s.emblem || '', emblems: EMBLEMS,
     games: mine, deck, journal, badges, ideas: ideas.slice(-40).reverse(),
+    // полка открыток (И3): снимки шагов postcard по пройденным урокам
+    postcards: worked.flatMap(l => l.checkpoints.flatMap(cp => cp.steps).filter(x => x.type === 'postcard').map(x => ((answerOf(s.lessons[l.id], x.id) || {}).value || {}).card)).filter(Boolean),
   };
 }
 route('GET', '/api/studio', (ctx) => { const { w, cls, s } = needStudent(ctx); return studio(w, cls, s); });
@@ -1532,7 +1543,7 @@ route('GET', '/api/teacher/overview', (ctx) => {
     };
   });
   const votes = Object.fromEntries(les.checkpoints.flatMap(c => c.steps).filter(x => x.type === 'vote').map(x => [x.id, voteTally(cls.code, les, x)])); // выставка джема
-  return { class: cls, lesson: les, students, stepsDone, votes, spend: spend(cls.code, les.id), limits: ai.limits(), stuckSec: STUCK_SEC, now: new Date().toISOString() };
+  return { class: cls, lesson: les, glossary: glossaryOf(les), students, stepsDone, votes, spend: spend(cls.code, les.id), limits: ai.limits(), stuckSec: STUCK_SEC, now: new Date().toISOString() };
 });
 // живые ответы класса для проектора (вкладка «Ответы класса»): шаги выбора полосками без имён, слепой тест А/Б и слепая пара со спрятанной механикой —
 // сколько почувствовали спрятанную механику. Считаются только отправленные ответы (шаг готов).
@@ -1548,9 +1559,12 @@ route('GET', '/api/teacher/poll', (ctx) => {
   for (const cp of les.checkpoints) for (const x of cp.steps) {
     if (x.type === 'choice' && x.options && x.options.length) {
       const list = done(x.id), own = list.map(v => valOf(v.own).trim()).filter(Boolean);
+      // compare — тот же вопрос или та же шкала раньше в уроке (К5, П2): у полоски ещё before — сколько выбрали это тогда
+      const prev = x.compare ? done(x.compare) : null, prevStep = x.compare ? stepOf(les, x.compare) : null;
       steps.push({ cp: cp.id, id: x.id, title: x.title, kind: 'choice', n: list.length,
-        bars: x.options.map(o => ({ label: o, n: list.filter(v => (v.selected || []).includes(o)).length })).concat(own.length ? [{ label: 'Свои слова', n: own.length }] : []),
-        own: own.slice(-6) });
+        bars: x.options.map(o => Object.assign({ label: o, n: list.filter(v => (v.selected || []).includes(o)).length }, prev && { before: prev.filter(v => (v.selected || []).includes(o)).length }))
+          .concat(own.length ? [{ label: 'Свои слова', n: own.length }] : []),
+        own: own.slice(-6), compare: prev ? { title: prevStep ? prevStep.step.title : '', n: prev.length } : null });
     } else if (x.type === 'abtest' || (x.type === 'blindpair' && x.mode === 'secret')) {
       const list = done(x.id).filter(v => v.vote), felt = x.type === 'abtest' ? list.filter(v => v.vote === v.side).length : list.filter(v => v.felt).length, same = list.filter(v => v.vote === 'same').length;
       steps.push({ cp: cp.id, id: x.id, title: x.title, kind: 'secret', n: list.length,
@@ -1997,7 +2011,7 @@ async function handle(req, res) {
   if (pm) return serveFile(res, path.join(store.gameDir(pm[1]), 'poster.jpg'));
   if (p.startsWith('/engine/') || p.startsWith('/games/')) return staticUnder(PORTAL, p, res, CORS);
   if (p === '/' ) return serveFile(res, path.join(PUBLIC, 'index.html'));
-  if (p === '/student' || p === '/teacher' || p === '/arcade' || p === '/projector' || p === '/studio') return serveFile(res, path.join(PUBLIC, p.slice(1) + '.html'));
+  if (p === '/student' || p === '/teacher' || p === '/arcade' || p === '/projector' || p === '/studio' || p === '/sheet') return serveFile(res, path.join(PUBLIC, p.slice(1) + '.html'));
   return staticUnder(PUBLIC, p, res);
 }
 

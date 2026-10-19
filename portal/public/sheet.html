@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="ru" data-role="teacher">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Лист урока · Лаборатория игр</title>
+<style>
+  /* лист урока (У3): светлый, на одну страницу A4, печатается из браузера */
+  :root{--ink:#14171f;--soft:#5b6170;--line:#d9dce4;--acc:#0b7a43;--warm:#b86a00}
+  *{box-sizing:border-box}
+  body{margin:0;background:#eef0f4;color:var(--ink);font:12px/1.35 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+  .bar{display:flex;gap:8px;align-items:center;padding:10px 16px;background:#14171f;color:#fff}
+  .bar button{font:inherit;padding:6px 12px;border-radius:8px;border:0;background:#7cf5a8;color:#06140c;font-weight:700;cursor:pointer}
+  .page{width:min(210mm,100%);margin:12px auto;background:#fff;padding:12mm 12mm 10mm;box-shadow:0 2px 12px rgba(0,0,0,.12)}
+  h1{font-size:18px;margin:0}
+  h2{font-size:12px;text-transform:uppercase;letter-spacing:.06em;color:var(--soft);margin:10px 0 4px}
+  .meta{color:var(--soft);margin:2px 0 6px}
+  .q{border:2px solid var(--acc);border-radius:8px;padding:6px 10px;font-weight:700;font-size:13px}
+  .cols{display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px}
+  .concept{border:1px solid var(--line);border-radius:8px;padding:6px 8px}
+  .concept b{display:block;margin-bottom:2px}
+  table{width:100%;border-collapse:collapse}
+  td,th{border-top:1px solid var(--line);padding:4px 6px;vertical-align:top;text-align:left}
+  th{font-size:11px;color:var(--soft);font-weight:600}
+  td.t{white-space:nowrap;font-variant-numeric:tabular-nums;font-weight:700}
+  td.cp b{display:block}
+  .steps{color:var(--soft);font-size:11px}
+  .next{color:var(--warm);font-size:11px;margin-top:2px}
+  .gloss{columns:2;column-gap:14px}
+  .gloss div{break-inside:avoid;margin-bottom:3px}
+  .check{list-style:none;padding:0;margin:0;columns:2}
+  .check li::before{content:"☐ ";font-size:13px}
+  .muted{color:var(--soft)}
+  @media print{body{background:#fff;font-size:9.5px;line-height:1.28}.bar{display:none}.page{box-shadow:none;margin:0;width:auto;padding:0}h1{font-size:15px}h2{margin:6px 0 3px}.q{font-size:11px;padding:4px 8px}td,th{padding:2px 5px}.steps,.next{font-size:9px}@page{size:A4;margin:8mm}}
+  @media (max-width:640px){.cols{grid-template-columns:1fr}.gloss,.check{columns:1}.page{padding:16px}}
+</style>
+</head>
+<body>
+<div class="bar"><b style="flex:1">Лист урока</b><button type="button" onclick="print()">🖨 Распечатать</button></div>
+<main class="page" id="sheet"><p class="muted">Загружаю урок…</p></main>
+<script src="/common.js"></script>
+<script src="/sheet.js"></script>
+</body>
+</html>

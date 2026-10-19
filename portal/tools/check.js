@@ -60,7 +60,7 @@ function plan(files) {
       const n = Number(r.slice(13, 15));
       p.e2e = true; p.lessons.add(n); p.demo = true; portal(); p.why.push(f);
     } else if (r === 'lib/ai.js' || r === 'server.js' || /^lib\//.test(r) || /^tools\/(mock-ai|e2e-portal)\.js$/.test(r) || /^tools\/fixtures\/lessons\//.test(r)) whole(f, true);
-    else if (/^(public|ai)\//.test(r) || r === 'lessons/moduli.js') whole(f, false);
+    else if (/^(public|ai)\//.test(r) || r === 'lessons/moduli.js' || r === 'lessons/slovar.js') whole(f, false);
     else if (/^tools\/(e2e-qwen-chat\.js|fixtures\/qwen)/.test(r)) { p.qwen = true; p.why.push(f); }
     else if (/^tools\/(check|playtest|vendor-three\.sh)/.test(r) || /^(README|\.gitignore|config\.example\.json)/.test(r) || r.startsWith('.check/')) continue;
     else { p.self = true; p.allGames = true; whole(f, true); } // незнакомый файл — полная

@@ -568,6 +568,13 @@ dialog.qwen{width:min(640px,calc(100% - 32px));max-height:calc(100vh - 32px);ove
 dialog.qwen::backdrop{background:rgba(5,8,18,.7)}
 dialog.qwen h2{margin:0}
 .qwen-steps{margin:0;padding-left:22px;display:grid;gap:10px}
+.qwen-steps li{display:flex;flex-direction:column;gap:6px;border:1px solid var(--line);border-radius:10px;padding:8px 10px;background:var(--bg2)}
+.qwen-steps li::marker{font-weight:900;color:var(--accent)}
+.qwen-same{color:var(--info);margin:0}
+.qwen-tiles{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.qwen-tiles .qtile{display:flex;gap:8px;align-items:flex-start;border:1px solid var(--line);border-radius:10px;padding:8px 10px;background:var(--bg2);font-size:13px}
+.qwen-tiles .qn{flex:none;width:22px;height:22px;border-radius:50%;background:var(--accent);color:#06121f;font-weight:900;display:grid;place-items:center;font-size:12px}
+@media (max-width:640px){.qwen-tiles{grid-template-columns:1fr}}
 .qwen-answer{width:100%;box-sizing:border-box;font:12px/1.4 ui-monospace,Consolas,monospace}
 
 /* разбор прототипа и правка в чате Qwen (урок 1, чекпоинт 5) */
@@ -697,3 +704,82 @@ button.op-pick{cursor:pointer}button.op-pick:hover{transform:translateY(-4px);bo
 .op-mini{padding:8px 3px}.op-mini-nm{overflow-wrap:normal;hyphens:auto}
 #step-vau-karty .op-ask{grid-template-columns:minmax(0,1.45fr) minmax(0,1fr)}
 @media (max-width:1100px){#step-vau-karty .op-ask{grid-template-columns:minmax(0,1fr)}}
+/* палитра чувств урока над полем «Чувство» (К5) и таблица-мостик Нисикадо → игра класса (К6) */
+.chips.feelings{display:flex;flex-wrap:wrap;gap:6px}
+.chips.feelings .chip{font:inherit;font-size:14px;padding:5px 12px;cursor:pointer;color:var(--text)}
+.chips.feelings .chip.on{background:#0c2418;border-color:var(--accent);box-shadow:0 0 0 1px var(--accent) inset}
+table.bridge{width:100%;border-collapse:collapse;font-size:14px;margin:6px 0}
+table.bridge th,table.bridge td{text-align:left;padding:6px 8px;border-bottom:1px solid var(--line2);vertical-align:top}
+table.bridge th{color:var(--muted);font-size:12px;text-transform:uppercase;letter-spacing:.06em}
+table.bridge td:first-child{color:var(--muted);white-space:nowrap}
+/* путь моей игры (П6) и три понятия урока (С1) в боковой колонке ученика */
+.cp .loot{font-size:12px;line-height:1.3;color:var(--text);margin-top:3px}
+.cp .loot span{color:var(--muted)}
+.cp{align-items:flex-start}
+.concepts{display:grid;gap:6px}
+.ccard{display:grid;grid-template-columns:auto 1fr;gap:2px 8px;padding:8px 10px;border-radius:10px;border:1px dashed var(--line2);background:var(--bg2)}
+.ccard .no{grid-row:span 2;font-weight:800;color:var(--muted)}
+.ccard.open{border-style:solid;border-color:var(--warm);background:#2a1f0c}
+.ccard.open .no{color:var(--warm)}
+.ccard b{font-size:13px;line-height:1.25}
+/* линза урока как ритуал финала (С3) */
+.lens-card{position:relative;width:min(340px,100%);min-height:190px;border:0;padding:0;background:none;cursor:pointer;perspective:900px}
+.lens-card>span{position:absolute;inset:0;display:grid;align-content:center;gap:8px;padding:18px;border-radius:16px;backface-visibility:hidden;transition:transform .6s cubic-bezier(.3,1.4,.5,1);text-align:left}
+.lens-back{background:repeating-linear-gradient(45deg,var(--panel2) 0 10px,var(--panel) 10px 20px);border:2px solid var(--line2)}
+.lens-back b{font-size:48px;color:var(--warm);text-align:center}
+.lens-face{background:#2a1f0c;border:2px solid var(--warm);transform:rotateY(180deg)}
+.lens-face b{font-size:20px;line-height:1.25}
+.lens-card.flipped .lens-back{transform:rotateY(-180deg)}
+.lens-card.flipped .lens-face{transform:rotateY(0)}
+@media (prefers-reduced-motion:reduce){.lens-card>span{transition:none}}
+/* опоры Фабрики (П1): те же пять вопросов, что на вау-старте */
+.pillars{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:6px}
+.pillars .pil{display:grid;gap:2px;align-content:start;padding:8px;border-radius:10px;border:1px dashed var(--line2);background:var(--bg2);min-width:0;overflow-wrap:anywhere;transition:transform .2s}
+.pillars .pil b{font-size:13px}
+.pillars .pil.up{border-style:solid;border-color:var(--accent);background:#0c2418;transform:translateY(-3px)}
+button.pil{font:inherit;color:var(--text);text-align:left;cursor:pointer}
+.pillars .pil.weak{border-style:solid;border-color:var(--danger);background:#2a0c12}
+@media (max-width:560px){.pillars{grid-template-columns:repeat(3,minmax(0,1fr))}}
+/* «тогда → сейчас» на одной шкале (К5, П2): толстая полоска — сейчас, тонкая — предсказание или ответ в начале урока */
+.barrow.cmp .bt{display:grid;align-content:center;gap:3px;background:transparent;overflow:visible}
+.barrow.cmp .bt i{height:12px;border-radius:10px;background-color:var(--panel2)}
+.barrow.cmp .bt em{display:block;height:5px;border-radius:5px;background:var(--info);opacity:.8}
+.pj-pollcard .barrow.cmp{grid-template-columns:minmax(120px,38%) minmax(0,1fr) 84px}
+
+/* словарик по месту (С2): слово-инструмент подчёркнуто точками, нажатие — одна фраза и пример урока */
+.term{text-decoration:underline dotted var(--info);text-underline-offset:3px;cursor:help;color:inherit}
+.term:hover,.term:focus-visible{color:var(--info);outline:none}
+.gloss-pop{position:absolute;z-index:50;background:var(--panel2);border:1px solid var(--info);border-radius:10px;padding:10px 12px;box-shadow:0 8px 30px rgba(0,0,0,.5);display:grid;gap:4px}
+.gloss-pop p{margin:0}
+.gloss-ex{color:var(--muted,#a9b3d6)}
+
+/* пульт учителя (У1) и сценарий по шагам (У2) */
+.pult{display:grid;gap:8px;padding:14px 16px;border-radius:var(--r);border:1px solid var(--info);background:linear-gradient(180deg,#0e2235,var(--bg2))}
+.pult .pult-say{margin:0;font-size:20px;font-weight:700;line-height:1.35}
+.pult-bar{height:8px;border-radius:99px;background:var(--line);overflow:hidden}
+.pult-bar span{display:block;height:100%;background:var(--accent);transition:width .4s}
+.pult.ready{border-color:var(--warm)}
+.pult.ready [data-pult-next]{animation:pultGlow 1.6s ease-in-out infinite}
+@keyframes pultGlow{50%{box-shadow:0 0 0 6px rgba(255,181,71,.25)}}
+ol.tsteps{margin:6px 0 0;padding-left:20px;display:grid;gap:8px}
+ol.tsteps li{display:grid;gap:2px}
+ol.tsteps li.now{border-left:3px solid var(--info);padding-left:8px;margin-left:-11px}
+@media (prefers-reduced-motion:reduce){.pult.ready [data-pult-next]{animation:none}}
+
+/* «Ты — Нисикадо» (И1): волна 1978 года на канве */
+.nk-wrap{border:1px solid var(--line2);border-radius:var(--r);overflow:hidden;background:#05070f}
+.nk-canvas{display:block;width:100%;height:auto;image-rendering:pixelated;cursor:crosshair;touch-action:manipulation}
+.nk-canvas:focus-visible{outline:2px solid var(--info)}
+.nk-say{margin:0;font-weight:600}
+.nk-decide{gap:10px}
+
+/* открытка первой игры (И3): в финале урока и на полке «Моей студии» */
+.postcard{display:grid;gap:6px;max-width:440px;padding:16px 18px;border-radius:16px;border:2px solid var(--warm);background:linear-gradient(135deg,#2a1d08,#141c36 60%);box-shadow:0 8px 24px rgba(0,0,0,.35);transform:rotate(-1deg)}
+.postcard .pc-top{display:flex;gap:10px;align-items:center}
+.postcard .pc-emb{font-size:34px;line-height:1}
+.postcard h3{margin:0}
+.postcard .pc-foot{display:flex;gap:6px;align-items:center;font-size:12px;color:var(--muted);border-top:1px dashed var(--line2);padding-top:6px}
+.postcards{display:flex;flex-wrap:wrap;gap:14px}
+
+/* боковая колонка ученика длиннее (понятия, путь игры): низ не прячется под кнопкой «Заметка автора» */
+.side{padding-bottom:72px}

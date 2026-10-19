@@ -73,13 +73,16 @@ const Lab = (() => {
         : ['Задание для Qwen готово', 'Программист — Qwen в бесплатном чате. Скопируй задание, вставь его в новый чат, дождись ответа и вставь ответ сюда.'];
       const steps = m.cont ? el('div', { class: 'row' }, copyBtn('📋 Скопировать «Продолжи»'), open)
         : m.followUp ? el('div', { class: 'row' }, copyBtn('📋 Скопировать сообщение'), open)
-        : el('ol', { class: 'qwen-steps' },
-          el('li', {}, el('div', { class: 'row' }, copyBtn(`📋 Скопировать задание (${size(m.chars)})`))),
-          el('li', {}, el('div', { class: 'row' }, open, el('span', { class: 'small muted' }, 'Новый чат на каждую игру, правки — в том же чате.'))),
-          el('li', {}, 'Когда Qwen допишет, нажми в чате «Копировать» над блоком кода и вставь ответ ниже.'));
+        : el('ol', { class: 'qwen-steps' }, // те же три плитки, что учитель показывает классу на вау-старте и что ученик видит у кнопки сборки
+          el('li', {}, el('b', {}, 'Скопируй задание'), el('div', { class: 'row' }, copyBtn(`📋 Скопировать задание (${size(m.chars)})`))),
+          el('li', {}, el('b', {}, 'Новый чат chat.qwen.ai: вставь задание и жди 5–10 минут'), el('div', { class: 'row' }, open, el('span', { class: 'small muted' }, 'Новый чат на каждую игру, правки — в том же чате.'))),
+          el('li', {}, el('b', {}, 'Вставь ответ Qwen сюда'), el('span', { class: 'small muted' }, 'Когда Qwen допишет, нажми в чате «Копировать» над блоком кода.'), ta));
+      const same = m.cont || m.followUp ? null : el('p', { class: 'small qwen-same' }, ROLE === 'teacher'
+        ? '📽 Покажите это окно классу: ученики повторят те же три шага, когда соберут свою игру.'
+        : '👀 Те же три шага, что учитель показывал классу на проекторе.');
       dlg.append(el('div', { class: 'stack' },
         el('div', { class: 'eyebrow' }, 'Программист — Qwen в чате' + (m.step > 1 ? ` · сообщение ${m.step}` : '') + (m.parts ? ` · часть ${m.parts + 1}` : '')),
-        el('h2', {}, head[0]), el('p', { class: 'muted' }, head[1]), steps, ta, status, el('div', { class: 'row' }, send, cancel)));
+        el('h2', {}, head[0]), el('p', { class: 'muted' }, head[1]), same, steps, m.cont || m.followUp ? ta : null, status, el('div', { class: 'row' }, send, cancel)));
     }
     return {
       show(m) { const key = m.step + ':' + m.parts; if (key !== shown && !busy) { shown = key; render(m); } },
@@ -196,11 +199,23 @@ const Lab = (() => {
       });
       kids.push(d);
     }
+    // f.feelings — палитра чувств урока: значок с названием встаёт в начало поля (прежний значок палитры заменяется), дальше ученик пишет сам
+    let feelRow = null;
+    if (f.feelings && f.feelings.length) {
+      const lead = t => f.feelings.find(x => String(t || '').startsWith(x)) || null;
+      feelRow = el('div', { class: 'chips feelings', role: 'group', 'aria-label': 'Главное чувство' });
+      const paintFeel = () => { const on = lead(ta.value); feelRow.querySelectorAll('button').forEach(b => { const yes = b.dataset.f === on; b.classList.toggle('on', yes); b.setAttribute('aria-pressed', String(yes)); }); };
+      f.feelings.forEach(x => feelRow.append(el('button', { type: 'button', class: 'chip', 'data-f': x, 'aria-pressed': 'false', onclick: () => {
+        const was = lead(ta.value), rest = was ? ta.value.slice(was.length).replace(/^[:\s]+/, '') : ta.value;
+        ta.value = x + ': ' + rest; v = { text: ta.value }; rolled = null; mark(); setTag(); onChange(v); beep('tick'); paintFeel(); ta.focus();
+      } }, x)));
+      ta.addEventListener('input', paintFeel); paintFeel();
+    }
     setTag(); mark();
     return el('div', { class: 'field' + (f.cards ? ' with-cards' : '') },
       el('div', { class: 'head' }, f.letter ? el('span', { class: 'letter' }, f.letter) : null, el('label', { class: 'lbl', for: ta.id, style: 'margin:0' }, f.label), tagHost),
       f.hint ? el('div', { class: 'hint' }, f.hint) : null,
-      cardRow,
+      feelRow, cardRow,
       el('div', { class: 'box' }, kids), example);
   }
   const fmtTime = iso => { if (!iso) return '—'; const s = Math.round((Date.now() - new Date(iso)) / 1000); return s < 60 ? s + ' с назад' : s < 3600 ? Math.round(s / 60) + ' мин назад' : new Date(iso).toLocaleString('ru-RU'); };

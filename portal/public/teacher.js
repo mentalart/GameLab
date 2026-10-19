@@ -89,6 +89,7 @@ function drawLesson() {
   host.append(el('div', { class: 'row' },
     el('div', { class: 'grow stack', style: 'gap:2px' }, el('div', { class: 'eyebrow' }, `Урок ${o.lesson.number} · донор ${o.lesson.donor}`), el('h2', {}, o.lesson.title)),
     el('a', { class: 'btn warm', href: '/projector?code=' + o.class.code, target: 'lab-projector', rel: 'opener', id: 'projectorBtn' }, '📽 Проектор ↗'),
+    el('a', { class: 'btn ghost small', href: '/sheet?code=' + o.class.code, target: '_blank', rel: 'noopener', id: 'sheetBtn', title: 'Лист урока на одну страницу: распечатать или держать рядом' }, '🖨 Лист урока'),
     nextCp ? el('button', { class: 'btn', type: 'button', onclick: () => setOpened(opened.concat(nextCp.id)) }, `Открыть: ${nextCp.title} →`) : el('span', { class: 'tag ok' }, 'все чекпоинты открыты'),
     el('button', { class: 'btn ghost small', type: 'button', onclick: () => setOpened(cps.map(c => c.id)) }, 'Открыть все'),
     el('button', { class: 'btn ghost small', type: 'button', onclick: async () => { if (await Lab.ask('Закрыть все чекпоинты?', { ok: 'Закрыть все' })) setOpened([]); } }, 'Закрыть все')));
@@ -100,13 +101,25 @@ function drawLesson() {
   const finished = c => o.students.filter(s => c.steps.every(st => s.doneSteps.includes(st.id))).length;
   // сценарий учителя (teacher в сценарии урока): у текущего чекпоинта — раскрыт, у остальных — по клику
   const curCp = (o.class.timer && cps.find(c => c.id === o.class.timer.cp && opened.includes(c.id))) || cps.filter(c => opened.includes(c.id)).pop() || cps[0];
+  const passed = id => o.students.filter(s => s.doneSteps.includes(id)).length;
+  // У1: пульт «Сейчас → Дальше» — текущий шаг класса (первый, который прошли меньше 70%), что сказать, кто застрял, и что дальше
+  const pult = opened.includes(curCp.id) ? pultOf(o, cps, curCp, passed, nextCp) : null;
+  if (pult) host.insertBefore(pult.el, host.children[1]); // сразу под заголовком урока
   if (T.scriptEdit && T.scriptEdit.lesson !== o.lesson.id) T.scriptEdit = null;
   const script = c => {
     if (!c.teacher) return null;
     const t = c.teacher, rows = SCRIPT_ROWS.map(([f, k]) => [k, t[f]]).filter(r => r[1]);
     const edit = T.scriptEdit && T.scriptEdit.cp === c.id ? T.scriptEdit : null;
+    // У2: по шагам — что сказать и по чему видно, что буксует; рядом — сколько учеников прошли шаг
+    const bySteps = c.steps.some(s => s.teacher && s.teacher.say) ? el('ol', { class: 'tsteps' }, c.steps.map(s => {
+      const t = s.teacher || {}, n = passed(s.id);
+      return el('li', { class: s.id === (pult && pult.step && pult.step.id) ? 'now' : null, 'data-tstep': s.id },
+        el('div', { class: 'row', style: 'gap:6px' }, el('b', { class: 'grow' }, s.title), total ? el('span', { class: 'tag' + (n === total ? ' ok' : '') }, `${n} из ${total}`) : null),
+        t.say ? el('div', {}, '💬 ' + t.say) : null, t.watch ? el('div', { class: 'small muted' }, 'Буксует, если: ' + t.watch[0].toLowerCase() + t.watch.slice(1)) : null);
+    })) : null;
     const d = el('details', { class: 'tscript', open: c.id === curCp.id || edit ? true : null }, el('summary', {}, '📋 Сценарий учителя'),
       edit ? scriptForm(c, edit) : el('dl', {}, rows.flatMap(([k, v]) => [el('dt', {}, k), el('dd', {}, v)])),
+      !edit && bySteps ? [el('div', { class: 'eyebrow', style: 'margin-top:10px' }, 'По шагам'), bySteps] : null,
       !edit && o.class.authorMode ? el('div', { class: 'row', style: 'margin-top:6px' }, el('button', { class: 'btn ghost small', type: 'button', 'data-script-edit': c.id,
         onclick: () => { T.scriptEdit = { lesson: o.lesson.id, cp: c.id, draft: Object.fromEntries(SCRIPT_ROWS.map(([f]) => [f, t[f] || ''])) }; drawLesson(); } }, '✎ Править текст')) : null);
     d.addEventListener('toggle', () => { T.scriptOpen = T.scriptOpen || {}; T.scriptOpen[c.id] = d.open; });
@@ -159,6 +172,36 @@ function drawLesson() {
   tickTimers();
   scrollTo(0, keepScroll);
 }
+// Пульт учителя (У1): одна карточка сверху — шаг, на котором класс сейчас, крупно его реплика из сценария по шагам,
+// сколько прошли, таймер чекпоинта, кто застрял на этом чекпоинте, и что дальше. Когда 70% прошли чекпоинт — горит «Открыть следующий».
+function pultOf(o, cps, cp, passed, nextCp) {
+  const total = o.students.length, need = Math.max(1, Math.ceil(total * 0.7));
+  const k = cp.steps.findIndex(s => passed(s.id) < need);
+  const step = k >= 0 ? cp.steps[k] : null, after = step ? cp.steps[k + 1] : null;
+  const done = o.students.filter(s => cp.steps.every(st => s.doneSteps.includes(st.id))).length;
+  const ready = !step || (total > 0 && done >= need);
+  const here = s => s.where && cp.steps.some(st => st.id === s.where);
+  const stuck = o.students.filter(s => s.stuck && here(s)).map(s => s.nick);
+  const say = step ? ((step.teacher && (step.teacher.say || step.teacher.ask)) || (TIPS[step.type] || [])[0] || '') : 'Чекпоинт пройден. ' + (nextCp ? 'Открывайте следующий.' : 'Это был последний.');
+  const n = step ? passed(step.id) : done;
+  const timed = o.class.timer && o.class.timer.cp === cp.id;
+  const nextLabel = after ? after.title : nextCp ? `чекпоинт «${nextCp.title}»` : 'конец урока';
+  const box = el('section', { class: 'pult' + (ready ? ' ready' : ''), 'aria-label': 'Пульт учителя' },
+    el('div', { class: 'row' },
+      el('div', { class: 'eyebrow grow' }, step ? `Сейчас · ${cp.title} · шаг ${k + 1} из ${cp.steps.length}: ${step.title}` : `Сейчас · ${cp.title} пройден`),
+      timed ? el('span', { class: 'tag timer-tag', 'data-timer': '1' }, '⏱') : null),
+    el('p', { class: 'pult-say', 'data-pult-say': step ? step.id : '' }, say),
+    el('div', { class: 'pult-bar', role: 'progressbar', 'aria-valuemin': '0', 'aria-valuemax': String(total), 'aria-valuenow': String(n) },
+      el('span', { style: `width:${total ? Math.round(n / total * 100) : 0}%` })),
+    el('div', { class: 'row small' },
+      el('span', { class: 'grow' }, total ? `${step ? 'Прошли шаг' : 'Прошли чекпоинт'}: ${n} из ${total}` : 'Пока никто не вошёл'),
+      stuck.length ? el('span', { class: 'tag err', 'data-pult-stuck': '1' }, `застряли: ${stuck.join(', ')}`) : null),
+    el('div', { class: 'row' },
+      el('span', { class: 'muted small grow' }, 'Дальше → ' + nextLabel),
+      nextCp ? el('button', { class: 'btn' + (ready ? ' warm' : ' ghost') + ' small', type: 'button', 'data-pult-next': nextCp.id,
+        onclick: () => setOpened(o.class.opened.concat(nextCp.id)) }, `Открыть следующий: ${nextCp.title} →`) : null));
+  return { el: box, step };
+}
 // «Сценарий учителя» правится в режиме автора: «Сохранить в урок» пишет текст в файл урока на сервере (portal/lessons/…),
 // и он становится частью портала. Пока форма открыта, опрос раз в 3 секунды урок не перерисовывает, чтобы не сбить ввод.
 const SCRIPT_ROWS = [['say', 'Скажите'], ['ask', 'Спросите класс'], ['watch', 'Смотрите'], ['next', 'Дальше, когда']];
@@ -195,7 +238,7 @@ const TIPS = {
   cards: ['Какая карта самая безумная? Как она уживётся с остальными?', 'Спорят о картах дольше двух минут — пора тянуть игру'],
   play: ['Что ты сейчас почувствовал? В какой момент?', 'Играет молча и без эмоций — спросите, чего не хватает'],
   choice: ['Почему именно это? Чем докажешь из своей партии?', 'Выбирает первый вариант не читая'],
-  abtest: ['В какой копии было напряжённее и в какой момент?', 'Сыграл одну копию и голосует'],
+  abtest: ['В какой копии было сильнее и в какой момент?', 'Сыграл одну копию и голосует'],
   secret: ['Что ты заметил в игре, а не на картах?', 'Выбирает то, что было на картах, — это ловушка'],
   text: ['Перескажи одной фразой: что здесь главное?', 'Пролистал за секунды'],
   sort: ['Почему эта карточка — решение геймдизайнера, а не программиста?', 'Жмёт наугад ради очков'],

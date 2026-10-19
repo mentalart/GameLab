@@ -127,9 +127,42 @@ function renderSide() {
       'aria-current': cp.id === S.cpId ? 'step' : null,
       onclick: () => { if (!open) { toast('Этот чекпоинт ещё не открыт учителем'); return; } S.cpId = cp.id; renderSide(); renderMain(); scrollTo(0, 0); },
     }, el('span', { class: 'dot' }, done ? '✓' : open ? String(i + 1) : '🔒'),
-    el('span', {}, el('div', { class: 't' }, cp.title), el('div', { class: 'm' }, `${cp.minutes} мин · шагов: ${cp.steps.length}`))));
+    el('span', {}, el('div', { class: 't' }, cp.title), el('div', { class: 'm' }, `${cp.minutes} мин · шагов: ${cp.steps.length}`),
+      ...lootOf(cp).map(x => el('div', { class: 'loot' }, el('span', {}, x.label + ': '), x.text)))));
   });
+  // три понятия урока (С1): карта открывается после своего шага, до этого — рубашкой
+  if (S.lesson.concepts && S.lesson.concepts.length) {
+    const got = S.lesson.concepts.filter(c => ans(c.after).done).length;
+    side.append(el('div', { class: 'eyebrow', style: 'margin:16px 0 6px 4px' }, `Понятия урока · ${got} из ${S.lesson.concepts.length}`),
+      el('div', { class: 'concepts' }, S.lesson.concepts.map((c, k) => ans(c.after).done
+        ? el('div', { class: 'ccard open', title: c.text }, el('span', { class: 'no' }, String(k + 1)), el('b', {}, c.title), el('span', { class: 'small muted' }, c.text))
+        : el('div', { class: 'ccard' }, el('span', { class: 'no' }, String(k + 1)), el('span', { class: 'small muted' }, 'Откроется по ходу урока')))));
+  }
   side.append(el('p', { class: 'muted small', style: 'margin:12px 4px 0' }, S.lesson.lens));
+}
+// путь моей игры (П6): что ученик уже получил на каждом чекпоинте — loot в сценарии: { step, label, field }
+function lootOf(cp) {
+  return (cp.loot || []).map(l => {
+    const st = stepById(l.step), a = ans(l.step), v = a.value || {};
+    if (!st || !a.value) return null;
+    let text = '';
+    switch (st.type) {
+      case 'choice': text = (v.selected || [])[0] || valText(v.own); break;
+      case 'factory': case 'decisions': text = valText((v.fields || {})[l.field]); break;
+      case 'abtest': text = !v.vote ? '' : v.vote === 'same' ? 'разницы не заметил' : v.vote === v.side ? 'почувствовал вслепую' : 'выбрал копию без неё'; break;
+      case 'secret': text = v.guess ? (v.correct ? 'угадал' : v.trap ? 'попался в ловушку карт' : 'не угадал') : ''; break;
+      case 'razbor': { const m = (v.findings || []).find(x => x.id === v.main); text = m ? m.text + (v.weak ? ` · шатается: ${v.weak}` : '') : ''; break; }
+      case 'workshop': { const r = (v.requests || []).slice(-1)[0]; text = r ? `v${r.version}` : ''; break; } // «v2», а не «версия 2»: не путать с чекпоинтом «Версия 2»
+      case 'verify': { const r = (v.log || []).slice(-1)[0]; text = r ? { yes: 'ближе к чувству', unknown: 'не знаю', worse: 'хуже' }[r.verdict] : ''; break; }
+      case 'ownplay': text = v.match ? [v.match, ...(v.emotions || [])].join(' ') : ''; break;
+      case 'playtest': text = v.sent ? (v.emotions || []).join(' ') || 'отзыв отправлен' : ''; break;
+      case 'sort': text = v.total ? `${v.correct} из ${v.total}` : ''; break;
+      case 'postcard': text = v.card ? '📮 ' + v.card.title : ''; break;
+      default: text = a.done ? 'готово' : '';
+    }
+    text = String(text || '').trim();
+    return text ? { label: l.label, text: text.length > 60 ? text.slice(0, 58) + '…' : text } : null;
+  }).filter(Boolean);
 }
 function stopFrames() { Games.stopAll(); }
 // сборка и правка: остановить все игры, но не снимать их — другие шаги чекпоинта (игра соседа, своя игра) остаются живыми
@@ -167,15 +200,61 @@ function stepCard(step, i, cp) {
   const doneTag = el('span', { class: 'tag ok', hidden: !a.done }, '✓ готово');
   card.append(el('div', { class: 'step-head' },
     el('div', { class: 'stack', style: 'gap:4px' }, el('div', { class: 'n' }, `Шаг ${i + 1} из ${cp.steps.length}`), el('h2', {}, step.title)), doneTag));
-  if (step.text) card.append(el('p', { class: 'muted' }, step.text));
+  if (step.text) card.append(glossify(el('p', { class: 'muted' }, step.text), card));
   const ctx = {
     step, get value() { return ans(step.id).value; }, get done() { return !!ans(step.id).done; },
     save(value, done, now) { save(step.id, value, done, now); if (done != null) { card.classList.toggle('done', !!done); doneTag.hidden = !done; if (done) beep('done'); } },
   };
   const R = STEPS[step.type];
-  card.append(R ? R(ctx) : el('p', { class: 'err' }, 'Неизвестный тип шага: ' + step.type));
+  const body = R ? R(ctx) : el('p', { class: 'err' }, 'Неизвестный тип шага: ' + step.type);
+  card.append(step.type === 'text' ? glossify(body, card) : body);
   return card;
 }
+
+// Словарик по месту (С2): первое упоминание слова в шаге подчёркнуто точками, нажатие — одна фраза и пример из урока
+function glossify(node, scope) {
+  const list = S.lesson.glossary || [];
+  if (!list.length) return node;
+  const seen = (scope || node).__gloss || ((scope || node).__gloss = new Set());
+  const walker = document.createTreeWalker(node, NodeFilter.SHOW_TEXT, { acceptNode: t => (t.parentElement.closest('button, a, input, textarea, select, .term, summary') ? NodeFilter.FILTER_REJECT : NodeFilter.FILTER_ACCEPT) });
+  const texts = []; for (let t = walker.nextNode(); t; t = walker.nextNode()) texts.push(t);
+  for (const g of list) {
+    if (seen.has(g.id)) continue;
+    const re = new RegExp('(?<![а-яёa-z])(' + g.re + ')', 'iu');
+    for (let k = 0; k < texts.length; k++) {
+      const t = texts[k], m = re.exec(t.nodeValue);
+      if (!m) continue;
+      const rest = t.splitText(m.index), after = rest.splitText(m[1].length);
+      const term = el('span', { class: 'term', role: 'button', tabindex: '0', 'data-term': g.id, 'aria-label': `${m[1]}: что это?` }, m[1]);
+      rest.replaceWith(term);
+      texts.splice(k, 1, t, after); // хвост текста — ещё кандидат для других слов
+      seen.add(g.id);
+      break;
+    }
+  }
+  return node;
+}
+let glossPop = null;
+function showTerm(span) {
+  const g = (S.lesson.glossary || []).find(x => x.id === span.dataset.term);
+  if (!g) return;
+  if (glossPop) glossPop.remove();
+  glossPop = el('div', { class: 'gloss-pop', role: 'dialog', 'aria-label': g.term }, el('b', {}, g.term), el('p', {}, g.say), g.example ? el('p', { class: 'small gloss-ex' }, el('span', { class: 'eyebrow' }, 'У нас в уроке'), ' ', g.example) : null);
+  document.body.append(glossPop);
+  const r = span.getBoundingClientRect(), w = Math.min(320, window.innerWidth - 32);
+  glossPop.style.width = w + 'px';
+  glossPop.style.left = Math.max(16, Math.min(r.left + window.scrollX, window.scrollX + window.innerWidth - w - 16)) + 'px';
+  glossPop.style.top = (r.bottom + window.scrollY + 6) + 'px';
+}
+document.addEventListener('click', e => {
+  const t = e.target.closest && e.target.closest('.term');
+  if (t) { showTerm(t); return; }
+  if (glossPop && !e.target.closest('.gloss-pop')) { glossPop.remove(); glossPop = null; }
+});
+document.addEventListener('keydown', e => {
+  if ((e.key === 'Enter' || e.key === ' ') && e.target.classList && e.target.classList.contains('term')) { e.preventDefault(); showTerm(e.target); }
+  else if (e.key === 'Escape' && glossPop) { glossPop.remove(); glossPop = null; }
+});
 
 function ownCounter(values) {
   const filled = values.filter(v => valText(v)), own = filled.filter(v => !v.dice && !v.card);
@@ -184,6 +263,143 @@ function ownCounter(values) {
 
 /* =================== типы шагов =================== */
 const STEPS = {};
+
+// lens: линза урока как ритуал финала (С3) — карта переворачивается по нажатию и ложится в колоду «Моей студии»
+STEPS.lens = ctx => {
+  const st = ctx.step, lens = S.lesson.lens || '', q = lens.includes(':') ? lens.slice(lens.indexOf(':') + 1).trim() : lens;
+  const name = lens.includes(':') ? lens.slice(0, lens.indexOf(':')) : 'Линза';
+  const card = el('button', { type: 'button', class: 'lens-card' + (ctx.done ? ' flipped' : ''), 'aria-label': ctx.done ? name + ': ' + q : 'Перевернуть карту линзы' },
+    el('span', { class: 'lens-back' }, el('span', { class: 'eyebrow' }, `Линза · урок ${S.lesson.number}`), el('b', {}, '?'), el('span', { class: 'small muted' }, 'Нажми, чтобы перевернуть')),
+    el('span', { class: 'lens-face' }, el('span', { class: 'eyebrow' }, `${name} · урок ${S.lesson.number}`), el('b', {}, q), st.hint ? el('span', { class: 'small muted' }, st.hint) : null));
+  const note = el('p', { class: 'muted small', hidden: !ctx.done }, '✓ Линза легла в твою колоду в «Моей студии». Каждый урок — новая.');
+  card.addEventListener('click', () => { if (ctx.done) return; card.classList.add('flipped'); beep('good'); note.hidden = false; ctx.save({ got: true }, true, true); });
+  return el('div', { class: 'stack' }, card, note);
+};
+
+// nishikado: «Ты — Нисикадо» (И1) — живая сцена 1978 года. Слабый компьютер двигает одного пришельца за кадр, поэтому чем меньше
+// пришельцев, тем быстрее волна. Ученик сбивает их и сам решает: исправить случайность железа или оставить. Потом видит другой вариант.
+STEPS.nishikado = ctx => {
+  const W = 480, H = 200, COLS = 8, ROWS = 3, FIX = COLS * ROWS; // «исправить»: каждый пришелец шагает раз в FIX кадров, как при полной волне
+  let v = Object.assign({ choice: null, saw: [] }, ctx.value);
+  const cv = el('canvas', { width: W, height: H, class: 'nk-canvas', 'aria-label': 'Волна пришельцев 1978 года. Нажми на пришельца, чтобы сбить' });
+  const g = cv.getContext('2d');
+  const speed = el('b', {}, '×1'), left = el('span', {}, '');
+  const say = el('p', { class: 'nk-say', 'aria-live': 'polite' }, '1978 год. Компьютер слабый: за один кадр он успевает сдвинуть только одного пришельца. Сбей их — нажми на пришельца или пробел.');
+  const decide = el('div', { class: 'row nk-decide', hidden: true });
+  const reveal = el('div', { class: 'concept', hidden: !v.choice });
+  let aliens = [], dir = 1, turn = 0, frame = 0, mode = 'hw', raf = 0, flash = [];
+  function wave() {
+    aliens = []; dir = 1; turn = 0; frame = 0;
+    for (let r = 0; r < ROWS; r++) for (let c = 0; c < COLS; c++) aliens.push({ x: 40 + c * 40, y: 24 + r * 30, r });
+  }
+  const SPR = ['..X..X..', '...XX...', '.XXXXXX.', 'XX.XX.XX', 'XXXXXXXX', '.X....X.'];
+  const COL = ['#ff5d6e', '#ffb547', '#7cf5a8'];
+  function draw() {
+    g.fillStyle = '#05070f'; g.fillRect(0, 0, W, H);
+    g.fillStyle = '#1d2a4d'; g.fillRect(0, H - 14, W, 2);
+    for (const a of aliens) { g.fillStyle = COL[a.r % 3]; SPR.forEach((row, y) => [...row].forEach((ch, x) => { if (ch === 'X') g.fillRect(a.x - 12 + x * 3, a.y - 9 + y * 3, 3, 3); })); }
+    flash = flash.filter(f => f.t-- > 0);
+    for (const f of flash) { g.fillStyle = `rgba(255,214,110,${f.t / 10})`; g.beginPath(); g.arc(f.x, f.y, 18 - f.t, 0, 7); g.fill(); }
+    g.fillStyle = '#7cf5a8'; g.fillRect(W / 2 - 12, H - 10, 24, 6);
+  }
+  // шаг волны: по одному пришельцу за кадр (железо) или вся волна раз в FIX кадров (исправлено)
+  function stepOne(a) {
+    a.x += dir * 4;
+  }
+  function tick() {
+    if (!cv.isConnected) { cancelAnimationFrame(raf); return; }
+    frame++;
+    if (aliens.length) {
+      if (mode === 'hw') { turn = turn % aliens.length; stepOne(aliens[turn]); turn++; }
+      else if (frame % FIX === 0) aliens.forEach(stepOne);
+      if (aliens.some(a => a.x > W - 16 || a.x < 16) && (mode === 'fix' || turn >= aliens.length)) {
+        dir = -dir; aliens.forEach(a => { a.x += dir * 4; a.y += 6; if (a.y > H - 30) a.y = 24 + a.r * 30; }); turn = 0;
+      }
+    }
+    const k = aliens.length ? (mode === 'hw' ? FIX / aliens.length : 1) : 0;
+    speed.textContent = '×' + (k >= 10 ? Math.round(k) : k.toFixed(1).replace('.0', '').replace('.', ','));
+    left.textContent = `пришельцев: ${aliens.length}`;
+    draw();
+    raf = requestAnimationFrame(tick);
+  }
+  function hit(a) {
+    aliens = aliens.filter(x => x !== a); flash.push({ x: a.x, y: a.y, t: 10 }); beep('tick');
+    if (aliens.length === 3 && !v.choice && mode === 'hw') {
+      say.textContent = 'Смотри, как носятся последние! Это случайность железа, её никто не задумывал. Ты — Нисикадо. Что сделаешь?';
+      decide.hidden = false;
+    }
+    if (!aliens.length) setTimeout(() => { wave(); say.textContent = v.choice ? 'Новая волна. Сравни: сначала медленно, к концу быстрее.' : say.textContent; }, 600);
+  }
+  cv.addEventListener('pointerdown', e => {
+    const r = cv.getBoundingClientRect(), x = (e.clientX - r.left) * W / r.width, y = (e.clientY - r.top) * H / r.height;
+    const a = aliens.slice().sort((p, q) => Math.hypot(p.x - x, p.y - y) - Math.hypot(q.x - x, q.y - y))[0];
+    if (a && Math.hypot(a.x - x, a.y - y) < 22) hit(a);
+  });
+  const shoot = () => { if (aliens.length) hit(aliens.slice().sort((p, q) => Math.abs(p.x - W / 2) - Math.abs(q.x - W / 2))[0]); };
+  const fire = el('button', { type: 'button', class: 'btn ghost small', 'data-nk': 'fire', onclick: shoot }, '💥 Выстрел (пробел)');
+  cv.tabIndex = 0;
+  cv.addEventListener('keydown', e => { if (e.key === ' ') { e.preventDefault(); shoot(); } });
+  const modeTag = el('span', { class: 'tag' });
+  function setMode(m) {
+    mode = m; turn = 0; frame = 0;
+    modeTag.textContent = m === 'hw' ? 'как в 1978: один пришелец за кадр' : 'исправлено: скорость всегда одна';
+    if (!v.saw.includes(m)) v.saw = v.saw.concat(m);
+  }
+  function choose(c) {
+    v.choice = c; decide.hidden = true;
+    setMode(c === 'keep' ? 'hw' : 'fix');
+    say.textContent = c === 'keep' ? 'Ты оставил. Последние пришельцы носятся, и сердце колотится к концу волны.' : 'Ты исправил. Последние пришельцы ползут так же медленно, как первые. Ровно, спокойно… и скучновато?';
+    paintReveal(); ctx.save(v, true, true); beep('good');
+  }
+  function paintReveal() {
+    reveal.hidden = !v.choice; reveal.innerHTML = '';
+    if (!v.choice) return;
+    reveal.append(el('b', {}, v.choice === 'keep' ? 'Ты решил так же, как Нисикадо. ' : 'Нисикадо решил иначе: он оставил. '),
+      'Так в игре появилась спрятанная механика: игрок видит, что последний пришелец носится, а правило «чем меньше врагов, тем они быстрее» спрятано. Решил это не компьютер, а геймдизайнер.',
+      el('div', { class: 'row', style: 'margin-top:8px' }, el('button', { type: 'button', class: 'btn ghost small', 'data-nk': 'other', onclick: () => { setMode(mode === 'hw' ? 'fix' : 'hw'); wave(); ctx.save(v, true); say.textContent = mode === 'hw' ? 'Как в 1978: сбивай и смотри, как разгоняется волна.' : 'Исправлено: волна всегда ползёт одинаково.'; paintReveal(); } },
+        mode === 'hw' ? '🔧 Посмотреть исправленный вариант' : '✨ Посмотреть, как в 1978'), modeTag));
+  }
+  decide.append(
+    el('button', { type: 'button', class: 'btn ghost', 'data-nk': 'fix', onclick: () => choose('fix') }, '🔧 Исправить: скорость всегда одна'),
+    el('button', { type: 'button', class: 'btn warm', 'data-nk': 'keep', onclick: () => choose('keep') }, '✨ Оставить: пусть носятся'));
+  wave(); setMode(v.choice === 'fix' ? 'fix' : 'hw'); if (v.choice) say.textContent = 'Сбей волну ещё раз или посмотри другой вариант.';
+  paintReveal();
+  raf = requestAnimationFrame(tick);
+  return el('div', { class: 'stack' }, say, el('div', { class: 'nk-wrap' }, cv),
+    el('div', { class: 'row small' }, fire, el('span', { class: 'grow muted' }, left), el('span', { class: 'muted' }, 'скорость волны '), speed), decide, reveal);
+};
+
+// postcard: открытка первой игры (И3) — название, задуманное чувство, что почувствовали соседи, спрятанная механика и сколько её заметили,
+// рекорд. Ученик кладёт её на полку «Моей студии»: в ответе шага лежит снимок, студия показывает его как есть.
+STEPS.postcard = ctx => {
+  const host = el('div', { class: 'stack' });
+  if (!hasGame()) { host.append(el('p', { class: 'muted' }, 'Открытка появится, когда соберёшь свою игру.')); return host; }
+  host.append(el('p', { class: 'muted small' }, 'Собираю открытку…'));
+  api('/api/playtest/mine').then(r => {
+    const g = r.game || {}, d = r.discovery || {}, b = r.blind || {}, vars = planVars();
+    const emo = Object.entries(d.emotions || {}).sort((x, y) => y[1] - x[1]).slice(0, 3).map(([e]) => e);
+    const card = Object.assign({}, ctx.value && ctx.value.card, {
+      title: g.title || vars.title || 'Моя игра', emblem: g.emblem || '', lesson: S.lesson.number, feeling: myFeeling(), emotions: emo,
+      secret: vars.secret || '', felt: b.felt || 0, voted: b.voted || 0, record: g.record ? { nick: g.record.nick, score: g.record.score } : null,
+      players: d.players || 0, version: g.version || 1, at: new Date().toISOString().slice(0, 10),
+    });
+    host.innerHTML = '';
+    host.append(postcardView(card), el('div', { class: 'row' },
+      el('button', { type: 'button', class: 'btn' + (ctx.done ? ' ghost' : ''), 'data-postcard': 'save', onclick: e => { ctx.save({ card }, true, true); e.currentTarget.textContent = '✓ На полке'; toast('Открытка на полке «Моей студии»', 'ok'); } },
+        ctx.done ? '↻ Обновить открытку на полке' : '📮 Положить на полку «Моей студии»'),
+      el('a', { class: 'btn ghost small', href: '/studio', target: '_blank', rel: 'noopener' }, 'Моя студия ↗')));
+  }).catch(e => { host.innerHTML = ''; host.append(el('p', { class: 'err' }, e.message)); });
+  return host;
+};
+// вид открытки: общий у шага и у «Моей студии» (studio.js копирует разметку, стили — .postcard в style.css)
+function postcardView(c) {
+  return el('div', { class: 'postcard' },
+    el('div', { class: 'pc-top' }, el('span', { class: 'pc-emb' }, c.emblem || '🎮'), el('div', {}, el('div', { class: 'eyebrow' }, `Моя первая игра · урок ${c.lesson} · v${c.version}`), el('h3', {}, c.title))),
+    c.feeling ? el('div', {}, el('span', { class: 'small muted' }, 'Задумал: '), c.feeling) : null,
+    el('div', {}, el('span', { class: 'small muted' }, 'Соседи почувствовали: '), c.emotions.length ? c.emotions.join(' ') : 'ещё никто не оставил отзыв'),
+    c.secret ? el('div', {}, el('span', { class: 'small muted' }, 'Спрятано: '), c.secret, c.voted ? el('span', { class: 'tag', style: 'margin-left:6px' }, `заметили ${c.felt} из ${c.voted}`) : null) : null,
+    el('div', { class: 'pc-foot' }, c.record ? `🏆 Рекорд ${c.record.score} · ${c.record.nick}` : '🏆 Рекорда пока нет', c.players ? ` · играли ${c.players}` : '', el('span', { class: 'grow' }), c.at || ''));
+}
 
 STEPS.text = ctx => el('div', { class: 'stack' },
   el('div', { class: 'text-html', html: ctx.step.html }),
@@ -402,7 +618,7 @@ STEPS.abtest = ctx => {
       },
       onError: err => cur.message(el('b', {}, 'Игра класса упала: ' + (err.message || 'ошибка') + '. Скажи учителю.')),
     });
-    const ask = voted ? el('p', { class: 'verdict good' }, `Твой ответ: ${v.vote === 'same' ? 'разницы нет' : 'напряжённее в игре ' + (v.vote === 'A' ? 'А' : 'Б')}. В какой копии была спрятанная механика, узнаешь в следующем шаге.`)
+    const ask = voted ? el('p', { class: 'verdict good' }, `Твой ответ: ${v.vote === 'same' ? 'разницы нет' : 'игра ' + (v.vote === 'A' ? 'А' : 'Б')}. В какой копии была спрятанная механика, узнаешь в следующем шаге.`)
       : ready ? el('div', { class: 'stack' }, el('div', { class: 'eyebrow' }, st.question || 'В какой игре было напряжённее?'),
         el('div', { class: 'opts' }, [['A', 'В игре А'], ['B', 'В игре Б'], ['same', 'Разницы нет']].map(([k, label]) => el('button', { type: 'button', class: 'opt', onclick: () => { v.vote = k; beep('good'); ctx.save(v, true, true); draw(); } }, label))))
         : el('p', { class: 'muted' }, `Сыграй хотя бы ${need === 1 ? 'одну партию' : need + ' партии'} в каждую копию — потом появится вопрос.`);
@@ -687,7 +903,8 @@ STEPS.sort = ctx => {
   const many = st.bins.length > 3;
   let sel = 0;
   const bins = el('div', { class: 'bins' + (many ? ' many' : '') });
-  const keysHint = many ? st.bins.map((b, k) => String(k + 1)) : ['1 · ←', '2 · ↓', '3 · →'];
+  const two = st.bins.length === 2; // два лотка (урок 1: твист или спрятанная механика) — ← и →
+  const keysHint = many ? st.bins.map((b, k) => String(k + 1)) : two ? ['1 · ←', '2 · →'] : ['1 · ←', '2 · ↓', '3 · →'];
   const binBtns = st.bins.map((b, k) => { const btn = el('button', { type: 'button', class: 'bin', onclick: () => answer(k) }, b.label, b.example ? el('small', {}, b.example) : null, el('kbd', {}, keysHint[k])); bins.append(btn); return btn; });
   const select = k => { sel = (k + st.bins.length) % st.bins.length; binBtns.forEach((x, n) => x.classList.toggle('sel', n === sel)); };
   function intro() {
@@ -697,7 +914,7 @@ STEPS.sort = ctx => {
     const prev = ctx.value;
     box.append(el('div', { class: 'stack', style: 'align-items:center;text-align:center;margin:auto' },
       el('h3', {}, `${ITEMS.length} решений · ${st.seconds} секунд на каждое`),
-      el('p', { class: 'muted' }, many ? `Серия правильных ответов умножает очки. Клавиши 1–${st.bins.length} или стрелки и пробел, на геймпаде — крестовина и A.` : 'Серия правильных ответов умножает очки. Геймпад: крестовина ◀ ▼ ▶.'),
+      el('p', { class: 'muted' }, many ? `Серия правильных ответов умножает очки. Клавиши 1–${st.bins.length} или стрелки и пробел, на геймпаде — крестовина и A.` : `Серия правильных ответов умножает очки. Геймпад: крестовина ${two ? '◀ ▶' : '◀ ▼ ▶'}.`),
       prev ? el('p', {}, `Твой результат: ${prev.correct} из ${prev.total}, очки ${prev.score}`) : null,
       el('button', { class: 'btn', type: 'button', onclick: begin }, prev ? 'Сыграть ещё раз' : '▶ Начать')));
   }
@@ -778,8 +995,8 @@ STEPS.sort = ctx => {
       if (e.code === 'Space' || e.code === 'Enter') { e.preventDefault(); answer(sel); }
       return;
     }
-    const k = { Digit1: 0, Numpad1: 0, ArrowLeft: 0, Digit2: 1, Numpad2: 1, ArrowDown: 1, Digit3: 2, Numpad3: 2, ArrowRight: 2 }[e.code];
-    if (k != null) { e.preventDefault(); answer(k); }
+    const k = { Digit1: 0, Numpad1: 0, ArrowLeft: 0, Digit2: 1, Numpad2: 1, ArrowDown: 1, Digit3: 2, Numpad3: 2, ArrowRight: two ? 1 : 2 }[e.code];
+    if (k != null && k < st.bins.length) { e.preventDefault(); answer(k); }
   });
   intro();
   return box;
@@ -1129,6 +1346,16 @@ STEPS.factory = ctx => {
   });
   const fieldsHost = el('div', { class: 'stack' });
   const counterHost = el('div');
+  // П1: опоры Фабрики — те же пять вопросов, что на вау-старте (pillar и q у поля); донор урока уже стоит, опора растёт, когда поле заполнено
+  const pillarStrip = el('div', { class: 'pillars', 'aria-label': 'Пять опор твоей игры' });
+  const paintPillars = () => {
+    if (!st.fields.some(f => f.pillar)) return;
+    pillarStrip.innerHTML = '';
+    const short = t => (t.length > 28 ? t.slice(0, 26) + '…' : t);
+    [{ pillar: 'Донор', q: 'Во что мы играем?', text: st.donorCard ? st.donorCard.title : S.lesson.donor }]
+      .concat(visible().filter(f => f.pillar).map(f => ({ pillar: f.pillar, q: f.q, text: Games.cardParts(valText(v.fields[f.id]))[0] || '' })))
+      .forEach(c => pillarStrip.append(el('div', { class: 'pil' + (c.text ? ' up' : '') }, el('b', {}, c.pillar), el('span', { class: 'small muted' }, c.text ? short(c.text) : c.q))));
+  };
   function draw() {
     levelSeg.querySelectorAll('.opt').forEach((b, k) => { const on = st.levels[k].id === v.level; b.classList.toggle('on', on); b.setAttribute('aria-pressed', String(on)); });
     fieldsHost.innerHTML = '';
@@ -1137,8 +1364,10 @@ STEPS.factory = ctx => {
     count();
   }
   const visible = () => st.fields.filter(f => !f.levels || f.levels.includes(v.level));
-  const count = () => { counterHost.innerHTML = ''; counterHost.append(ownCounter(visible().map(f => v.fields[f.id]))); };
+  const count = () => { counterHost.innerHTML = ''; counterHost.append(ownCounter(visible().map(f => v.fields[f.id]))); paintPillars(); };
+  if (st.intro) wrap.append(el('div', { class: 'concept' }, st.intro)); // переход «игра класса → твоя игра» (П4)
   wrap.append(el('div', { class: 'formula' }, el('span', {}, 'Донор'), '×', el('span', {}, 'Твист'), '×', el('span', {}, 'Мир')));
+  if (st.fields.some(f => f.pillar)) wrap.append(pillarStrip); // П1: те же пять опор, что на вау-старте
   wrap.append(el('div', { class: 'eyebrow' }, 'Уровень'), levelSeg);
   const hook = st.hookFrom ? choiceText(st.hookFrom) : '';
   if (hook) wrap.append(el('div', { class: 'hookbox' }, el('b', {}, 'Тебя зацепило в доноре: '), `«${hook}». Оставишь это в своей игре? Возьми в твист, мир или чувство.`));
@@ -1455,7 +1684,12 @@ STEPS.build = ctx => {
       const og = live = ownGame({ autostart, onOver: () => { v.rounds++; ctx.save(v, ctx.done || v.rounds >= need); } });
       host.append(og.el);
     }
-    host.append(el('div', { class: 'row' }, buildBtn, el('span', { class: 'muted small' }, 'Откроется окно Qwen: скопируй задание в новый чат chat.qwen.ai, дождись кода и вставь ответ. Игра сохранится.')));
+    // П3: те же три плитки, что учитель показал классу на вау-старте
+    host.append(el('div', { class: 'qwen-tiles', 'aria-label': 'Как собрать игру в Qwen' },
+      ...[['📋', 'Скопировать задание'], ['💬', 'Новый чат chat.qwen.ai — вставить и ждать 5–10 минут'], ['📥', 'Вставить ответ в портал']]
+        .map(([ico, t], i) => el('div', { class: 'qtile' }, el('span', { class: 'qn' }, String(i + 1)), el('span', {}, ico + ' ' + t)))),
+      el('p', { class: 'muted small' }, 'Так же, как учитель собирал игру класса. Игра сохранится, можно не ждать на этой странице.'),
+      el('div', { class: 'row' }, buildBtn));
   }
   async function build() {
     if (S.game && S.game.current && !(await Lab.ask('Собрать игру заново по замыслу? Правки этой игры останутся в версиях.', { ok: 'Собрать заново' }))) return;
@@ -1933,6 +2167,13 @@ STEPS.razbor = ctx => {
       el('button', { type: 'button', class: 'x', 'aria-label': 'Убрать находку', onclick: () => { v.findings = v.findings.filter(x => x !== f); if (v.main === f.id) v.main = null; save(); drawBoard(); } }, '×')),
     el('div', {}, f.text))));
     if (v.findings.length) board.append(el('label', { class: 'lbl' }, 'Что сильнее всего мешает задуманному чувству? Выбери главную находку — она пойдёт в правку.'), grid);
+    // П1: те же пять опор, что на вау-старте и в Фабрике. Какая шатается — та и ждёт правки (необязательно)
+    if (st.pillars && v.main) {
+      const strip = el('div', { class: 'pillars', role: 'radiogroup', 'aria-label': 'Какая опора шатается?' });
+      st.pillars.forEach(p => strip.append(el('button', { type: 'button', class: 'pil' + (v.weak === p ? ' weak' : ' up'), 'data-pillar': p, 'aria-pressed': String(v.weak === p),
+        onclick: () => { v.weak = v.weak === p ? null : p; beep('tick'); save(); drawBoard(); } }, el('b', {}, p), el('span', { class: 'small muted' }, v.weak === p ? 'шатается' : 'стоит'))));
+      board.append(el('label', { class: 'lbl' }, 'Какая опора шатается из-за главной находки?'), strip);
+    }
     // своя находка
     let own = { text: '' };
     const kindSel = el('select', { 'aria-label': 'Чем чинить', 'data-own': 'kind' }, el('option', { value: 'ask' }, '💬 просьба программисту'), el('option', { value: 'knob' }, '🎛 ручка'));
@@ -2544,11 +2785,11 @@ STEPS.blindpair = ctx => {
     });
     const juicy = v.dry === 'A' ? 'B' : 'A';
     const ask = secretMode ? (v.vote ? el('div', { class: 'stack' },
-      el('p', { class: 'verdict ' + (v.vote === juicy ? 'good' : 'bad') }, v.vote === 'same' ? 'Ты не почувствовал разницы.' : `Тебе было напряжённее в игре ${name(v.vote)}.`),
+      el('p', { class: 'verdict ' + (v.vote === juicy ? 'good' : 'bad') }, v.vote === 'same' ? 'Ты не почувствовал разницы.' : `Ты выбрал игру ${name(v.vote)}.`),
       el('div', { class: 'secret-reveal' }, el('div', { class: 'eyebrow' }, 'Раскрытие'), el('h3', {}, `Спрятанная механика была в игре ${name(juicy)}`),
-        el('p', {}, v.vote === juicy ? 'Ты почувствовал спрятанную механику соседа вслепую. Значит, его решение работает!' : v.vote === 'same' ? 'Спрятанную механику соседа ты не почувствовал. Подскажи ему в плейтесте: может, спрятанная механика слишком слабая?' : 'Ты выбрал копию без спрятанной механики. Бывает: напряжение делает не только спрятанная механика.')),
+        el('p', {}, v.vote === juicy ? 'Ты почувствовал спрятанную механику соседа вслепую. Значит, его решение работает!' : v.vote === 'same' ? 'Спрятанную механику соседа ты не почувствовал. Подскажи ему в плейтесте: может, спрятанная механика слишком слабая?' : 'Ты выбрал копию без спрятанной механики. Бывает: чувство делает не только спрятанная механика.')),
       st.after ? el('p', { class: 'concept' }, st.after) : null)
-      : ready ? el('div', { class: 'stack' }, el('div', { class: 'eyebrow' }, st.question || 'В какой копии было напряжённее?'),
+      : ready ? el('div', { class: 'stack' }, el('div', { class: 'eyebrow' }, (st.questions && st.questions[g.effect]) || st.question || 'В какой копии было интереснее играть?'),
         el('div', { class: 'opts' }, [['A', 'В игре А'], ['B', 'В игре Б'], ['same', 'Разницы нет']].map(([k, label]) => el('button', { type: 'button', class: 'opt', onclick: () => { v.vote = k; v.felt = k === juicy; beep('good'); ctx.save(v, true, true); draw(); } }, label))))
         : el('p', { class: 'muted' }, `Сыграй ${need === 1 ? 'партию' : need + ' партии'} в каждую копию — потом появится вопрос.`))
     : v.vote ? el('div', { class: 'stack' },
@@ -2871,14 +3112,14 @@ function stepSummary(step) {
   switch (step.type) {
     case 'play': return `партий ${v.rounds || 0}, лучший счёт ${v.best || 0}` + (step.shared && S.wow && S.wow.game ? ` (игра класса «${S.wow.game.title}»${step.secretOff ? ', спрятанная механика выключена' : step.lupa ? ', с лупой' : ''})` : '');
     case 'cards': return S.wow ? S.wow.cards.map(c => `${c.label}: ${c.text || '—'}`).join('; ') : '—';
-    case 'abtest': return v.A ? `спрятанная механика в игре ${v.side === 'A' ? 'А' : 'Б'}; голос: ${v.vote ? (v.vote === 'same' ? 'разницы нет' : 'напряжённее ' + (v.vote === 'A' ? 'А' : 'Б')) : 'нет'}; партий А ${v.A.rounds}, Б ${v.B.rounds}; спрятанная механика сработала ${v[v.side].secret} раз` : 'не играл';
+    case 'abtest': return v.A ? `спрятанная механика в игре ${v.side === 'A' ? 'А' : 'Б'}; голос: ${v.vote ? (v.vote === 'same' ? 'разницы нет' : 'игра ' + (v.vote === 'A' ? 'А' : 'Б')) : 'нет'}; партий А ${v.A.rounds}, Б ${v.B.rounds}; спрятанная механика сработала ${v[v.side].secret} раз` : 'не играл';
     case 'secret': return v.secret ? `догадка: ${v.guess} — ${v.correct ? 'угадал' : v.trap ? 'ловушка: это было на картах' : 'не угадал'}; спрятанная механика: ${v.secret.title}` : 'не отвечал';
     case 'teacher-demo': return `партий ${v.rounds || 0}, лучший счёт ${v.best || 0}`;
     case 'rounds': return v.total ? `верно ${v.correct} из ${v.total}, очки ${v.score}, серия ${v.bestStreak}` + ((v.mistakes || []).length ? '; ошибки: ' + v.mistakes.join('; ') : '') : 'не пройден';
     case 'choice': return [(v.selected || []).join('; '), valText(v.own) ? 'свои слова: ' + f(v.own) : ''].filter(Boolean).join(' · ') || '—';
     case 'cycle': return v.total ? `без ошибок ${v.perfect} из ${v.total}, очки ${v.score}, серия ${v.bestStreak}` + ((v.mistakes || []).length ? '; трудно: ' + v.mistakes.join('; ') : '') : 'не пройден';
     case 'release': return v.released ? `выпущена версия 1.0: «${v.released.title}» (урок ${v.released.lesson}, v${v.released.version}); что изменено: ${f(v.note)}` : `не выпущена; отмечено пунктов: ${Object.values(v.checks || {}).filter(Boolean).length}`;
-    case 'blindpair': if (step.mode === 'secret' && v.game) return v.noSecret ? `игра «${v.title}» (автор ${v.author}) без спрятанной механики` : `игра «${v.title}» (автор ${v.author}); спрятанная механика была в ${v.dry === 'A' ? 'Б' : 'А'}; напряжённее: ${v.vote ? (v.vote === 'same' ? 'разницы нет' : v.vote === 'A' ? 'в А' : 'в Б') : '—'}${v.felt ? ' — почувствовал спрятанную механику' : ''}`;
+    case 'blindpair': if (step.mode === 'secret' && v.game) return v.noSecret ? `игра «${v.title}» (автор ${v.author}) без спрятанной механики` : `игра «${v.title}» (автор ${v.author}); спрятанная механика была в ${v.dry === 'A' ? 'Б' : 'А'}; выбрал: ${v.vote ? (v.vote === 'same' ? 'разницы нет' : v.vote === 'A' ? 'в А' : 'в Б') : '—'}${v.felt ? ' — почувствовал спрятанную механику' : ''}`;
       return v.game ? `игра «${v.title}» (автор ${v.author}); сухой была ${v.dry === 'A' ? 'А' : 'Б'}; хочется вернуться: ${v.vote ? (v.vote === 'same' ? 'разницы нет' : v.vote === 'A' ? 'в А' : 'в Б') : '—'}${v.vote && v.juicy ? ' — в сочную' : ''}` : 'не играл';
     case 'vote': return v.votes ? 'голоса: ' + Object.values(v.votes).length + ', сыграно игр: ' + Object.keys(v.played || {}).length : `сыграно игр: ${Object.keys(v.played || {}).length}`;
     case 'listen': return v.total ? `верно ${v.correct} из ${v.total}, очки ${v.score}` + ((v.mistakes || []).length ? '; перепутал: ' + v.mistakes.join('; ') : '') : 'не пройден';

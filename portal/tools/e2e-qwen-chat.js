@@ -224,8 +224,8 @@ const patch = (find, repl) => `<<<<<<< НАЙТИ\n${find}\n=======\n${repl}\n>>
     await pg.goto(base + '/student');
     await pg.click('.cp >> text=Своя игра');
     await pg.waitForSelector('#step-masterskaya .chatbox');
-    check('Своя игра: под игрой — «Вставить новую версию из чата», в разборе четыре прибора',
-      !!(await pg.$('#step-ruchki details.pastebox')) && await pg.locator('#step-razbor [data-tool]').count() === 4);
+    check('Своя игра: под игрой — «Вставить новую версию из чата», в разборе два прибора урока 1',
+      !!(await pg.$('#step-ruchki details.pastebox')) && await pg.locator('#step-razbor [data-tool]').count() === 2);
     await pg.fill('#step-masterskaya [data-ask="what"]', 'Враги быстрее к концу партии');
     await pg.waitForFunction(() => /Правка: Враги быстрее к концу партии/.test(document.querySelector('#step-masterskaya .chatmsg').textContent));
     check('Мастерская в чате: договор, перенос в новый чат и конструктор просьбы', /Договор/.test(await pg.textContent('#step-masterskaya')) && /Перенести игру в новый чат/.test(await pg.textContent('#step-masterskaya')));
