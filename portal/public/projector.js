@@ -34,7 +34,7 @@ async function refresh() {
   $('#pairTab').hidden = P.mode !== 'wow';
   if (P.mode !== 'wow' && P.tab === 'pair') P.tab = 'lesson';
   if (P.lastMode !== P.mode) { // учитель сменил урок: вкладка вау-старта строится заново
-    if (P.wScene) { P.wScene.destroy(); P.wScene = null; }
+    dropAsk();
     Games.stopAll(); P.tf = null; P.frameFor = null; P.wFrame = null; P.wKey = null; P.dKey = null; P.d = null; P.w = null; P.pair = null; $('#pj-pair').innerHTML = '';
     $('#pj-demo').innerHTML = ''; P.lastMode = P.mode;
   }
@@ -64,7 +64,7 @@ function showTab() {
   if (P.tab !== 'pair' && P.pair) { P.pair.frames.forEach(f => f.h.destroy()); P.pair = null; $('#pj-pair').innerHTML = ''; }
   if (P.tab !== 'cup' && P.cupFrame) { P.cupFrame.destroy(); P.cupFrame = null; P.cupKey = null; $('#pj-cup').innerHTML = ''; }
   if (P.tab !== 'demo' && (P.tf || P.wFrame)) {
-    if (P.wScene) { P.wScene.destroy(); P.wScene = null; }
+    dropAsk();
     Games.stopAll(); P.tf = null; P.frameFor = null; P.wFrame = null; P.wKey = null;
     const gh = $('#pjWowGame'); if (gh) gh.innerHTML = ''; // остановленная рамка не остаётся на странице второй игрой
   }
@@ -412,47 +412,136 @@ async function refreshPair() {
     el('div', { class: 'pj-pair-grid' }, off.box, on.box));
 }
 
-/* ---------- вау-старт урока с колодой wow: карты, сборка, раздача общей игры ---------- */
+/* ---------- вау-старт урока с колодой wow: пять вопросов, сборка, раздача общей игры ---------- */
 async function refreshWow() {
   const seq = P.wSeq = (P.wSeq || 0) + 1;
   let r;
   try { r = await api('/api/teacher/wow?code=' + encodeURIComponent(P.code)); } catch (e) { toast(e.message, 'err'); return; }
   if (seq !== P.wSeq) return;
-  const prev = P.w;
   P.w = r;
-  drawWow(prev);
+  drawWow();
 }
-function drawWow(prev) {
-  const r = P.w, host = $('#pj-demo'), w = r.wow, decks = Object.fromEntries((P.o.lesson.wow.cards || []).map(c => [c.id, (c.by && c.decks && c.decks[w.cards[c.by]]) || c.deck || []])); // угроза и поворот крутят колоду своего жанра
+// Вау-старт пятью вопросами (wow.ask, решение автора 19.10.2026): пробел — портал выкладывает три карты вопроса, класс голосует с ноутбуков,
+// полоски растут на глазах; по таймеру или по пробелу — итог: карта-победитель вспыхивает, летит под свою опору, опора растёт,
+// строка проявляется в документе, слой — в наброске игры. Когда опор пять — сборка игры с ИИ, как раньше.
+function dropAsk() {
+  if (!P.ask) return;
+  P.ask.scene.destroy(); clearInterval(P.ask.timer); P.ask = null;
+}
+function buildAsk(r) {
+  const host = $('#pj-demo');
+  host.innerHTML = '';
+  dropAsk();
+  const scene = Opory.scene({ cards: r.cards, look: r.look, onAsk: id => askOffer(id) });
+  const A = P.ask = { scene, steps: el('div', { class: 'op-steps', style: '--n:' + r.cards.length }), q: el('div', { class: 'op-q' }), picks: el('div', { class: 'op-picks' }),
+    ctl: el('div', { class: 'op-ctl' }), offerId: null, lastShown: r.wow.last ? r.wow.last.id : null, end: 0, full: 1, total: 1, picked: false, busy: false, flying: false, ticked: 0, polled: 0 };
+  host.append(el('div', { class: 'stack', id: 'pjAsk' },
+    el('div', { class: 'pj-dhead' }, el('div', { class: 'grow' }, el('div', { class: 'eyebrow' }, 'Вау-старт · пять вопросов геймдизайнера'),
+      el('div', { class: 'pj-sub' }, 'Отвечаем всем классом на пять вопросов. Каждый ответ — опора нашей игры. Пять опор держат гейм дизайн документ, по нему ИИ соберёт игру, и мы в неё сыграем.'))),
+    A.steps, el('div', { class: 'op-ask' }, el('div', { class: 'op-ask-main' }, A.q, A.picks, A.ctl), el('div', { class: 'op-ask-side' }, scene.roof, scene.base, scene.cap)),
+    el('div', { id: 'pjWowLink' }), el('div', { id: 'pjWowCtrl', class: 'row' }), el('div', { id: 'pjWowGame', class: 'stack' })));
+  scene.update(r.wow.cards, r.frame); // итог прошлых вопросов уже был до открытия вкладки — без полёта
+  A.timer = setInterval(askTick, 200);
+}
+function askQuestion(c, i, n) {
+  const q = P.ask.q;
+  q.innerHTML = ''; q.dataset.op = c.id;
+  q.append(el('div', { class: 'eyebrow' }, `Вопрос ${i + 1} из ${n} · опора «${c.pillar || c.label}»`), el('h1', {}, c.q || c.label), el('p', { class: 'op-why' }, c.why || ''));
+}
+function drawAsk() {
+  const r = P.w, w = r.wow;
+  if (!P.ask || !$('#pjAsk')) buildAsk(r);
+  const A = P.ask, o = r.offer, cards = r.cards, next = cards.find(c => !w.cards[c.id]);
+  A.steps.innerHTML = '';
+  cards.forEach((c, i) => {
+    const t = w.cards[c.id], f = Opory.face(t, r.look), now = o ? o.card === c.id : !!next && next.id === c.id;
+    A.steps.append(el('div', { class: 'op-step' + (t ? ' done' : '') + (now ? ' now' : ''), 'data-op': c.id },
+      el('b', {}, `${i + 1}. ${c.pillar || c.label}`), el('span', {}, t ? `${f.em} ${c.id === 'twist' ? t : f.name}`.trim() : c.q || c.label)));
+  });
+  A.total = Math.max(1, P.o.students.filter(s => s.online).length);
+  if (o && o.id !== A.offerId) { // новый вопрос: три карты ложатся на стол
+    const c = cards.find(x => x.id === o.card);
+    Object.assign(A, { offerId: o.id, end: Date.now() + o.left, full: Math.max(1, o.left), picked: false, ticked: 0, flying: false });
+    askQuestion(c, cards.indexOf(c), cards.length);
+    A.picks.innerHTML = '';
+    o.options.forEach(t => A.picks.append(Opory.pick(t, c, r.look)));
+    beep('dice');
+  }
+  if (o) Opory.paintVotes(A.picks, o.counts, A.total);
+  const last = w.last;
+  if (!o && last && last.id !== A.lastShown) { // итог: победитель вспыхивает и летит под свою опору
+    A.lastShown = last.id;
+    const shown = A.offerId === last.id ? [...A.picks.children] : [];
+    if (shown.length) {
+      Opory.paintVotes(A.picks, last.counts, A.total);
+      shown.forEach((p, i) => p.classList.add(i === last.option ? 'win' : 'lose'));
+      const win = shown[last.option];
+      Opory.confetti(win, ['#ffb547', '#7cf5a8', '#b49bff', '#ff5d6e', '#5fe0ff']); beep('done');
+      A.flying = true;
+      setTimeout(() => Opory.fly(win, A.scene.slot(last.card), () => {
+        if (P.ask !== A) return;
+        A.flying = false; A.offerId = null; A.picks.innerHTML = '';
+        P.wKey = null; drawWow();
+      }), 900);
+    }
+  }
+  if (!A.flying) A.scene.update(w.cards, r.frame);
+  if (!o && A.offerId && !A.flying) { A.offerId = null; A.picks.innerHTML = ''; } // голосование закрыли без итога: учитель вытянул карту сам
+  if (!o && !A.picks.children.length) { // между вопросами: следующий вопрос или игра готова к сборке
+    A.q.innerHTML = '';
+    if (!next) {
+      delete A.q.dataset.op;
+      A.q.append(el('div', { class: 'op-ready' }, el('div', { class: 'eyebrow' }, 'Пять из пяти'), el('h1', {}, 'Игра класса готова к сборке'),
+        el('p', { class: 'op-why' }, 'Опоры стоят, документ заполнен. Нажмите на любую опору справа: что сломается, если её убрать? Потом — Enter, и ИИ соберёт игру.'),
+        el('div', { class: 'op-flow' }, el('span', {}, '📄 документ'), el('i', {}, '→'), el('span', {}, '🤖 ИИ собирает'), el('i', {}, '→'), el('span', {}, '🎮 играем всем классом'), el('i', {}, '→'), el('span', {}, '🔍 ищем спрятанную механику'))));
+    } else {
+      askQuestion(next, cards.indexOf(next), cards.length);
+      A.q.append(el('p', { class: 'op-wait' }, 'Пробел — портал выложит три карты. Голосуйте у себя на ноутбуке.'));
+    }
+  }
+  drawAskCtl();
+}
+function drawAskCtl() {
+  const A = P.ask, r = P.w, w = r.wow, o = r.offer, next = r.cards.find(c => !w.cards[c.id]);
+  A.ctl.innerHTML = '';
+  if (w.given || w.status === 'building' || P.job) return;
+  if (o) A.ctl.append(el('div', { class: 'op-timer', id: 'pjAskTimer' }, ''),
+    el('button', { class: 'btn warm', type: 'button', id: 'pjAskPick', onclick: askPick }, '✓ Подвести итог', el('kbd', {}, 'пробел')),
+    el('button', { class: 'btn ghost', type: 'button', onclick: () => askOffer(o.card) }, '🎲 Другие карты'),
+    el('span', { class: 'muted small' }, `проголосовали: ${o.voted} из ${A.total}`));
+  else if (next && !A.flying) A.ctl.append(el('button', { class: 'btn', type: 'button', id: 'pjAskNext', onclick: () => askOffer() }, `❓ ${next.q || next.label}`, el('kbd', {}, 'пробел')));
+  askTick();
+}
+function askTick() {
+  const A = P.ask, r = P.w;
+  if (!A || !r || !r.offer || A.offerId !== r.offer.id || P.tab !== 'demo') return;
+  const left = Math.max(0, A.end - Date.now()), sec = Math.ceil(left / 1000), box = $('#pjAskTimer');
+  if (box) { box.textContent = sec; box.style.setProperty('--p', left / A.full); box.classList.toggle('hot', sec <= 5); }
+  if (sec <= 3 && sec > 0 && A.ticked !== sec) { A.ticked = sec; beep('tick'); }
+  if (left <= 0 && !A.picked) { A.picked = true; askPick(); }
+  if (!A.busy && Date.now() - A.polled > 800) { A.polled = Date.now(); A.busy = true; refreshWow().finally(() => { A.busy = false; }); } // голоса растут почти сразу
+}
+async function askOffer(card) {
+  try { await api('/api/teacher/wow/offer', card ? { code: P.code, card } : { code: P.code }); await refreshWow(); } catch (e) { toast(e.message, 'err'); }
+}
+async function askPick() {
+  const o = P.w && P.w.offer;
+  if (!o) return;
+  try { await api('/api/teacher/wow/pick', { code: P.code, offer: o.id }); await refreshWow(); } catch (e) { toast(e.message, 'err'); }
+}
+function drawWow() {
+  const r = P.w, w = r.wow;
   const ready = r.cards.every(c => w.cards[c.id]), busy = w.status === 'building' || !!P.job;
-  const key = JSON.stringify([w.cards, w.votes, w.status, w.given, w.link, r.game && r.game.id + '/' + r.game.version, !!P.job, P.o.students.length, P.o.students.filter(s => s.online).length]);
+  const key = JSON.stringify([w.cards, w.status, w.given, w.link, r.offer && [r.offer.id, r.offer.counts], w.last && w.last.id, r.game && r.game.id + '/' + r.game.version, !!P.job, P.o.students.length, P.o.students.filter(s => s.online).length]);
   if (key === P.wKey) return;
   P.wKey = key;
-  if (!host.querySelector('#pjWowCards')) {
-    host.innerHTML = '';
-    if (P.wScene) P.wScene.destroy();
-    P.wScene = Opory.scene({ ids: r.cards.map(c => c.id), labels: Object.fromEntries(r.cards.map(c => [c.id, c.label])) }); // сцена «Пять опор»: карты держат документ и игру
-    host.append(el('div', { class: 'pj-dhead' }, el('div', { class: 'grow' }, el('div', { class: 'eyebrow' }, 'Вау-старт · колода безумных идей'),
-      el('div', { class: 'formula pj-formula' }, ...r.formula.split(' × ').flatMap((x, i) => i ? ['×', el('span', {}, x)] : [el('span', {}, x)])))),
-    P.wScene.roof, el('div', { id: 'pjWowCards' }), P.wScene.cap, el('div', { id: 'pjWowLink' }), el('div', { id: 'pjWowCtrl', class: 'row' }), el('div', { id: 'pjWowGame', class: 'stack' }));
-  }
-  const ch = $('#pjWowCards'); ch.innerHTML = '';
-  ch.append(el('div', { class: 'pj-cards four', style: '--n:' + r.cards.length }, r.cards.map(c => {
-    const text = w.cards[c.id], votes = (w.votes[c.id] || []).length;
-    const val = el('b', { class: 'cv' }, Games.cardFace(text, c.parts));
-    if (prev && text && prev.wow.cards[c.id] !== text) spin(val, decks[c.id] || [], text, t => Games.cardFace(t, c.parts));
-    return el('div', { class: 'op-col' }, P.wScene.pillar(c.id), el('div', { class: 'pj-card' + (text ? ' on' : ''), 'data-card': c.id }, el('div', { class: 'eyebrow' }, c.label), val,
-      votes ? el('div', { class: 'tag dice pj-votes' }, `перетянуть: ${votes}`) : null,
-      !w.given && !busy ? el('button', { class: 'dicebtn', type: 'button', title: text ? 'Перетянуть карту' : 'Тянуть карту', 'aria-label': (text ? 'Перетянуть' : 'Тянуть') + ' карту «' + c.label + '»', onclick: () => wowDraw(c.id) }, '🎲') : null));
-  })));
-  P.wScene.update(w.cards, r.frame);
+  drawAsk();
   const lh = $('#pjWowLink'); lh.innerHTML = '';
   const link = w.link && w.link.cards === JSON.stringify(w.cards) ? w.link : null;
   lh.append(Games.linkBox({ link, ready, editable: !w.given && !busy, code: P.code, onChange: () => { P.wKey = null; refreshWow(); } }));
   const total = P.o.students.length, onl = P.o.students.filter(s => s.online).length;
   const ctrl = $('#pjWowCtrl'); ctrl.innerHTML = '';
   ctrl.append(...[
-    !w.given ? el('button', { class: 'btn' + (ready ? ' ghost' : ''), type: 'button', disabled: busy || null, onclick: wowNext }, '🎲 Тянуть карту', el('kbd', {}, 'пробел')) : null,
     !w.given ? el('button', { class: 'btn' + (ready && !r.game ? '' : ' ghost'), type: 'button', id: 'pjWowBuild', disabled: !ready || busy || null, onclick: wowBuild }, r.game ? '↻ Собрать заново' : '⚙ Собрать игру с ИИ', el('kbd', {}, 'Enter')) : null,
     r.game && w.status === 'preview' ? (w.given ? el('button', { class: 'btn ghost', type: 'button', onclick: () => wowGive(false) }, 'Забрать у класса')
       : el('button', { class: 'btn warm', type: 'button', id: 'pjWowGive', onclick: () => wowGive(true) }, '📣 Раздать классу')) : null,
@@ -460,7 +549,7 @@ function drawWow(prev) {
     el('span', { class: 'muted small' }, `на связи: ${onl} из ${total}`)].filter(Boolean));
   const gh = $('#pjWowGame');
   if (P.job) return; // прогресс сборки рисует wowBuild()
-  const status = { cards: ready ? 'Карты на столе. Не нравится карта — голосуйте «перетянуть» у себя.' : 'Тяните карты: ' + r.cards.map(c => c.label.toLowerCase()).join(', ') + '.', building: '⚙ Qwen собирает игру класса прямо сейчас…', preview: w.given ? '✓ Игра у всех — играйте!' : 'Игра собрана. Проверим её здесь и раздадим классу.' }[w.status] || '';
+  const status = { cards: ready ? 'Пять опор стоят. Enter — ИИ соберёт игру класса.' : 'Отвечаем на вопросы: ' + r.cards.map(c => (c.pillar || c.label).toLowerCase()).join(', ') + '.', building: '⚙ Qwen собирает игру класса прямо сейчас…', preview: w.given ? '✓ Игра у всех — играйте!' : 'Игра собрана. Проверим её здесь и раздадим классу.' }[w.status] || '';
   const gkey = r.game ? r.game.id + '/' + r.game.version : null;
   if (!gkey || P.wFrame && P.wFrame.gkey !== gkey) { if (P.wFrame) { P.wFrame.h.destroy(); P.wFrame = null; } gh.innerHTML = ''; }
   if (!gkey) { gh.append(el('p', { class: 'pj-sub', id: 'pjWowStatus' }, status)); return; }
@@ -473,14 +562,6 @@ function drawWow(prev) {
     gh.append(el('p', { class: 'pj-sub', id: 'pjWowStatus' }), el('h2', {}, g.title || 'Игра класса'), h.box, Games.bar(h, el('span', {})));
   }
   const ws = $('#pjWowStatus'); if (ws) ws.textContent = status;
-}
-async function wowDraw(card) {
-  try { await api('/api/teacher/wow/draw', { code: P.code, card }); await refreshWow(); } catch (e) { toast(e.message, 'err'); }
-}
-function wowNext() {
-  const empty = P.w.cards.find(c => !P.w.wow.cards[c.id]);
-  if (!empty) { toast('Все карты на столе. Кубик у карты — перетянуть её.'); return; }
-  wowDraw(empty.id);
 }
 async function wowGive(given) {
   try { await api('/api/teacher/wow/give', { code: P.code, given }); if (given) beep('done'); await refreshWow(); } catch (e) { toast(e.message, 'err'); }
@@ -544,7 +625,7 @@ addEventListener('keydown', e => {
   if (P.mode === 'wow') {
     const w = P.w && P.w.wow;
     if (!w || w.given || w.status === 'building' || P.job) return;
-    if (e.code === 'Space') { e.preventDefault(); wowNext(); }
+    if (e.code === 'Space') { e.preventDefault(); if (P.w.offer) askPick(); else if (!(P.ask && P.ask.flying) && P.w.cards.some(c => !w.cards[c.id])) askOffer(); }
     if (e.code === 'Enter' && !P.w.game && P.w.cards.every(c => w.cards[c.id])) { e.preventDefault(); wowBuild(); }
     return;
   }

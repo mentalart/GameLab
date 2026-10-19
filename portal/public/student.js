@@ -420,42 +420,131 @@ function marksBar(m) {
   return el('div', { class: 'stack', style: 'gap:4px' }, el('div', { class: 'small muted' }, `Когда срабатывала спрятанная механика в одной партии: ${m.at.length} раз за ${Math.round(m.len)} с`), bar,
     el('div', { class: 'row small muted' }, el('span', {}, 'начало'), el('span', { class: 'grow' }), el('span', {}, 'конец партии')));
 }
+// вау-старт пятью вопросами: учитель задаёт вопрос, портал выкладывает три карты, ученик голосует со своего ноутбука (голос можно перенести,
+// пока идёт таймер). Итог — у всех сразу: карта-победитель вспыхивает, её ответ встаёт опорой, в документе и наброске игры появляется слой.
+// Без wow.ask (старые уроки с колодой) — прежние карты с голосом «перетянуть».
 function wowStatusText(W) {
   if (!W) return '';
   const drawn = W.cards.filter(c => c.text).length;
-  return { cards: drawn ? (drawn < W.cards.length ? 'Учитель тянет карты.' : 'Карты на столе. Не нравится карта — голосуй «перетянуть».') : 'Ждём, пока учитель вытянет карты.',
-    building: '⚙ Qwen собирает игру класса прямо сейчас. Пока ждёшь — сыграй в донор ниже.', preview: 'Игра собрана, учитель её проверяет.', given: '✓ Игра готова — играй в следующем шаге!' }[W.status] || '';
+  const cards = W.ask ? (W.offer ? 'Голосуй за карту! Пока идёт таймер, голос можно перенести.' : drawn < W.cards.length ? (drawn ? 'Ответ встал опорой. Ждём следующий вопрос учителя.' : 'Скоро учитель задаст первый вопрос.') : 'Пять опор стоят! Сейчас ИИ соберёт игру класса.')
+    : drawn ? (drawn < W.cards.length ? 'Учитель тянет карты.' : 'Карты на столе. Не нравится карта — голосуй «перетянуть».') : 'Ждём, пока учитель вытянет карты.';
+  return { cards, building: '⚙ Qwen собирает игру класса прямо сейчас. Пока ждёшь — сыграй в донор ниже.', preview: 'Игра собрана, учитель её проверяет.', given: '✓ Игра готова — играй в следующем шаге!' }[W.status] || '';
 }
 
-// колода безумных идей: карты, которые учитель тянет при классе, появляются у всех сразу; голос «перетянуть»
 STEPS.cards = ctx => {
   const host = el('div', { class: 'stack' });
-  let prev = {}, sc = null; // sc — сцена «Пять опор» (public/opory.js): живёт, пока открыт шаг, и не пересоздаётся на каждый голос
-  function draw() {
+  let sc = null; // сцена «Пять опор» (public/opory.js): живёт, пока открыт шаг, и не пересоздаётся на каждый голос
+  const A = { offerId: null, mine: {}, end: 0, full: 1, lastShown: S.wow && S.wow.last ? S.wow.last.id : null, ticked: 0, hold: 0 };
+  const steps = el('div', { class: 'op-steps' }), q = el('div', { class: 'op-q' }), picks = el('div', { class: 'op-picks' }), ctl = el('div', { class: 'op-ctl' });
+  const status = el('p', { class: 'wow-status', 'aria-live': 'polite' }), linkHost = el('div', {});
+  const textsOf = W => Object.fromEntries(W.cards.map(c => [c.id, c.text]));
+  function build(W) {
+    sc = Opory.scene({ cards: W.cards, look: W.look });
     host.innerHTML = '';
+    host.append(el('div', { class: 'op-intro' }, el('b', {}, 'Пять вопросов геймдизайнера.'), ' Отвечаем всем классом: каждый ответ — опора нашей игры. Пять опор держат гейм дизайн документ, по нему ИИ соберёт игру, и мы в неё сыграем.'),
+      steps, el('div', { class: 'op-ask' }, el('div', { class: 'op-ask-main' }, q, picks, ctl), el('div', { class: 'op-ask-side' }, sc.roof, sc.base, sc.cap)), linkHost, status);
+  }
+  function draw() {
     const W = S.wow;
+    if (!W) { host.innerHTML = ''; host.append(el('p', { class: 'muted' }, 'В этом уроке нет колоды безумных идей.')); return; }
+    if (!W.ask) { drawOld(W); return; }
+    if (!sc) build(W);
+    const o = W.offer, next = W.cards.find(c => !c.text);
+    steps.style.setProperty('--n', W.cards.length); steps.innerHTML = '';
+    W.cards.forEach((c, i) => {
+      const f = Opory.face(c.text, W.look), now = o ? o.card === c.id : !!next && next.id === c.id;
+      steps.append(el('div', { class: 'op-step' + (c.text ? ' done' : '') + (now ? ' now' : ''), 'data-op': c.id },
+        el('b', {}, `${i + 1}. ${c.pillar || c.label}`), el('span', {}, c.text ? `${f.em} ${c.id === 'twist' ? c.text : f.name}`.trim() : c.q || c.label)));
+    });
+    if (o && o.id !== A.offerId) { // учитель задал вопрос: три карты ложатся на стол
+      const c = W.cards.find(x => x.id === o.card);
+      Object.assign(A, { offerId: o.id, end: Date.now() + o.left, full: Math.max(1, o.left), ticked: 0, hold: 0 });
+      ask(c, W);
+      picks.innerHTML = '';
+      o.options.forEach((t, k) => picks.append(Opory.pick(t, c, W.look, { button: true, onclick: () => vote(o, k) })));
+      beep('dice');
+    }
+    const last = W.last;
+    if (!o && last && last.id !== A.lastShown) { // итог: у кого были карты этого вопроса — вспышка победителя
+      A.lastShown = last.id;
+      if (A.offerId === last.id && picks.children.length) {
+        const shown = [...picks.children], won = A.mine[last.id] === last.option;
+        Opory.paintVotes(picks, last.counts, 0, A.mine[last.id]);
+        shown.forEach((p, i) => { p.classList.add(i === last.option ? 'win' : 'lose'); p.disabled = true; });
+        Opory.confetti(shown[last.option], ['#ffb547', '#7cf5a8', '#b49bff', '#ff5d6e', '#5fe0ff']);
+        beep(won || A.mine[last.id] == null ? 'done' : 'good');
+        ctl.innerHTML = '';
+        ctl.append(el('div', { class: 'op-result' + (won ? ' won' : '') }, won ? '🎉 Твоя карта победила! ' : '', `Класс выбрал: ${Opory.face(last.options[last.option], W.look).name || last.options[last.option]}. Ответ встаёт опорой.`));
+        A.hold = Date.now() + 2600;
+        setTimeout(() => { if (A.offerId === last.id && !S.wow.offer) { A.offerId = null; draw(); } }, 2700);
+      } else A.offerId = null;
+    }
+    sc.update(textsOf(W), W.frame);
+    if (o) { Opory.paintVotes(picks, o.counts, 0, A.mine[o.id]); drawCtl(o); }
+    else if (A.offerId && Date.now() < A.hold) { /* показываем итог */ }
+    else {
+      A.offerId = null; picks.innerHTML = ''; ctl.innerHTML = '';
+      q.innerHTML = '';
+      if (next) { ask(next, W); q.append(el('p', { class: 'op-wait' }, W.cards.some(c => c.text) ? 'Ждём, когда учитель задаст этот вопрос…' : 'Ждём первый вопрос учителя. Смотри на проектор!')); }
+      else { delete q.dataset.op; q.append(el('div', { class: 'op-ready' }, el('div', { class: 'eyebrow' }, 'Пять из пяти'), el('h2', {}, 'Игра класса готова к сборке'),
+        el('p', { class: 'op-why' }, 'Нажми на любую опору: что сломается в игре, если её убрать?'))); }
+    }
+    linkHost.innerHTML = '';
+    if (W.link) linkHost.append(Games.linkBox({ link: Object.assign({ accepted: true }, W.link), ready: true, editable: false }));
+    status.textContent = wowStatusText(W);
+    if (W.status === 'given' && !ctx.done) ctx.save({ cards: W.cards.map(c => `${c.label}: ${c.text}`) }, true);
+  }
+  function ask(c, W) {
+    q.innerHTML = ''; q.dataset.op = c.id;
+    q.append(el('div', { class: 'eyebrow' }, `Вопрос ${W.cards.indexOf(c) + 1} из ${W.cards.length} · опора «${c.pillar || c.label}»`), el('h2', {}, c.q || c.label), el('p', { class: 'op-why' }, c.why || ''));
+  }
+  function drawCtl(o) {
+    if (!ctl.querySelector('.op-timer')) { ctl.innerHTML = ''; ctl.append(el('div', { class: 'op-timer' }, ''), el('span', { class: 'op-hint' }, '')); }
+    ctl.lastChild.textContent = A.mine[o.id] != null ? `Голос принят. Проголосовали: ${o.voted}. Передумал — нажми другую карту.` : 'Нажми на карту, которая нравится больше всего.';
+    tick();
+  }
+  function tick() {
+    const o = S.wow && S.wow.offer, box = ctl.querySelector('.op-timer');
+    if (!o || A.offerId !== o.id || !box) return;
+    const left = Math.max(0, A.end - Date.now()), sec = Math.ceil(left / 1000);
+    box.textContent = sec; box.style.setProperty('--p', left / A.full); box.classList.toggle('hot', sec <= 5);
+    if (sec <= 3 && sec > 0 && A.ticked !== sec) { A.ticked = sec; beep('tick'); }
+  }
+  let seen = false; // шаг убрали со страницы — сцена и таймер останавливаются
+  const timer = setInterval(() => { if (host.isConnected) seen = true; else if (seen) { clearInterval(timer); if (sc) sc.destroy(); return; } tick(); }, 200);
+  async function vote(o, k) {
+    if (!S.wow.offer || S.wow.offer.id !== o.id) return;
+    A.mine[o.id] = k;
+    Opory.paintVotes(picks, S.wow.offer.counts, 0, k); // отметка «твой голос» — сразу, голоса — из ответа сервера
+    try { const r = await api('/api/wow/vote', { card: o.card, option: k, offer: o.id }); beep('tick'); if (S.wow.offer && S.wow.offer.id === o.id) Opory.paintVotes(picks, r.counts, 0, k); }
+    catch (e) { toast(e.message, 'err'); }
+  }
+
+  // старая колода: карты, которые учитель тянет при классе, и голос «перетянуть»
+  let prev = {};
+  function drawOld(W) {
+    host.innerHTML = '';
     let flipped = false;
-    if (!W) { host.append(el('p', { class: 'muted' }, 'В этом уроке нет колоды безумных идей.')); return; }
-    if (!sc) sc = Opory.scene({ ids: W.cards.map(c => c.id), labels: Object.fromEntries(W.cards.map(c => [c.id, c.label])) });
-    host.append(el('div', { class: 'formula' }, ...W.formula.split(' × ').flatMap((x, i) => i ? ['×', el('span', {}, x)] : [el('span', {}, x)])), sc.roof);
-    const row = el('div', { class: 'wowcards op-row' });
+    if (!sc) sc = Opory.scene({ cards: W.cards, look: W.look });
+    host.append(el('div', { class: 'formula' }, ...W.formula.split(' × ').flatMap((x, i) => i ? ['×', el('span', {}, x)] : [el('span', {}, x)])), sc.roof, sc.base);
+    const row = el('div', { class: 'wowcards' });
     W.cards.forEach(c => {
       const mine = c.voters.includes(S.me.nick), fresh = c.text && prev[c.id] !== c.text;
-      row.append(el('div', { class: 'op-col' }, sc.pillar(c.id), el('div', { class: 'wowcard' + (c.text ? ' up' : '') + (fresh ? ' flip' : ''), 'data-card': c.id },
+      row.append(el('div', { class: 'wowcard' + (c.text ? ' up' : '') + (fresh ? ' flip' : ''), 'data-card': c.id },
         el('div', { class: 'wc-label' }, c.label),
         el('div', { class: 'wc-text' }, Games.cardFace(c.text, c.parts)),
-        c.text && W.status === 'cards' ? el('button', { class: 'btn ghost small' + (mine ? ' on' : ''), type: 'button', 'aria-pressed': String(mine), onclick: () => vote(c.id) },
-          `🔁 Перетянуть${c.voters.length ? ' · ' + c.voters.length : ''}`) : null)));
+        c.text && W.status === 'cards' ? el('button', { class: 'btn ghost small' + (mine ? ' on' : ''), type: 'button', 'aria-pressed': String(mine), onclick: () => voteOld(c.id) },
+          `🔁 Перетянуть${c.voters.length ? ' · ' + c.voters.length : ''}`) : null));
       if (fresh && prev[c.id] !== undefined) flipped = true;
       prev[c.id] = c.text;
     });
     if (flipped) beep('dice');
-    sc.update(Object.fromEntries(W.cards.map(c => [c.id, c.text])), W.frame);
+    sc.update(textsOf(W), W.frame);
     host.append(row, sc.cap, W.link ? Games.linkBox({ link: Object.assign({ accepted: true }, W.link), ready: true, editable: false }) : '',
       el('p', { class: 'wow-status', 'aria-live': 'polite' }, wowStatusText(W)));
     if (W.status === 'given' && !ctx.done) ctx.save({ cards: W.cards.map(c => `${c.label}: ${c.text}`) }, true);
   }
-  async function vote(card) {
+  async function voteOld(card) {
     try { await api('/api/wow/vote', { card }); beep('tick'); } catch (e) { toast(e.message, 'err'); }
   }
   S.hooks.push(kind => { if (kind === 'wow') draw(); });

@@ -1,171 +1,268 @@
-// Сцена «Пять опор» вау-старта (урок 1, решение автора 19.10.2026): классу видно, что карты — опоры, на которых стоят гейм дизайн документ и игра.
-// Каждая вытянутая карта вырастает опорой с понятием геймдизайна (Персонаж, Правила, Мир, Вызов, Изюминка), её строка проявляется в документе,
-// а в наброске игры над документом появляется её слой. Когда на столе все пять карт, опору можно выбить: документ кренится, строка становится дырой,
-// из наброска пропадает слой карты, а подпись говорит, что сломалось. Набросок — схема на canvas по жанру карты действия, не игра Qwen.
-// Проектор и ученик строят одну сцену: roof (набросок и документ) и cap (подпись) ставят над картами, pillar(id) — над каждой картой.
+// Сцена «Пять опор» вау-старта (урок 1, решение автора 19.10.2026): классу видно, что ответы на пять вопросов — опоры, на которых стоят
+// гейм дизайн документ и игра. Каждый ответ вырастает опорой с понятием геймдизайна (Правила, Мир, Персонаж, Вызов, Изюминка), его строка
+// проявляется в документе, а в наброске игры над документом появляется его слой: каркас игры, палитра и декор мира, герой, враги, поворот.
+// Когда ответов пять, опору можно выбить: документ кренится, строка становится дырой, из наброска пропадает слой, подпись говорит, что сломалось.
+// Набросок — схема на canvas по облику карт (wow.look: значки, палитры миров, каркас игры), не игра Qwen.
+// Проектор и ученик строят одну сцену: roof (набросок и документ), base (опоры с ответами) и cap (подпись учителя).
+// Opory.pick — карта вопроса (значок, имя, особенность, полоска голосов), paintVotes — голоса, confetti и fly — победа карты и её полёт к опоре.
 'use strict';
 const Opory = (() => {
   const { el } = Lab;
-  const P = {
-    hero: { what: 'Персонаж', field: 'Герой и кнопки', say: 'за кого играем и чем он особенный', lost: 'Без героя некем играть: вместо персонажа серый кубик со знаком вопроса.' },
-    action: { what: 'Правила', field: 'Жанр и камера', say: 'во что играем: что нажимать, как набрать очки и как проиграть', lost: 'Без правил непонятно, что нажимать и как выиграть. Это уже не игра, а картинка.' },
-    place: { what: 'Мир', field: 'Мир и картинка', say: 'как игра выглядит: цвета, небо и всё вокруг', lost: 'Без мира игра серая и пустая, как черновик.' },
-    threat: { what: 'Вызов', field: 'Угроза', say: 'кто нам мешает и чего мы боимся', lost: 'Без угрозы нечего бояться: никто не мешает, играть скучно.' },
-    twist: { what: 'Изюминка', field: 'Изюминка', say: 'то, чего нет в обычной игре этого жанра', lost: 'Без поворота это игра как у всех, в ней нет ничего своего.' },
+  const LOST = {
+    action: 'Без правил непонятно, что нажимать и как выиграть. Это уже не игра, а картинка.',
+    place: 'Без мира игра серая и пустая, как черновик.',
+    hero: 'Без героя некем играть: вместо персонажа серый кубик со знаком вопроса.',
+    threat: 'Без угрозы нечего бояться: никто не мешает, играть скучно.',
+    twist: 'Без изюминки это игра как у всех, в ней нет ничего своего.',
   };
-  // палитра мира: небо, земля, акцент — выбирается по имени места, чтобы один мир всегда выглядел одинаково
-  const PAL = [['#7fd3ff', '#ffb547', '#ff4f8b'], ['#ffd1e8', '#7a5cff', '#2de2c6'], ['#2b2f6b', '#4a3aa8', '#ffe066'], ['#b8f2c9', '#3e8f4f', '#ff8a3d'],
-    ['#ffe7a3', '#c56a2d', '#3ac1ff'], ['#a8c6ff', '#5d7bd6', '#ff5d5d'], ['#14213d', '#1f6f8b', '#fca311'], ['#ffc9a8', '#8b4a7a', '#4dd6ff']];
-  const hash = s => [...String(s || '')].reduce((h, c) => (h * 31 + c.charCodeAt(0)) >>> 0, 7);
-  const parts = t => Games.cardParts(t || '');
-  // каркас наброска по камере жанра: вид сбоку, бег навстречу, арена, тир, ловля
+  const EMOJI = '"Apple Color Emoji","Segoe UI Emoji","Noto Color Emoji",sans-serif';
+  const KINDS = { side: 1, run: 1, tir: 1, arena: 1, catch: 1, flap: 1 };
+  // каркас наброска, если у игры нет облика в look: по камере жанра
   const kindOf = frame => /сбоку/i.test(frame) ? 'side' : /навстречу/i.test(frame) ? 'run' : /^Тир/i.test(frame) ? 'tir' : /Ловля/i.test(frame) ? 'catch' : 'arena';
 
-  function scene({ ids, labels }) {
-    const S = { cards: {}, frame: '', out: new Set(), seen: new Set(), t: 0, shake: 0, burst: 0, sparks: [], last: null, raf: 0, alive: true };
-    const cv = el('canvas', { width: '720', height: '250', 'aria-label': 'Набросок игры, который складывается из карт' });
+  function face(text, look) {
+    const [name, trait] = Games.cardParts(text || '');
+    const icons = (look && look.icons) || {};
+    return { em: icons[text] || '', name: name || '', trait: trait || '' };
+  }
+
+  // cards — карты урока по порядку вопросов ({ id, label, pillar, q }), look — облик карт урока; onAsk(id) — учитель задаёт вопрос этой карты ещё раз
+  function scene({ cards, look, onAsk }) {
+    look = look || {};
+    const ids = cards.map(c => c.id), meta = Object.fromEntries(cards.map(c => [c.id, c]));
+    const S = { cards: {}, frame: '', out: new Set(), shown: new Set(), t: 0, shake: 0, burst: 0, flash: 0, sparks: [], last: null, raf: 0, alive: true };
+    const cv = el('canvas', { width: '800', height: '450', 'aria-label': 'Набросок игры класса: каждый ответ добавляет в неё слой' });
     const name = el('span', {});
-    const lines = Object.fromEntries(ids.map(id => [id, el('div', { class: 'op-ln', 'data-op': id }, el('i', {}), el('b', {}, P[id] ? P[id].field : labels[id]), el('span', {}, '…'))]));
+    const lines = Object.fromEntries(ids.map(id => [id, el('div', { class: 'op-ln', 'data-op': id }, el('i', {}), el('b', {}, meta[id].label), el('span', {}, '…'))]));
+    const goal = el('div', { class: 'op-ln op-goal', hidden: true }, el('i', {}), el('b', {}, 'Цель'), el('span', {}));
     const roof = el('div', { class: 'op-roof' }, el('div', { class: 'op-game' }, cv),
-      el('div', { class: 'op-doc' }, el('div', { class: 'op-doc-h' }, 'Гейм дизайн документ', name), ...ids.map(id => lines[id])));
+      el('div', { class: 'op-doc' }, el('div', { class: 'op-doc-h' }, 'Гейм дизайн документ класса', name), ...ids.map(id => lines[id]), goal));
+    const pillars = {}, minis = {};
+    const base = el('div', { class: 'op-base', style: '--n:' + ids.length }, ids.map(id => {
+      pillars[id] = el('button', { class: 'op-pil', type: 'button', 'data-op': id, 'aria-label': `Опора «${meta[id].pillar || meta[id].label}»: выбить или вернуть`, onclick: () => knock(id) }, el('em', {}, meta[id].pillar || meta[id].label));
+      minis[id] = el('div', { class: 'op-mini', 'data-op': id });
+      return el('div', { class: 'op-col' }, pillars[id], minis[id]);
+    }));
     const capText = el('span', {});
     const cap = el('div', { class: 'op-cap', 'aria-live': 'polite' }, el('span', { class: 'op-who' }, 'Учитель'), capText);
-    const pillars = {};
     const all = () => ids.every(id => S.cards[id]);
     const has = id => !!S.cards[id] && !S.out.has(id);
 
-    function pillar(id) {
-      const b = el('button', { class: 'op-pil', type: 'button', 'data-op': id, 'aria-label': `Опора «${P[id] ? P[id].what : labels[id]}»: выбить или вернуть`, onclick: () => knock(id) }, el('em', {}, P[id] ? P[id].what : labels[id]));
-      pillars[id] = b;
-      if (S.cards[id] && S.seen.has(id)) b.classList.add('up'); // уже стоявшая опора не вырастает заново при перерисовке
-      else if (S.cards[id]) requestAnimationFrame(() => requestAnimationFrame(() => b.classList.add('up')));
-      if (S.out.has(id)) b.classList.add('out');
-      if (S.cards[id]) S.seen.add(id);
-      return b;
-    }
     function knock(id) {
       if (!all()) return;
       if (S.out.has(id)) S.out.delete(id); else S.out.add(id);
-      S.shake = 0.3; paint();
+      S.shake = 0.35; paint();
     }
-    // frame — камера жанра карты действия (wow.genres[].frame), по ней набросок выбирает каркас
-    function update(cards, frame) {
+    // frame — камера жанра карты игры (wow.genres[].frame): каркас наброска, если у игры нет облика в look
+    function update(cardsNow, frame) {
       const before = S.cards;
-      S.cards = Object.assign({}, cards); S.frame = frame || '';
-      for (const id of ids) if (!S.cards[id]) { S.seen.delete(id); S.out.delete(id); }
-      const fresh = ids.find(id => S.cards[id] && S.cards[id] !== before[id]);
-      if (fresh) S.last = fresh;
+      S.cards = Object.assign({}, cardsNow); S.frame = frame || '';
+      const fresh = ids.filter(id => S.cards[id] && S.cards[id] !== before[id]);
+      if (fresh.length) { S.last = fresh[fresh.length - 1]; S.flash = 1; }
       if (!all()) S.out.clear();
       paint(fresh);
     }
+    const W = () => (look.worlds || {})[S.cards.place] || null, G = () => (look.games || {})[S.cards.action] || null;
     function lineText(id) {
-      const [n, t] = parts(S.cards[id]);
-      if (id === 'action') return `${n}: ${(S.frame || t || '').toLowerCase()}`;
-      if (id === 'twist') return S.cards[id];
-      return t && id !== 'place' ? `${n}, ${t}` : n;
+      const f = face(S.cards[id], look);
+      if (id === 'action') { const g = G(); return g ? `${f.em} ${f.name}, как ${g.like}: ${f.trait}` : `${f.name}: ${f.trait}`; }
+      if (id === 'place') { const w = W(); return w ? `${f.em} ${w.name}: собираем ${w.item} ${w.itemName}, вокруг ${w.decor.slice(0, 3).join('')}` : S.cards[id]; }
+      if (id === 'twist') return '✨ ' + S.cards[id];
+      return `${f.em} ${f.name}${f.trait ? ' — ' + f.trait : ''}`.trim();
     }
     function paint(fresh) {
-      const genre = parts(S.cards.action)[0];
-      name.textContent = genre || '';
+      fresh = fresh || [];
+      const g = G(), w = W();
+      name.textContent = [g ? g.name : face(S.cards.action).name, w ? w.name : ''].filter(Boolean).join(' · ');
       for (const id of ids) {
         const l = lines[id], on = has(id), hole = !!S.cards[id] && S.out.has(id);
         l.classList.toggle('on', on); l.classList.toggle('hole', hole);
         l.lastChild.textContent = on ? lineText(id) : hole ? '??? здесь дыра' : '…';
-        if (fresh === id) { l.classList.remove('pop'); void l.offsetWidth; l.classList.add('pop'); }
+        if (fresh.includes(id)) { l.classList.remove('pop'); void l.offsetWidth; l.classList.add('pop'); }
         const p = pillars[id];
-        if (p) { p.classList.toggle('out', S.out.has(id)); if (S.cards[id] && !p.classList.contains('up')) requestAnimationFrame(() => p.classList.add('up')); if (!S.cards[id]) p.classList.remove('up'); }
+        p.classList.toggle('out', S.out.has(id));
+        if (S.cards[id] && !S.shown.has(id)) { S.shown.add(id); requestAnimationFrame(() => requestAnimationFrame(() => p.classList.add('up'))); }
+        if (!S.cards[id]) { S.shown.delete(id); p.classList.remove('up'); }
+        const m = minis[id], f = face(S.cards[id], look);
+        m.innerHTML = '';
+        m.classList.toggle('on', !!S.cards[id]);
+        m.append(...[el('span', { class: 'op-mini-em' }, S.cards[id] ? f.em || '✨' : '?'), el('span', { class: 'op-mini-nm' }, S.cards[id] ? (id === 'twist' ? S.cards[id] : f.name) : meta[id].label),
+          onAsk ? el('button', { class: 'op-mini-ask', type: 'button', title: 'Задать этот вопрос ещё раз', 'aria-label': `Задать вопрос «${meta[id].q || meta[id].label}» ещё раз`, onclick: () => onAsk(id) }, '↻') : null].filter(Boolean));
       }
+      goal.hidden = !(g && has('action'));
+      if (g) goal.lastChild.textContent = g.goal;
       let tilt = 0;
       S.out.forEach(id => { const i = ids.indexOf(id) - (ids.length - 1) / 2; tilt += (i || -0.8) * 2.2; });
       roof.style.transform = S.out.size ? `rotate(${Math.max(-7, Math.min(7, tilt))}deg) translateY(${S.out.size * 4}px)` : '';
       roof.classList.toggle('live', all() && !S.out.size);
-      if (S.out.size) capText.textContent = [...S.out].map(id => P[id] ? P[id].lost : '').join(' ');
+      const last = S.last && meta[S.last];
+      if (S.out.size) capText.textContent = [...S.out].map(id => LOST[id] || '').join(' ');
       else if (all()) capText.textContent = `${ids.length} опор держат документ, документ держит игру. Нажмите на любую опору: что сломается, если её убрать?`;
-      else if (S.last && S.cards[S.last] && P[S.last]) capText.textContent = `Карта «${labels[S.last]}»: ${parts(S.cards[S.last])[0]}. Это опора «${P[S.last].what}»: ${P[S.last].say}.`;
-      else capText.textContent = 'Каждая карта станет опорой нашей игры. Тянем первую.';
+      else if (last && S.cards[S.last]) capText.textContent = `«${last.q || last.label}» — ${S.last === 'twist' ? S.cards.twist : face(S.cards[S.last]).name}. Это опора «${last.pillar || last.label}».`;
+      else capText.textContent = 'Каждый ответ станет опорой нашей игры. Начинаем с первого вопроса.';
     }
+    // слот ответа: куда летит карта-победитель на проекторе
+    const slot = id => minis[id];
 
     /* ---------- набросок игры: каждый слой — от своей карты ---------- */
-    const cx = cv.getContext('2d');
-    function blob(x, y, w, h, col, sq) {
-      const sx = 1 + (sq || 0) * 0.25, sy = 1 - (sq || 0) * 0.25;
-      cx.save(); cx.translate(x, y); cx.scale(sx, sy);
-      cx.fillStyle = col; cx.beginPath(); cx.roundRect(-w / 2, -h, w, h, Math.min(w, h) * 0.35); cx.fill();
-      cx.fillStyle = '#fff'; cx.beginPath(); cx.arc(-w * 0.18, -h * 0.62, w * 0.13, 0, 7); cx.arc(w * 0.18, -h * 0.62, w * 0.13, 0, 7); cx.fill();
-      cx.fillStyle = '#111'; cx.beginPath(); cx.arc(-w * 0.14, -h * 0.6, w * 0.06, 0, 7); cx.arc(w * 0.22, -h * 0.6, w * 0.06, 0, 7); cx.fill();
+    const cx = cv.getContext('2d'), CW = 800, CH = 450;
+    function emo(e, x, y, size) { cx.font = `${size}px ${EMOJI}`; cx.textAlign = 'center'; cx.textBaseline = 'middle'; cx.fillText(e, x, y); }
+    function heroAt(x, y, size, sq) {
+      const f = face(S.cards.hero, look);
+      cx.save(); cx.translate(x, y); cx.scale(1 + (sq || 0) * 0.2, 1 - (sq || 0) * 0.2);
+      if (has('hero') && f.em) { cx.fillStyle = 'rgba(255,255,255,.88)'; cx.beginPath(); cx.arc(0, 0, size * 0.62, 0, 7); cx.fill(); emo(f.em, 0, 2, size); }
+      else if (has('hero')) { cx.fillStyle = '#3fd0bd'; cx.beginPath(); cx.roundRect(-size * 0.4, -size * 0.45, size * 0.8, size * 0.9, 12); cx.fill(); }
+      else { cx.fillStyle = '#8b909c'; cx.beginPath(); cx.roundRect(-size * 0.4, -size * 0.45, size * 0.8, size * 0.9, 10); cx.fill(); cx.fillStyle = '#fff'; cx.font = `800 ${size * 0.5}px system-ui, sans-serif`; cx.textAlign = 'center'; cx.textBaseline = 'middle'; cx.fillText('?', 0, 2); }
+      cx.restore();
+    }
+    function enemyAt(x, y, size) {
+      if (!has('threat')) return;
+      const f = face(S.cards.threat, look);
+      cx.save(); cx.shadowColor = 'rgba(255,40,30,.9)'; cx.shadowBlur = 16;
+      if (f.em) emo(f.em, x, y, size); else { cx.fillStyle = '#e2402f'; cx.beginPath(); cx.arc(x, y, size * 0.4, 0, 7); cx.fill(); }
+      cx.restore();
+    }
+    function itemAt(x, y, size) {
+      const w = has('place') && W();
+      cx.save(); cx.shadowColor = '#ffd23f'; cx.shadowBlur = 14;
+      if (w) emo(w.item, x, y, size * (0.8 + 0.2 * Math.abs(Math.cos(S.t * 4 + x))));
+      else { cx.fillStyle = '#ffd23f'; cx.beginPath(); cx.arc(x, y, size * 0.3, 0, 7); cx.fill(); }
       cx.restore();
     }
     function frame(dt) {
-      S.t += dt; S.shake = Math.max(0, S.shake - dt);
-      const t = S.t, on = Object.fromEntries(ids.map(id => [id, has(id)]));
-      const pal = PAL[hash(parts(S.cards.place)[0]) % PAL.length], heroCol = `hsl(${hash(parts(S.cards.hero)[0]) % 360} 80% 58%)`, enemy = '#e2402f';
-      const kind = kindOf(S.frame);
+      S.t += dt; S.shake = Math.max(0, S.shake - dt); S.flash = Math.max(0, S.flash - dt * 2);
+      const t = S.t, w = has('place') && W(), g = G();
+      const kind = has('action') ? (g && KINDS[g.kind] ? g.kind : kindOf(S.frame)) : null;
       cx.save();
-      if (S.shake > 0) cx.translate((Math.random() - 0.5) * 14 * S.shake / 0.3, (Math.random() - 0.5) * 10 * S.shake / 0.3);
-      const g = cx.createLinearGradient(0, 0, 0, 250); g.addColorStop(0, on.place ? pal[0] : '#3a4152'); g.addColorStop(1, on.place ? '#ffffff' : '#596173');
-      cx.fillStyle = g; cx.fillRect(-20, -20, 760, 290);
-      const ground = on.place ? pal[1] : '#7d8596', gy = 205;
-      if (on.place) { cx.fillStyle = pal[2]; cx.globalAlpha = 0.35; for (let i = 0; i < 8; i++) { const x = ((i * 110 - t * 30) % 880 + 880) % 880 - 80; cx.beginPath(); cx.moveTo(x, gy); cx.lineTo(x + 34, gy - 70 - (i % 3) * 18); cx.lineTo(x + 68, gy); cx.fill(); } cx.globalAlpha = 1; }
-      let hx = 200, hy = gy, enemies = [];
-      if (on.action) {
-        cx.fillStyle = ground;
+      if (S.shake > 0) cx.translate((Math.random() - 0.5) * 20 * S.shake, (Math.random() - 0.5) * 14 * S.shake);
+      const sk = cx.createLinearGradient(0, 0, 0, CH); sk.addColorStop(0, w ? w.sky[0] : '#2c3347'); sk.addColorStop(1, w ? w.sky[1] : '#4a5268');
+      cx.fillStyle = sk; cx.fillRect(-30, -30, CW + 60, CH + 60);
+      const gy = 360;
+      if (w) {
+        cx.fillStyle = w.far; cx.beginPath(); cx.moveTo(-20, gy); for (let i = 0; i <= 10; i++) cx.lineTo(i * 85 - 20, 250 + ((i * 53) % 4) * 22); cx.lineTo(CW + 20, gy); cx.fill();
+        w.decor.forEach((d, i) => emo(d, ((i * 150 - t * 20) % 900 + 900) % 900 - 50, gy - 26 - (i % 2) * 10, 40 + (i % 3) * 8));
+      }
+      if (!kind) {
+        cx.fillStyle = 'rgba(255,255,255,.85)'; cx.font = '700 26px system-ui, sans-serif'; cx.textAlign = 'center'; cx.textBaseline = 'middle';
+        cx.fillText(S.cards.action ? 'Нет правил: что здесь делать?' : 'Здесь вырастет игра класса', CW / 2, CH / 2 - (has('hero') ? 80 : 0));
+        if (has('hero') || has('threat')) { heroAt(CW / 2, 300 + Math.sin(t * 2) * 6, 58, 0); [200, 600].forEach(x => enemyAt(x, 300, 46)); }
+        finish(dt, CW / 2, 300, w); cx.restore(); return;
+      }
+      const ground = w ? w.ground : '#7d8290';
+      let hx = 200, hy = 300, sq = 0, enemies = [], items = [];
+      cx.fillStyle = ground;
+      if (kind === 'side' || kind === 'flap') {
+        cx.fillRect(-30, gy, CW + 60, 120);
         if (kind === 'side') {
-          cx.fillRect(-20, gy, 760, 60);
-          [[300, 150, 110], [470, 110, 90], [600, 160, 100]].forEach(([x, y, w]) => cx.fillRect(x - ((t * 40) % 40), y, w, 14));
-          hy = gy - Math.abs(Math.sin(t * 2.6)) * 80;
-          for (let i = 0; i < 5; i++) { cx.fillStyle = '#ffd23f'; cx.beginPath(); cx.ellipse(320 + i * 70 - ((t * 40) % 40), 120 + (i % 2) * 22, 4 + 6 * Math.abs(Math.cos(t * 4 + i)), 9, 0, 0, 7); cx.fill(); }
-          enemies = [0, 1, 2].map(i => [((700 - t * 90 - i * 230) % 760 + 760) % 760, gy, 36]);
-        } else if (kind === 'run') {
-          cx.beginPath(); cx.moveTo(300, 60); cx.lineTo(420, 60); cx.lineTo(640, 250); cx.lineTo(80, 250); cx.fill();
-          cx.strokeStyle = 'rgba(255,255,255,.5)'; cx.lineWidth = 3; for (let i = 0; i < 6; i++) { const k = ((i / 6 + t * 0.5) % 1), y = 60 + k * k * 190; cx.beginPath(); cx.moveTo(360 - 4 * k, y); cx.lineTo(360 + 4 * k, y + 10 * k); cx.stroke(); }
-          hx = 360 + Math.sin(t * 1.4) * 120; hy = 235;
-          enemies = [0, 1, 2].map(i => { const k = ((i / 3 + t * 0.35) % 1); return [360 + (i - 1) * 150 * k * k, 60 + k * k * 175, 10 + 30 * k * k]; });
-        } else if (kind === 'tir') {
-          for (let r = 0; r < 2; r++) cx.fillRect(60, 110 + r * 85, 600, 14);
-          enemies = [0, 1, 2].map(i => [160 + i * 200, 110 + (i % 2) * 85 - Math.max(0, Math.sin(t * 2 + i * 2)) * 34, 30, 'tir']);
-          hx = 360; hy = 250;
-        } else if (kind === 'catch') {
-          for (let r = 0; r < 3; r++) for (let c = 0; c < 8; c++) { cx.fillStyle = on.place ? pal[(r + c) % 3] : '#7d8596'; cx.fillRect(70 + c * 74, 30 + r * 26, 66, 20); }
-          const bx = 360 + Math.sin(t * 1.7) * 240, by = 140 + Math.cos(t * 2.3) * 40; cx.fillStyle = '#fff'; cx.beginPath(); cx.arc(bx, by, 9, 0, 7); cx.fill();
-          hx = 360 + Math.sin(t * 1.7) * 220; hy = 238; cx.fillStyle = ground; cx.fillRect(hx - 60, hy - 6, 120, 12);
-          enemies = [0, 1].map(i => [120 + i * 480 + Math.sin(t + i) * 30, 175, 30]);
+          [[330, 260, 120], [520, 210, 100], [680, 270, 110]].forEach(([x, y, l]) => { const px = ((x - t * 60) % 900 + 900) % 900 - 60; cx.fillStyle = ground; cx.fillRect(px, y, l, 16); items.push([px + l / 2, y - 34]); });
+          const j = Math.abs(Math.sin(t * 2.6)); hy = gy - 34 - j * 110; sq = j < 0.08 ? 0.5 : -0.3;
+          enemies = [0, 1].map(i => [((760 - t * 110 - i * 400) % 900 + 900) % 900 - 50, gy - 24]);
         } else {
-          cx.beginPath(); cx.ellipse(360, 150, 330, 92, 0, 0, 7); cx.fill();
-          hx = 360 + Math.cos(t * 0.9) * 120; hy = 160 + Math.sin(t * 1.3) * 40;
-          for (let i = 0; i < 6; i++) { cx.fillStyle = '#7ef0ff'; cx.beginPath(); cx.arc(150 + i * 85, 120 + (i % 2) * 70, 6, 0, 7); cx.fill(); }
-          enemies = [0, 1, 2].map(i => { const a = t * 0.6 + i * 2.1; return [hx + Math.cos(a) * (150 + i * 20), hy + 30 + Math.sin(a) * 50, 36]; });
+          for (let i = 0; i < 4; i++) { const px = ((i * 240 + 300 - t * 120) % 960 + 960) % 960 - 80, gap = 150 + Math.sin(i * 2) * 60; cx.fillStyle = ground; cx.fillRect(px, -10, 60, gap - 70); cx.fillRect(px, gap + 70, 60, gy - gap - 70); items.push([px + 30, gap]); }
+          hy = 200 + Math.sin(t * 3) * 60; sq = Math.cos(t * 3) > 0.9 ? -0.4 : 0;
+          enemies = [[((700 - t * 160) % 900 + 900) % 900 - 50, 110], [((300 - t * 160) % 900 + 900) % 900 - 50, 300]];
         }
+      } else if (kind === 'run') {
+        cx.beginPath(); cx.moveTo(340, 150); cx.lineTo(460, 150); cx.lineTo(760, CH); cx.lineTo(40, CH); cx.fill();
+        cx.strokeStyle = 'rgba(255,255,255,.55)'; cx.lineWidth = 4; [-1, 1].forEach(s => { cx.beginPath(); cx.moveTo(400 + s * 20, 150); cx.lineTo(400 + s * 120, CH); cx.stroke(); });
+        hx = 400 + Math.round(Math.sin(t * 1.3)) * 207; hy = 400; sq = Math.abs(Math.sin(t * 8)) * 0.15;
+        for (let i = 0; i < 3; i++) { const k = ((i / 3 + t * 0.35) % 1), L = (i % 3) - 1, y = 150 + k * k * 300, x = 400 + L * (20 + k * k * 180); (i === 1 ? items : enemies).push([x, y, 16 + 50 * k * k]); }
+      } else if (kind === 'tir') {
+        for (let r = 0; r < 2; r++) cx.fillRect(80, 190 + r * 120, 640, 18);
+        enemies = [0, 1, 2].map(i => [200 + i * 200, 190 + (i % 2) * 120 - 34 - Math.max(0, Math.sin(t * 2 + i * 2)) * 30]);
+        items = [[120 + ((t * 80) % 560), 120]];
+        const ax = 400 + Math.cos(t * 1.2) * 230, ay = 200 + Math.sin(t * 1.7) * 60;
+        cx.strokeStyle = w ? w.acc : '#ddd'; cx.lineWidth = 5; cx.beginPath(); cx.arc(ax, ay, 26, 0, 7); cx.moveTo(ax - 40, ay); cx.lineTo(ax + 40, ay); cx.moveTo(ax, ay - 40); cx.lineTo(ax, ay + 40); cx.stroke();
+        hx = 90; hy = 400;
+      } else if (kind === 'catch') {
+        for (let r = 0; r < 3; r++) for (let c = 0; c < 9; c++) { cx.fillStyle = w ? [w.acc, w.ground, w.far][(r + c) % 3] : '#8b909c'; cx.fillRect(40 + c * 82, 30 + r * 32, 76, 26); }
+        items = [[400 + Math.sin(t * 1.7) * 300, 230 + Math.cos(t * 2.3) * 70]];
+        hx = 400 + Math.sin(t * 1.7) * 280; hy = 400; cx.fillStyle = ground; cx.beginPath(); cx.roundRect(hx - 80, hy + 22, 160, 16, 8); cx.fill();
+        enemies = [[150 + Math.sin(t) * 40, 160], [650 + Math.cos(t) * 40, 170]];
       } else {
-        cx.fillStyle = '#c9cfdb'; cx.font = '700 18px system-ui, sans-serif'; cx.textAlign = 'center'; cx.fillText(S.cards.action ? 'Нет правил: что здесь делать?' : '', 360, 50);
-        hx = 360; hy = 170 + Math.sin(t * 2) * 6;
-        enemies = [0, 1, 2].map(i => [180 + i * 180, 200, 36]);
+        cx.beginPath(); cx.ellipse(400, 330, 390, 110, 0, 0, 7); cx.fill();
+        hx = 400 + Math.cos(t * 0.9) * 140; hy = 320 + Math.sin(t * 1.3) * 40; sq = Math.abs(Math.sin(t * 7)) * 0.12;
+        enemies = [0, 1, 2, 3].map(i => { const a = t * 0.5 + i * 1.6; return [hx + Math.cos(a) * 190, hy + Math.sin(a) * 70]; });
+        items = [[220, 300], [600, 350]];
+        if (has('threat')) { cx.strokeStyle = '#fff'; cx.lineWidth = 4; const e = enemies[Math.floor(t * 2) % 4]; cx.beginPath(); cx.moveTo(hx, hy); cx.lineTo(e[0], e[1]); cx.stroke(); }
       }
-      if (on.threat) for (const [ex, ey, s, k] of enemies) {
-        if (k === 'tir') { cx.fillStyle = '#fff'; cx.beginPath(); cx.arc(ex, ey, s, Math.PI, 0); cx.fill(); cx.fillStyle = enemy; cx.beginPath(); cx.arc(ex, ey, s * 0.62, Math.PI, 0); cx.fill(); }
-        else blob(ex, ey, s, s * 0.85, enemy, Math.sin(t * 8 + ex) * 0.2);
+      items.forEach(([x, y, s]) => itemAt(x, y, s || 30));
+      enemies.forEach(([x, y, s]) => enemyAt(x, y, s || 46));
+      heroAt(hx, hy, 58, sq);
+      finish(dt, hx, hy, w);
+      cx.restore();
+    }
+    // поворот плашкой, искры и счёт, когда стоят все опоры, вспышка нового слоя, затемнение без опоры
+    function finish(dt, hx, hy, w) {
+      if (has('twist')) {
+        const tw = S.cards.twist, txt = '✨ ' + (tw.length > 34 ? tw.slice(0, 33) + '…' : tw);
+        cx.font = '700 20px system-ui, sans-serif'; const tw2 = cx.measureText(txt).width + 30;
+        cx.fillStyle = '#e08a00'; cx.beginPath(); cx.roundRect(CW - tw2 - 16, 16, tw2, 38, 19); cx.fill(); cx.fillStyle = '#fff'; cx.textAlign = 'center'; cx.textBaseline = 'middle'; cx.fillText(txt, CW - tw2 / 2 - 16, 36);
       }
-      if (kind === 'tir' && on.action) { const ax = 360 + Math.cos(t * 1.2) * 200, ay = 120 + Math.sin(t * 1.7) * 40; cx.strokeStyle = on.hero ? heroCol : '#9aa2ab'; cx.lineWidth = 4; cx.beginPath(); cx.arc(ax, ay, 18, 0, 7); cx.moveTo(ax - 28, ay); cx.lineTo(ax + 28, ay); cx.moveTo(ax, ay - 28); cx.lineTo(ax, ay + 28); cx.stroke(); }
-      if (on.hero) blob(hx, hy, 44, 52, heroCol, kind === 'side' && on.action ? (hy > gy - 4 ? 0.6 : -0.5) : 0);
-      else if (S.cards.hero || on.action) { cx.fillStyle = '#9aa2ab'; cx.fillRect(hx - 22, hy - 44, 44, 44); cx.fillStyle = '#fff'; cx.font = '800 26px system-ui, sans-serif'; cx.textAlign = 'center'; cx.fillText('?', hx, hy - 12); }
-      if (on.twist) {
-        const tw = S.cards.twist, txt = tw.length > 34 ? tw.slice(0, 33) + '…' : tw;
-        cx.font = '700 13px system-ui, sans-serif'; const w = cx.measureText(txt).width + 26, bx = Math.max(w / 2 + 6, Math.min(714 - w / 2, hx)), by = Math.max(28, hy - 78);
-        cx.fillStyle = '#d98a00'; cx.beginPath(); cx.roundRect(bx - w / 2, by - 15, w, 26, 13); cx.fill(); cx.fillStyle = '#fff'; cx.textAlign = 'center'; cx.fillText('★ ' + txt, bx, by + 3);
-      }
-      // все опоры на месте — игра оживает: искры и тряска, как сочность в настоящей игре
       if (all() && !S.out.size) {
         S.burst -= dt;
-        if (S.burst <= 0) { S.burst = 1.1; S.shake = 0.18; for (let i = 0; i < 16; i++) { const a = Math.random() * 6.28, v = 60 + Math.random() * 180; S.sparks.push({ x: hx + 40, y: hy - 30, vx: Math.cos(a) * v, vy: Math.sin(a) * v - 60, t: 0, c: i % 3 ? pal[2] : '#fff' }); } }
+        if (S.burst <= 0) { S.burst = 1; S.shake = Math.max(S.shake, 0.15); for (let i = 0; i < 18; i++) { const a = Math.random() * 6.28, v = 80 + Math.random() * 220; S.sparks.push({ x: hx, y: hy - 20, vx: Math.cos(a) * v, vy: Math.sin(a) * v - 80, t: 0, c: i % 3 ? (w ? w.acc : '#ffd23f') : '#fff' }); } }
+        cx.fillStyle = 'rgba(0,0,0,.45)'; cx.beginPath(); cx.roundRect(16, 16, 150, 40, 12); cx.fill(); cx.fillStyle = '#fff'; cx.font = '800 20px system-ui, sans-serif'; cx.textAlign = 'left'; cx.textBaseline = 'middle'; cx.fillText('★ ' + (Math.floor(S.t * 7) % 1000), 30, 37);
       }
-      for (const p of S.sparks) { p.t += dt; p.x += p.vx * dt; p.y += p.vy * dt; p.vy += 420 * dt; cx.globalAlpha = Math.max(0, 1 - p.t / 0.6); cx.fillStyle = p.c; cx.fillRect(p.x - 3, p.y - 3, 6, 6); }
+      for (const p of S.sparks) { p.t += dt; p.x += p.vx * dt; p.y += p.vy * dt; p.vy += 500 * dt; cx.globalAlpha = Math.max(0, 1 - p.t / 0.6); cx.fillStyle = p.c; cx.fillRect(p.x - 4, p.y - 4, 8, 8); }
       cx.globalAlpha = 1; S.sparks = S.sparks.filter(p => p.t < 0.6);
-      cx.restore();
+      if (S.flash > 0) { cx.fillStyle = `rgba(255,255,255,${S.flash * 0.45})`; cx.fillRect(-30, -30, CW + 60, CH + 60); }
+      if (S.out.size) { cx.fillStyle = 'rgba(0,0,0,.4)'; cx.fillRect(-30, -30, CW + 60, CH + 60); cx.fillStyle = '#fff'; cx.font = '800 28px system-ui, sans-serif'; cx.textAlign = 'center'; cx.textBaseline = 'middle'; cx.fillText('Игра сломалась: чего-то не хватает', CW / 2, 70); }
     }
     let prev = performance.now();
     const loop = now => { if (!S.alive) return; const dt = Math.min(0.05, (now - prev) / 1000); prev = now; if (cv.isConnected) frame(dt); S.raf = requestAnimationFrame(loop); };
     S.raf = requestAnimationFrame(loop);
     paint();
-    return { roof, cap, pillar, update, destroy: () => { S.alive = false; cancelAnimationFrame(S.raf); } };
+    return { roof, base, cap, update, slot, destroy: () => { S.alive = false; cancelAnimationFrame(S.raf); } };
   }
-  return { scene, kindOf };
+
+  // карта вопроса: большой значок, имя, особенность, полоска голосов — проектор и ученик
+  function pick(text, card, look, opts) {
+    opts = opts || {};
+    const f = face(text, look);
+    return el(opts.button ? 'button' : 'div', Object.assign({ class: 'op-pick', 'data-op': card.id }, opts.button ? { type: 'button', onclick: opts.onclick } : {}),
+      el('span', { class: 'op-pick-em' }, f.em || '✨'), el('span', { class: 'op-pick-nm' }, card.id === 'twist' ? text : f.name),
+      card.id !== 'twist' && f.trait ? el('span', { class: 'op-pick-tr' }, f.trait) : null,
+      el('span', { class: 'op-bar' }, el('i', {})), el('span', { class: 'op-votes' }, ''));
+  }
+  const votesWord = n => (n % 10 === 1 && n % 100 !== 11 ? 'голос' : n % 10 >= 2 && n % 10 <= 4 && (n % 100 < 12 || n % 100 > 14) ? 'голоса' : 'голосов');
+  // полоски голосов: доля от числа учеников (total) или от проголосовавших
+  function paintVotes(box, counts, total, mine) {
+    const sum = Math.max(1, total || counts.reduce((a, b) => a + b, 0));
+    [...box.querySelectorAll('.op-pick')].forEach((p, i) => {
+      const n = counts[i] || 0, bar = p.querySelector('.op-bar i'), v = p.querySelector('.op-votes');
+      bar.style.width = Math.min(100, n / sum * 100) + '%';
+      const txt = `${n} ${votesWord(n)}`;
+      if (v.textContent !== txt) { v.textContent = txt; v.classList.remove('bump'); void v.offsetWidth; v.classList.add('bump'); }
+      p.classList.toggle('mine', mine === i);
+    });
+  }
+  // конфетти над элементом: победа карты в голосовании
+  function confetti(target, colors) {
+    const r = target.getBoundingClientRect(), box = el('div', { class: 'op-confetti', 'aria-hidden': 'true' });
+    box.style.left = r.left + r.width / 2 + 'px'; box.style.top = r.top + r.height / 2 + 'px';
+    for (let i = 0; i < 40; i++) {
+      const a = Math.random() * Math.PI * 2, d = 120 + Math.random() * 220;
+      const p = el('i', {}); p.style.background = colors[i % colors.length];
+      p.style.setProperty('--x', Math.cos(a) * d + 'px'); p.style.setProperty('--y', Math.sin(a) * d - 80 + 'px'); p.style.setProperty('--r', (Math.random() * 720 - 360) + 'deg');
+      p.style.animationDelay = Math.random() * 0.08 + 's';
+      box.append(p);
+    }
+    document.body.append(box);
+    setTimeout(() => box.remove(), 1400);
+  }
+  // полёт карты-победителя в её слот под опорой (FLIP): копия карты летит и тает, потом опора растёт
+  function fly(from, to, done) {
+    if (!from || !to || !from.isConnected || matchMedia('(prefers-reduced-motion: reduce)').matches) { done(); return; }
+    const a = from.getBoundingClientRect(), b = to.getBoundingClientRect();
+    const ghost = from.cloneNode(true);
+    ghost.classList.add('op-ghost');
+    Object.assign(ghost.style, { left: a.left + 'px', top: a.top + 'px', width: a.width + 'px', height: a.height + 'px' });
+    document.body.append(ghost);
+    const dx = b.left + b.width / 2 - (a.left + a.width / 2), dy = b.top + b.height / 2 - (a.top + a.height / 2), k = Math.max(0.2, b.width / a.width);
+    const anim = ghost.animate([{ transform: 'none', opacity: 1 }, { transform: `translate(${dx * 0.5}px, ${dy * 0.5 - 60}px) scale(${(1 + k) / 2}) rotate(-8deg)`, opacity: 1, offset: 0.55 },
+      { transform: `translate(${dx}px, ${dy}px) scale(${k})`, opacity: 0.2 }], { duration: 750, easing: 'cubic-bezier(.5,0,.3,1)' });
+    anim.onfinish = () => { ghost.remove(); done(); };
+  }
+  return { scene, face, pick, paintVotes, confetti, fly, kindOf };
 })();

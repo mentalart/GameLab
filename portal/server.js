@@ -41,7 +41,7 @@ function studentLesson(les, cls) {
     return s;
   };
   const out = Object.assign({}, les, { checkpoints: les.checkpoints.map(cp => { const c = Object.assign({}, cp, { steps: cp.steps.map(step) }); delete c.teacher; return c; }) });
-  if (les.wow) out.wow = { formula: les.wow.formula, cards: les.wow.cards.map(c => ({ id: c.id, label: c.label, parts: !!c.parts })) };
+  if (les.wow) out.wow = { formula: les.wow.formula, ask: les.wow.ask || null, look: les.wow.look || null, cards: les.wow.cards.map(cardMeta) };
   return out;
 }
 // urok-01-v2 — прежняя версия 2 урока 1 (Qwen в чате, 18.10.2026): теперь это и есть урок 1, классы с ней открывают его
@@ -767,6 +767,11 @@ function drawFresh(seen, id, deck, cur) {
   seen[id] = used.concat(pick);
   return pick;
 }
+// карта вау-старта клиенту: вопрос (q), зачем (why) и имя опоры (pillar) — для урока с вопросами (wow.ask)
+const cardMeta = c => ({ id: c.id, label: c.label, parts: !!c.parts, q: c.q || null, why: c.why || null, pillar: c.pillar || null });
+// голосование вопроса: сколько голосов у каждой карты и сколько осталось секунд; голоса по именам видит только учитель
+const offerCounts = o => o.options.map((_, k) => Object.values(o.votes).filter(v => v === k).length);
+const publicOffer = w => (w.offer ? { id: w.offer.id, card: w.offer.card, options: w.offer.options, counts: offerCounts(w.offer), voted: Object.keys(w.offer.votes).length, left: Math.max(0, w.offer.until - Date.now()) } : null);
 const cardDeck = (c, w) => (c.by && c.decks && c.decks[w.cards[c.by]]) || c.deck; // колода карты; у зависимой — колода жанра
 // жанр карты действия: имя и каркас движка (wow.genres в сценарии урока)
 const wowGenre = (les, w) => (les.wow.genres || []).find(g => g.card === w.cards.action) || null;
@@ -794,7 +799,8 @@ function publicWow(cls, les) {
   const g = w.given && w.gameId ? store.getGame(w.gameId) : null;
   return {
     formula: les.wow.formula,
-    cards: les.wow.cards.map(c => ({ id: c.id, label: c.label, parts: !!c.parts, text: w.cards[c.id] || null, voters: w.votes[c.id] || [] })),
+    cards: les.wow.cards.map(c => Object.assign(cardMeta(c), { text: w.cards[c.id] || null, voters: w.votes[c.id] || [] })),
+    ask: les.wow.ask || null, look: les.wow.look || null, offer: publicOffer(w), last: w.last || null,
     status: w.given ? 'given' : w.status,
     link: acceptedLink(w) ? { phrase: w.link.phrase, loop: w.link.loop, twist: w.link.twist, funny: w.link.funny } : null,
     frame: (wowGenre(les, w) || {}).frame || '', // камера жанра для наброска игры в сцене «Пять опор» (public/opory.js)
@@ -838,10 +844,18 @@ function needWow(ctx) {
   return { cls, les, w: wowState(cls, les) };
 }
 
-route('POST', '/api/wow/vote', (ctx) => { // голос «перетянуть карту»: повторный голос снимает
+route('POST', '/api/wow/vote', (ctx) => { // голос «перетянуть карту»: повторный голос снимает; с option — голос за карту в вопросе учителя
   const { w: who, cls, les } = needStudent(ctx);
   const w = wowState(cls, les);
   if (!w) throw Object.assign(new Error('В этом уроке нет колоды'), { status: 400 });
+  if (ctx.body.option != null) {
+    const o = w.offer, k = Number(ctx.body.option);
+    if (!o || o.card !== ctx.body.card || (ctx.body.offer && ctx.body.offer !== o.id)) throw Object.assign(new Error('Голосование уже закончилось'), { status: 400 });
+    if (!Number.isInteger(k) || o.options[k] == null) throw Object.assign(new Error('Нет такой карты'), { status: 400 });
+    o.votes[who.nick] = k; // голос можно перенести на другую карту, пока учитель не подвёл итог
+    store.saveClass(cls); wowChanged(cls, les);
+    return { option: k, counts: offerCounts(o) };
+  }
   const card = les.wow.cards.find(c => c.id === ctx.body.card);
   if (!card || !w.cards[card.id] || w.status !== 'cards' || w.given) throw Object.assign(new Error('Голосовать можно, пока учитель тянет карты'), { status: 400 });
   const list = w.votes[card.id] || [];
@@ -890,7 +904,7 @@ route('GET', '/api/teacher/wow', (ctx) => {
   const { cls, les, w } = needWow(ctx);
   const g = w.gameId ? store.getGame(w.gameId) : null, v = g && g.versions[g.current - 1];
   return {
-    wow: w, formula: les.wow.formula, cards: les.wow.cards.map(c => ({ id: c.id, label: c.label, parts: !!c.parts })),
+    wow: w, formula: les.wow.formula, cards: les.wow.cards.map(cardMeta), ask: les.wow.ask || null, look: les.wow.look || null, offer: publicOffer(w),
     secrets: les.wow.secrets.map(x => ({ id: x.id, title: x.title, effect: x.effect, sound: !!x.sound })), secret: secretOf(les, w.secret), fixed: !!fixedSecret(les), headphones: !!cls.headphones, built: w.gameId ? builtSecret(les, w) : null,
     game: g && v ? { id: g.id, version: g.current, knob: w.knob || 'secret', title: g.title, model: v.model, warnings: v.warnings || [], attempts: v.attempts, kind: v.kind,
       playtest: v.playtest || null, from: v.from || null, before: v.from && g.versions[v.from - 1] ? g.versions[v.from - 1].playtest || null : null } : null,
@@ -902,8 +916,8 @@ route('POST', '/api/teacher/wow/draw', (ctx) => {
   const list = ctx.body.card === 'all' ? les.wow.cards : les.wow.cards.filter(c => c.id === ctx.body.card);
   if (!list.length) throw Object.assign(new Error('Нет такой карты'), { status: 400 });
   const seen = ((cls.wowSeen = cls.wowSeen || {})[les.id] = cls.wowSeen[les.id] || {});
-  // угроза, поворот и герой (by: 'action') тянутся из колоды жанра на карте действия: без действия сначала тянется оно,
-  // а новое действие перетягивает те зависимые карты, которых нет в колоде нового жанра (угрозу и поворот всегда, героя — при смене ручек жанра)
+  // зависимые карты (by) тянутся из колоды по карте-родителю: в уроке 1 герой и угроза — из мира на карте «Мир», поворот — из жанра на карте «Игра».
+  // Без родителя сначала тянется он, а новый родитель перетягивает те зависимые карты, которых нет в его колоде
   const todo = new Set(list.map(c => c.id));
   for (const c of les.wow.cards) if (todo.has(c.id) && c.by && !w.cards[c.by]) todo.add(c.by);
   const draw = c => { w.cards[c.id] = drawFresh(seen, c.id, cardDeck(c, w), w.cards[c.id]); w.votes[c.id] = []; };
@@ -914,10 +928,46 @@ route('POST', '/api/teacher/wow/draw', (ctx) => {
     if (todo.has(c.id)) draw(c);
     else if (todo.has(c.by) && w.cards[c.id] && !cardDeck(c, w).includes(w.cards[c.id])) { const keep = c.parts && sameName(c); if (keep) w.cards[c.id] = keep; else draw(c); }
   }
+  if (w.offer && todo.has(w.offer.card)) w.offer = null; // учитель вытянул карту сам — голосование за неё закрыто
   w.link = null; // новые карты — связка устарела
   if (!w.given && w.status !== 'building') w.status = 'cards';
   store.saveClass(cls); wowChanged(cls, les);
   return { wow: w };
+});
+// вау-старт вопросами (wow.ask): учитель задаёт вопрос — портал выкладывает ask.offer карт из колоды этой карты, класс голосует с ноутбуков,
+// итог (pick) ставит карту-победителя. Без card — следующий вопрос по порядку карт; тот же вопрос ещё раз — новые карты.
+route('POST', '/api/teacher/wow/offer', (ctx) => {
+  const { cls, les, w } = needWow(ctx);
+  if (!les.wow.ask) throw Object.assign(new Error('В этом уроке карты тянут без вопросов'), { status: 400 });
+  if (w.given || w.status === 'building') throw Object.assign(new Error('Игра уже собирается — карты не поменять'), { status: 409 });
+  const c = ctx.body.card ? les.wow.cards.find(x => x.id === ctx.body.card) : les.wow.cards.find(x => !w.cards[x.id]);
+  if (!c) throw Object.assign(new Error(ctx.body.card ? 'Нет такой карты' : 'Все вопросы уже отвечены'), { status: 400 });
+  const parent = c.by && les.wow.cards.find(x => x.id === c.by);
+  if (parent && !w.cards[parent.id]) throw Object.assign(new Error(`Сначала ответьте на вопрос «${parent.q || parent.label}»`), { status: 400 });
+  const seen = ((cls.wowSeen = cls.wowSeen || {})[les.id] = cls.wowSeen[les.id] || {});
+  const deck = cardDeck(c, w), options = [];
+  while (options.length < Math.min(les.wow.ask.offer || 3, deck.length)) options.push(drawFresh(seen, c.id, deck.filter(x => !options.includes(x)), w.cards[c.id]));
+  w.offer = { id: store.id(8), card: c.id, options, votes: {}, until: Date.now() + (les.wow.ask.seconds || 20) * 1000 };
+  store.saveClass(cls); wowChanged(cls, les);
+  return { offer: publicOffer(w) };
+});
+// итог голосования: option — выбор учителя, без него — карта с большинством голосов (ничья — жребий). offer — id голосования:
+// проектор и панель учителя закрывают его по таймеру одновременно, второй вызов ничего не меняет.
+// Новый ответ снимает зависимые карты, которых нет в новой колоде (новый мир — новые герой и угроза): на их вопросы класс ответит заново.
+route('POST', '/api/teacher/wow/pick', (ctx) => {
+  const { cls, les, w } = needWow(ctx);
+  const o = w.offer;
+  if (!o || (ctx.body.offer && ctx.body.offer !== o.id)) return { wow: w, last: w.last || null };
+  const counts = offerCounts(o), opt = Number(ctx.body.option);
+  let i = Number.isInteger(opt) && o.options[opt] != null ? opt : null;
+  if (i == null) { const max = Math.max(...counts), top = counts.map((n, k) => (n === max ? k : -1)).filter(k => k >= 0); i = top[Math.floor(Math.random() * top.length)]; }
+  w.cards[o.card] = o.options[i]; w.votes[o.card] = [];
+  for (const d of les.wow.cards) if (d.by === o.card && w.cards[d.id] && !cardDeck(d, w).includes(w.cards[d.id])) { delete w.cards[d.id]; w.votes[d.id] = []; }
+  w.last = { id: o.id, card: o.card, option: i, options: o.options, counts, by: Number.isInteger(opt) && o.options[opt] != null ? 'учитель' : 'класс' };
+  w.offer = null; w.link = null;
+  if (!w.given && w.status !== 'building') w.status = 'cards';
+  store.saveClass(cls); wowChanged(cls, les);
+  return { wow: w, last: w.last };
 });
 route('POST', '/api/teacher/wow/secret', (ctx) => { // без id — кубик, с id — тайный выбор учителя
   const { cls, les, w } = needWow(ctx);

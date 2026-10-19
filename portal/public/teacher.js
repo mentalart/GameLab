@@ -354,6 +354,8 @@ function feedbackEditor(nick, fb, hasGame) {
 }
 
 /* ---------- вкладка «Вау-старт» ---------- */
+// С wow.ask (урок 1) учитель задаёт классу пять вопросов: портал выкладывает три карты, ученики голосуют, итог подводит таймер или учитель
+// (может выбрать карту сам). Проектор показывает то же самое крупно. Без ask учитель тянет карты при классе.
 // Учитель тянет карты при классе, кубик выбирает спрятанную механику (учитель может тайно заменить), ИИ собирает общую игру, учитель раздаёт её классу.
 // Вкладку можно держать на проекторе: спрятанная механика скрыта, пока учитель её не откроет. Пока вкладка открыта, голоса и сводка обновляются сами.
 const W = { data: null, showSecret: false, gameKey: null, preview: null, busy: false };
@@ -367,13 +369,15 @@ async function drawWow(full) {
     host.innerHTML = '';
     host.append(el('div', { class: 'row' },
       el('div', { class: 'grow stack', style: 'gap:2px' }, el('div', { class: 'eyebrow' }, 'Чекпоинт 1 · колода безумных идей'), el('h2', {}, r.formula)),
-      el('button', { class: 'btn', type: 'button', onclick: () => wowAct('/api/teacher/wow/draw', { card: 'all' }) }, '🎲 Тянуть все карты')),
-      el('p', { class: 'muted small' }, 'Карты появляются у учеников сразу. Ученики голосуют «перетянуть» — число голосов видно под картой. Вкладку можно показывать на проекторе: спрятанная механика скрыта.'),
+      r.ask ? el('button', { class: 'btn', type: 'button', id: 'wowAskNext', onclick: () => wowAct('/api/teacher/wow/offer', {}) }, '❓ Следующий вопрос') : null,
+      el('button', { class: 'btn' + (r.ask ? ' ghost' : ''), type: 'button', onclick: () => wowAct('/api/teacher/wow/draw', { card: 'all' }) }, '🎲 Тянуть все карты')),
+      el('p', { class: 'muted small' }, r.ask ? 'Пять вопросов по порядку: на каждый портал выкладывает три карты, ученики голосуют с ноутбуков, через ' + r.ask.seconds + ' с побеждает карта с большинством голосов (или выберите её сами). Крупно и с анимацией — на вкладке «Вау-старт» проектора. «🎲 Тянуть» — ответ без голосования.'
+        : 'Карты появляются у учеников сразу. Ученики голосуют «перетянуть» — число голосов видно под картой. Вкладку можно показывать на проекторе: спрятанная механика скрыта.'),
       el('div', { id: 'wowCards' }), el('div', { id: 'wowLink' }), el('div', { id: 'wowSecret' }), el('div', { id: 'wowBuild' }), el('div', { id: 'wowSummary' }));
     W.gameKey = null;
   }
   const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
-  if (full || !prev || !same(prev.wow.cards, r.wow.cards) || !same(prev.wow.votes, r.wow.votes) || prev.wow.status !== r.wow.status) drawWowCards();
+  if (full || !prev || !same(prev.wow.cards, r.wow.cards) || !same(prev.wow.votes, r.wow.votes) || prev.wow.status !== r.wow.status || !same(prev.offer && [prev.offer.id, prev.offer.counts], r.offer && [r.offer.id, r.offer.counts])) drawWowCards();
   if (full || !prev || !same(prev.wow.cards, r.wow.cards) || !same(prev.wow.link, r.wow.link) || prev.wow.status !== r.wow.status) drawWowLink();
   if (full || !prev || !same(prev.secret, r.secret) || prev.wow.secretBy !== r.wow.secretBy || !same(prev.built, r.built)) drawWowSecret();
   const key = (r.game ? r.game.id + '/' + r.game.version : '') + '|' + r.wow.status + '|' + r.wow.given + '|' + r.cards.every(c => r.wow.cards[c.id]);
@@ -382,15 +386,47 @@ async function drawWow(full) {
 }
 function drawWowCards() {
   const r = W.data, host = $('#wowCards'); host.innerHTML = '';
+  const o = r.offer, open = !r.wow.given && r.wow.status !== 'building';
+  if (o) { // открытое голосование: три карты, голоса, выбор учителя
+    const c = r.cards.find(x => x.id === o.card);
+    W.offerEnd = { id: o.id, at: Date.now() + o.left, done: !!(W.offerEnd && W.offerEnd.id === o.id && W.offerEnd.done) };
+    const picks = el('div', { class: 'op-picks' }, o.options.map((t, k) => {
+      const p = Opory.pick(t, c, r.look);
+      p.append(el('button', { class: 'btn ghost small', type: 'button', onclick: () => wowAct('/api/teacher/wow/pick', { offer: o.id, option: k }) }, 'Выбрать эту'));
+      return p;
+    }));
+    Opory.paintVotes(picks, o.counts, 0);
+    host.append(el('div', { class: 'card stack wow-offer', 'data-op': c.id }, el('div', { class: 'row' },
+      el('div', { class: 'grow stack', style: 'gap:2px' }, el('div', { class: 'eyebrow' }, `Голосование · опора «${c.pillar || c.label}»`), el('h3', {}, c.q || c.label)),
+      el('span', { class: 'tag', id: 'wowOfferLeft' }, ''), el('span', { class: 'muted small' }, `голосов: ${o.voted}`)), picks,
+      el('div', { class: 'row' }, el('button', { class: 'btn warm small', type: 'button', id: 'wowAskPick', onclick: () => wowAct('/api/teacher/wow/pick', { offer: o.id }) }, '✓ Подвести итог'),
+        el('button', { class: 'btn ghost small', type: 'button', onclick: () => wowAct('/api/teacher/wow/offer', { card: o.card }) }, '🎲 Другие три карты'))));
+    wowOfferTick();
+  } else W.offerEnd = null;
   const row = el('div', { class: 'wowcards' });
-  r.cards.forEach(c => {
+  const nextQ = r.cards.find(c => !r.wow.cards[c.id]);
+  r.cards.forEach((c, i) => {
     const text = r.wow.cards[c.id], votes = (r.wow.votes[c.id] || []).length;
+    const parentOk = !c.by || r.wow.cards[c.by], pil = c.pillar || c.label;
     row.append(el('div', { class: 'wowcard' + (text ? ' up' : ''), 'data-card': c.id },
-      el('div', { class: 'wc-label' }, c.label), el('div', { class: 'wc-text' }, Games.cardFace(text, c.parts)),
-      el('div', { class: 'row' }, el('button', { class: 'btn ghost small', type: 'button', onclick: () => wowAct('/api/teacher/wow/draw', { card: c.id }) }, text ? '🎲 Перетянуть' : '🎲 Тянуть'),
+      el('div', { class: 'wc-label' }, r.ask ? `${i + 1}. ${pil}` + (pil !== c.label ? ` · ${c.label}` : '') : c.label), r.ask && c.q ? el('div', { class: 'small muted' }, c.q) : null,
+      el('div', { class: 'wc-text' }, Games.cardFace(text, c.parts)),
+      el('div', { class: 'row' }, r.ask && open ? el('button', { class: 'btn small' + (nextQ === c && !o ? '' : ' ghost'), type: 'button', disabled: !parentOk || null, title: parentOk ? '' : 'Сначала ответьте на вопрос «' + (r.cards.find(x => x.id === c.by) || {}).label + '»',
+        onclick: () => wowAct('/api/teacher/wow/offer', { card: c.id }) }, text ? '❓ Спросить снова' : '❓ Спросить класс') : null,
+        el('button', { class: 'btn ghost small', type: 'button', onclick: () => wowAct('/api/teacher/wow/draw', { card: c.id }) }, text ? '🎲 Перетянуть' : '🎲 Тянуть'),
         votes ? el('span', { class: 'tag dice', title: (r.wow.votes[c.id] || []).join(', ') }, `перетянуть: ${votes}`) : null)));
   });
+  const last = r.wow.last;
+  if (r.ask && last && !o) { const c = r.cards.find(x => x.id === last.card); if (c) host.append(el('p', { class: 'small muted' }, `Последний итог: «${c.q || c.label}» — ${Opory.face(last.options[last.option], r.look).name || last.options[last.option]} (${last.by === 'учитель' ? 'выбрал учитель' : 'голосами ' + last.counts.join(' : ')}).`)); }
   host.append(row);
+}
+// таймер открытого голосования: у панели учителя свой, итог по нулю подводит та вкладка, что успеет первой (повтор — без эффекта)
+function wowOfferTick() {
+  const e = W.offerEnd, box = $('#wowOfferLeft');
+  if (!e || !box) return;
+  const left = Math.max(0, e.at - Date.now());
+  box.textContent = left ? `⏱ ${Math.ceil(left / 1000)} с` : 'время вышло';
+  if (!left && !e.done && !$('#tab-wow').hidden) { e.done = true; wowAct('/api/teacher/wow/pick', { offer: e.id }); }
 }
 function drawWowLink() {
   const r = W.data, host = $('#wowLink'); host.innerHTML = '';
@@ -555,6 +591,7 @@ async function wowAct(path, body, full) {
   drawWow(full);
 }
 setInterval(() => { if (!$('#tab-wow').hidden && !W.busy) drawWow(); }, 4000);
+setInterval(() => { wowOfferTick(); if (W.offerEnd && !$('#tab-wow').hidden && !W.busy && Date.now() - (W.polled || 0) > 1000) { W.polled = Date.now(); drawWow(); } }, 250); // голоса открытого вопроса — почти вживую
 
 /* ---------- вкладка «Аркада» ---------- */
 /* ---------- вкладка «Ответы»: все ответы класса по шагам урока, разбор квизов по карточкам, выгрузка для анализа ---------- */

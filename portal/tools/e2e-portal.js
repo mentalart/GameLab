@@ -192,7 +192,7 @@ async function run(browser, base, mode) {
 
   // проектор: код класса и таймер открытого чекпоинта; вау-старт — карты при классе, общая игра со спрятанной механикой
   const pj = await openProjector(base, code, teacher, errors, shot);
-  await wowStart(teacher, student, mode, shot);
+  await wowStart(teacher, student, pj, mode, shot);
   await projectorWow(pj, teacher, shot);
 
   // учитель открывает все чекпоинты — ученик получает их без перезагрузки
@@ -464,36 +464,66 @@ async function run(browser, base, mode) {
   await tctx.close(); await sctx.close();
 }
 
-/* ---------- вау-старт: карты при классе, сборка общей игры со спрятанной механикой, раздача ---------- */
-async function wowStart(teacher, student, mode, shot) {
+/* ---------- вау-старт: пять вопросов классу, сборка общей игры со спрятанной механикой, раздача ---------- */
+async function wowStart(teacher, student, pj, mode, shot) {
   await teacher.click('.tabs >> text=Вау-старт');
   await teacher.waitForSelector('#wowCards .wowcard');
-  await teacher.click('#tab-wow >> text=🎲 Тянуть все карты');
-  const nCards = lesson1.wow.cards.length;
-  await student.waitForSelector(`#step-vau-karty .wowcard.up >> nth=${nCards - 1}`, { timeout: 10000 });
-  check(`Карты, которые тянет учитель, появились у ученика сразу (SSE): ${nCards}`, await student.locator('#step-vau-karty .wowcard.up').count() === nCards);
-  await student.waitForFunction(n => document.querySelectorAll('#step-vau-karty .op-pil.up').length === n, nCards, { timeout: 5000 }).catch(() => {});
-  check('Ученик: под каждой картой выросла опора, строка документа и набросок игры', await student.locator('#step-vau-karty .op-pil.up').count() === nCards && await student.locator('#step-vau-karty .op-ln.on').count() === nCards && await student.locator('#step-vau-karty .op-game canvas').count() === 1);
-  const face = (await student.textContent('#step-vau-karty .wowcard[data-card=hero] .wc-text')).trim();
-  check('Карта героя: имя крупно, особенность строкой ниже', await student.locator('#step-vau-karty .wowcard[data-card=hero] .ct').count() === 1, face);
-  await student.click('#step-vau-karty [data-card=hero] >> text=Перетянуть');
-  await teacher.waitForSelector('#wowCards >> text=перетянуть: 1', { timeout: 10000 });
-  check('Учитель видит голос «перетянуть»', true);
-  await teacher.click('#wowCards [data-card=hero] >> text=🎲 Перетянуть');
-  await student.waitForFunction(() => !document.querySelector('#step-vau-karty [data-card=hero] .btn.on'), null, { timeout: 10000 });
-  check('Перетянутая карта сбросила голоса', true);
-  // колода по жанрам: угроза и поворот — из колоды жанра на карте действия, новое действие перетягивает их под свой жанр
+  const nCards = lesson1.wow.cards.length, q1 = lesson1.wow.cards[0], q2 = lesson1.wow.cards[1];
   const wcode = (await teacher.textContent('#classCode')).trim();
-  const wowCards = () => teacher.evaluate(async c => (await Lab.api('/api/teacher/wow?code=' + encodeURIComponent(c))).wow.cards, wcode);
-  const byGenre = (id, c) => lesson1.wow.cards.find(x => x.id === id).decks[c.action].includes(c[id]);
-  const c1 = await wowCards();
-  check('Угроза и поворот — из колоды жанра на карте действия', byGenre('threat', c1) && byGenre('twist', c1), c1.action.split(' — ')[0]);
-  const c2 = await teacher.evaluate(async c => (await Lab.api('/api/teacher/wow/draw', { code: c, card: 'action' })).wow.cards, wcode);
-  check('Новое действие перетянуло угрозу и поворот под свой жанр', c2.action !== c1.action && byGenre('threat', c2) && byGenre('twist', c2) && c2.hero.split(' — ')[0] === c1.hero.split(' — ')[0] && c2.place === c1.place, c2.action.split(' — ')[0]);
-  // пилот «рецепт + слоты»: у жанра с рецептом особенность героя — ручка жанра, рецепт и слоты карт уходят в задание Qwen
-  const rg = lesson1.wow.genres.find(g => g.recipe), heroCard = lesson1.wow.cards.find(x => x.id === 'hero');
-  const rc = { action: rg.card, hero: heroCard.decks[rg.card][0], place: 'на крыше — ветер', threat: Object.keys(rg.types)[0], twist: Object.keys(rg.rules)[0] };
-  check('Жанр с рецептом: герой с ручкой жанра, у прочих жанров — общая колода', heroCard.decks[rg.card].every(h => /^[^—]+ — /.test(h)) && !heroCard.decks[lesson1.wow.genres.find(g => !g.recipe).card], rc.hero);
+  const wowNow = () => teacher.evaluate(async c => Lab.api('/api/teacher/wow?code=' + encodeURIComponent(c)), wcode);
+  // вопрос 1 — с проектора пробелом: три карты у ученика (SSE) и на проекторе, ученик голосует, учитель подводит итог
+  await pj.click('#demoTab');
+  await pj.waitForSelector('#pjAsk #pjAskNext', { timeout: 15000 });
+  check('Проектор: вау-старт начинается с первого вопроса и пяти опор', (await pj.textContent('#pjAsk .op-q h1')).trim() === q1.q && await pj.locator('#pjAsk .op-step').count() === nCards && await pj.locator('#pjAsk .op-pil').count() === nCards);
+  await pj.keyboard.press('Space');
+  await student.waitForSelector('#step-vau-karty .op-pick >> nth=2', { timeout: 10000 });
+  check('Вопрос учителя: у ученика вопрос, «зачем» и три карты', await student.locator('#step-vau-karty .op-pick').count() === lesson1.wow.ask.offer && (await student.textContent('#step-vau-karty .op-q')).includes(q1.q) && (await student.textContent('#step-vau-karty .op-why')).trim().length > 10);
+  await pj.waitForSelector('#pjAsk .op-pick >> nth=2', { timeout: 8000 });
+  await student.click('#step-vau-karty .op-pick >> nth=1');
+  await student.waitForSelector('#step-vau-karty .op-pick.mine', { timeout: 5000 });
+  await pj.waitForFunction(() => /1 голос/.test((document.querySelectorAll('#pjAsk .op-pick .op-votes')[1] || {}).textContent), null, { timeout: 8000 });
+  check('Голос ученика: отметка «твой голос» у него и голос на проекторе почти сразу', true);
+  await teacher.waitForSelector('#wowCards .wow-offer >> text=голосов: 1', { timeout: 10000 });
+  await shot(student, '1c-wow-golos');
+  await shot(teacher, '1c-wow-uchitel');
+  const o1 = (await wowNow()).offer;
+  await shot(pj, 'p2-wow-vopros');
+  await teacher.click('#wowAskPick');
+  await student.waitForSelector('#step-vau-karty .op-pick.win', { timeout: 10000 });
+  const res = (await student.textContent('#step-vau-karty .op-result')).trim();
+  check('Итог голосования: победила карта ученика, у ученика — вспышка и «Твоя карта победила»', /Твоя карта победила/.test(res) && (await wowNow()).wow.cards[q1.id] === o1.options[1], res);
+  await pj.waitForSelector('#pjAsk .op-pick.win', { timeout: 8000 });
+  await shot(pj, 'p2-wow-itog');
+  await pj.waitForSelector(`#pjAsk .op-mini.on[data-op=${q1.id}]`, { timeout: 8000 });
+  check('Проектор: карта-победитель улетела под опору, опора выросла, строка в документе', await pj.locator(`#pjAsk .op-pil.up[data-op=${q1.id}]`).count() === 1 && await pj.locator(`#pjAsk .op-ln.on[data-op=${q1.id}]`).count() === 1);
+  await pj.waitForFunction(q => (document.querySelector('#pjAsk .op-q h1') || {}).textContent === q, q2.q, { timeout: 8000 });
+  check('Проектор: следующий вопрос ждёт пробела', true);
+  await pj.click('.pj-tabs >> text=Урок');
+  // вопрос 2 — из панели учителя, учитель выбирает карту сам
+  await teacher.click('#wowAskNext');
+  await teacher.waitForSelector('#wowCards .wow-offer .op-pick >> nth=2', { timeout: 8000 });
+  const o2 = (await wowNow()).offer;
+  await teacher.click('#wowCards .wow-offer >> text=Выбрать эту >> nth=2');
+  await teacher.waitForFunction(() => !document.querySelector('#wowCards .wow-offer'), null, { timeout: 8000 });
+  const w2 = (await wowNow()).wow;
+  check('Учитель выбрал карту вопроса сам', o2.card === q2.id && w2.cards[q2.id] === o2.options[2] && w2.last.by === 'учитель', w2.cards[q2.id]);
+  // остальные карты — кубиком без голосования
+  for (const c of lesson1.wow.cards.slice(2)) await teacher.click(`#wowCards [data-card=${c.id}] >> text=🎲 Тянуть`);
+  await student.waitForFunction(n => document.querySelectorAll('#step-vau-karty .op-pil.up').length === n && document.querySelectorAll('#step-vau-karty .op-ln.on').length === n, nCards, { timeout: 10000 }).catch(() => {});
+  check('Ученик: на каждый ответ выросла опора, строка документа и набросок игры', await student.locator('#step-vau-karty .op-pil.up').count() === nCards && await student.locator('#step-vau-karty .op-ln.on').count() === nCards && await student.locator('#step-vau-karty .op-game canvas').count() === 1);
+  check('Ученик: пять из пяти — игра готова к сборке', await student.waitForSelector('#step-vau-karty .op-ready', { timeout: 6000 }).then(() => true, () => false));
+  // цельный образ: герой и угроза — из мира на карте «Мир», поворот — из колоды жанра на карте «Игра»
+  const deckOf = (id, c) => { const k = lesson1.wow.cards.find(x => x.id === id); return k.decks ? k.decks[c[k.by]] : k.deck; };
+  const inDeck = (id, c) => (deckOf(id, c) || []).includes(c[id]);
+  const c1 = (await wowNow()).wow.cards;
+  check('Герой и угроза — из мира, поворот — из колоды жанра', inDeck('hero', c1) && inDeck('threat', c1) && inDeck('twist', c1), c1.place.split(' — ')[0]);
+  const c2 = await teacher.evaluate(async c => (await Lab.api('/api/teacher/wow/draw', { code: c, card: 'place' })).wow.cards, wcode);
+  check('Новый мир перетянул героя и угрозу под себя, игра и поворот остались', c2.place !== c1.place && inDeck('hero', c2) && inDeck('threat', c2) && c2.action === c1.action && c2.twist === c1.twist, c2.place.split(' — ')[0]);
+  check('Колода «Игра» — шесть знакомых игр с обликом, у каждого мира шесть героев и шесть угроз', q1.deck.length === 6 && q1.deck.every(t => lesson1.wow.look.games[t]) && q2.deck.every(t => lesson1.wow.look.worlds[t])
+    && ['hero', 'threat'].every(id => Object.values(lesson1.wow.cards.find(x => x.id === id).decks).every(d => d.length === 6 && d.every(h => /^[^—]+ — /.test(h) && lesson1.wow.look.icons[h]))));
+  // пилот «рецепт + слоты»: рецепт и слоты карт уходят в задание Qwen
+  const rg = lesson1.wow.genres.find(g => g.recipe);
+  const rc = { action: rg.card, hero: lesson1.wow.cards.find(x => x.id === 'hero').decks[q2.deck[0]][0], place: q2.deck[0], threat: Object.keys(rg.types)[0], twist: Object.keys(rg.rules)[0] };
   const rtask = ai.chatSharedText({ cards: rc, genre: rg, secret: 'секрет', link: null });
   check('Задание Qwen: рецепт жанра слово в слово, тип угрозы и что меняет поворот', rtask.includes(`Рецепт жанра «${rg.name}»`) && rg.recipe.every(l => rtask.includes(l)) && rtask.includes(`враг типа «${rg.types[rc.threat]}»`) && rtask.includes(rg.rules[rc.twist]), rg.name);
   check('Задание Qwen: сочность жанра у каждого жанра колоды', lesson1.wow.genres.every(g => g.juice && ai.chatSharedText({ cards: Object.assign({}, rc, { action: g.card }), genre: g, secret: 'секрет', link: null }).includes(g.juice)));
@@ -747,12 +777,12 @@ async function openProjector(base, code, teacher, errors, shot) {
 /* ---------- вау-старт урока 1 на проекторе: те же карты, игра у всех, спрятанной механики не видно ---------- */
 async function projectorWow(pj, teacher, shot) {
   await pj.click('#demoTab');
-  await pj.waitForFunction(n => document.querySelectorAll('.pj-card.on').length === n, lesson1.wow.cards.length, { timeout: 15000 });
-  await sleep(1000); // барабан карт докрутился
-  const cards = await pj.$$eval('.pj-card .cv', bs => bs.map(b => b.textContent.trim()));
-  const inPanel = await teacher.$$eval('#wowCards .wc-text', bs => bs.map(b => b.textContent.trim()));
-  check('Проектор: те же карты, что у учителя', cards.join('|') === inPanel.join('|'), cards.join(' | '));
+  await pj.waitForFunction(n => document.querySelectorAll('#pjAsk .op-step.done').length === n, lesson1.wow.cards.length, { timeout: 15000 });
+  const steps = await pj.$$eval('#pjAsk .op-step span', bs => bs.map(b => b.textContent.trim()));
+  const inPanel = await teacher.evaluate(async c => (await Lab.api('/api/teacher/wow?code=' + encodeURIComponent(c))).wow.cards, (await teacher.textContent('#classCode')).trim());
+  check('Проектор: те же ответы, что у учителя', lesson1.wow.cards.every((c, i) => steps[i].includes(inPanel[c.id].split(' — ')[0])), steps.join(' | '));
   // сцена «Пять опор»: опора на каждую карту, строки документа, выбитая опора — дыра в документе и подпись, что сломалось
+  await pj.waitForFunction(n => document.querySelectorAll('.op-pil.up').length === n, lesson1.wow.cards.length, { timeout: 5000 }).catch(() => {});
   check('Проектор: опоры выросли под все карты, документ заполнен', await pj.locator('.op-pil.up').count() === lesson1.wow.cards.length && await pj.locator('.op-ln.on').count() === lesson1.wow.cards.length);
   await pj.click('.op-pil[data-op=threat]');
   await pj.waitForSelector('.op-ln.hole', { timeout: 3000 });

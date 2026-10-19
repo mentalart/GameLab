@@ -56,7 +56,7 @@ function plan(files) {
     } else if (r === 'engine/portal.js') { p.qwen = true; p.why.push(f); }
     else if (/^engine\//.test(r) || /^tools\/(check-game|serve)\.js$/.test(r) || /^tools\/fixtures\/oshibka/.test(r)) {
       p.self = true; p.allGames = true; whole(f, false);
-    } else if (/^lessons\/urok-0\d(-v2|-kolody)?\.js$/.test(r)) {
+    } else if (/^lessons\/urok-0\d(-v2|-kolody|-miry)?\.js$/.test(r)) {
       const n = Number(r.slice(13, 15));
       p.e2e = true; p.lessons.add(n); p.demo = true; portal(); p.why.push(f);
     } else if (r === 'lib/ai.js' || r === 'server.js' || /^lib\//.test(r) || /^tools\/(mock-ai|e2e-portal)\.js$/.test(r) || /^tools\/fixtures\/lessons\//.test(r)) whole(f, true);
