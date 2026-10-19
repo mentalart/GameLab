@@ -223,15 +223,16 @@ const patch = (find, repl) => `<<<<<<< НАЙТИ\n${find}\n=======\n${repl}\n>>
     await call(s, '/api/game/current', { version: res.version });
     await pg.goto(base + '/student');
     await pg.click('.cp >> text=Своя игра');
-    await pg.waitForSelector('#step-masterskaya .chatbox');
-    check('Своя игра: под игрой — «Вставить новую версию из чата», в разборе два прибора урока 1',
-      !!(await pg.$('#step-ruchki details.pastebox')) && await pg.locator('#step-razbor [data-tool]').count() === 2);
+    await pg.waitForSelector('#step-masterskaya .simple-step');
+    // урок 1 упрощён (19.10.2026): под первой партией ничего лишнего, разбор — три шага по очереди, правка — выбрал, скопировал, вставил
+    check('Своя игра: под первой партией только игра, разбор — лесенка из трёх шагов',
+      !(await pg.$('#step-ruchki details.pastebox')) && await pg.locator('#step-razbor .ladder span').count() === 3);
     await pg.fill('#step-masterskaya [data-ask="what"]', 'Враги быстрее к концу партии');
-    await pg.waitForFunction(() => /Правка: Враги быстрее к концу партии/.test(document.querySelector('#step-masterskaya .chatmsg').textContent));
-    check('Мастерская в чате: договор, перенос в новый чат и конструктор просьбы', /Договор/.test(await pg.textContent('#step-masterskaya')) && /Перенести игру в новый чат/.test(await pg.textContent('#step-masterskaya')));
+    const ask = await pg.evaluate(() => Lab.api('/api/chat/ask', { what: 'Враги быстрее к концу партии', pact: true }).then(r => r.text));
+    check('Правка в чате: три шага, первая просьба вместе с договором, перенос в новый чат', await pg.locator('#step-masterskaya .simple-step').count() === 3 && /Правка: Враги быстрее к концу партии/.test(ask) && /Дальше я буду просить/.test(ask) && /Перенести игру в новый чат/.test(await pg.textContent('#step-masterskaya')));
     await pg.fill('#step-masterskaya [data-paste="text"]', '```html\n' + PAGE.replace('Кот на Луне', 'Быстрые враги') + '\n```');
     await pg.click('#step-masterskaya [data-paste="send"]');
-    await pg.waitForSelector('#step-masterskaya >> text=Мои правки (1)', { timeout: 15000 });
+    await pg.waitForSelector('#step-masterskaya >> text=Правка дала версию', { timeout: 15000 });
     check('В Мастерской чата одна вставка — без дубля под игрой', await pg.locator('#step-masterskaya [data-paste="text"]').count() === 1);
     const meP = await call(s, '/api/me');
     const lastV = meP.game.versions[meP.game.versions.length - 1];

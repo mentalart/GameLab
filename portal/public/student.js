@@ -2470,7 +2470,7 @@ function chatPasteBox({ request, onDone, simple = false } = {}) {
   const btn = el('button', { type: 'button', class: 'btn', 'data-paste': 'send' }, '⬇ Вставить новую версию');
   btn.addEventListener('click', async () => {
     if (!ta.value.trim()) { toast('Вставь ответ из чата'); ta.focus(); return; }
-    if (!why.value.trim() && typeof request === 'function') why.value = request();
+    if ((simple || !why.value.trim()) && typeof request === 'function') why.value = request(); // в простой правке поле скрыто: просьба — из шага 1
     btn.disabled = true; pauseFrames(); out.innerHTML = '';
     prog.innerHTML = ''; const p = el('p', {}, 'Портал проверяет ответ…'); prog.append(el('div', { class: 'progress' }, el('div', { class: 'spinner' }), p));
     try {
