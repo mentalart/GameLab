@@ -4,7 +4,7 @@
 // Два прогона: с подставным ИИ (mock-ai.js: продюсер и связка по API, программист — подставной Qwen: сборка с ошибкой → починка через тот же чат, правка) и в демо-режиме без ключа.
 // В прогоне с ИИ — «Играем вместе»: второй ученик собирает игру, оба играют в игры друг друга, бьют рекорд автора,
 // бросают вызов на зерне, оставляют плейтест; учитель пишет отзыв; аркада класса и личная аркада, скрытие игры.
-// Срез 3: проектор (код, таймер, кто закончил шаг), вау-старт teacher-demo (карты, сборка при всех, автопочинка, «открыть всем»),
+// Срез 3: проектор (код, таймер, кто закончил шаг, сцена «Пять опор» вау-старта урока 1), вау-старт teacher-demo (карты, сборка при всех, автопочинка, «открыть всем»),
 // фильтр «застряли», лимиты и «+10 запросов», отчёт журнала генераций и CSV, статусы заметок и Markdown;
 // Урок 2 в обоих прогонах: донор с ручками из шага, варианты игры, «Найди спрятанную механику» донора, квиз-раунды «Игра или не игра?»,
 // сортировщик на 8 лотков, Фабрика с донором на выбор и его колодами, черновик ИГРА по правилам донора, сборка, дуэль вдвоём.
@@ -472,6 +472,8 @@ async function wowStart(teacher, student, mode, shot) {
   const nCards = lesson1.wow.cards.length;
   await student.waitForSelector(`#step-vau-karty .wowcard.up >> nth=${nCards - 1}`, { timeout: 10000 });
   check(`Карты, которые тянет учитель, появились у ученика сразу (SSE): ${nCards}`, await student.locator('#step-vau-karty .wowcard.up').count() === nCards);
+  await student.waitForFunction(n => document.querySelectorAll('#step-vau-karty .op-pil.up').length === n, nCards, { timeout: 5000 }).catch(() => {});
+  check('Ученик: под каждой картой выросла опора, строка документа и набросок игры', await student.locator('#step-vau-karty .op-pil.up').count() === nCards && await student.locator('#step-vau-karty .op-ln.on').count() === nCards && await student.locator('#step-vau-karty .op-game canvas').count() === 1);
   const face = (await student.textContent('#step-vau-karty .wowcard[data-card=hero] .wc-text')).trim();
   check('Карта героя: имя крупно, особенность строкой ниже', await student.locator('#step-vau-karty .wowcard[data-card=hero] .ct').count() === 1, face);
   await student.click('#step-vau-karty [data-card=hero] >> text=Перетянуть');
@@ -750,6 +752,14 @@ async function projectorWow(pj, teacher, shot) {
   const cards = await pj.$$eval('.pj-card .cv', bs => bs.map(b => b.textContent.trim()));
   const inPanel = await teacher.$$eval('#wowCards .wc-text', bs => bs.map(b => b.textContent.trim()));
   check('Проектор: те же карты, что у учителя', cards.join('|') === inPanel.join('|'), cards.join(' | '));
+  // сцена «Пять опор»: опора на каждую карту, строки документа, выбитая опора — дыра в документе и подпись, что сломалось
+  check('Проектор: опоры выросли под все карты, документ заполнен', await pj.locator('.op-pil.up').count() === lesson1.wow.cards.length && await pj.locator('.op-ln.on').count() === lesson1.wow.cards.length);
+  await pj.click('.op-pil[data-op=threat]');
+  await pj.waitForSelector('.op-ln.hole', { timeout: 3000 });
+  check('Проектор: выбитая опора — дыра в документе, документ кренится, подпись говорит, что сломалось', /rotate/.test(await pj.getAttribute('.op-roof', 'style') || '') && /Без угрозы/.test(await pj.textContent('.op-cap')), await pj.textContent('.op-cap'));
+  await shot(pj, 'p2-opory');
+  await pj.click('.op-pil[data-op=threat]');
+  await pj.waitForFunction(() => !document.querySelector('.op-ln.hole'), null, { timeout: 3000 });
   await pj.waitForSelector('#pjWowGame iframe, #pjWowGame .veil', { timeout: 15000 });
   const text = await pj.textContent('#pj-demo');
   check('Проектор: принятая связка на экране', await pj.locator('#pjWowLink .link-phrase').count() === 1);

@@ -797,6 +797,7 @@ function publicWow(cls, les) {
     cards: les.wow.cards.map(c => ({ id: c.id, label: c.label, parts: !!c.parts, text: w.cards[c.id] || null, voters: w.votes[c.id] || [] })),
     status: w.given ? 'given' : w.status,
     link: acceptedLink(w) ? { phrase: w.link.phrase, loop: w.link.loop, twist: w.link.twist, funny: w.link.funny } : null,
+    frame: (wowGenre(les, w) || {}).frame || '', // камера жанра для наброска игры в сцене «Пять опор» (public/opory.js)
     game: g && g.current ? { id: g.id, version: g.current, title: g.title, knob: w.knob } : null,
   };
 }
@@ -893,7 +894,7 @@ route('GET', '/api/teacher/wow', (ctx) => {
     secrets: les.wow.secrets.map(x => ({ id: x.id, title: x.title, effect: x.effect, sound: !!x.sound })), secret: secretOf(les, w.secret), fixed: !!fixedSecret(les), headphones: !!cls.headphones, built: w.gameId ? builtSecret(les, w) : null,
     game: g && v ? { id: g.id, version: g.current, knob: w.knob || 'secret', title: g.title, model: v.model, warnings: v.warnings || [], attempts: v.attempts, kind: v.kind,
       playtest: v.playtest || null, from: v.from || null, before: v.from && g.versions[v.from - 1] ? g.versions[v.from - 1].playtest || null : null } : null,
-    summary: wowSummary(cls, les),
+    summary: wowSummary(cls, les), frame: (wowGenre(les, w) || {}).frame || '',
   };
 });
 route('POST', '/api/teacher/wow/draw', (ctx) => {

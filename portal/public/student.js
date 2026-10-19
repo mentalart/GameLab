@@ -430,26 +430,28 @@ function wowStatusText(W) {
 // колода безумных идей: карты, которые учитель тянет при классе, появляются у всех сразу; голос «перетянуть»
 STEPS.cards = ctx => {
   const host = el('div', { class: 'stack' });
-  let prev = {};
+  let prev = {}, sc = null; // sc — сцена «Пять опор» (public/opory.js): живёт, пока открыт шаг, и не пересоздаётся на каждый голос
   function draw() {
     host.innerHTML = '';
     const W = S.wow;
     let flipped = false;
     if (!W) { host.append(el('p', { class: 'muted' }, 'В этом уроке нет колоды безумных идей.')); return; }
-    host.append(el('div', { class: 'formula' }, ...W.formula.split(' × ').flatMap((x, i) => i ? ['×', el('span', {}, x)] : [el('span', {}, x)])));
-    const row = el('div', { class: 'wowcards' });
+    if (!sc) sc = Opory.scene({ ids: W.cards.map(c => c.id), labels: Object.fromEntries(W.cards.map(c => [c.id, c.label])) });
+    host.append(el('div', { class: 'formula' }, ...W.formula.split(' × ').flatMap((x, i) => i ? ['×', el('span', {}, x)] : [el('span', {}, x)])), sc.roof);
+    const row = el('div', { class: 'wowcards op-row' });
     W.cards.forEach(c => {
       const mine = c.voters.includes(S.me.nick), fresh = c.text && prev[c.id] !== c.text;
-      row.append(el('div', { class: 'wowcard' + (c.text ? ' up' : '') + (fresh ? ' flip' : ''), 'data-card': c.id },
+      row.append(el('div', { class: 'op-col' }, sc.pillar(c.id), el('div', { class: 'wowcard' + (c.text ? ' up' : '') + (fresh ? ' flip' : ''), 'data-card': c.id },
         el('div', { class: 'wc-label' }, c.label),
         el('div', { class: 'wc-text' }, Games.cardFace(c.text, c.parts)),
         c.text && W.status === 'cards' ? el('button', { class: 'btn ghost small' + (mine ? ' on' : ''), type: 'button', 'aria-pressed': String(mine), onclick: () => vote(c.id) },
-          `🔁 Перетянуть${c.voters.length ? ' · ' + c.voters.length : ''}`) : null));
+          `🔁 Перетянуть${c.voters.length ? ' · ' + c.voters.length : ''}`) : null)));
       if (fresh && prev[c.id] !== undefined) flipped = true;
       prev[c.id] = c.text;
     });
     if (flipped) beep('dice');
-    host.append(row, W.link ? Games.linkBox({ link: Object.assign({ accepted: true }, W.link), ready: true, editable: false }) : '',
+    sc.update(Object.fromEntries(W.cards.map(c => [c.id, c.text])), W.frame);
+    host.append(row, sc.cap, W.link ? Games.linkBox({ link: Object.assign({ accepted: true }, W.link), ready: true, editable: false }) : '',
       el('p', { class: 'wow-status', 'aria-live': 'polite' }, wowStatusText(W)));
     if (W.status === 'given' && !ctx.done) ctx.save({ cards: W.cards.map(c => `${c.label}: ${c.text}`) }, true);
   }

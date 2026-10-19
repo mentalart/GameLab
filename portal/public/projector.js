@@ -1,6 +1,6 @@
 // Проектор учителя (/projector?code=КОД): крупно код класса, открытый чекпоинт с таймером и сколько учеников закончили каждый шаг.
 // Вкладка «Вау-старт»: учитель тянет карты колоды безумных идей и при всех собирает игру с ИИ. Для урока с колодой wow (урок 1) —
-// карты, голоса «перетянуть», сборка и раздача общей игры класса; спрятанная механика на проектор не выводится. Для шага teacher-demo — его карты и таймер.
+// сцена «Пять опор» (public/opory.js), карты, голоса «перетянуть», сборка и раздача общей игры класса; спрятанная механика на проектор не выводится. Для шага teacher-demo — его карты и таймер.
 // Вкладка «Ответы класса»: голоса шагов выбора и слепых тестов полосками без имён, в реальном времени.
 // Вкладка «Спрятанная механика рядом» (урок 1, после «Найди спрятанную механику»): две копии игры класса рядом, в одном мире; бот-новичок играет обе одними нажатиями
 // в настоящем времени — слева без спрятанной механики, справа со спрятанной механикой и лупой. Копии расходятся только из-за спрятанной механики.
@@ -34,6 +34,7 @@ async function refresh() {
   $('#pairTab').hidden = P.mode !== 'wow';
   if (P.mode !== 'wow' && P.tab === 'pair') P.tab = 'lesson';
   if (P.lastMode !== P.mode) { // учитель сменил урок: вкладка вау-старта строится заново
+    if (P.wScene) { P.wScene.destroy(); P.wScene = null; }
     Games.stopAll(); P.tf = null; P.frameFor = null; P.wFrame = null; P.wKey = null; P.dKey = null; P.d = null; P.w = null; P.pair = null; $('#pj-pair').innerHTML = '';
     $('#pj-demo').innerHTML = ''; P.lastMode = P.mode;
   }
@@ -63,6 +64,7 @@ function showTab() {
   if (P.tab !== 'pair' && P.pair) { P.pair.frames.forEach(f => f.h.destroy()); P.pair = null; $('#pj-pair').innerHTML = ''; }
   if (P.tab !== 'cup' && P.cupFrame) { P.cupFrame.destroy(); P.cupFrame = null; P.cupKey = null; $('#pj-cup').innerHTML = ''; }
   if (P.tab !== 'demo' && (P.tf || P.wFrame)) {
+    if (P.wScene) { P.wScene.destroy(); P.wScene = null; }
     Games.stopAll(); P.tf = null; P.frameFor = null; P.wFrame = null; P.wKey = null;
     const gh = $('#pjWowGame'); if (gh) gh.innerHTML = ''; // остановленная рамка не остаётся на странице второй игрой
   }
@@ -428,19 +430,22 @@ function drawWow(prev) {
   P.wKey = key;
   if (!host.querySelector('#pjWowCards')) {
     host.innerHTML = '';
+    if (P.wScene) P.wScene.destroy();
+    P.wScene = Opory.scene({ ids: r.cards.map(c => c.id), labels: Object.fromEntries(r.cards.map(c => [c.id, c.label])) }); // сцена «Пять опор»: карты держат документ и игру
     host.append(el('div', { class: 'pj-dhead' }, el('div', { class: 'grow' }, el('div', { class: 'eyebrow' }, 'Вау-старт · колода безумных идей'),
       el('div', { class: 'formula pj-formula' }, ...r.formula.split(' × ').flatMap((x, i) => i ? ['×', el('span', {}, x)] : [el('span', {}, x)])))),
-    el('div', { id: 'pjWowCards' }), el('div', { id: 'pjWowLink' }), el('div', { id: 'pjWowCtrl', class: 'row' }), el('div', { id: 'pjWowGame', class: 'stack' }));
+    P.wScene.roof, el('div', { id: 'pjWowCards' }), P.wScene.cap, el('div', { id: 'pjWowLink' }), el('div', { id: 'pjWowCtrl', class: 'row' }), el('div', { id: 'pjWowGame', class: 'stack' }));
   }
   const ch = $('#pjWowCards'); ch.innerHTML = '';
   ch.append(el('div', { class: 'pj-cards four', style: '--n:' + r.cards.length }, r.cards.map(c => {
     const text = w.cards[c.id], votes = (w.votes[c.id] || []).length;
     const val = el('b', { class: 'cv' }, Games.cardFace(text, c.parts));
     if (prev && text && prev.wow.cards[c.id] !== text) spin(val, decks[c.id] || [], text, t => Games.cardFace(t, c.parts));
-    return el('div', { class: 'pj-card' + (text ? ' on' : ''), 'data-card': c.id }, el('div', { class: 'eyebrow' }, c.label), val,
+    return el('div', { class: 'op-col' }, P.wScene.pillar(c.id), el('div', { class: 'pj-card' + (text ? ' on' : ''), 'data-card': c.id }, el('div', { class: 'eyebrow' }, c.label), val,
       votes ? el('div', { class: 'tag dice pj-votes' }, `перетянуть: ${votes}`) : null,
-      !w.given && !busy ? el('button', { class: 'dicebtn', type: 'button', title: text ? 'Перетянуть карту' : 'Тянуть карту', 'aria-label': (text ? 'Перетянуть' : 'Тянуть') + ' карту «' + c.label + '»', onclick: () => wowDraw(c.id) }, '🎲') : null);
+      !w.given && !busy ? el('button', { class: 'dicebtn', type: 'button', title: text ? 'Перетянуть карту' : 'Тянуть карту', 'aria-label': (text ? 'Перетянуть' : 'Тянуть') + ' карту «' + c.label + '»', onclick: () => wowDraw(c.id) }, '🎲') : null));
   })));
+  P.wScene.update(w.cards, r.frame);
   const lh = $('#pjWowLink'); lh.innerHTML = '';
   const link = w.link && w.link.cards === JSON.stringify(w.cards) ? w.link : null;
   lh.append(Games.linkBox({ link, ready, editable: !w.given && !busy, code: P.code, onChange: () => { P.wKey = null; refreshWow(); } }));

@@ -600,3 +600,33 @@ svg.curve .pick{fill:var(--violet);stroke:var(--text);stroke-width:2}
 .pj-pair-side{display:flex;flex-direction:column;gap:8px;min-width:0}
 .pj-pair-side[data-side=on] h2{color:var(--accent)}
 @media (max-width:900px){.pj-pair-grid{grid-template-columns:1fr}}
+/* сцена «Пять опор» вау-старта (public/opory.js): набросок игры на документе, документ на опорах, опоры на картах */
+.op-roof{display:grid;gap:0;transform-origin:50% 100%;transition:transform .7s cubic-bezier(.3,1.6,.5,1);container-type:inline-size}
+.op-game{width:min(100%,760px);justify-self:center;aspect-ratio:720/250;border-radius:14px 14px 0 0;overflow:hidden;background:#3a4152}
+.op-game canvas{width:100%;height:100%;display:block}
+.op-doc{background:var(--panel2);border:2px solid var(--text);border-radius:12px;padding:10px 14px;display:grid;gap:3px;position:relative;z-index:1}
+.op-doc-h{font-weight:900;font-size:clamp(13px,1.6cqw,20px);display:flex;justify-content:space-between;gap:10px}
+.op-doc-h span{font-weight:700;color:var(--muted);font-size:.8em}
+.op-ln{--c:var(--violet);display:grid;grid-template-columns:12px minmax(90px,20%) minmax(0,1fr);gap:10px;align-items:baseline;font-size:clamp(12px,1.5cqw,18px);line-height:1.35;border-radius:6px;padding:1px 4px}
+.op-ln i{width:12px;height:12px;border-radius:50%;background:var(--line2);align-self:center;transition:background .3s,transform .3s}
+.op-ln b{font-size:.78em;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+.op-ln span{color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.op-ln.on i{background:var(--c);transform:scale(1.3)}.op-ln.on b{color:var(--c)}.op-ln.on span{color:var(--text)}
+.op-ln.hole i{background:var(--danger)}.op-ln.hole span{color:var(--danger);font-weight:800}
+.op-ln.pop{animation:oppop .7s ease}
+@keyframes oppop{0%{background:color-mix(in srgb,var(--c) 35%,transparent)}100%{background:transparent}}
+.op-col{display:flex;flex-direction:column;align-items:stretch;min-width:0}
+.op-pil{--c:var(--violet);align-self:center;width:58%;height:clamp(56px,9vw,120px);margin-top:8px;border:0;padding:0;border-radius:4px 4px 0 0;cursor:default;position:relative;display:grid;place-items:center;
+  background:linear-gradient(90deg,color-mix(in srgb,var(--c) 70%,#000) 0,var(--c) 35%,color-mix(in srgb,var(--c) 65%,#fff) 60%,var(--c) 100%);transform:scaleY(0);transform-origin:50% 100%;transition:transform .55s cubic-bezier(.3,1.5,.5,1),opacity .4s}
+.op-pil::before{content:"";position:absolute;top:-6px;left:-14%;right:-14%;height:10px;border-radius:3px;background:var(--c)}
+.op-pil em{font-style:normal;font-weight:900;font-size:clamp(10px,1.2vw,16px);color:#fff;writing-mode:vertical-rl;transform:rotate(180deg);letter-spacing:.05em;text-shadow:0 1px 2px #0006}
+.op-pil.up{transform:scaleY(1);cursor:pointer}
+.op-pil.out{transform:translateY(8%) rotate(-16deg) scaleY(.9);opacity:.28}
+.op-col:has(.op-pil.out) :is(.pj-card,.wowcard){opacity:.45;filter:grayscale(1)}
+[data-op=hero]{--c:#3fd0bd}[data-op=action]{--c:var(--violet)}[data-op=place]{--c:var(--accent)}[data-op=threat]{--c:var(--danger)}[data-op=twist]{--c:var(--warm)}
+.op-cap{display:flex;gap:12px;align-items:baseline;background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:12px 16px;font-size:clamp(15px,1.5vw,22px);font-weight:600}
+.op-who{font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--muted);font-weight:800;white-space:nowrap}
+.wowcards.op-row{grid-template-columns:repeat(auto-fit,minmax(120px,1fr))}
+#pj-demo .op-roof{margin-bottom:0}
+@media (max-width:560px){.op-ln{grid-template-columns:10px minmax(0,32%) minmax(0,1fr);gap:6px}}
+@media (prefers-reduced-motion:reduce){.op-pil,.op-roof{transition-duration:.01s}.op-ln.pop{animation:none}}
