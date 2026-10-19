@@ -409,9 +409,13 @@ STEPS.text = ctx => el('div', { class: 'stack' },
 // Два погружения: донор, потом игра класса (спрятанная механика из шага secret, данные по effect); на дне второго — роли и «Понятно».
 STEPS.iceberg = ctx => {
   const st = ctx.step;
-  const hunt = lessonSteps().find(x => x.type === 'secret'), sec = hunt && (ans(hunt.id).value || {}).secret;
-  const mine = sec && st.byEffect && st.byEffect[sec.effect];
-  const dives = [st.donor].concat(mine ? [Object.assign({ rule: sec.title + '.' }, st.ours, mine)] : []);
+  // шаги чекпоинта рисуются сразу, а спрятанную механику ученик находит позже — погружения считаем заново при каждом нырке
+  const divesNow = () => {
+    const hunt = lessonSteps().find(x => x.type === 'secret'), sec = hunt && (ans(hunt.id).value || {}).secret;
+    const mine = sec && st.byEffect && st.byEffect[sec.effect];
+    return [st.donor].concat(mine ? [Object.assign({ rule: sec.title + '.' }, st.ours, mine)] : []);
+  };
+  let dives = divesNow();
   const LAYERS = [['Что видит игрок', 'верхушка'], ['Что спрятано', 'под водой'], ['Кто решил и зачем', 'на дне']];
   let d = 0, layer = 0, padPrev = [];
   const box = el('div', { class: 'ice', tabindex: '0', 'aria-label': 'Айсберг спрятанной механики' });
@@ -435,6 +439,7 @@ STEPS.iceberg = ctx => {
     tag.textContent = D.name;
   }
   function paint() {
+    dives = divesNow();
     scene.style.setProperty('--layer', layer);
     secs.forEach((s, k) => s.classList.toggle('on', k === layer));
     depth.textContent = ['0 м', '−20 м', '−60 м'][layer];
