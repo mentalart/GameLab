@@ -521,11 +521,17 @@ async function wowStart(teacher, student, pj, mode, shot) {
   check('Новый мир перетянул героя и угрозу под себя, игра и поворот остались', c2.place !== c1.place && inDeck('hero', c2) && inDeck('threat', c2) && c2.action === c1.action && c2.twist === c1.twist, c2.place.split(' — ')[0]);
   check('Колода «Игра» — шесть знакомых игр с обликом, у каждого мира шесть героев и шесть угроз', q1.deck.length === 6 && q1.deck.every(t => lesson1.wow.look.games[t]) && q2.deck.every(t => lesson1.wow.look.worlds[t])
     && ['hero', 'threat'].every(id => Object.values(lesson1.wow.cards.find(x => x.id === id).decks).every(d => d.length === 6 && d.every(h => /^[^—]+ — /.test(h) && lesson1.wow.look.icons[h]))));
-  // пилот «рецепт + слоты»: рецепт и слоты карт уходят в задание Qwen
-  const rg = lesson1.wow.genres.find(g => g.recipe);
-  const rc = { action: rg.card, hero: lesson1.wow.cards.find(x => x.id === 'hero').decks[q2.deck[0]][0], place: q2.deck[0], threat: Object.keys(rg.types)[0], twist: Object.keys(rg.rules)[0] };
-  const rtask = ai.chatSharedText({ cards: rc, genre: rg, secret: 'секрет', link: null });
-  check('Задание Qwen: рецепт жанра слово в слово, тип угрозы и что меняет поворот', rtask.includes(`Рецепт жанра «${rg.name}»`) && rg.recipe.every(l => rtask.includes(l)) && rtask.includes(`враг типа «${rg.types[rc.threat]}»`) && rtask.includes(rg.rules[rc.twist]), rg.name);
+  // задание Qwen вау-старта 2.0: рецепт у всех шести игр, угроза мира встаёт врагом рецепта по своему ходу, мир — цветами и декором, проверка перед ответом
+  const askGames = q1.deck.map(card => lesson1.wow.genres.find(g => g.card === card));
+  check('Все шесть игр — с рецептом, врагом на каждый ход угрозы, удачей, проверкой и 8 поворотами с правилом', askGames.every(g => g.recipe && Object.keys(g.moves).length === 6 && g.luck && g.checks.length >= 5
+    && lesson1.wow.cards.find(x => x.id === 'twist').decks[g.card].every(t => g.rules[t])));
+  check('У каждой угрозы мира есть ход, и каждая игра знает этот ход', Object.values(lesson1.wow.moves).every(m => askGames.every(g => g.moves[m])) && Object.keys(lesson1.wow.moves).length === 36);
+  const rg = askGames[0], place = q2.deck[0], world = lesson1.wow.worlds[place];
+  const rc = { action: rg.card, hero: lesson1.wow.cards.find(x => x.id === 'hero').decks[place][0], place, threat: lesson1.wow.cards.find(x => x.id === 'threat').decks[place][0], twist: Object.keys(rg.rules)[0] };
+  const move = lesson1.wow.moves[rc.threat];
+  const rtask = ai.chatSharedText({ cards: rc, genre: rg, world, move, secret: 'секрет', link: null });
+  check('Задание Qwen: рецепт слово в слово, враг по ходу угрозы, правило поворота и удача', rtask.includes(`Рецепт жанра «${rg.name}»`) && rg.recipe.every(l => rtask.includes(l)) && rtask.includes(`враг типа «${rg.moves[move]}»`) && rtask.includes(rg.rules[rc.twist]) && rtask.includes(rg.luck), rg.name);
+  check('Задание Qwen: мир данными — цвета, что собираем, декор; проверка перед ответом', rtask.includes(world.sky[0]) && rtask.includes(world.itemName) && rtask.includes(world.decorNames) && rtask.includes('Проверь перед ответом') && rg.checks.every(c => rtask.includes(c)), world.name);
   check('Задание Qwen: сочность жанра у каждого жанра колоды', lesson1.wow.genres.every(g => g.juice && ai.chatSharedText({ cards: Object.assign({}, rc, { action: g.card }), genre: g, secret: 'секрет', link: null }).includes(g.juice)));
   const plain = lesson1.wow.genres.find(g => !g.recipe);
   check('Жанр без рецепта: задание без строки рецепта', !/Рецепт жанра/.test(ai.chatSharedText({ cards: Object.assign({}, rc, { action: plain.card }), genre: plain, secret: 'секрет', link: null })));

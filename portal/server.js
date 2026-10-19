@@ -786,6 +786,8 @@ const publicOffer = w => (w.offer ? { id: w.offer.id, card: w.offer.card, option
 const cardDeck = (c, w) => (c.by && c.decks && c.decks[w.cards[c.by]]) || c.deck; // колода карты; у зависимой — колода жанра
 // жанр карты действия: имя и каркас движка (wow.genres в сценарии урока)
 const wowGenre = (les, w) => (les.wow.genres || []).find(g => g.card === w.cards.action) || null;
+// мир с карты «Мир» и ход угрозы мира — в задание Qwen (вау-старт 2.0, урок 1): цвета и декор мира, тип врага рецепта по ходу угрозы
+const wowWorld = (les, w) => ({ world: (les.wow.worlds || {})[w.cards.place] || null, move: (les.wow.moves || {})[w.cards.threat] || null });
 const hashOf = t => [...String(t)].reduce((n, c) => (n * 31 + c.charCodeAt(0)) >>> 0, 7);
 function wowState(cls, les) {
   if (!les.wow) return null;
@@ -1006,7 +1008,7 @@ route('POST', '/api/teacher/wow/link', (ctx) => {
   if (missing.length) throw Object.assign(new Error('Сначала вытяните карты: ' + missing.map(c => c.label).join(', ')), { status: 400 });
   const key = cardsKey(w), prev = w.link;
   const job = startJob(ctx.who.token, 'link', async () => {
-    const link = await ai.wowLink(w.cards, prev, { class: cls.code, nick: 'учитель', lesson: les.id }, wowGenre(les, w));
+    const link = await ai.wowLink(w.cards, prev, { class: cls.code, nick: 'учитель', lesson: les.id }, wowGenre(les, w), wowWorld(les, w).move);
     const c2 = store.getClass(cls.code), w2 = wowState(c2, les);
     if (cardsKey(w2) !== key) throw Object.assign(new Error('Пока ИИ сводил карты, их перетянули — попросите гейм дизайн документ ещё раз'), { status: 409 });
     w2.link = Object.assign(link, { cards: key, accepted: false, at: store.now() });
@@ -1170,7 +1172,7 @@ route('POST', '/api/teacher/wow/build', (ctx) => {
   const whoAI = { class: cls.code, nick: 'учитель', lesson: les.id };
   const job = startJob(ctx.who.token, 'wow', async (progress) => {
     try {
-      const r = await ai.buildShared({ cards: w.cards, genre: wowGenre(les, w), secret: sec.prompt, base: sec.base || null, howto: sec.howto || null, link: acceptedLink(w), title: wowTitle(les, w) }, whoAI, progress);
+      const r = await ai.buildShared(Object.assign({ cards: w.cards, genre: wowGenre(les, w), secret: sec.prompt, base: sec.base || null, howto: sec.howto || null, link: acceptedLink(w), title: wowTitle(les, w) }, wowWorld(les, w)), whoAI, progress);
       return wowVersion(cls.code, r, secretId);
     } catch (e) {
       const c2 = store.getClass(cls.code), w2 = wowState(c2, les);

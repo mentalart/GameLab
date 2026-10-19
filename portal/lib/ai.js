@@ -280,11 +280,12 @@ function chatBuild(plan, who, onProgress, kind) {
   return chatProgram(kind || 'сборка', chatTask(text), who, onProgress, null, !!plan.secret);
 }
 // задание Qwen для игры класса целиком (tools/pilot-zadaniya.js собирает им задания для прогона колоды)
+// wow.world — мир с карты «Мир» (цвета, что собираем, декор), wow.move — ход угрозы мира: по нему рецепт выбирает тип врага (вау-старт 2.0)
 const chatSharedText = wow => chatTask(fill(chatTpl('wow'), {
     'герой': wow.cards.hero, 'действие': wow.cards.action, 'место': wow.cards.place, 'угроза': wow.cards.threat || 'нет карты — придумай по месту', 'поворот': wow.cards.twist,
-    'рецепт': recipeText(wow.genre, wow.cards),
+    'рецепт': recipeText(wow.genre, wow.cards, wow.move, wow.world), 'мир': worldText(wow.world), 'проверь': checksText(wow.genre),
     'сочность': wow.genre && wow.genre.juice ? `Сочность жанра — без неё игра выглядит картонной, сделай всё: ${wow.genre.juice}.` : '',
-    'связка': wow.link ? 'Гейм дизайн документ (класс принял его, строй игру по нему):\n' + LINK_FIELDS.filter(([k]) => wow.link[k]).map(([k, label]) => `- ${label}: ${wow.link[k]}`).join('\n') : '',
+    'связка': wow.link ? `Гейм дизайн документ (класс принял его${wow.genre && wow.genre.recipe ? '; правила, кнопки и числа — из рецепта, документ задаёт фразу игры и подачу' : ', строй игру по нему'}):\n` + LINK_FIELDS.filter(([k]) => wow.link[k]).map(([k, label]) => `- ${label}: ${wow.link[k]}`).join('\n') : '',
   }) + chatSecret(wow.secret, wow.base, wow.howto));
 async function chatShared(wow, who, onProgress) {
   return Object.assign(await chatProgram('общая игра', chatSharedText(wow), who, onProgress, null, true), { knob: 'secret' });
@@ -457,22 +458,33 @@ function parseLink(text) {
 const genreLine = genre => (genre ? `Жанр игры — ${genre.name}, каркас жанра — ${genre.frame}. Поворот взят из колоды этого жанра, герой и угроза — из мира на карте места.` : '');
 // рецепт жанра (пилот «рецепт + слоты», 19.10.2026): готовая мини-игра строками и как в неё встают карты — в связку и в задание Qwen слово в слово
 const recipeOf = (genre, start) => ((genre && genre.recipe) || []).find(l => l.startsWith(start + ':')) || '';
-function recipeText(genre, cards) {
+function recipeText(genre, cards, move, world) {
   if (!genre || !genre.recipe) return '';
-  const type = (genre.types || {})[cards.threat], rule = (genre.rules || {})[cards.twist];
+  const type = (genre.types || {})[cards.threat] || (move && (genre.moves || {})[move]), rule = (genre.rules || {})[cards.twist];
   return [`Рецепт жанра «${genre.name}» — основа игры. Цикл, очки, проигрыш, нарастание и числа бери из него как есть; новых механик сверх рецепта и карт не добавляй.`,
     ...genre.recipe.map(l => '- ' + l),
     'Как карты встают в рецепт:',
     '- Герой: облик, характер и звук — с карты; своей механики у героя нет, все кнопки — из рецепта.',
-    '- Место: мир игры — цвета, небо, декор и звуки с карты.',
-    type ? `- Угроза: враг типа «${type}» из рецепта, облик и поведение — с карты.` : '- Угроза: облик — с карты, поведение подгони под один из типов врагов рецепта.',
-    rule ? `- Поворот меняет в рецепте одно: ${rule}.` : ''].filter(Boolean).join('\n');
+    world ? '' : '- Место: мир игры — цвета, небо, декор и звуки с карты.',
+    type ? `- Угроза: враг типа «${type}» из рецепта; облик, цвет и звук — с карты угрозы. Остальные типы врагов рецепта — тоже жители этого мира.` : '- Угроза: облик — с карты, поведение подгони под один из типов врагов рецепта.',
+    rule ? `- Поворот меняет в рецепте одно: ${rule}.` : '',
+    genre.luck ? `- Удача в этой игре — каждое начисление очков: ${genre.luck}.` : ''].filter(Boolean).join('\n');
 }
-async function wowLink(cards, prev, who, genre) {
+// мир с карты «Мир» данными (вау-старт 2.0): Qwen по одной строке карты рисовал мир наугад
+const worldText = w => (w ? [`Мир «${w.name}»:`,
+  `- цвета: небо — градиент от ${w.sky[0]} сверху к ${w.sky[1]} у горизонта, туман в цвет горизонта; земля ${w.ground}; дальний план ${w.far}; акцент для бонусов и вспышек ${w.acc}`,
+  `- что собираем: ${w.itemName} ${w.item} — монетки, кристаллы, мишени и бонусы рецепта в этой игре выглядят так (лоуполи, крутятся и светятся)`,
+  `- декор вокруг поля, лоуполи из примитивов, всего не меньше 30: ${w.decorNames}`,
+  '- герой — самый яркий в кадре и не сливается с землёй; угроза тёмная или красная, с подсветкой, её видно издалека'].join('\n') : '');
+// что проверить перед ответом: проверки рецепта и две общие — Qwen-Flash чаще ошибается в порядке объявлений и в конце партии
+const checksText = genre => (genre && genre.checks ? ['Проверь перед ответом — всё это работает в первой же партии:', ...genre.checks.map(c => '- ' + c),
+  '- код без ошибок: three.js подключён через importmap, каждая переменная и функция объявлена до первого кадра, в консоли нет ошибок',
+  '- партия заканчивается экраном конца, новая партия начинается по Enter, R или Start'].join('\n') : '');
+async function wowLink(cards, prev, who, genre, move) {
   if (demo()) return demoLink(cards, who, genre);
   const model = models().link;
   const t0 = Date.now();
-  const user = ['Карты:', `- Герой: ${cards.hero}`, `- Действие: ${cards.action}`, `- Место: ${cards.place}`, `- Угроза: ${cards.threat || 'нет карты — придумай сам по месту'}`, `- Поворот: ${cards.twist}`, genreLine(genre), recipeText(genre, cards),
+  const user = ['Карты:', `- Герой: ${cards.hero}`, `- Действие: ${cards.action}`, `- Место: ${cards.place}`, `- Угроза: ${cards.threat || 'нет карты — придумай сам по месту'}`, `- Поворот: ${cards.twist}`, genreLine(genre), recipeText(genre, cards, move),
     prev ? `\nУчитель попросил другую связку. Прошлая была: «${prev.phrase}»${prev.frame ? ` (${prev.frame})` : ''} — найди другое чтение карт: другой цикл, риск или смешной момент в том же жанре.` : ''].filter(Boolean).join('\n');
   try {
     const { text, entry } = await call('связка карт', who, model, [
