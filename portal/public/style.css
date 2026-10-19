@@ -784,3 +784,50 @@ ol.tsteps li.now{border-left:3px solid var(--info);padding-left:8px;margin-left:
 
 /* боковая колонка ученика длиннее (понятия, путь игры): низ не прячется под кнопкой «Заметка автора» */
 .side{padding-bottom:72px}
+/* айсберг спрятанной механики (урок 1, шаг 8): сцена на три слоя — верхушка, под водой, дно; ныряние — сдвиг сцены */
+.ice{display:flex;flex-direction:column;gap:12px;outline:none}
+.ice-view{position:relative;height:360px;overflow:hidden;border-radius:var(--r);border:1px solid var(--line2)}
+.ice-scene{position:absolute;inset:0 0 auto;height:300%;transform:translateY(calc(var(--layer,0) * -100% / 3));transition:transform .9s cubic-bezier(.65,0,.35,1);
+  background:linear-gradient(#24447a 0%,#3a6ea8 30%,#0e3d5c 33.4%,#082a42 60%,#03101e 100%)}
+.ice-berg{position:absolute;inset:0;pointer-events:none;
+  clip-path:polygon(66% 22%,72% 30.5%,90% 42%,97% 66%,86% 96%,18% 98%,3% 74%,10% 50%,36% 35%,58% 31%);
+  background:linear-gradient(#f4fbff 0%,#d7f0ff 31%,rgba(150,215,255,.22) 33.4%,rgba(110,180,240,.12) 70%,rgba(80,140,210,.08) 100%)}
+.ice-water{position:absolute;left:0;right:0;top:calc(100% / 3 - 10px);height:20px;pointer-events:none;opacity:.85;
+  background:radial-gradient(circle at 12px 0,transparent 9px,rgba(95,224,255,.55) 10px,rgba(95,224,255,.15) 12px,transparent 13px) repeat-x 0 0/24px 20px;animation:iceWave 3s linear infinite}
+@keyframes iceWave{to{background-position:24px 0}}
+.ice-l{position:relative;height:calc(100% / 3);padding:40px 18px 30px;display:flex;flex-direction:column;align-items:center;text-align:center;gap:8px;opacity:.2;transition:opacity .6s}
+.ice-l.on{opacity:1}
+.ice-l0{justify-content:flex-start}
+.ice-l1,.ice-l2{justify-content:center}
+.ice-l .eyebrow{color:var(--info)}
+.ice-l h3{font-size:20px;text-shadow:0 2px 8px #0008}
+.ice-body{display:flex;flex-direction:column;align-items:center;gap:8px;max-width:520px}
+.ice-l.on .ice-body>*{animation:iceIn .55s cubic-bezier(.2,.9,.3,1.3) both}
+.ice-l.on .ice-body>*:nth-child(2){animation-delay:.25s}
+.ice-l.on .ice-body>*:nth-child(3){animation-delay:.5s}
+@keyframes iceIn{from{opacity:0;transform:translateY(16px) scale(.94)}}
+.ice-cv{width:100%;max-width:360px;height:auto;background:rgba(5,7,15,.6);border-radius:10px}
+.ice-big{font-size:18px;font-weight:800;text-shadow:0 2px 8px #000a}
+.ice-rule{display:flex;align-items:center;gap:10px;padding:12px 16px;border:2px dashed var(--warm);border-radius:12px;background:rgba(20,28,54,.8);font-size:18px}
+.ice-l1.on .ice-rule b{animation:iceWipe .8s .45s both}
+@keyframes iceWipe{from{clip-path:inset(0 100% 0 0)}to{clip-path:inset(0 0 0 0)}}
+.ice-l1.on .ice-lock{animation:iceLock .7s both}
+@keyframes iceLock{30%{transform:rotate(-18deg) scale(1.2)}60%{transform:rotate(14deg) scale(1.2)}to{transform:none}}
+.ice-who{display:flex;align-items:center;gap:12px;text-align:left;padding:12px 16px;border-radius:12px;background:rgba(20,28,54,.85);border:1px solid var(--line2)}
+.ice-who p{margin:0;color:var(--muted)}
+.ice-face{font-size:34px}
+.ice-l2.on .ice-face{animation:icePop .6s .2s both}
+@keyframes icePop{from{transform:scale(0) rotate(-30deg)}70%{transform:scale(1.25)}}
+.ice-feel{font-size:17px;font-weight:700}
+.ice-heart{display:inline-block;color:var(--danger);animation:iceBeat .45s ease-in-out infinite}
+@keyframes iceBeat{50%{transform:scale(1.35)}}
+.ice-tag{position:absolute;top:10px;left:10px;padding:3px 10px;border-radius:999px;background:rgba(5,7,15,.7);font-size:12px;font-weight:700}
+.ice-depth{position:absolute;top:10px;right:10px;padding:3px 10px;border-radius:999px;background:rgba(5,7,15,.7);font-size:12px;font-variant-numeric:tabular-nums;color:var(--info)}
+.ice.up .ice-view{animation:iceUp .5s}
+@keyframes iceUp{30%{filter:brightness(1.5)}}
+.ice-fin{display:flex;flex-direction:column;gap:10px}
+.ice-sum{font-weight:800;color:var(--info)}
+.ice-roles{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:6px}
+.ice-roles li{padding:8px 12px;border-radius:10px;background:var(--panel2);animation:iceIn .5s calc(var(--k) * .35s) both}
+.ice-roles li:last-child{background:var(--accent);color:var(--accent-ink);font-weight:800;font-size:17px}
+@media (prefers-reduced-motion:reduce){.ice-scene,.ice-l{transition:none}.ice-water,.ice-l.on .ice-body>*,.ice-l1.on .ice-rule b,.ice-l1.on .ice-lock,.ice-l2.on .ice-face,.ice-heart,.ice-roles li,.ice.up .ice-view{animation:none}}

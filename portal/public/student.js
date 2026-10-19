@@ -405,6 +405,98 @@ STEPS.text = ctx => el('div', { class: 'stack' },
   el('div', { class: 'text-html', html: ctx.step.html }),
   el('div', {}, el('button', { class: 'btn', type: 'button', onclick: () => ctx.save({ read: true }, true) }, ctx.done ? 'Прочитано ✓' : 'Понятно')));
 
+// iceberg: «Айсберг» (урок 1, шаг 8, 19.10.2026) — игрок видит верхушку, ученик ныряет: что видно → что спрятано → кто решил и зачем.
+// Два погружения: донор, потом игра класса (спрятанная механика из шага secret, данные по effect); на дне второго — роли и «Понятно».
+STEPS.iceberg = ctx => {
+  const st = ctx.step;
+  const hunt = lessonSteps().find(x => x.type === 'secret'), sec = hunt && (ans(hunt.id).value || {}).secret;
+  const mine = sec && st.byEffect && st.byEffect[sec.effect];
+  const dives = [st.donor].concat(mine ? [Object.assign({ rule: sec.title + '.' }, st.ours, mine)] : []);
+  const LAYERS = [['Что видит игрок', 'верхушка'], ['Что спрятано', 'под водой'], ['Кто решил и зачем', 'на дне']];
+  let d = 0, layer = 0, padPrev = [];
+  const box = el('div', { class: 'ice', tabindex: '0', 'aria-label': 'Айсберг спрятанной механики' });
+  const scene = el('div', { class: 'ice-scene' });
+  const tag = el('div', { class: 'ice-tag' }), depth = el('div', { class: 'ice-depth' });
+  const cv = el('canvas', { width: 360, height: 130, class: 'ice-cv', 'aria-hidden': 'true' }), g = cv.getContext('2d');
+  const secs = LAYERS.map(([h, where], k) => el('section', { class: 'ice-l ice-l' + k }, el('div', { class: 'eyebrow' }, where), el('h3', {}, h), el('div', { class: 'ice-body' })));
+  scene.append(el('div', { class: 'ice-berg' }), el('div', { class: 'ice-water' }), ...secs);
+  const dive = el('button', { type: 'button', class: 'btn', 'data-ice': 'dive', onclick: () => go() });
+  const fin = el('div', { class: 'ice-fin', hidden: true },
+    el('p', { class: 'ice-sum' }, st.sum),
+    el('ul', { class: 'ice-roles' }, st.roles.map((r, k) => el('li', { style: `--k:${k}` }, r))),
+    el('div', {}, el('button', { class: 'btn', type: 'button', 'data-ice': 'ok', onclick: () => ctx.save({ read: true }, true) }, ctx.done ? 'Прочитано ✓' : 'Понятно')));
+  box.append(el('div', { class: 'ice-view' }, scene, tag, depth), el('div', { class: 'row' }, dive), fin);
+  function fill() {
+    const D = dives[d];
+    secs[0].querySelector('.ice-body').replaceChildren(cv, el('p', { class: 'ice-big' }, D.seen));
+    secs[1].querySelector('.ice-body').replaceChildren(el('div', { class: 'ice-rule' }, el('span', { class: 'ice-lock' }, '🔒'), el('b', {}, D.rule)), el('p', { class: 'muted small' }, 'Игра это правило не объявляет.'));
+    secs[2].querySelector('.ice-body').replaceChildren(el('div', { class: 'ice-who' }, el('span', { class: 'ice-face' }, '🎮'), el('div', {}, el('b', {}, D.who), el('p', {}, D.decided))),
+      el('p', { class: 'ice-feel' }, el('span', { class: 'ice-heart' }, '♥'), ' ', D.feel));
+    tag.textContent = D.name;
+  }
+  function paint() {
+    scene.style.setProperty('--layer', layer);
+    secs.forEach((s, k) => s.classList.toggle('on', k === layer));
+    depth.textContent = ['0 м', '−20 м', '−60 м'][layer];
+    const last = d === dives.length - 1;
+    dive.hidden = layer === 2 && last;
+    dive.textContent = layer < 2 ? 'Нырнуть глубже ↓' : 'Теперь наша игра ↑';
+    if (layer === 2 && last) { fin.hidden = false; box.classList.add('done'); }
+  }
+  function go() {
+    if (layer < 2) { layer++; beep('tick'); }
+    else if (d < dives.length - 1) { d++; layer = 0; t0 = performance.now(); fill(); box.classList.add('up'); setTimeout(() => box.classList.remove('up'), pause(500)); beep('good'); }
+    else return;
+    if (layer === 1) t0 = performance.now();
+    paint();
+  }
+  box.addEventListener('keydown', e => { if (['ArrowDown', 'Space', 'Enter'].includes(e.code) && e.target === box) { e.preventDefault(); go(); } });
+  // анимация на холсте: верхушка — эффект, под водой — правило; донор — пришельцы, игра класса — по спрятанной механике
+  let t0 = performance.now(), raf = 0;
+  const alien = (x, y, c, s = 3) => { g.fillStyle = c; ['..X..X..', '...XX...', '.XXXXXX.', 'XX.XX.XX', 'XXXXXXXX', '.X....X.'].forEach((r, j) => [...r].forEach((ch, i) => { if (ch === 'X') g.fillRect(x - 4 * s + i * s, y - 3 * s + j * s, s, s); })); };
+  const text = (s, x, y, c, px = 14) => { g.fillStyle = c; g.font = `800 ${px}px system-ui,sans-serif`; g.textAlign = 'center'; g.fillText(s, x, y); };
+  const ANIM = {
+    invaders(t) { // последний пришелец носится зигзагом, за ним след
+      for (let k = 6; k >= 0; k--) { const tt = t - k * 0.04, x = 180 + 150 * Math.sin(tt * 5.5), y = 50 + 14 * Math.sin(tt * 11); g.globalAlpha = k ? 0.12 * (7 - k) / 7 : 1; alien(x, y, '#ff5d6e'); }
+      g.globalAlpha = 1; g.fillStyle = '#7cf5a8'; g.fillRect(168, 112, 24, 6);
+    },
+    jackpot(t) { // монетки летят к герою, десятая — золотая со вспышкой
+      const n = Math.floor(t * 2.5) % 12, p = (t * 2.5) % 1;
+      g.fillStyle = '#5fe0ff'; g.beginPath(); g.arc(60, 90, 14, 0, 7); g.fill();
+      if (n < 10) { g.fillStyle = n === 9 ? '#ffd23f' : '#ffb547'; g.beginPath(); g.arc(320 - 250 * p, 90 - 40 * Math.sin(p * Math.PI), n === 9 ? 10 : 7, 0, 7); g.fill(); }
+      text('удача ' + Math.min(n + 1, 10), 300, 26, '#9aa3c7', 13);
+      if (n >= 10) { g.fillStyle = `rgba(255,210,63,${0.35 * (1 - p)})`; g.fillRect(0, 0, 360, 130); for (let k = 0; k < 14; k++) { const a = k / 14 * 6.28; g.fillStyle = k % 2 ? '#ffd23f' : '#ff5d6e'; g.fillRect(60 + Math.cos(a) * 80 * (p + 0.2), 90 + Math.sin(a) * 50 * (p + 0.2), 5, 5); } text('×10 ДЖЕКПОТ!', 200, 60, '#ffd23f', 30); }
+    },
+    grow(t) { const k = Math.floor(t * 1.5) % 9, r = 12 + (k < 8 ? k : 2) * 4; g.fillStyle = '#5fe0ff'; g.beginPath(); g.arc(180, 120 - r, r, 0, 7); g.fill(); text(k < 8 ? 'ступень ' + (k + 1) : 'удар — сдулся!', 180, 22, k < 8 ? '#7cf5a8' : '#ff5d6e'); },
+    comfort(t) { const p = t % 3; g.fillStyle = '#5fe0ff'; g.beginPath(); g.arc(180, 90, 14, 0, 7); g.fill(); if (p < 0.4) { g.fillStyle = 'rgba(255,93,110,.5)'; g.fillRect(0, 0, 360, 130); text('удар!', 180, 40, '#fff', 20); } else { g.strokeStyle = '#ffd23f'; g.lineWidth = 4; g.beginPath(); g.arc(180, 90, 24 + 3 * Math.sin(t * 8), 0, 7); g.stroke(); text('+30', 180 + 60 * Math.sin(p * 2), 60 - 10 * (p % 1), '#ffd23f', 22); } },
+  };
+  const RULE = {
+    invaders(t) { // волна редеет — скорость растёт: правило числами
+      const n = 6 - Math.floor(t / 0.9) % 6, sp = 6 / n;
+      for (let k = 0; k < n; k++) alien(40 + k * 48 + 10 * Math.sin(t * sp * 3), 40, '#ffb547', 2.5);
+      g.fillStyle = '#1a2445'; g.fillRect(40, 92, 280, 12); g.fillStyle = n === 1 ? '#ff5d6e' : '#7cf5a8'; g.fillRect(40, 92, 280 * sp / 6, 12);
+      text(`пришельцев ${n} → скорость ×${sp % 1 ? sp.toFixed(1).replace('.', ',') : sp}`, 180, 124, '#f2efe6', 13);
+    },
+    jackpot(t) { const n = Math.floor(t * 2.5) % 13; for (let k = 0; k < 10; k++) { const on = k < n, gold = k === 9; g.fillStyle = on ? (gold ? '#ffd23f' : '#ffb547') : '#1a2445'; g.beginPath(); g.arc(36 + k * 32, 60, gold && on ? 13 : 10, 0, 7); g.fill(); text(String(k + 1), 36 + k * 32, 92, gold ? '#ffd23f' : '#9aa3c7', 12); } if (n >= 10) text('десятая — ×10', 180, 122, '#ffd23f', 15); },
+    grow(t) { const n = Math.floor(t * 2) % 10; for (let k = 0; k < 9; k++) { g.fillStyle = k < n ? '#7cf5a8' : '#1a2445'; g.fillRect(30 + k * 34, 70, 26, 14); } text('каждые 3 удачи — герой больше', 180, 122, '#f2efe6', 13); },
+    comfort(t) { const p = (t % 4) / 4; g.fillStyle = '#1a2445'; g.fillRect(30, 60, 300, 14); g.fillStyle = '#ffd23f'; g.fillRect(30, 60, 300 * p, 14); text('удар → 4 секунды очки ×3', 180, 110, '#f2efe6', 14); },
+  };
+  function loop(now) {
+    if (!box.isConnected) { cancelAnimationFrame(raf); return; }
+    const t = (now - t0) / 1000, A = dives[d].anim;
+    g.clearRect(0, 0, 360, 130);
+    if (layer === 1) { cv.parentNode !== secs[1].querySelector('.ice-body') && secs[1].querySelector('.ice-body').prepend(cv); (RULE[A] || (() => {}))(t); }
+    else { cv.parentNode !== secs[0].querySelector('.ice-body') && secs[0].querySelector('.ice-body').prepend(cv); (ANIM[A] || (() => {}))(t); }
+    let gp = null; try { gp = [...navigator.getGamepads()].filter(Boolean)[0]; } catch (e) { /* без геймпада */ }
+    if (gp) { const b = gp.buttons.map(x => !!(x && x.pressed)); if ((b[0] && !padPrev[0]) || (b[13] && !padPrev[13])) go(); padPrev = b; }
+    raf = requestAnimationFrame(loop);
+  }
+  fill(); paint();
+  if (ctx.done) { d = dives.length - 1; layer = 2; fill(); paint(); }
+  raf = requestAnimationFrame(loop);
+  return el('div', { class: 'stack' }, box);
+};
+
 // play: ремейк учителя. variants — варианты одной игры кнопками (свои значения ручек), например «классика» и «одно правило».
 // Скрытый счётчик _secret и счётчики телеметрии (lab.count) копятся по всем партиям шага: их сравнивает шаг secret.
 STEPS.play = ctx => {
@@ -922,6 +1014,8 @@ STEPS.sort = ctx => {
   const box = el('div', { class: 'sorter', tabindex: '0', 'aria-label': 'Квиз-сортировщик' });
   let order = [], i = 0, score = 0, streak = 0, bestStreak = 0, correct = 0, mistakes = [], picks = [], left = 0, raf = 0, locked = false, active = false, padPrev = [];
   const hud = el('div', { class: 'hud' }), timer = el('div', { class: 'timer' }, el('i')), item = el('div', { class: 'item' }), why = el('div', { class: 'why', 'aria-live': 'polite' });
+  // manual: после ответа карточка ждёт, пока ученик прочитает разбор и нажмёт «Далее» (Enter, пробел или A); иначе — сама через паузу
+  const nextBtn = el('button', { type: 'button', class: 'btn', 'data-next': '1', hidden: true, onclick: () => go() }, 'Далее ▶');
   // до 3 лотков — клавиши 1 2 3 или ← ↓ →; больше (до 8) — цифры, или стрелками выбрать лоток и пробел; у лотка — пример, после ошибки — подсказка
   const many = st.bins.length > 3;
   let sel = 0;
@@ -938,6 +1032,7 @@ STEPS.sort = ctx => {
     box.append(el('div', { class: 'stack', style: 'align-items:center;text-align:center;margin:auto' },
       el('h3', {}, `${ITEMS.length} решений · ${st.seconds} секунд на каждое`),
       el('p', { class: 'muted' }, many ? `Серия правильных ответов умножает очки. Клавиши 1–${st.bins.length} или стрелки и пробел, на геймпаде — крестовина и A.` : `Серия правильных ответов умножает очки. Геймпад: крестовина ${two ? '◀ ▶' : '◀ ▼ ▶'}.`),
+      st.manual ? el('p', { class: 'muted' }, 'После ответа прочитай разбор и жми «Далее»: Enter, пробел или A на геймпаде.') : null,
       prev ? el('p', {}, `Твой результат: ${prev.correct} из ${prev.total}, очки ${prev.score}`) : null,
       el('button', { class: 'btn', type: 'button', onclick: begin }, prev ? 'Сыграть ещё раз' : '▶ Начать')));
   }
@@ -945,7 +1040,7 @@ STEPS.sort = ctx => {
     ITEMS = st.items.concat(wowItems(st));
     order = ITEMS.map((x, k) => k).sort(() => Math.random() - 0.5);
     i = 0; score = 0; streak = 0; bestStreak = 0; correct = 0; mistakes = []; picks = [];
-    box.innerHTML = ''; box.append(hud, timer, item, why, bins); box.focus();
+    box.innerHTML = ''; box.append(hud, timer, item, why, bins, el('div', { class: 'row', style: 'justify-content:center' }, nextBtn)); nextBtn.hidden = true; box.focus();
     if (many) select(0);
     active = true; next();
     let last = performance.now();
@@ -962,15 +1057,13 @@ STEPS.sort = ctx => {
   function pollPad() {
     let pads = []; try { pads = [...navigator.getGamepads()].filter(Boolean); } catch (e) { return; }
     const gp = pads[0]; if (!gp) return;
-    const b = gp.buttons.map(x => x && x.pressed);
-    if (many) { // крестовина выбирает лоток, A кладёт карточку
-      [[14, -1], [15, 1], [12, -4], [13, 4]].forEach(([btn, d], k) => { if (b[btn] && !padPrev[k]) select(sel + d); padPrev[k] = b[btn]; });
-      if (b[0] && !padPrev[4]) answer(sel);
-      padPrev[4] = b[0];
-      return;
-    }
-    const map = [[14, 2], [13, 0], [15, 1]];
-    map.forEach(([btn, alt], k) => { const on = b[btn] || b[alt]; if (on && !padPrev[k]) answer(k); padPrev[k] = on; });
+    const b = gp.buttons.map(x => !!(x && x.pressed)), edge = n => b[n] && !padPrev[n];
+    if (st.manual && locked) { if (edge(0) || edge(9)) go(); } // ждём «Далее»
+    else if (many) { // крестовина выбирает лоток, A кладёт карточку
+      [[14, -1], [15, 1], [12, -4], [13, 4]].forEach(([n, d]) => { if (edge(n)) select(sel + d); });
+      if (edge(0)) answer(sel);
+    } else [[14, 2], [13, 0], [15, 1]].forEach(([n, alt], k) => { if (edge(n) || edge(alt)) answer(k); });
+    padPrev = b;
   }
   function next() {
     if (i >= order.length) return finish();
@@ -993,7 +1086,13 @@ STEPS.sort = ctx => {
     if (!ok) binBtns[right].classList.add('flash-good');
     const hint = !ok && st.bins[right].hint ? ' Подсказка: ' + st.bins[right].hint : '';
     why.textContent = (ok ? 'Верно! ' : k < 0 ? 'Время вышло. ' : `Это ${st.bins[right].label.toLowerCase()}. `) + it.why + hint;
-    setTimeout(() => { binBtns.forEach(b => b.classList.remove('flash-good', 'flash-bad')); i++; next(); }, pause(ok ? 900 : hint ? 3200 : 2200));
+    if (st.manual) { nextBtn.hidden = false; box.focus(); return; }
+    setTimeout(go, pause(ok ? 900 : hint ? 3200 : 2200));
+  }
+  function go() {
+    if (!active || !locked) return;
+    nextBtn.hidden = true;
+    binBtns.forEach(b => b.classList.remove('flash-good', 'flash-bad')); i++; next();
   }
   function finish() {
     active = false; cancelAnimationFrame(raf);
@@ -1010,6 +1109,7 @@ STEPS.sort = ctx => {
   }
   box.addEventListener('keydown', e => {
     if (!active) return;
+    if (st.manual && locked) { if (['Enter', 'Space', 'NumpadEnter'].includes(e.code)) { e.preventDefault(); go(); } return; }
     if (many) {
       const d = /^(Digit|Numpad)([1-8])$/.exec(e.code);
       if (d && Number(d[2]) <= st.bins.length) { e.preventDefault(); answer(Number(d[2]) - 1); return; }

@@ -96,6 +96,11 @@ async function playRound(frame, { score = 0, hold = null, page = null, restart =
 }
 // сортировщик квиза: ждём, пока сменится карточка или квиз кончится, а не паузу на анимацию
 const nextItem = (page, step, prev) => page.waitForFunction(([s, p]) => { const e = document.querySelector(s + ' .item'); return !!document.querySelector(s + '.done') || !e || e.textContent.trim() !== p; }, [step, prev], { timeout: 15000 });
+// «Айсберг» (шаг 8 урока 1): нырять до дна последнего погружения, потом «Понятно»
+async function storyDone(page) {
+  for (let i = 0; i < 12 && !(await page.locator('#step-secret-story [data-ice=ok]:visible').count()); i++) await page.click('#step-secret-story [data-ice=dive]');
+  await page.click('#step-secret-story [data-ice=ok]');
+}
 // правка в чате Qwen: ученик пишет Qwen сам и вставляет его ответ в окно правки; ответ «Qwen» — подставной chatAnswer.
 // Если ответ не лёг, портал выдаёт сообщение для того же чата — его подставной Qwen получает сам (LAB_CHAT_AUTO).
 async function chatEdit(student, stepId, what) {
@@ -718,7 +723,20 @@ async function secretHunt(teacher, student, mode, shot) {
   await student.waitForSelector('#step-nisikado.done');
   check('«Ты — Нисикадо»: волна сбита, решение «оставить» засчитано, раскрыто правило', /так же, как Нисикадо/.test(await student.textContent('#step-nisikado .concept')));
   await shot(student, '2b-nisikado');
-  await student.click('#step-secret-story >> text=Понятно');
+  // «Айсберг»: два погружения — донор и игра класса с найденной спрятанной механикой, на дне — роли
+  const ice = async () => (await student.textContent('#step-secret-story .ice-l.on')).replace(/\s+/g, ' ');
+  check('Айсберг: верхушка донора — что видит игрок', /Что видит игрок.*носится/.test(await ice()));
+  await student.click('#step-secret-story [data-ice=dive]');
+  check('Айсберг: под водой — правило донора', /Что спрятано.*Чем меньше пришельцев/.test(await ice()));
+  await student.click('#step-secret-story [data-ice=dive]'); await student.click('#step-secret-story [data-ice=dive]');
+  check('Айсберг: второе погружение — игра класса со своей спрятанной механикой', await student.textContent('#step-secret-story .ice-tag') === 'Игра нашего класса');
+  await student.click('#step-secret-story [data-ice=dive]');
+  const sec1 = lesson1.wow.secrets.find(x => x.id === lesson1.wow.classSecret).title;
+  check('Айсберг: под водой игры класса — её спрятанная механика', (await ice()).includes(sec1), await ice());
+  await student.click('#step-secret-story [data-ice=dive]');
+  check('Айсберг: на дне — роли и «Понятно»', await student.locator('#step-secret-story [data-ice=ok]:visible').count() === 1 && /Геймдизайнер решает/.test(await student.textContent('#step-secret-story .ice-fin')));
+  await shot(student, '2c-iceberg');
+  await storyDone(student);
   // квиз: постоянные карточки + карточки из игры класса (карты и раскрытая спрятанная механика)
   const quiz = lesson1.checkpoints.find(c => c.id === 'secret').steps.find(s => s.id === 'secret-quiz');
   const binOf = text => {
@@ -733,6 +751,8 @@ async function secretHunt(teacher, student, mode, shot) {
     const text = (await student.textContent('#step-secret-quiz .item')).trim();
     const k = quiz.bins.findIndex(b => b.id === binOf(text));
     await student.keyboard.press('Digit' + (k + 1));
+    if (i === 0) { await sleep(400); check('Квиз: после ответа карточка ждёт кнопку «Далее»', (await student.textContent('#step-secret-quiz .item')).trim() === text && await student.locator('#step-secret-quiz [data-next]:visible').count() === 1); }
+    await student.click('#step-secret-quiz [data-next]');
     await nextItem(student, '#step-secret-quiz', text);
   }
   await student.waitForSelector('#step-secret-quiz.done');
@@ -1054,7 +1074,7 @@ async function lessonTwo(mode, teacher, student, shot) {
     (mode === 'mock' ? /Ловушка! Мудрец не поддавался/.test(reveal) : /Точно!/.test(reveal)) && /Неопределённость исхода/.test(reveal), reveal.slice(0, 120));
   check('Сравнение: классика и одно правило, счётчики телеметрии и спрятанная механика', /ничьи 3/.test(reveal) && /победы 1/.test(reveal) && /спрятанная механика сработала 4 раз/.test(reveal), (reveal.match(/С одним правилом.*?Классика[^О]*/) || [''])[0].slice(0, 160));
   await shot(student, '21-u2-secret', true);
-  await student.click('#step-secret-story >> text=Понятно');
+  await storyDone(student);
 
   // квиз-раунды «Игра или не игра?»: свайп, кнопка с ошибкой, клавиши
   const quiz = step2('igra-ili-net');
@@ -1220,7 +1240,7 @@ async function lessonThree(mode, teacher, student, shot) {
   // к счётчикам из проверки добавляется то, что волки успели сами за партию, поэтому — «не меньше»
   const num = re => Number((re.exec(reveal) || [])[1] || -1), offPart = reveal.slice(reveal.indexOf('Одно правило'));
   check('Сравнение: окружения и хвост со спрятанной механикой и без, спрятанная механика сработала', num(/Четыре характера.*?окружения (\d+)/) >= 5 && Number((/хвост (\d+)/.exec(offPart) || [])[1] || -1) >= 6 && num(/спрятанная механика сработала (\d+) раз/) >= 40, reveal.slice(reveal.indexOf('Четыре характера'), reveal.indexOf('Четыре характера') + 160));
-  await student.click('#step-secret-story >> text=Понятно');
+  await storyDone(student);
 
   // квиз «Угадай охотника по следу»: лабиринт на холсте, ответы цифрами и стрелками с пробелом, после ответа — цель охотника
   const sled = step3('sled');
@@ -1361,7 +1381,7 @@ async function lessonFour(mode, teacher, student, shot) {
     (mode === 'mock' ? /Ловушка! Скорость не менялась/.test(reveal) : /Точно!/.test(reveal)) && /Предпросмотр и «мешок»/.test(reveal), reveal.slice(0, 120));
   check('Сравнение: линии и засухи с мешком и без, мешок сработал', /линии 3/.test(reveal) && /засухи 2/.test(reveal) && /спрятанная механика сработала [1-9]\d* раз/.test(reveal), (reveal.match(/С мешком.*?вслепую[^О]*/) || [''])[0].slice(0, 200));
   await shot(student, '30-u4-secret', true);
-  await student.click('#step-secret-story >> text=Понятно');
+  await storyDone(student);
 
   // квиз «Собери цикл»: ошибка с чужой карточкой и мышь, клавиши 1–4, стрелки с пробелом
   const quiz = step4('sobery-cikl');
@@ -1587,7 +1607,7 @@ async function lessonFive(mode, teacher, student, shot) {
   check(mode === 'mock' ? 'Спрятанная механика урока 5: ловушка «прыгал выше» распознана' : 'Спрятанная механика урока 5 угадана: отзывчивость',
     (mode === 'mock' ? /Ловушка! Высота не менялась/.test(reveal) : /Точно!/.test(reveal)) && /Отзывчивость/.test(reveal), reveal.slice(0, 120));
   check('Сравнение: потерянные нажатия со спрятанной механикой и без', /Сырой прыжок/.test(reveal) && /потерянные нажатия 3/.test(reveal), (reveal.match(/Прыжок со спрятанной механикой.*?Сырой прыжок[^О]*/) || [''])[0].slice(0, 200));
-  await student.click('#step-secret-story >> text=Понятно');
+  await storyDone(student);
 
   // лаборатория прыжка: пресеты кнопками
   await student.click('#step-laboratoriya .seg .opt >> nth=1');
@@ -1701,7 +1721,7 @@ async function lessonSix(mode, teacher, student, shot) {
   const reveal = (await student.textContent('#step-secret-hunt')).replace(/\s+/g, ' ');
   check(mode === 'mock' ? 'Спрятанная механика урока 6: ловушка «хычин летал быстрее» распознана' : 'Спрятанная механика урока 6 угадана: сочность',
     (mode === 'mock' ? /Ловушка! Скорость не менялась/.test(reveal) : /Точно!/.test(reveal)) && /Сочность: игра отзывается/.test(reveal) && /удары 12/.test(reveal) && /удары 9/.test(reveal), reveal.slice(0, 120));
-  await student.click('#step-secret-story >> text=Понятно');
+  await storyDone(student);
 
   // квиз «Сухая или сочная?»: основа сухая, в загадке включён один переключатель
   const quiz = step6('suhaya-sochnaya');
@@ -1804,7 +1824,7 @@ async function lessonSeven(mode, teacher, student, shot) {
   const reveal = (await student.textContent('#step-secret-hunt')).replace(/\s+/g, ' ');
   check(mode === 'mock' ? 'Спрятанная механика урока 7: ловушка «танцор бежал медленнее» распознана' : 'Спрятанная механика урока 7 угадана: одни часы',
     (mode === 'mock' ? /Ловушка! Темп не менялся/.test(reveal) : /Точно!/.test(reveal)) && /Одни часы: звук предупреждает/.test(reveal) && /идеально 9/.test(reveal) && /мимо 6/.test(reveal), reveal.slice(0, 120));
-  await student.click('#step-secret-story >> text=Понятно');
+  await storyDone(student);
 
   // предсказание «что будет без звука» и партия с выключенным переключателем «Звук»
   const pred = step7('prognoz'), good = pred.options.find(o => o.counter === 'хорошо');
@@ -1916,7 +1936,7 @@ async function lessonEight(mode, teacher, student, shot, { browser, base, code, 
   const reveal = (await student.textContent('#step-secret-hunt')).replace(/\s+/g, ' ');
   check(mode === 'mock' ? 'Спрятанная механика урока 8: ловушка «плиты ехали медленнее» распознана' : 'Спрятанная механика урока 8 угадана: окно «идеально»',
     (mode === 'mock' ? /Ловушка! Скорость не менялась/.test(reveal) : /Точно!/.test(reveal)) && /Окно «идеально»: игра прощает/.test(reveal) && /плиты 12/.test(reveal) && /плиты 5/.test(reveal), reveal.slice(0, 120));
-  await student.click('#step-secret-story >> text=Понятно');
+  await storyDone(student);
 
   // квиз модуля «Какой это приём?»: отзывчивость, сочность, обратная связь
   const quiz = step8('priemy'), binOf = t => quiz.items.find(i => i.text === t).bin;
