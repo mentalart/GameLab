@@ -944,3 +944,114 @@ ol.tsteps li.now{border-left:3px solid var(--info);padding-left:8px;margin-left:
 @media (max-width:700px){.m4-slots{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media (prefers-reduced-motion:reduce){.m4-cap.in>*,.m4-piece,.m4-code,.m4-lv,.m4-slot.bad{animation:none}}
 .m4-edit .inp{flex:1;min-width:160px;max-width:320px;width:auto}
+/* модуль 3 (уроки 9–13): кривая сложности, «Свинья», вызов класса, шкала случая и мастерства, таблица баланса */
+.sorter .item .spark{display:block;width:220px;height:64px;margin:0 auto 6px}
+.spark .flow,.curve-ed .flow{fill:#7cf5a822;stroke:#7cf5a855;stroke-width:1}
+.spark .line{fill:none;stroke:var(--warm);stroke-width:3;stroke-linejoin:round;stroke-linecap:round}
+.curve-ed{width:100%;max-width:720px;height:auto;background:var(--bg2);border:1px solid var(--line);border-radius:12px;touch-action:none;cursor:crosshair}
+.curve-ed .zone-up{fill:#ff5d6e10}
+.curve-ed .zl{fill:var(--muted);font-size:12px;font-weight:700}
+.curve-ed .flowl{fill:var(--accent)}
+.curve-ed .bar{fill:#5fe0ff66;stroke:#5fe0ff;stroke-width:1}
+.curve-ed .bar.hi{fill:#ff5d6e66;stroke:var(--danger)}
+.curve-ed .bar.lo{fill:#9aa3c744;stroke:var(--muted)}
+.curve-ed .bar.sel{stroke:var(--text);stroke-width:2.5}
+.curve-ed .cline{fill:none;stroke:var(--warm);stroke-width:2.5;stroke-linejoin:round}
+.curve-ed .tick{fill:var(--muted);font-size:11px}
+.curve-ed .axis{stroke:var(--line2);stroke-width:1.5}
+.curve-ed .hit{fill:var(--danger)}
+.curve-ed .surv{stroke:var(--warm);stroke-width:2;stroke-dasharray:5 4}
+.pig{display:flex;flex-direction:column;gap:14px;background:var(--bg2);border:1px solid var(--line);border-radius:14px;padding:18px}
+.pig:focus-visible{outline:2px solid var(--accent)}
+.pig-banks{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.pig-bank{display:flex;flex-direction:column;gap:4px;padding:10px 12px;border-radius:12px;border:1px solid var(--line);background:var(--panel)}
+.pig-bank.on{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent)}
+.pig-n{font-size:28px;font-weight:800}
+.pig-bar{display:block;height:8px;border-radius:99px;background:var(--panel2);overflow:hidden}
+.pig-bar i{display:block;height:100%;background:var(--accent)}
+.pig-mid{display:flex;gap:18px;align-items:center;justify-content:center}
+.pig-die{font-size:84px;line-height:1}
+.pig-die.bust{color:var(--danger);animation:shake .3s}
+.pig-turn{font-size:40px;font-weight:800;color:var(--warm)}
+.pig-log{text-align:center;font-weight:700;min-height:1.5em}
+.pig kbd,.btn kbd{font-size:11px;opacity:.7;margin-left:4px}
+.pulse-top{margin:0;padding-left:22px}
+.pulse-top li.me{color:var(--accent);font-weight:700}
+.pulse-hist{display:flex;align-items:flex-end;gap:6px;height:150px;padding:8px;background:var(--bg2);border:1px solid var(--line);border-radius:12px}
+.ph-col{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;height:100%;gap:3px}
+.ph-col i{display:block;width:100%;min-height:2px;border-radius:6px 6px 0 0;background:#ff5d6e88}
+.ph-col.peak i{background:var(--danger)}
+.ph-col small{font-size:10.5px;color:var(--muted)}
+.ph-n{font-size:12px;font-weight:700}
+.scale-ends{display:flex;justify-content:space-between;padding-left:190px}
+.scale-row{display:grid;grid-template-columns:34px 150px 1fr;gap:6px;align-items:center;padding:6px 8px;border-radius:10px;border:1px dashed var(--line2)}
+.scale-row.set{border-style:solid;border-color:var(--line)}
+.scale-row .ti{font-size:24px}
+.scale-track{position:relative}
+.scale-track input{width:100%;accent-color:var(--accent)}
+.scale-pro{position:absolute;top:18px;transform:translateX(-50%);color:var(--warm);font-size:14px;pointer-events:none}
+.scale-why{margin:-2px 0 4px 40px}
+.btable{display:flex;flex-direction:column;gap:6px;overflow-x:auto}
+.brow{display:grid;grid-template-columns:minmax(110px,1.4fr) minmax(110px,1.2fr) repeat(4,minmax(64px,.7fr)) minmax(170px,1.6fr) 36px;gap:6px;align-items:center;min-width:820px}
+.brow.bhead small{color:var(--muted);font-weight:700}
+.brow input,.brow select{padding:6px 8px}
+.bfair{font-size:12.5px;font-weight:700;padding:4px 8px;border-radius:8px}
+.bfair.ok{color:var(--accent);background:#0c2418}
+.bfair.cheap{color:var(--danger);background:#2a0c12}
+.bfair.dear{color:var(--info);background:#0b2128}
+@media (max-width:640px){.scale-ends{padding-left:0}.scale-row{grid-template-columns:30px 1fr}.scale-track{grid-column:1/-1}}
+
+/* моушн-дизайн модуля 3 (автор, 20.10.2026: «чтобы информация была понятна школьникам»): живые схемы понятий в шагах text (svg.mo)
+   и анимации интерактивов. Схема оживает, когда её видно (класс go от vybor.js), щелчок по ней — показать ещё раз. --d — задержка детали */
+.mo{width:100%;max-width:660px;height:auto;display:block;margin:6px auto;background:var(--bg2);border:1px solid var(--line);border-radius:14px;cursor:pointer}
+.mo text{fill:var(--text);font:700 13px system-ui,-apple-system,'Segoe UI',sans-serif}
+.mo .mu{fill:var(--muted);font-weight:600;font-size:12px}
+.mo .big{font-size:22px}
+.mo .ok{fill:var(--accent)} .mo .bad{fill:var(--danger)} .mo .warm{fill:var(--warm)} .mo .info{fill:var(--info)}
+.mo .ax{stroke:var(--line2);stroke-width:1.5;fill:none}
+.mo .chan{fill:#7cf5a81f;stroke:#7cf5a866;stroke-width:1}
+.mo .ln{fill:none;stroke-width:4;stroke-linecap:round;stroke-linejoin:round}
+.mo .ln.warm{stroke:var(--warm)} .mo .ln.bad{stroke:var(--danger)} .mo .ln.mu{stroke:var(--muted)} .mo .ln.ok{stroke:var(--accent)} .mo .ln.info{stroke:var(--info)}
+.mo .card{fill:var(--panel);stroke:var(--line2);stroke-width:1.5}
+.mo .card.glow{stroke:var(--warm);stroke-width:3}
+.mo .card.good{stroke:var(--accent)}
+.mo .draw{stroke-dasharray:1200;stroke-dashoffset:1200}
+.mo .pop,.mo .fade{opacity:0}
+.mo .pop{transform-box:fill-box;transform-origin:center}
+.mo.go .draw{animation:mo-draw 2.2s ease-out forwards;animation-delay:var(--d,0s)}
+.mo.go .pop{animation:mo-pop .55s cubic-bezier(.3,1.6,.5,1) forwards;animation-delay:var(--d,0s)}
+.mo.go .fade{animation:mo-fade .7s ease forwards;animation-delay:var(--d,0s)}
+.mo.go .pulse{transform-box:fill-box;transform-origin:center;animation:mo-pulse 1.6s ease-in-out infinite;animation-delay:var(--d,0s)}
+.mo.go .wob{transform-box:fill-box;transform-origin:center;animation:mo-wob .9s ease-in-out infinite}
+@keyframes mo-draw{to{stroke-dashoffset:0}}
+@keyframes mo-pop{0%{opacity:0;transform:scale(.3)}100%{opacity:1;transform:scale(1)}}
+@keyframes mo-fade{to{opacity:1}}
+@keyframes mo-pulse{0%,100%{transform:scale(1)}50%{transform:scale(1.12)}}
+@keyframes mo-wob{0%,100%{transform:rotate(-8deg)}50%{transform:rotate(8deg)}}
+/* интерактивы модуля 3 */
+.curve-ed .bar{transition:y .18s ease,height .18s ease}
+.curve-ed .cline{stroke-dasharray:1500;animation:mo-dash 1.2s ease-out}
+.curve-ed .hit{transform-box:fill-box;transform-origin:center;animation:mo-pop .45s cubic-bezier(.3,1.6,.5,1) both;animation-delay:var(--d,0s)}
+.curve-ed .runner{font-size:18px}
+@keyframes mo-dash{from{stroke-dashoffset:1500}to{stroke-dashoffset:0}}
+.sorter .item .spark .line{stroke-dasharray:400;animation:mo-dash2 .9s ease-out}
+@keyframes mo-dash2{from{stroke-dashoffset:400}to{stroke-dashoffset:0}}
+.pig-die.roll{animation:pig-roll .45s ease-out}
+@keyframes pig-roll{0%{transform:rotate(-200deg) scale(.6)}70%{transform:rotate(15deg) scale(1.15)}100%{transform:rotate(0) scale(1)}}
+.pig-turn.up{animation:mo-pulse .35s ease}
+.pig-bar i{transition:width .5s cubic-bezier(.3,1.4,.5,1)}
+.ph-col i{transform-origin:bottom;animation:ph-grow .7s cubic-bezier(.3,1.3,.5,1) both;animation-delay:var(--d,0s)}
+@keyframes ph-grow{from{transform:scaleY(0)}to{transform:scaleY(1)}}
+.pulse .bars .bt i{transform-origin:left;animation:ph-growx .7s ease-out both;animation-delay:var(--d,0s)}
+@keyframes ph-growx{from{transform:scaleX(0)}to{transform:scaleX(1)}}
+.pulse-top li{animation:mo-slide .4s ease-out both;animation-delay:var(--d,0s)}
+@keyframes mo-slide{from{opacity:0;transform:translateX(-14px)}to{opacity:1;transform:none}}
+.scale-pro{animation:scale-drop .5s cubic-bezier(.3,1.6,.5,1) both;animation-delay:var(--d,0s)}
+@keyframes scale-drop{from{opacity:0;transform:translate(-50%,-16px)}to{opacity:1;transform:translateX(-50%)}}
+.scale-why{animation:mo-slide .4s ease-out both;animation-delay:var(--d,0s)}
+.bfair.flash{animation:mo-pulse .4s ease}
+@media (prefers-reduced-motion:reduce){
+  .mo .draw{stroke-dashoffset:0}.mo .pop,.mo .fade{opacity:1}
+  .mo.go .draw,.mo.go .pop,.mo.go .fade,.mo.go .pulse,.mo.go .wob,.curve-ed .cline,.curve-ed .hit,.sorter .item .spark .line,.pig-die.roll,.pig-turn.up,.ph-col i,.pulse .bars .bt i,.pulse-top li,.scale-pro,.scale-why,.bfair.flash{animation:none}
+  .curve-ed .bar,.pig-bar i{transition:none}
+}

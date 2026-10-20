@@ -59,7 +59,7 @@ function plan(files) {
     } else if (/^lessons\/urok-\d\d(-v2|-kolody|-miry)?\.js$/.test(r)) {
       const n = Number(r.slice(13, 15));
       p.e2e = true; p.lessons.add(n); p.demo = true; portal(); p.why.push(f);
-    } else if (r === 'lib/ai.js' || r === 'server.js' || /^lib\//.test(r) || /^tools\/(mock-ai|e2e-portal|e2e-m4)\.js$/.test(r) || /^tools\/fixtures\/lessons\//.test(r)) whole(f, true);
+    } else if (r === 'lib/ai.js' || r === 'server.js' || /^lib\//.test(r) || /^tools\/(mock-ai|e2e-portal|e2e-m3|e2e-m4)\.js$/.test(r) || /^tools\/fixtures\/lessons\//.test(r)) whole(f, true);
     else if (/^(public|ai)\//.test(r) || r === 'lessons/moduli.js' || r === 'lessons/slovar.js') whole(f, false);
     else if (/^tools\/(e2e-qwen-chat\.js|fixtures\/qwen)/.test(r)) { p.qwen = true; p.why.push(f); }
     else if (/^tools\/(check|playtest|vendor-three\.sh)/.test(r) || /^(README|\.gitignore|config\.example\.json)/.test(r) || r.startsWith('.check/')) continue;

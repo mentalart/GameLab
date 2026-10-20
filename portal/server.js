@@ -168,6 +168,7 @@ function fillGaps(les, st, cls) {
     for (const id of [P.factory, P.decisions]) for (const [k, f] of Object.entries(((st.answers[id] || {}).value || {}).fields || {})) vars[k] = fieldText(f);
     if (donor) Object.assign(vars, { donor: donor.title, donorRules: donor.rules || '', donorKeys: donor.keys || '' });
     if (P.melody) vars.melody = ((st.answers[P.melody] || {}).value || {}).line || '';
+    for (const [k, id] of Object.entries(P.vars || {})) vars[k] = ((st.answers[id] || {}).value || {}).line || ''; // модуль 3: {curve} — кривая сложности, {table} — таблица баланса
     const ia = ans(P.igra);
     ia.value = Object.assign({}, ia.value, { fields: Object.assign({}, (ia.value || {}).fields) });
     let ni = 0;
@@ -747,6 +748,35 @@ route('GET', '/api/votes', (ctx) => {
   if (!step) throw Object.assign(new Error('Нет такого голосования'), { status: 404 });
   if (!((st.answers[step.id] || {}).value || {}).votes) return { hidden: true };
   return voteTally(w.class, les, step);
+});
+// вызов класса на одном зерне (шаг pulse, модуль 3): сводка без лишних имён — лучшие пять, где класс разбивался, что выбирает класс.
+// Видна тому, кто уже сыграл, и учителю (проектор, «Ответы класса»).
+function pulseTally(code, les, step, me) {
+  const rows = store.students(code).map(s => ({ nick: s.nick, v: ((((s.lessons || {})[les.id] || {}).answers || {})[step.id] || {}).value })).filter(r => r.v && r.v.rounds);
+  const num = x => (typeof x === 'number' && isFinite(x) ? x : null);
+  const top = rows.map(r => ({ nick: r.nick, best: Number(r.v.best) || 0, stat: step.stat ? r.v.stat : null, me: r.nick === me }))
+    .sort((a, b) => (step.stat && num(b.stat) != null && num(a.stat) != null ? b.stat - a.stat : b.best - a.best)).slice(0, 5);
+  let hist = null;
+  if (step.series) {
+    const bin = step.bin || 10, span = step.span || 120, n = Math.ceil(span / bin);
+    hist = Array.from({ length: n }, (_, i) => ({ label: `${i * bin}–${(i + 1) * bin}`, n: 0 }));
+    for (const r of rows) for (const t of (r.v.series || []).slice(0, 80)) { const i = Math.floor(Number(t) / bin); if (i >= 0 && i < n) hist[i].n++; else if (i >= n) hist[n - 1].n++; }
+  }
+  let picks = null;
+  if (step.picks) {
+    const count = {};
+    for (const r of rows) for (const [k, c] of Object.entries(r.v.picks || {}).slice(0, 40)) count[String(k).slice(0, 40)] = (count[String(k).slice(0, 40)] || 0) + (Number(c) || 0);
+    const total = Object.values(count).reduce((a, b) => a + b, 0) || 1;
+    picks = Object.entries(count).sort((a, b) => b[1] - a[1]).slice(0, 8).map(([label, c]) => ({ label, n: c, share: Math.round(100 * c / total) }));
+  }
+  return { n: rows.length, top, hist, picks };
+}
+route('GET', '/api/pulse', (ctx) => {
+  const { w, les, st } = needStudent(ctx);
+  const step = les.checkpoints.flatMap(c => c.steps).find(x => x.id === ctx.url.searchParams.get('step') && x.type === 'pulse');
+  if (!step) throw Object.assign(new Error('Нет такого вызова'), { status: 404 });
+  if (!((st.answers[step.id] || {}).value || {}).rounds) return { n: 0, top: [], hist: null, picks: null, hidden: true };
+  return pulseTally(w.class, les, step, w.nick);
 });
 route('POST', '/api/play/again', (ctx) => {
   const { w } = needStudent(ctx);
@@ -1719,6 +1749,32 @@ route('GET', '/api/teacher/poll', (ctx) => {
       const list = done(x.id).filter(v => v.fav);
       steps.push({ cp: cp.id, id: x.id, title: x.question || 'Самая интересная вариация', kind: 'choice', n: list.length,
         bars: x.variants.map(o => ({ label: `${o.icon} ${o.label}`, n: list.filter(v => v.fav === o.id).length })).filter(b => b.n) });
+    } else if (x.type === 'curve') { // урок 9: какие кривые сложности нарисовал класс
+      const list = all.map(a => (a[x.id] || {}).value || {}).filter(v => v.shape);
+      const names = { pila: '🪚 Пила с передышками', rovnaya: '📈 Ровная горка', stena: '🧱 Стена', skuka: '😴 Скука' };
+      steps.push({ cp: cp.id, id: x.id, title: x.title, kind: 'choice', n: list.length, bars: Object.entries(names).map(([k, label]) => ({ label, n: list.filter(v => v.shape === k).length })) });
+    } else if (x.type === 'pig') { // урок 10: где класс забирает очки в «Свинье»
+      const holds = all.map(a => ((a[x.id] || {}).value || {}).holds || []).flat().map(Number).filter(n => n > 0);
+      const bands = [[1, 9, 'меньше 10'], [10, 19, '10–19'], [20, 29, '20–29'], [30, 1e9, '30 и больше']];
+      const avg = holds.length ? Math.round(holds.reduce((p, q) => p + q, 0) / holds.length) : 0;
+      steps.push({ cp: cp.id, id: x.id, title: 'Свинья: на скольких очках забирали', kind: 'choice', n: done(x.id).length, max: Math.max(1, holds.length),
+        bars: bands.map(([a, b, label]) => ({ label, n: holds.filter(h => h >= a && h <= b).length })), note: holds.length ? `Класс забирает в среднем на ${avg}. Ни один вариант не лучший всегда: жадность выигрывает чаще, но и сгорает чаще.` : '' });
+    } else if (x.type === 'pulse') { // уроки 9, 10, 13: вызов класса на одном зерне
+      const t = pulseTally(cls.code, les, x, null);
+      if (t.picks) steps.push({ cp: cp.id, id: x.id, title: x.picksTitle || 'Что выбирает класс', kind: 'choice', n: t.n, max: 100, bars: t.picks.map(p => ({ label: p.label, n: p.share, show: p.share + '%' })),
+        note: t.picks.length && x.monopoly ? (t.picks[0].share >= 50 ? `«${t.picks[0].label}» — ${t.picks[0].share}% выборов. Если все берут одно, это не выбор.` : 'Класс выбирает по-разному: выбор настоящий.') : '' });
+      if (t.hist) steps.push({ cp: cp.id, id: x.id + ':hist', title: x.seriesTitle || 'Где класс разбивался', kind: 'choice', n: t.n, max: Math.max(1, ...t.hist.map(b => b.n)), bars: t.hist.map(b => ({ label: b.label + ' с', n: b.n })) });
+      if (!t.picks && !t.hist) steps.push({ cp: cp.id, id: x.id, title: x.title, kind: 'choice', n: t.n, bars: t.top.map(r => ({ label: r.nick, n: r.best })) });
+    } else if (x.type === 'scale') { // урок 12: среднее класса по шкале «случай — мастерство»
+      const list = all.map(a => (a[x.id] || {}).value || {}).filter(v => v.pos);
+      steps.push({ cp: cp.id, id: x.id, title: x.title, kind: 'choice', n: list.length, max: 10,
+        bars: x.items.map(it => { const ps = list.map(v => v.pos[it.id]).filter(p => typeof p === 'number'); const m = ps.length ? ps.reduce((p, q) => p + q, 0) / ps.length : 0; return { label: `${it.icon} ${it.label}`, n: Math.round(m * 10) / 10, show: ps.length ? String(Math.round(m * 10) / 10).replace('.', ',') : '—' }; }),
+        note: `0 — всё решает случай, 10 — всё решает мастерство.` });
+    } else if (x.type === 'table') { // урок 13: какие юниты класс выпускал чаще всего в дуэлях по своим таблицам
+      const count = {};
+      all.forEach(a => Object.entries(((a[x.id] || {}).value || {}).played || {}).forEach(([k, c]) => { count[k] = (count[k] || 0) + (Number(c) || 0); }));
+      steps.push({ cp: cp.id, id: x.id, title: 'Дуэли по таблицам: кого выпускали', kind: 'choice', n: done(x.id).length, max: Math.max(1, ...Object.values(count)),
+        bars: Object.entries(count).sort((p, q) => q[1] - p[1]).slice(0, 8).map(([label, n]) => ({ label, n })) });
     } else if (x.type === 'ownplay' && x.match) {
       const list = all.map(a => (a[x.id] || {}).value || {}).filter(v => v.match);
       steps.push({ cp: cp.id, id: x.id, title: x.match.question, kind: 'choice', n: list.length, bars: x.match.options.map(o => ({ label: o, n: list.filter(v => v.match === o).length })) });

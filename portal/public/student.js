@@ -160,6 +160,7 @@ function lootOf(cp) {
       case 'playtest': text = v.sent ? (v.emotions || []).join(' ') || 'отзыв отправлен' : ''; break;
       case 'sort': text = v.total ? `${v.correct} из ${v.total}` : ''; break;
       case 'postcard': text = v.card ? '📮 ' + v.card.title : ''; break;
+      case 'curve': case 'pig': case 'pulse': case 'table': text = v.loot || ''; break; // модуль 3: короткий итог шага пишет сам шаг (vybor.js)
       default: text = a.done ? 'готово' : '';
     }
     text = String(text || '').trim();
@@ -1208,6 +1209,7 @@ STEPS.sort = ctx => {
     if (i >= order.length) return finish();
     const it = ITEMS[order[i]];
     item.className = 'item'; item.textContent = it.text; why.textContent = '';
+    if (it.spark) item.prepend(spark(it.spark)); // урок 9: кусок кривой сложности над карточкой «Скука или тревога?»
     left = st.seconds; locked = false;
     hud.innerHTML = ''; hud.append(el('span', {}, `${i + 1} / ${order.length}`), el('span', {}, streak > 1 ? `серия ×${streak}` : ''), el('span', {}, `очки ${score}`));
   }
@@ -1706,6 +1708,7 @@ function planVars() {
   const d = fac && fac.donors && (fac.donors.find(x => x.id === dv) || fac.donors[0]);
   if (d) Object.assign(out, { donor: d.title, donorRules: d.rules || '', donorKeys: d.keys || '' });
   if (P.melody) out.melody = (ans(P.melody).value || {}).line || ''; // мелодия из секвенсора (урок 7)
+  for (const [k, id] of Object.entries(P.vars || {})) out[k] = (ans(id).value || {}).line || ''; // модуль 3: {curve} — кривая сложности, {table} — таблица баланса
   return out;
 }
 const fillTpl = (tpl, vars) => tpl.replace(/\{(\w+)\}/g, (_, k) => vars[k] || '…');
@@ -3597,7 +3600,7 @@ function stepSummary(step) {
     case 'arcade': return v.game ? `игра «${v.title || ''}» (автор ${v.author || '—'}), партий ${v.rounds || 0}, лучший счёт ${v.best || 0}${v.beat ? ', рекорд автора побит' : ''}` : 'не играл';
     case 'playtest': return (v.sent ? `отзыв на «${v.title || ''}»: ${(v.emotions || []).join(' ')}; нравится: ${f(v.like)}; хочется: ${f(v.want)}; а что если: ${f(v.whatif)}` : 'отзыв не отправлен') +
       (S.me.feedback ? `\nотзыв учителя: понятие — ${valText(S.me.feedback.concept)}; вопрос — ${valText(S.me.feedback.question)}` : '');
-    default: return (window.LabStepsM4Summary && window.LabStepsM4Summary(step, v, a)) || JSON.stringify(v);
+    default: return (window.LabStepsM4Summary && window.LabStepsM4Summary(step, v, a)) || (window.LabStepsM3Summary && window.LabStepsM3Summary(step, v, a)) || JSON.stringify(v);
   }
 }
 function cpSummary(cp) {
@@ -3626,4 +3629,5 @@ $('#noteForm').addEventListener('submit', async e => {
 });
 $('#logout').addEventListener('click', () => { Lab.token.clear(); location.href = '/'; });
 
-boot();
+// урок стартует, когда загружены все скрипты страницы: интерактивы модуля 3 (vybor.js) добавляют свои типы шагов после student.js
+if (document.readyState === 'loading') addEventListener('DOMContentLoaded', boot); else boot();
