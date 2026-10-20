@@ -19,7 +19,7 @@
 // образец урока и демо-игра, кооператив двух лопат, слепая проба игры соседа (сухая и сочная копии).
 // Урок 7 в обоих прогонах: «Шаг в такт» на одних часах и без спрятанной механики, мастерская вариаций ритм-игры (пригнись, исчезают, держи, двойной темп — доска с точностью и конструктор), предсказание «что будет без звука», квиз «Угадай по звуку»,
 // секвенсор мелодии: своя мелодия уходит в ремейк (lab.data) и в черновик ИГРА, образец урока, ритм-дуэль.
-// Урок 8 в обоих прогонах: «Башня до неба» с окном «идеально» и без спрятанной механики, квиз «Какой это приём?», джем с донором Stack из колоды «одна кнопка»,
+// Урок 8 в обоих прогонах: «Башня до неба» с окном «идеально» и без спрятанной механики, мастерская вариаций на одну кнопку (маятник, ритм, инерция, блиц — доска со спасёнными плитами и конструктор), квиз «Какой это приём?», джем с донором Stack из колоды «одна кнопка»,
 // образец урока, две башни вдвоём, релиз модуля 2; с подставным ИИ — выставка: соседка собирает игру джема, голоса в номинациях,
 // итоги класса и кнопочный турнир на проекторе.
 // Запуск: node portal/tools/e2e-portal.js [--headed] [--from=5]   Снимки — в portal/.check/portal-*.png
@@ -2091,7 +2091,7 @@ async function lessonEight(mode, teacher, student, shot, { browser, base, code, 
   await student.waitForSelector('#step-donor-hook.done');
 
   // без спрятанной механики: тот же промах отрезается
-  await student.click('.cp >> text=Спрятанная механика');
+  await student.click('.cp >> text=Одна кнопка — много');
   await student.click('#step-secret-play .veil button');
   gf = await gameFrame(student, 'bashnya-do-neba', 0);
   await gf.waitForFunction(() => window.__lab.cfg.secret === 0, null, { timeout: 5000 }).catch(() => {});
@@ -2110,6 +2110,37 @@ async function lessonEight(mode, teacher, student, shot, { browser, base, code, 
   check(mode === 'mock' ? 'Спрятанная механика урока 8: ловушка «плиты ехали медленнее» распознана' : 'Спрятанная механика урока 8 угадана: окно «идеально»',
     (mode === 'mock' ? /Ловушка! Скорость не менялась/.test(reveal) : /Точно!/.test(reveal)) && /Окно «идеально»: игра прощает/.test(reveal) && /плиты 12/.test(reveal) && /плиты 5/.test(reveal), reveal.slice(0, 120));
   await storyDone(student);
+
+  // мастерская вариаций игры на одну кнопку: плитка — партия с ручками вариации — «какая это игра» — «что повернули»; полоса — спасённые плиты
+  const vstep8 = step8('variacii');
+  await student.waitForSelector('#step-variacii [data-var]');
+  check('Урок 8: мастерская вариаций — кнопка и плитки всех вариаций', /плита едет → нажатие/.test(await student.textContent('#step-variacii')) && await student.locator('#step-variacii [data-var]').count() === vstep8.variants.length);
+  const tryVars8 = [['mayatnik', 'swing', 1], ['ritm', 'rhythm', 100], ['inerciya', 'slip', 0.16], ['blic', 'blitz', 30]];
+  for (const [k, [id, knob, val]] of tryVars8.entries()) {
+    const x = vstep8.variants.find(y => y.id === id);
+    await student.click(`#step-variacii [data-var=${id}]`);
+    await student.click('#step-variacii .veil button');
+    gf = await gameFrame(student, 'bashnya-do-neba', 0);
+    await gf.waitForFunction(([kn, vl]) => window.__lab.cfg[kn] === vl, [knob, val], { timeout: 5000 }).catch(() => {});
+    check(`Вариация урока 8 «${x.label}» включила свои ручки`, await gf.evaluate(([kn, vl]) => window.__lab.cfg[kn] === vl && window.__lab.cfg.limit === 60, [knob, val]));
+    await gf.evaluate(() => window.__lab.confirm());
+    await sleep(300);
+    await gf.evaluate(() => { const L = window.__lab.lab; L.stat('спасено', 6); L.score = 120; window.__lab.end('lose', 'Проверка'); });
+    await student.waitForSelector('#step-variacii [data-feel]', { timeout: 10000 });
+    await student.click(`#step-variacii [data-feel] >> nth=${k}`);
+    const dial = k === 1 ? vstep8.dials.find(d => d.id !== x.dial).id : x.dial;
+    await student.click(`#step-variacii [data-dial=${dial}]`);
+    await student.waitForSelector('#step-variacii .verdict');
+    if (k === 1) check('Вариации урока 8: ошибка в детали — разбор', /Не совсем/.test(await student.textContent('#step-variacii .verdict')) && (await student.textContent('#step-variacii .verdict')).includes(x.why));
+    await student.click('#step-variacii [data-next]');
+  }
+  await student.waitForSelector('#step-variacii .var-board');
+  check('Доска вариаций урока 8: четыре игры и спасённые плиты', await student.locator('#step-variacii .var-row').count() === 4 && /окно спасло плит: 6/.test(await student.textContent('#step-variacii .var-board')));
+  await shot(student, '53b-u8-variacii', true);
+  await student.click('#step-variacii [data-fav=ritm]');
+  await student.waitForSelector('#step-variacii.done', { timeout: 10000 });
+  await student.click('#step-variacii [data-mix="Маятник"]');
+  check('Конструктор вариации урока 8: своя вариация из плиток', /Твоя вариация: Маятник/.test(await student.textContent('#step-variacii .pickline')));
 
   // квиз модуля «Какой это приём?»: отзывчивость, сочность, обратная связь
   const quiz = step8('priemy'), binOf = t => quiz.items.find(i => i.text === t).bin;

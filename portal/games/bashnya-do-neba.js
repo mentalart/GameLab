@@ -6,6 +6,9 @@
 // Вдвоём (ручка duel) — две башни рядом: у каждого своя кнопка, кто первым дотянется до ленты или выше — победил.
 // Из лучших игр жанра (разбор — в журнале курса): волна «идеально» и нота выше (Stack), качание башни после неточной плиты
 // (Tower Bloxx), лента финиша вдвоём (Tricky Towers), тик-тик перед точкой (Rhythm Heaven), лента рекорда (Doodle Jump).
+// Вариации (урок 8, мастерская «Та же кнопка — другая игра»): ручки swing, steps, slip, rhythm, red, blitz, narrow и жизни — приёмы
+// настоящих игр (Tower Bloxx, аркада Stacker, Rhythm Heaven, Stack, Tetris). Окно «идеально» в каждой то же; имя вариации и её правило —
+// баннер в начале, строка над полем и экран конца. Пресеты с теми же именами — в Tab.
 const GAME = {
   engine: 'three',
   title: 'Башня до неба',
@@ -16,6 +19,7 @@ const GAME = {
   controls: [
     { input: 'a', text: 'поставить плиту' },
   ],
+  scoreColor: '#ffd23f', // счёт золотом, как волна «идеально»
   camera: { type: 'iso', tilt: 1.18, turn: Math.PI / 4, target: [0, 1.5, 0], distance: 22, fov: 0.6 },
   field: { w: 12, h: 12 },
   sky: ['#4aa8ff', '#cdeeff'],
@@ -49,13 +53,43 @@ const GAME = {
     secret: { value: 1, min: 0, max: 1, step: 1, label: 'Спрятанная механика: окно «идеально» и рост за серию' },
     duel: { value: 0, min: 0, max: 1, step: 1, label: 'Вдвоём: две башни', restart: true },
     goal: { value: 40, min: 0, max: 120, step: 5, label: 'Вдвоём: лента финиша на высоте, плит', hint: '0 — без ленты: побеждает тот, чья башня выше', restart: true },
+    limit: { value: 0, min: 0, max: 300, step: 10, label: 'Время на партию, с (0 — без времени)' },
+    // вариации
+    swing: { value: 0, min: 0, max: 1, step: 1, label: 'Маятник: плита качается на тросе крана', hint: 'как Tower Bloxx: у краёв плита замедляется, над башней летит быстрее всего' },
+    steps: { value: 0, min: 0, max: 1, step: 0.1, label: 'Рывками: плита прыгает по клеткам, м (0 — плавно)', hint: 'как аркадный автомат Stacker' },
+    slip: { value: 0, min: 0, max: 0.4, step: 0.02, label: 'Инерция: плита проезжает ещё … с после нажатия', hint: 'как блок в Tower Bloxx летит по инерции: жми с упреждением; красная подсветка показывает, куда она доедет' },
+    rhythm: { value: 0, min: 0, max: 160, step: 5, label: 'Ритм: метроном, ударов в минуту (0 — без него)', hint: 'как Built to Scale в Rhythm Heaven: плита над башней ровно на сильную долю' },
+    red: { value: 1, min: 0, max: 1, step: 1, label: 'Красным — то, что отрежется', names: ['выкл', 'вкл'], hint: '0 — как в Stack: подсветки нет, суди сам' },
+    blitz: { value: 0, min: 0, max: 90, step: 5, label: 'Блиц: секунд на башню (0 — без блица)', hint: 'как Ultra в Tetris: время ограничено, каждое «идеально» добавляет секунду' },
+    narrow: { value: 0, min: 0, max: 1, step: 1, label: 'Сужение: каждые 8 плит плита короче на четверть', hint: 'как в автомате Stacker: на высоте блоков становится меньше' },
   },
   presets: {
     'Новичок': { speed: 2.2, speedup: 0.03, snap: 0.2, size: 4.2, patience: 4 },
     'Без спрятанной механики': { secret: 0 },
     'Вдвоём': { duel: 1 },
     'Ветер': { speed: 4.5, speedup: 0.12, maxSpeed: 10, range: 5.5, sway: 2 },
+    'Маятник': { swing: 1 },
+    'Рывками': { steps: 0.6 },
+    'Инерция': { slip: 0.16 },
+    'Ритм': { rhythm: 100 },
+    'Без подсветки': { red: 0 },
+    'Без тик-тика': { cue: 0 },
+    'Блиц': { blitz: 30 },
+    'Сужение': { narrow: 1 },
+    'Одна плита': { lives: 1 },
   },
+  // имя вариации и её правило для строки над полем, баннера в начале и экрана конца партии
+  VARIANTS: [
+    { key: 'swing', name: 'Маятник', how: () => 'плита качается на тросе: у краёв медленно, над башней быстро' },
+    { key: 'steps', name: 'Рывками', how: () => 'плита прыгает по клеткам — лови нужную' },
+    { key: 'slip', name: 'Инерция', how: () => 'после нажатия плита проезжает ещё — жми с упреждением' },
+    { key: 'rhythm', name: 'Ритм', how: c => `метроном ${Math.round(c.rhythm)}: плита над башней на высокий щелчок` },
+    { key: 'red', on: c => !(c.red > 0), name: 'Без подсветки', how: () => 'красного нет — суди на глаз' },
+    { key: 'cue', on: c => !(c.cue > 0), name: 'Без тик-тика', how: () => 'подсказки звуком нет' },
+    { key: 'blitz', name: 'Блиц', how: c => `${Math.round(c.blitz)} с на башню, «идеально» — +1 с` },
+    { key: 'narrow', name: 'Сужение', how: () => 'каждые 8 плит плита короче на четверть' },
+    { key: 'lives', on: c => c.lives <= 1, name: 'Одна плита', how: () => 'уронил одну — башня готова' },
+  ],
 
   NOTES: [262, 294, 330, 392, 440, 523, 587, 659, 784, 880, 1047, 1175], // пентатоника вверх: каждая точная плита подряд — нота выше
   MILESTONES: [[4, 'Выше сакли!'], [9, 'Выше орла!'], [14, 'Выше облаков!'], [22, 'Закат'], [32, 'Звёзды!'], [50, 'Почти космос!'], [75, 'До неба!']],
@@ -65,7 +99,8 @@ const GAME = {
     const st = lab.state, c = lab.cfg, two = lab.players === 2, T3 = lab.THREE;
     // вдвоём башни стоят рядом поперёк взгляда камеры (камера смотрит по диагонали, как в Stack)
     lab.setCamera({ type: 'iso', tilt: 1.18, turn: Math.PI / 4, target: [0, 1.5, 0], distance: two ? 31 : 22, fov: 0.6 });
-    Object.assign(st, { towers: [], falls: [], offs: [], best: 0, top: 0, topH: 0, dist: lab.view.distance, punch: 0, mile: 0, ending: null, ended: false, record: false });
+    Object.assign(st, { towers: [], falls: [], offs: [], best: 0, top: 0, topH: 0, dist: lab.view.distance, punch: 0, mile: 0, ending: null, ended: false, record: false,
+      banner: false, clock: null });
     st.geo = new T3.BoxGeometry(1, 1, 1);
     this.world(lab, scene);
     st.rubble = lab.instances(st.geo, '#ffffff', 90); st.rubbleI = 0; // отрезки у подножия — одна пачка копий
@@ -77,10 +112,37 @@ const GAME = {
     if (two && c.goal > 0) this.ribbon(lab, c.goal * c.thick, '#7cf5a8', 'финиш');
     else if (!two && this.bestN >= 5) st.recordY = this.ribbon(lab, this.bestN * c.thick, '#ffd23f', 'рекорд');
     this.skyAt(lab, 0, true);
+    lab.stat('спасено', 0);
+    if (!lab.playing && !two) this.poster(lab);
+  },
+  // афиша в меню: плита почти над башней, красным — свисающий край. Двигается только картинка — первый кадр партии всё возвращает
+  poster(lab) {
+    const st = lab.state, T = st.towers[0], v = T.mv, a = v.axis;
+    st.posterOn = { T, at: v[a] };
+    v[a] = (a === 'x' ? T.top.x : T.top.z) + 0.6;
+    this.drawMv(lab, T);
+  },
+  // имя вариации: все включённые ручки вариаций
+  variant(lab) {
+    const c = lab.cfg, on = this.VARIANTS.filter(v => (v.on ? v.on(c) : c[v.key] > 0));
+    if (!on.length) return { name: 'Классика', how: 'останови плиту над башней — что свисает, отрежется' };
+    return { name: on.map(v => v.name).join(' + '), how: on.map(v => v.how(c)).join('; ') };
   },
 
   update(lab, dt) {
-    const st = lab.state, c = lab.cfg;
+    const st = lab.state, c = lab.cfg, solo = st.towers.length === 1;
+    if (st.posterOn) { const P = st.posterOn; st.posterOn = null; P.T.mv[P.T.mv.axis] = P.at; this.drawMv(lab, P.T); }
+    if (solo) {
+      if (!st.banner) { // имя вариации и её правило крупно в начале партии
+        st.banner = true;
+        const v = this.variant(lab), T = st.towers[0];
+        lab.popup(this.w(T, 0, 4.2, 0), v.name, '#ffe680', 32);
+        lab.after(0.35, () => lab.popup(this.w(T, 0, 3, 0), v.how, '#ffffff', 17));
+      }
+      const v = this.variant(lab);
+      lab.hud('rule', `${v.name}: ${v.how}`, { color: '#ffe680', size: 14 });
+      this.clock(lab, dt);
+    }
     for (const T of st.towers) {
       this.swayStep(lab, T, dt);
       if (T.out || st.ending) continue;
@@ -107,12 +169,27 @@ const GAME = {
     lab.hud('combo', two ? null : T0.combo > 1 ? `Идеально ×${T0.combo}` : T0.n === 0 && !T0.out ? 'Жми, когда плита над башней' : null);
     lab.hud('warn', st.towers.some(T => T.tired && !T.out) ? 'Плита сейчас сорвётся — жми!' : null);
   },
+  // блиц и время на партию: башня считается, когда время вышло
+  clock(lab, dt) {
+    const st = lab.state, c = lab.cfg, T = st.towers[0];
+    if (st.ending) return;
+    if (c.blitz > 0) {
+      if (st.clock == null) st.clock = c.blitz;
+      st.clock -= dt;
+      lab.hud('time', `⏱ ${Math.max(0, Math.ceil(st.clock))} с`, { color: st.clock < 5 ? '#ff7a6b' : '#ffffff', size: 18 });
+      if (st.clock <= 0) { T.out = true; lab.count('время вышло'); return this.finish(lab, `Время! Башня в ${T.n} плит`); }
+    } else if (c.limit > 0) {
+      lab.hud('time', `⏱ ${Math.max(0, Math.ceil(c.limit - lab.t))} с`, { color: '#ffffff', size: 16 });
+      if (lab.t > c.limit) { T.out = true; return this.finish(lab, `Время вышло: башня в ${T.n} плит`); }
+    } else lab.hud('time', null);
+  },
 
   overNote(lab) {
     const st = lab.state, offs = st.offs, c = lab.cfg;
     const avg = offs.length ? Math.round(100 * offs.reduce((a, b) => a + b, 0) / offs.length) : 0;
-    const T = st.towers[0];
-    return [`Плит: ${st.towers.map(t => t.n).join(' и ')} (${st.towers.map(t => (t.n * c.thick).toFixed(1)).join(' и ')} м), идеально: ${st.towers.map(t => t.perfect).join(' и ')}, лучшая серия ${st.best}`,
+    const T = st.towers[0], v = this.variant(lab);
+    return [st.towers.length === 1 && v.name !== 'Классика' ? `Вариация: ${v.name} — ${v.how}` : '',
+      `Плит: ${st.towers.map(t => t.n).join(' и ')} (${st.towers.map(t => (t.n * c.thick).toFixed(1)).join(' и ')} м), идеально: ${st.towers.map(t => t.perfect).join(' и ')}, лучшая серия ${st.best}`,
       offs.length ? `Промах в среднем ${avg} см от края башни` : 'Ни одной плиты — нажми, когда плита над башней',
       c.secret ? `Окно «идеально» поймало ${T.saved} промахов на пару сантиметров` : 'Спрятанная механика выключена: каждый сантиметр промаха отрезается',
       st.record ? 'Новый рекорд этой игры — лента рекорда поднялась' : ''].filter(Boolean);
@@ -152,56 +229,103 @@ const GAME = {
   spawn(lab, T) {
     const c = lab.cfg, t = T.top, axis = T.n % 2 ? 'z' : 'x';
     const mv = { axis, x: t.x, z: t.z, w: t.w, d: t.d, y: (T.n + 0.5) * c.thick };
+    if (c.narrow > 0) { // сужение (Stacker): каждые 8 плит плита короче на четверть
+      const cap = c.size * Math.max(0.25, 1 - 0.25 * Math.floor(T.n / 8)), sz = axis === 'x' ? 'w' : 'd';
+      if (mv[sz] > cap + 0.01) { mv[sz] = cap; lab.count('сужение'); lab.popup(this.w(T, t.x, mv.y + 1.4, t.z), 'Плита короче!', '#ff9a8a', 22); lab.tone(330, 0.2, 'sawtooth', 0.05, 160); }
+    }
+    T.bt = 0; T.bk = 0; T.vel = 0;
     const mid = axis === 'x' ? t.x : t.z, from = mid + (T.n % 4 < 2 ? -1 : 1) * c.range;
     mv[axis] = from; T.dir = from < mid ? 1 : -1;
     T.mv = mv; T.passes = 0; T.tired = false; T.tc = Infinity;
     T.mvMat.color.set(this.color(lab, T.n + 1, T)); T.mvMat.emissiveIntensity = 0;
     T.mvG.visible = true;
-    T.mvMesh.scale.set(t.w, c.thick, t.d);
+    T.mvMesh.scale.set(mv.w, c.thick, mv.d);
     this.drawMv(lab, T);
   },
   drawMv(lab, T) {
     const v = T.mv, c = lab.cfg;
     T.mvG.position.set(v.x, v.y, v.z);
     // красным — ровно то, что свисает за край башни и отрежется (со спрятанной механикой — только если промах больше окна «идеально»)
-    const a = v.axis, sz = a === 'x' ? 'w' : 'd', delta = v[a] - T.top[a], over = Math.min(Math.abs(delta), v[sz]);
-    const forgiven = over <= 0.005 || (c.secret && over <= c.snap);
+    const a = v.axis, sz = a === 'x' ? 'w' : 'd', at = v[a] + this.lead(lab, T), delta = at - T.top[a], over = Math.min(Math.abs(delta), v[sz]); // с инерцией — там, куда доедет
+    if (T.rope) this.drawRope(lab, T);
+    const forgiven = over <= 0.005 || (c.secret && over <= c.snap) || !(c.red > 0);
     T.over.visible = !forgiven;
     if (forgiven) return;
-    const len = over, cpos = v[a] + Math.sign(delta) * (v[sz] / 2 - len / 2);
+    const len = over, cpos = at + Math.sign(delta) * (v[sz] / 2 - len / 2);
     T.over.position.set(a === 'x' ? cpos : v.x, v.y, a === 'x' ? v.z : cpos);
     T.over.scale.set(a === 'x' ? len + 0.02 : v.w + 0.02, c.thick + 0.02, a === 'x' ? v.d + 0.02 : len + 0.02);
   },
+  lead(lab, T) { return lab.cfg.slip > 0 && T.mv ? (T.vel || 0) * lab.cfg.slip : 0; }, // инерция: сколько плита проедет после нажатия
   slide(lab, T, dt) {
-    const c = lab.cfg, v = T.mv, a = v.axis, mid = a === 'x' ? T.top.x : T.top.z;
-    const sp = Math.min(c.maxSpeed, c.speed + c.speedup * T.n);
-    v[a] += T.dir * sp * dt;
-    let bounced = false;
-    if (v[a] > mid + c.range) { v[a] = mid + c.range; T.dir = -1; bounced = true; }
-    if (v[a] < mid - c.range) { v[a] = mid - c.range; T.dir = 1; bounced = true; }
+    const c = lab.cfg, v = T.mv, a = v.axis, mid = a === 'x' ? T.top.x : T.top.z, R = c.range;
+    let sp = Math.min(c.maxSpeed, c.speed + c.speedup * T.n);
+    const bl = c.rhythm > 0 ? 60 / c.rhythm : 0;
+    if (bl) { // ритм (Built to Scale): от края до башни ровно две доли, метроном с первой доли плиты
+      sp = R / (2 * bl);
+      T.bt += dt;
+      while (T.bt >= T.bk * bl - 1e-6) {
+        const hi = T.bk % 4 === 2; // плита над башней — высокий щелчок
+        lab.tone(hi ? 1320 : 660, 0.04, 'square', hi ? 0.06 : 0.03); lab.tone(110, 0.1, 'sine', hi ? 0.2 : 0.12, 50);
+        T.bk++;
+      }
+    }
+    if (v.p == null) v.p = v[a];
+    let bounced = false, tc;
+    if (c.swing > 0) { // маятник (Tower Bloxx): положение по синусу, у краёв медленно, над башней быстрее всего
+      const w = bl ? Math.PI / (4 * bl) : sp / R, k0 = Math.floor((v.th - Math.PI / 2) / Math.PI);
+      if (v.th == null) v.th = T.dir > 0 ? -Math.PI / 2 : Math.PI / 2;
+      v.th += w * dt;
+      if (Math.floor((v.th - Math.PI / 2) / Math.PI) !== k0 && !isNaN(k0)) bounced = true;
+      v.p = mid + R * Math.sin(v.th); T.dir = Math.cos(v.th) >= 0 ? 1 : -1; T.vel = R * w * Math.cos(v.th);
+      tc = (Math.ceil(v.th / Math.PI + 1e-9) * Math.PI - v.th) / w;
+      if (!T.rope) T.rope = lab.box(0.06, 1, 0.06, '#3b3d48', { parent: T.root, shadow: false });
+      T.rope.visible = true;
+    } else {
+      v.p += T.dir * sp * dt;
+      if (v.p > mid + R) { v.p = mid + R; T.dir = -1; bounced = true; }
+      if (v.p < mid - R) { v.p = mid - R; T.dir = 1; bounced = true; }
+      T.vel = T.dir * sp; tc = (mid - v.p) / (T.dir * sp);
+      if (T.rope) T.rope.visible = false;
+    }
+    if (c.steps > 0) { // рывками (Stacker): плита прыгает по клеткам, каждая клетка пищит
+      const cell = Math.round((v.p - mid) / c.steps);
+      v[a] = mid + cell * c.steps;
+      if (v.cell != null && cell !== v.cell) lab.tone(880, 0.025, 'square', 0.025);
+      v.cell = cell;
+    } else v[a] = v.p;
     if (bounced) {
       T.passes++; T.tc = Infinity;
       if (c.patience > 0 && T.passes >= c.patience) { this.topple(lab, T, true); return; }
     }
     T.tired = c.patience > 0 && T.passes >= c.patience - 1; // последний проезд: плита мигает красным
     T.mvMat.emissiveIntensity = T.tired ? (Math.floor(lab.t * 8) % 2 ? 0.55 : 0.1) : 0;
-    // тик-тик: за полсекунды и четверть секунды до того, как плита встанет ровно над башней
-    const tc = (mid - v[a]) / (T.dir * sp);
-    if (c.cue && tc > 0) {
+    // тик-тик: за полсекунды и четверть секунды до того, как плита встанет ровно над башней (в ритме его заменяет метроном)
+    if (c.cue && !bl && tc > 0) {
       if (T.tc > 0.5 && tc <= 0.5) lab.tone(1250, 0.03, 'sine', 0.035);
       if (T.tc > 0.25 && tc <= 0.25) lab.tone(1660, 0.03, 'sine', 0.045);
     }
     T.tc = tc > 0 ? tc : Infinity;
     this.drawMv(lab, T);
   },
+  drawRope(lab, T) { // трос маятника: от крюка над башней к плите, плита чуть наклоняется вслед
+    const v = T.mv, a = v.axis, mid = a === 'x' ? T.top.x : T.top.z, L = 7, hook = [a === 'x' ? mid : v.x, v.y + L, a === 'x' ? v.z : mid];
+    const dx = v.x - hook[0], dz = v.z - hook[2], dy = v.y + lab.cfg.thick / 2 - hook[1], len = Math.hypot(dx, dy, dz);
+    T.rope.position.set((v.x + hook[0]) / 2, (v.y + hook[1]) / 2, (v.z + hook[2]) / 2);
+    T.rope.scale.set(1, len, 1);
+    T.rope.rotation.set(Math.atan2(-dz, -dy), 0, Math.atan2(dx, -dy));
+    T.mvMesh.rotation.set(Math.atan2(-dz, -dy) * 0.5, 0, Math.atan2(dx, -dy) * 0.5);
+  },
   place(lab, T) {
     if (!T.mv) return;
     const c = lab.cfg, st = lab.state, v = T.mv, a = v.axis, sz = a === 'x' ? 'w' : 'd', t = T.top;
+    if (c.slip > 0) { v[a] += this.lead(lab, T); lab.count('инерция'); } // инерция: плита доезжает
+    T.mvMesh.rotation.set(0, 0, 0); if (T.rope) T.rope.visible = false;
     const delta = v[a] - t[a], over = Math.abs(delta), size = v[sz];
     st.offs.push(over);
     if (over <= 0.005 || (c.secret && over <= c.snap)) { // окно «идеально»: плита встаёт ровно
       v[a] = t[a];
-      if (over > 0.005) { T.saved++; lab.count('_secret'); }
+      if (over > 0.005) { T.saved++; lab.count('_secret'); if (st.towers.length === 1) lab.stat('спасено', T.saved); }
+      if (c.blitz > 0 && st.clock != null) { st.clock += 1; lab.popup(this.w(T, v.x, v.y + 1.8, v.z), '+1 с', '#7cf5a8', 18); }
       T.combo++; T.perfect++; st.best = Math.max(st.best, T.combo);
       lab.count('идеально');
       if (c.secret && T.combo >= c.grow && c.growBy > 0) this.widen(lab, T);
@@ -305,7 +429,7 @@ const GAME = {
     const st = lab.state, v = T.mv, c = lab.cfg;
     if (!v) return;
     const a = v.axis, s = Math.sign(v[a] - T.top[a]) || T.dir || 1;
-    T.over.visible = false; T.mvG.visible = false;
+    T.over.visible = false; T.mvG.visible = false; T.mvMesh.rotation.set(0, 0, 0); if (T.rope) T.rope.visible = false;
     this.drop(lab, T, v.x, v.y, v.z, v.w, v.d, this.color(lab, T.n + 1, T),
       { vx: a === 'x' ? s * 2.2 : 0, vz: a === 'z' ? s * 2.2 : 0, spinX: a === 'z' ? s * 2.5 : 1.2, spinZ: a === 'x' ? -s * 2.5 : 0.8 });
     T.lives--; T.mv = null; T.combo = 0; T.tired = false; lab.count('уронено');
