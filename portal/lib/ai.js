@@ -336,7 +336,7 @@ function chatBuild(plan, who, onProgress, kind) {
     'чувство': plan.decisions.feeling, 'честность': plan.decisions.honesty, 'выбор': plan.decisions.choice,
     'развилки': plan.forks.length ? plan.forks.map(f => `- ${f.question} → ${f.answer}`).join('\n') : 'развилок не было',
     'находки': plan.findings && plan.findings.length ? 'Продюсер заметил:\n' + plan.findings.map(f => '- ' + f).join('\n') : '',
-  }) + chatSecret(plan.secret && plan.secret.prompt, plan.secret && plan.secret.base, plan.secret && plan.secret.howto) + chatLevels(plan.levels);
+  }) + chatSecret(plan.secret && plan.secret.prompt, plan.secret && plan.secret.base, plan.secret && plan.secret.howto) + chatLevels(plan.levels) + chatPlayer(plan.player);
   return chatProgram(kind || 'сборка', chatTask(text), who, onProgress, null, !!plan.secret).then(r => {
     if (plan.levels && isHtml(r.code) && !/portal\.levels\s*\(/.test(r.code)) r.warnings.push('нет portal.levels: редактор уровней и тепловая карта не увидят уровни');
     return r;
@@ -344,6 +344,8 @@ function chatBuild(plan, who, onProgress, kind) {
 }
 // уровни как данные (модуль 4): поле levels сценария урока — какие уровни у этой игры и её легенда
 const chatLevels = levels => (levels ? '\n\n' + fill(chatTpl('levels'), { 'уровни': String(levels).trim() }) : '');
+// игрок в центре (модуль 6): поле player сценария урока — загадка дня и сетка, обучение и доступность, пресеты «Злая» и «Честная»
+const chatPlayer = player => (player ? '\n\n' + fill(chatTpl('player'), { 'игрок': String(player).trim() }) : '');
 // задание Qwen для игры класса целиком (tools/pilot-zadaniya.js собирает им задания для прогона колоды)
 // wow.world — мир с карты «Мир» (цвета, что собираем, декор), wow.move — ход угрозы мира: по нему рецепт выбирает тип врага (вау-старт 2.0)
 const chatSharedText = wow => chatTask(fill(chatTpl('wow'), {

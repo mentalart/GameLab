@@ -11,6 +11,7 @@
        portal.death(x, y), portal.where(x, y), portal.secret(x, y) — точки в клетках карты для тепловой карты, portal.clear({ moves, time }) — уровень пройден.
      portal.net — сеть класса (урок 26): on — портал передаёт игроков, others — [{ nick, x, y, z, ... }] соседей, room — правила и фаза забега,
        now() — часы сервера в мс, send({ x, y, ... }) — моё положение (портал отправляет не чаще 10 раз в секунду).
+     portal.share('Узор дня 3/6\n🟨⬛🟩⬛⬛\n…') — сетка-результат без спойлеров (модуль 6): уходит порталу с концом партии.
      portal.input — 'pad' или 'keys': чем игрок управляет сейчас. Подписи кнопок игра пишет парой <span class="keys-only">Пробел</span><span class="pad-only">A</span>,
        мост показывает нужную: геймпад подключён или нажата его кнопка — pad-only, нажата клавиша — keys-only.
    Страховка конца партии: Start на геймпаде после portal.over(), если игра сама не начала новую партию, нажимает за неё Enter, потом R.
@@ -25,11 +26,11 @@
   var BTN = ['left', 'right', 'up', 'down', 'a', 'b'];
   var KEYS = { ArrowLeft: 'left', KeyA: 'left', ArrowRight: 'right', KeyD: 'right', ArrowUp: 'up', KeyW: 'up', ArrowDown: 'down', KeyS: 'down', Space: 'a', ShiftLeft: 'b', ShiftRight: 'b' };
   var tele, held = {}, padHeld = {}, score = 0, t = 0, lastFrame = 0, isOver = false;
-  function reset() { tele = { presses: {}, hold: {}, hurts: 0, marks: {}, line: [], spots: [], maps: {} }; if (typeof LV === 'object' && LV) { LV.lastWhere = -1; LV.gen = {}; } BTN.forEach(function (k) { tele.presses[k] = 0; tele.hold[k] = 0; }); counts = {}; score = 0; t = 0; }
+  function reset() { tele = { presses: {}, hold: {}, hurts: 0, marks: {}, line: [], spots: [], maps: {}, share: '' }; if (typeof LV === 'object' && LV) { LV.lastWhere = -1; LV.gen = {}; } BTN.forEach(function (k) { tele.presses[k] = 0; tele.hold[k] = 0; }); counts = {}; score = 0; t = 0; }
   reset();
   function teleData() {
     var hold = {}; BTN.forEach(function (k) { hold[k] = Math.round(tele.hold[k] * 10) / 10; });
-    return { time: Math.round(t * 10) / 10, presses: JSON.parse(JSON.stringify(tele.presses)), hold: hold, hurts: tele.hurts, custom: JSON.parse(JSON.stringify(counts)), marks: JSON.parse(JSON.stringify(tele.marks)), line: tele.line.slice(0, 600), spots: tele.spots.slice(), maps: JSON.parse(JSON.stringify(tele.maps)) };
+    return { time: Math.round(t * 10) / 10, presses: JSON.parse(JSON.stringify(tele.presses)), hold: hold, hurts: tele.hurts, custom: JSON.parse(JSON.stringify(counts)), marks: JSON.parse(JSON.stringify(tele.marks)), line: tele.line.slice(0, 600), spots: tele.spots.slice(), maps: JSON.parse(JSON.stringify(tele.maps)), share: tele.share };
   }
   var title = function () { return document.title || 'Игра'; };
   function hello() { if (ready) return; ready = true; send({ type: 'ready', meta: { html: true, title: title(), config: config, presets: presets, controls: [], decisions: [], notes: [] } }); }
@@ -62,6 +63,8 @@
     score: function (n) { score = Math.round(Number(n) || 0); },
     hurt: function () { tele.hurts++; },
     notes: function () { /* записи программиста портал читает из кода игры */ },
+    // сетка-результат без спойлеров (модуль 6, урок 23): строки квадратиков 🟩🟨⬛ — уходит порталу с концом партии, класс видит сетки друг друга
+    share: function (text) { tele.share = String(text == null ? '' : text).slice(0, 400); },
     // уровни как данные (модуль 4): игра отдаёт свои уровни текстом и легенду символов, получает свои и уровни гостей
     levels: function (list, legend) {
       var own = [], i, g = guest(), out;

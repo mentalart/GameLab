@@ -119,6 +119,7 @@ function buildPlan(les, st) {
     secret: secText ? { title: secText, prompt: secDef ? secDef.prompt : secText, base: secDef ? secDef.base || null : null, howto: secDef ? secDef.howto || null : null } : null,
     level: `${level.label} (${level.hint})`, details,
     levels: les.levels || null, // модуль 4: уровни как данные — раздел levels задания Qwen
+    player: les.player || null, // модуль 6: игрок в центре — раздел player задания Qwen (загадка дня, обучение и доступность, пресеты «Злая» и «Честная»)
     decisions: { feeling: fieldText(dec.feeling), honesty: fieldText(dec.honesty), choice: fieldText(dec.choice) },
     igra: { i: fieldText(igra.i), g: fieldText(igra.g), r: fieldText(igra.r), a: fieldText(igra.a) },
     forks,
@@ -785,6 +786,92 @@ route('GET', '/api/pulse', (ctx) => {
   if (!step) throw Object.assign(new Error('Нет такого вызова'), { status: 404 });
   if (!((st.answers[step.id] || {}).value || {}).rounds) return { n: 0, top: [], hist: null, picks: null, hidden: true };
   return pulseTally(w.class, les, step, w.nick);
+});
+/* ---------- модуль 6 «Игрок в центре»: сводки класса, UX-аудит, своя игра прошлых уроков ---------- */
+// день загадки (урок 23): ГГГГММДД по часам сервера — одно зерно на весь класс
+const dayKey = (d = new Date()) => '' + d.getFullYear() + String(d.getMonth() + 1).padStart(2, '0') + String(d.getDate()).padStart(2, '0');
+const DAY_NAMES = ['Завтра', 'Послезавтра'];
+// автор загадки дня — по кругу среди игр урока: каждый день другой автор («Неделя загадок»)
+function riddleAuthors(code, lessonId) {
+  return classGames(code).filter(g => g.lesson === lessonId && !g.hidden).sort((a, b) => a.nick.localeCompare(b.nick, 'ru'));
+}
+function m6Tally(code, les, step, me) {
+  const rows = store.students(code).map(s => ({ nick: s.nick, v: ((((s.lessons || {})[les.id] || {}).answers || {})[step.id] || {}).value || null })).filter(r => r.v);
+  const mine = (rows.find(r => r.nick === me) || {}).v || {};
+  if (step.type === 'setka') {
+    const day = dayKey(), list = riddleAuthors(code, step.from || les.id), idx = Math.floor(Date.now() / 864e5);
+    const pickA = k => { const g = list.length ? list[(idx + k) % list.length] : null; return g ? { game: g.id, version: g.current, title: g.title || 'Моя игра', nick: g.nick } : null; };
+    const week = list.length > 1 ? [1, 2, 3, 4].map(k => { const d = new Date(Date.now() + k * 864e5); return { label: DAY_NAMES[k - 1] || `${d.getDate()}.${String(d.getMonth() + 1).padStart(2, '0')}`, nick: pickA(k).nick }; }) : [];
+    const grids = rows.filter(r => r.v.grid && r.v.day === day).map(r => ({ nick: r.nick, grid: String(r.v.grid).slice(0, 400), solved: !!r.v.solved }));
+    return { day, author: pickA(0), week, hidden: me != null && !(mine.grid && mine.day === day), grids: me != null && !(mine.grid && mine.day === day) ? [] : grids };
+  }
+  if (step.type === 'debate') {
+    const side = key => { const ps = rows.map(r => r.v[key]).filter(p => typeof p === 'number' && p >= -2 && p <= 2); const sum = ps.reduce((a, b) => a + b, 0); return { n: ps.length, left: ps.filter(p => p < 0).length, right: ps.filter(p => p > 0).length, mid: ps.filter(p => p === 0).length, avg: ps.length ? Math.round(sum / ps.length * 10) / 10 : 0, counts: [-2, -1, 0, 1, 2].map(p => ps.filter(x => x === p).length) }; };
+    const count = {};
+    rows.forEach(r => ['left', 'right'].forEach(sd => ((r.v.args || {})[sd] || []).slice(0, 2).forEach(t => { if ((step.args[sd] || []).includes(t)) { const k = sd + '\n' + t; count[k] = (count[k] || 0) + 1; } })));
+    const top = Object.entries(count).sort((a, b) => b[1] - a[1]).slice(0, 8).map(([k, n]) => ({ side: k.split('\n')[0], text: k.split('\n')[1], n }));
+    return { hidden: me != null && mine.before == null, before: side('before'), after: side('after'), top };
+  }
+  if (step.type === 'kodeks') {
+    const count = {};
+    rows.filter(r => r.v.sent).forEach(r => (r.v.picks || []).filter(t => (step.deck || []).includes(t)).concat(r.v.own ? [String(r.v.own).slice(0, 120)] : []).forEach(t => { count[t] = (count[t] || 0) + 1; }));
+    const rules = Object.entries(count).sort((a, b) => b[1] - a[1] || (step.deck.indexOf(a[0]) + 1 || 99) - (step.deck.indexOf(b[0]) + 1 || 99)).map(([text, n]) => ({ text, n }));
+    return { hidden: me != null && !mine.sent, n: rows.filter(r => r.v.sent).length, rules: rules.slice(0, 12), signed: rows.filter(r => r.v.signed).map(r => r.nick) };
+  }
+  return { hidden: true };
+}
+const M6_TALLY = ['setka', 'debate', 'kodeks'];
+route('GET', '/api/m6/tally', (ctx) => {
+  const { w, les } = needStudent(ctx);
+  const step = les.checkpoints.flatMap(c => c.steps).find(x => x.id === ctx.url.searchParams.get('step') && M6_TALLY.includes(x.type));
+  if (!step) throw Object.assign(new Error('Нет такого шага'), { status: 404 });
+  return m6Tally(w.class, les, step, w.nick);
+});
+// UX-аудит (урок 24): чек-лист и «думай вслух» на чужую игру — автору в «Твоя игра глазами соседей»
+route('POST', '/api/m6/audit', (ctx) => {
+  const { w } = needStudent(ctx);
+  const g = classGame(w, ctx.body.game);
+  if (!g) throw Object.assign(new Error('Нет такой игры'), { status: 404 });
+  if (g.nick === w.nick) throw Object.assign(new Error('Аудит пишут на чужую игру'), { status: 400 });
+  const marks = Object.fromEntries(Object.entries(ctx.body.marks && typeof ctx.body.marks === 'object' ? ctx.body.marks : {}).slice(0, 16).filter(([, x]) => typeof x === 'boolean').map(([k, x]) => [String(k).slice(0, 30), x]));
+  const think = (Array.isArray(ctx.body.think) ? ctx.body.think : []).slice(0, 40).map(x => ({ e: String((x || {}).e || '').slice(0, 30), t: Math.max(0, Math.min(3600, Number((x || {}).t) || 0)) }));
+  store.addPlay(g.id, { type: 'audit', nick: w.nick, marks, think, top: ctx.body.top ? String(ctx.body.top).slice(0, 30) : null, note: String(ctx.body.note || '').trim().slice(0, 200) });
+  broadcast(w.class, 'arcade', { game: g.id, author: g.nick });
+  return { ok: true };
+});
+function auditsOf(g) {
+  const last = {};
+  for (const p of store.plays(g.id)) if (p.type === 'audit' && p.nick !== g.nick) last[p.nick] = p;
+  const list = Object.values(last), items = {}, top = {};
+  list.forEach(a => { Object.entries(a.marks || {}).forEach(([k, x]) => { items[k] = items[k] || { yes: 0, n: 0 }; items[k].n++; if (x) items[k].yes++; }); if (a.top) top[a.top] = (top[a.top] || 0) + 1; });
+  return { n: list.length, items, top: Object.entries(top).sort((a, b) => b[1] - a[1]).map(([id, n]) => ({ id, n })),
+    think: list.flatMap(a => (a.think || []).map(s => Object.assign({ nick: a.nick }, s))).sort((a, b) => a.t - b.t).slice(0, 40), notes: list.filter(a => a.note).map(a => ({ nick: a.nick, note: a.note })) };
+}
+route('GET', '/api/m6/audit/mine', (ctx) => {
+  const { st } = needStudent(ctx);
+  const g = st.gameId && store.getGame(st.gameId);
+  return g && g.current ? auditsOf(g) : { n: 0, items: {}, top: [], think: [], notes: [] };
+});
+// своя игра прошлых уроков — в этот урок (урок 25: злая и честная версии релизной игры). Код текущей версии копируется новой версией игры урока,
+// с ней работают правка, Qwen в чате, плейтест и релиз модуля. remake: true — основа из донора урока (если своих игр нет)
+route('POST', '/api/game/adopt', (ctx) => {
+  const c = needStudent(ctx);
+  let code, meta;
+  if (ctx.body.remake) {
+    if (!c.les.sample || !GAME_FILE.test(c.les.sample.file)) throw Object.assign(new Error('У урока нет донора'), { status: 400 });
+    code = fs.readFileSync(path.join(PORTAL, c.les.sample.file), 'utf8');
+    meta = { title: (remakeTitle(c.les.sample.file) || 'Донор') + ' — моя версия', donor: c.les.donor, decisions: null, plan: null, knob: 'secret' };
+  } else {
+    const src = store.getGame(String(ctx.body.from || ''));
+    if (!src || src.class !== c.w.class || src.nick !== c.w.nick || !src.current) throw Object.assign(new Error('Это не твоя игра'), { status: 403 });
+    if (src.lesson === c.les.id) throw Object.assign(new Error('Эта игра уже в этом уроке'), { status: 400 });
+    code = store.versionCode(src.id, src.current);
+    meta = { title: src.title, donor: src.donor, decisions: src.decisions, plan: src.plan, knob: src.knob || null, from: { game: src.id, version: src.current, lesson: src.lesson } };
+  }
+  if (!code) throw Object.assign(new Error('Нет кода игры'), { status: 400 });
+  const g = ensureGame(c), g2 = store.getGame(g.id);
+  Object.assign(g2, meta); store.saveGame(g2);
+  return addVersion(g.id, { code, model: 'перенос', attempts: 0 }, { kind: 'перенос', from: meta.from ? meta.from.version : null, chat: true });
 });
 route('POST', '/api/play/again', (ctx) => {
   const { w } = needStudent(ctx);
@@ -1789,6 +1876,32 @@ route('GET', '/api/teacher/poll', (ctx) => {
       all.forEach(a => Object.entries(((a[x.id] || {}).value || {}).played || {}).forEach(([k, c]) => { count[k] = (count[k] || 0) + (Number(c) || 0); }));
       steps.push({ cp: cp.id, id: x.id, title: 'Дуэли по таблицам: кого выпускали', kind: 'choice', n: done(x.id).length, max: Math.max(1, ...Object.values(count)),
         bars: Object.entries(count).sort((p, q) => q[1] - p[1]).slice(0, 8).map(([label, n]) => ({ label, n })) });
+    } else if (x.type === 'brosok') { // модуль 6: квиз-бросок — где класс попадает реже всего
+      const list = all.map(a => (a[x.id] || {}).value || {}).filter(v => v.by);
+      steps.push({ cp: cp.id, id: x.id, title: x.title + ': верно по персонажам', kind: 'choice', n: list.length, max: 100,
+        bars: x.targets.map(tg => { let ok = 0, n = 0; list.forEach(v => { const b = v.by[tg.id] || [0, 0]; ok += b[0]; n += b[1]; }); const k = n ? Math.round(100 * ok / n) : 0; return { label: `${tg.icon} ${tg.label}`, n: k, show: n ? k + '%' : '—' }; }) });
+    } else if (x.type === 'minuta') { // «Первая минута»: сколько моментов «потерялся» нашёл класс
+      const list = done(x.id).filter(v => v.total);
+      steps.push({ cp: cp.id, id: x.id, title: x.title, kind: 'choice', n: list.length, max: Math.max(1, ...x.clips.map(c => c.lost.length)),
+        bars: x.clips.map(c => { const fs2 = list.map(v => ((v.clips || {})[c.anim] || {}).found || 0); return { label: c.title, n: fs2.length ? Math.round(fs2.reduce((p, q) => p + q, 0) / fs2.length * 10) / 10 : 0, show: fs2.length ? `${String(Math.round(fs2.reduce((p, q) => p + q, 0) / fs2.length * 10) / 10).replace('.', ',')} из ${c.lost.length}` : '—' }; }) });
+    } else if (x.type === 'sekundomer') { // «Новичок с улицы»: секунды до понимания цели до и после правки
+      const list = all.map(a => ((a[x.id] || {}).value || {}).runs || {}).filter(r => Object.keys(r).length);
+      const avg = k => { const xs = list.map(r => r[k]).filter(n => typeof n === 'number'); return xs.length ? Math.round(xs.reduce((p, q) => p + q, 0) / xs.length * 10) / 10 : 0; };
+      const runs = x.runs || [{ id: 'before', label: 'До правки' }, { id: 'after', label: 'После правки' }];
+      steps.push({ cp: cp.id, id: x.id, title: 'Секунд до понимания цели', kind: 'choice', n: list.length, max: Math.max(1, ...runs.map(r => avg(r.id))), bars: runs.map(r => ({ label: r.label, n: avg(r.id), show: String(avg(r.id)).replace('.', ',') + ' с' })) });
+    } else if (x.type === 'audit') { // UX-аудит: какие пункты чек-листа класс чаще отмечает «нет»
+      const list = done(x.id).filter(v => v.marks);
+      steps.push({ cp: cp.id, id: x.id, title: 'UX-аудит: где игры класса проваливаются', kind: 'choice', n: list.length, max: Math.max(1, list.length),
+        bars: x.items.map(it => ({ label: `${it.icon || ''} ${it.label}`, n: list.filter(v => v.marks[it.id] === false).length })).sort((a, b) => b.n - a.n) });
+    } else if (x.type === 'darkhunt') {
+      const list = all.map(a => (a[x.id] || {}).value || {}).filter(v => v.rounds);
+      steps.push({ cp: cp.id, id: x.id, title: 'Тёмные паттерны: кто сколько нашёл', kind: 'choice', n: list.length, max: Math.max(1, list.length), bars: x.patterns.map(p => ({ label: `${p.icon} ${p.name}`, n: list.filter(v => (v.found || []).includes(p.id)).length })) });
+    } else if (x.type === 'debate' || x.type === 'kodeks') {
+      const t = m6Tally(cls.code, les, x, null);
+      if (x.type === 'debate') steps.push({ cp: cp.id, id: x.id, title: x.question, kind: 'choice', n: t.before.n,
+        bars: [-2, -1, 0, 1, 2].map((p, i) => ({ label: ['⛔ ' + x.left, '👎 скорее ' + x.left.toLowerCase(), '🤔 не знаю', '👍 скорее ' + x.right.toLowerCase(), '✅ ' + x.right][i], n: t.after.n ? t.after.counts[i] : t.before.counts[i], before: t.after.n ? t.before.counts[i] : undefined })),
+        compare: t.after.n ? { title: 'до дебатов', n: t.before.n } : null, own: t.top.slice(0, 6).map(a => `${a.side === 'left' ? '⛔' : '✅'} ${a.text} · ${a.n}`) });
+      else steps.push({ cp: cp.id, id: x.id, title: 'Кодекс класса', kind: 'choice', n: t.n, max: Math.max(1, t.n), bars: t.rules.slice(0, x.size || 7).map(r => ({ label: r.text, n: r.n })), note: `Подписали: ${t.signed.length}` });
     } else if (x.type === 'ownplay' && x.match) {
       const list = all.map(a => (a[x.id] || {}).value || {}).filter(v => v.match);
       steps.push({ cp: cp.id, id: x.id, title: x.match.question, kind: 'choice', n: list.length, bars: x.match.options.map(o => ({ label: o, n: list.filter(v => v.match === o).length })) });

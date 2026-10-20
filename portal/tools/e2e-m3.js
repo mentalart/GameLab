@@ -218,6 +218,7 @@ module.exports = function m3(H) {
     await sleep(900);
     await student.click('#step-krivaya .veil button');
     const gf = await gameFrame(student, F, 0);
+    await gf.waitForFunction(() => Array.isArray((window.__lab.lab.data || {}).curve), null, { timeout: 15000 }).catch(() => {}); // кривая приходит после «готова»
     const curve = await gf.evaluate(() => (window.__lab.lab.data || {}).curve);
     check('Кривая ушла в «Ущелье»: игра строит трассу по столбикам ученика (lab.data.curve)', Array.isArray(curve) && curve.length === 12, JSON.stringify(curve));
     await round(gf, { score: 400, stats: { 'удары, с': [12, 47], 'продержался, с': 55 } });
@@ -351,6 +352,8 @@ module.exports = function m3(H) {
     await sleep(1200);
     await student.click('#step-tablica .veil button');
     const gf = await gameFrame(student, F, 0);
+    // таблица приходит в игру сообщением после «готова» — под нагрузкой не сразу
+    await gf.waitForFunction(() => ((window.__lab.lab.data || {}).units || []).length > 0, null, { timeout: 15000 }).catch(() => {});
     const u0 = await gf.evaluate(() => (window.__lab.lab.data.units || [])[0]);
     check('Таблица ушла в «Дуэль у моста» (lab.data.units)', u0 && u0.name === 'Снежки' && u0.cost === 1 && u0.kind === 'рой', JSON.stringify(u0));
     await round(gf, { score: 300, counts: { 'выпущено: Снежки': 6, 'выпущено: Всадник': 1 }, stats: { 'исход': 'победа' } });

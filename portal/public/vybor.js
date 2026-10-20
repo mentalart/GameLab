@@ -30,7 +30,8 @@ STEPS.text = ctx => liven(plainText(ctx));
 function spark(vals) {
   const W = 220, H = 64, n = vals.length, x = i => 6 + i * (W - 12) / Math.max(1, n - 1), y = v => H - 6 - v * (H - 12);
   const band = [...vals.map((v, i) => `${x(i)},${y(0.25 + 0.4 * i / Math.max(1, n - 1))}`), ...vals.map((v, i) => `${x(n - 1 - i)},${y(0.55 + 0.35 * (n - 1 - i) / Math.max(1, n - 1))}`)].join(' ');
-  return svgEl('svg', { class: 'spark', viewBox: `0 0 ${W} ${H}`, 'aria-hidden': 'true' },
+  // data-v — числа кривой: у двух карточек может быть одна подпись («Новичок, первая минута»), различает их только кривая
+  return svgEl('svg', { class: 'spark', viewBox: `0 0 ${W} ${H}`, 'aria-hidden': 'true', 'data-v': vals.join(',') },
     svgEl('polygon', { points: band, class: 'flow' }),
     svgEl('polyline', { points: vals.map((v, i) => `${x(i)},${y(v)}`).join(' '), class: 'line' }));
 }

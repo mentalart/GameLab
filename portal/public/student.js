@@ -1,4 +1,4 @@
-// Страница ученика: урок по чекпоинтам и типовые шаги (шаги модуля 4 — в steps-m4.js; play, teacher-demo, choice, text, sort, rounds, cycle, trace, predict, blind, blindpair, listen, sequencer, vote, cards, secret, factory, decisions, igra, producer, build, aicheck, razbor, workshop, verify, release, arcade, playtest).
+// Страница ученика: урок по чекпоинтам и типовые шаги (шаги модуля 4 — в steps-m4.js, модуля 6 — в steps-m6.js; play, teacher-demo, choice, text, sort, rounds, cycle, trace, predict, blind, blindpair, listen, sequencer, vote, cards, secret, factory, decisions, igra, producer, build, aicheck, razbor, workshop, verify, release, arcade, playtest).
 // Рамка игры, карточки аркады и открытие плейтеста — в games.js, поле с кубиком — в common.js.
 'use strict';
 const { el, api, toast, roll, beep, copy, valText, fieldEditor } = Lab;
@@ -49,8 +49,10 @@ function listen() {
     if (fresh.length) {
       beep('tick');
       toast(`Учитель открыл: ${fresh.map(c => c.title).join(', ')}`, 'ok');
-      // учитель открыл новый чекпоинт — ученик переходит туда сам; окно Qwen открыто — остаётся, чтобы не потерять вставку
-      if (wasLocked || !document.querySelector('dialog[open]')) { S.cpId = fresh[0].id; S.me.class.current = fresh[0].id; renderMain(); window.scrollTo(0, 0); }
+      // учитель открыл новый чекпоинт — ученик переходит туда сам; окно Qwen открыто — остаётся, чтобы не потерять вставку.
+      // «Открыть все» (несколько сразу) никого не переносит: ученик уже мог уйти дальше и быть посреди квиза
+      const to = wasLocked && fresh.some(c => c.id === S.cpId) ? cpById(S.cpId) : fresh[0];
+      if (wasLocked || (fresh.length === 1 && !document.querySelector('dialog[open]'))) { S.cpId = to.id; S.me.class.current = to.id; renderMain(); window.scrollTo(0, 0); }
     }
     renderSide();
     if (!isOpen(cpById(S.cpId))) renderMain();
@@ -3722,7 +3724,7 @@ function stepSummary(step) {
     case 'arcade': return v.game ? `игра «${v.title || ''}» (автор ${v.author || '—'}), партий ${v.rounds || 0}, лучший счёт ${v.best || 0}${v.beat ? ', рекорд автора побит' : ''}` : 'не играл';
     case 'playtest': return (v.sent ? `отзыв на «${v.title || ''}»: ${(v.emotions || []).join(' ')}; ${step.ask && valText(v.story) ? `${step.ask.label} ${f(v.story)}; ` : ''}нравится: ${f(v.like)}; хочется: ${f(v.want)}; а что если: ${f(v.whatif)}` : 'отзыв не отправлен') +
       (S.me.feedback ? `\nотзыв учителя: понятие — ${valText(S.me.feedback.concept)}; вопрос — ${valText(S.me.feedback.question)}` : '');
-    default: return (window.LabStepsM7Summary && window.LabStepsM7Summary(step, v, a)) || (window.LabStepsM4Summary && window.LabStepsM4Summary(step, v, a)) || (window.LabStepsM3Summary && window.LabStepsM3Summary(step, v, a)) || JSON.stringify(v);
+    default: return (window.LabStepsM7Summary && window.LabStepsM7Summary(step, v, a)) || (window.LabStepsM6Summary && window.LabStepsM6Summary(step, v, a)) || (window.LabStepsM4Summary && window.LabStepsM4Summary(step, v, a)) || (window.LabStepsM3Summary && window.LabStepsM3Summary(step, v, a)) || JSON.stringify(v);
   }
 }
 function cpSummary(cp) {
@@ -3751,5 +3753,5 @@ $('#noteForm').addEventListener('submit', async e => {
 });
 $('#logout').addEventListener('click', () => { Lab.token.clear(); location.href = '/'; });
 
-// урок стартует, когда загружены все скрипты страницы: интерактивы модуля 3 (vybor.js) добавляют свои типы шагов после student.js
+// урок стартует, когда загружены все скрипты страницы: интерактивы модуля 3 (vybor.js) и модуля 6 (steps-m6.js) добавляют свои типы шагов после student.js
 if (document.readyState === 'loading') addEventListener('DOMContentLoaded', boot); else boot();

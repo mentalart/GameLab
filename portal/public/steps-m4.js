@@ -584,10 +584,29 @@
     const back = el('button', { type: 'button', class: 'btn ghost small', 'data-motion': 'back', onclick: () => go(-1) }, '← Назад');
     const next = el('button', { type: 'button', class: 'btn', 'data-motion': 'next', onclick: () => go(1) });
     const fin = el('div', { class: 'concept m4-sum', hidden: true });
+    // интерактивная сцена (модуль 6): у сцены переключатели toggles [{ id, label, on }] — ученик сам включает и выключает приём,
+    // сцена получает пятым аргументом ctl { id: true/false, _t: секунды с последнего нажатия, _id: что нажали }. Клавиши 1–4 на холсте
+    const ctls = st.scenes.map(sc => Object.assign({ _t: 99, _id: null }, Object.fromEntries((sc.toggles || []).map(x => [x.id, !!x.on]))));
+    let ctlT0 = performance.now();
+    const tog = el('div', { class: 'm6-toggles', hidden: true });
+    function flip(k) {
+      const sc = st.scenes[i], x = (sc.toggles || [])[k]; if (!x) return;
+      ctls[i][x.id] = !ctls[i][x.id]; ctls[i]._id = x.id; ctlT0 = performance.now(); beep(ctls[i][x.id] ? 'good' : 'tick');
+      const v = Object.assign({}, ctx.value || {}); v.tried = Object.assign({}, v.tried); v.tried[sc.anim] = (v.tried[sc.anim] || 0) + 1; ctx.save(v);
+      drawToggles();
+    }
+    function drawToggles() {
+      const sc = st.scenes[i], list = sc.toggles || [];
+      tog.hidden = !list.length;
+      tog.replaceChildren(...(list.length ? [el('span', { class: 'eyebrow' }, sc.try || 'Попробуй сам')] : []),
+        ...list.map((x, k) => el('button', { type: 'button', class: 'm6-tog' + (ctls[i][x.id] ? ' on' : ''), 'aria-pressed': String(!!ctls[i][x.id]), 'data-toggle': x.id, onclick: () => flip(k) },
+          el('span', { class: 'm4-key' }, String(k + 1)), el('span', { class: 'm6-sw' }, el('i')), x.label)));
+    }
     function paint() {
       const sc = st.scenes[i];
       read.replaceChildren(el('div', { class: 'eyebrow' }, `${i + 1} из ${N}`), el('h3', {}, sc.title), el('p', {}, sc.text));
       read.classList.remove('in'); void read.offsetWidth; read.classList.add('in');
+      drawToggles();
       dots.replaceChildren(...st.scenes.map((_, k) => el('i', { class: k === i ? 'on' : k < i ? 'ok' : '' })));
       back.disabled = i === 0;
       next.textContent = i < N - 1 ? 'Дальше →' : ctx.done ? 'Прочитано ✓' : 'Понятно ✓';
@@ -595,29 +614,33 @@
       fin.hidden = !last || !st.sum; if (st.sum) fin.textContent = st.sum;
     }
     function go(d) {
-      if (d > 0 && i === N - 1) { if (!ctx.done) { ctx.save({ read: true, seen: N }, true, true); beep('good'); paint(); } return; }
+      if (d > 0 && i === N - 1) { if (!ctx.done) { ctx.save(Object.assign({}, ctx.value || {}, { read: true, seen: N }), true, true); beep('good'); paint(); } return; }
       const n = clamp(i + d, 0, N - 1); if (n === i) return;
-      i = n; sceneT0 = performance.now(); beep('tick'); ctx.save({ seen: Math.max(i + 1, (ctx.value || {}).seen || 0) }); paint();
+      i = n; sceneT0 = performance.now(); beep('tick'); ctx.save(Object.assign({}, ctx.value || {}, { seen: Math.max(i + 1, (ctx.value || {}).seen || 0) })); paint();
     }
-    cv.addEventListener('keydown', e => { if (['ArrowRight', 'Space', 'Enter'].includes(e.code)) { e.preventDefault(); go(1); } if (e.code === 'ArrowLeft') { e.preventDefault(); go(-1); } });
+    cv.addEventListener('keydown', e => {
+      if (['ArrowRight', 'Space', 'Enter'].includes(e.code)) { e.preventDefault(); go(1); } if (e.code === 'ArrowLeft') { e.preventDefault(); go(-1); }
+      const d = /^(Digit|Numpad)([1-4])$/.exec(e.code); if (d) { e.preventDefault(); flip(Number(d[2]) - 1); }
+    });
     cv.addEventListener('click', () => go(1));
-    let raf = 0;
-    let drawn = 0;
+    let raf = 0, last = 0;
     const loop = now => {
       if (!cv.isConnected && now - sceneT0 > 2000) { cancelAnimationFrame(raf); return; }
-      // в проверке без видеокарты (LAB_LOWRES) сцена рисуется 10 раз в секунду, иначе соседние рамки замирают
-      if (window.LAB_LOWRES && now - drawn < 100) { raf = requestAnimationFrame(loop); return; }
-      drawn = now;
+      // за экраном сцена не рисуется; в автопроверке (LAB_LOWRES) — 10 кадров в секунду, чтобы не отнимать процессор у игр
+      const box = cv.getBoundingClientRect(), off = box.bottom < 0 || box.top > innerHeight;
+      if ((window.LAB_LOWRES && now - last < 100) || (off && last)) { raf = requestAnimationFrame(loop); return; }
+      last = now;
       const sc = st.scenes[i], f = MOTION[sc.anim];
+      ctls[i]._t = (now - ctlT0) / 1000;
       g.save(); g.clearRect(0, 0, 640, 300);
-      try { if (f) f(g, (now - sceneT0) / 1000 * (fast() ? 2 : 1), 640, 300); else { g.fillStyle = '#141c36'; g.fillRect(0, 0, 640, 300); text(g, sc.title, 320, 150, '#f2efe6', 18); } } catch (e) { /* сцена не рисуется — текст остаётся */ }
+      try { if (f) f(g, (now - sceneT0) / 1000 * (fast() ? 2 : 1), 640, 300, ctls[i]); else { g.fillStyle = '#141c36'; g.fillRect(0, 0, 640, 300); text(g, sc.title, 320, 150, '#f2efe6', 18); } } catch (e) { /* сцена не рисуется — текст остаётся */ }
       g.restore();
       const p = pad(); if (p.a || p.right) go(1); if (p.left || p.b) go(-1);
       raf = requestAnimationFrame(loop);
     };
     raf = requestAnimationFrame(loop);
     paint();
-    return el('div', { class: 'stack m4-motionbox' }, el('div', { class: 'm4-stage' }, cv), read, el('div', { class: 'row' }, back, dots, el('span', { class: 'grow' }), next), fin);
+    return el('div', { class: 'stack m4-motionbox' }, el('div', { class: 'm4-stage' }, cv), tog, read, el('div', { class: 'row' }, back, dots, el('span', { class: 'grow' }), next), fin);
   }
 
   /* =================== order: «Разложи уровень» =================== */
@@ -1239,4 +1262,6 @@
     }
   };
   window.LabM4 = { PALETTES, GEN, GEN_NAMES, drawMap, drawTile, autoPalette, sokoSim, genText }; // для проектора и проверок
+  // библиотека сцен и набор рисования — для модулей дальше (steps-m6.js добавляет свои сцены в MOTION и рисует теми же примитивами)
+  window.LabMotion = { MOTION, stage, padReader, kit: { TAU, clamp, seg, io, ob, lerp, rng, hashStr, rr, text, disc, glow, sky, hero, arrow, confetti, fast } };
 })();
