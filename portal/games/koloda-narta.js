@@ -1182,7 +1182,7 @@ const GAME = {
       h = M === 'boss2' ? 2.4 : 1.2; cols = ['#ffc21a', '#1c1420', '#ffffff'];
     } else { // иныжи: великаны с одним глазом
       const big = M.startsWith('boss') ? 1.35 : 1;
-      const skin = { shield: '#8a6f9e', club: '#9a5a48', boss0: '#7f8594', boss1: '#9fd6f0' }[M], vest = { shield: '#6b4a2f', club: '#4f3a28', boss0: '#55473a', boss1: '#3d6fa0' }[M];
+      const skin = { shield: '#a98bc0', club: '#c47a5e', boss0: '#a9b0c0', boss1: '#9fd6f0' }[M], vest = { shield: '#8a5e3a', club: '#7a5636', boss0: '#8a6a4a', boss1: '#3d6fa0' }[M];
       for (const z of [-0.3, 0.3]) lab.cyl(0.22, 0.27, 1.0, vest, { parent: tmp, at: [0, 0.5, z], sides: 6 });
       lab.cyl(0.58, 0.72, 1.3, vest, { parent: tmp, at: [0, 1.6, 0], sides: 7 });
       lab.cyl(0.6, 0.6, 0.18, '#2a1d14', { parent: tmp, at: [0, 1.1, 0], sides: 7 });

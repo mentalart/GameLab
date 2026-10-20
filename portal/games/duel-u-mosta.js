@@ -128,7 +128,7 @@ const GAME = {
     'родник': { r: 0.85, hitT: 0, size: 1, what: '+1 капля каждые 5 с, пока стоит' },
   },
   ALIAS: { swarm: 'рой', bees: 'рой', 'пчелы': 'рой', 'пчела': 'рой', warrior: 'воин', 'мечник': 'воин', knight: 'воин', archer: 'стрелок', 'лучник': 'стрелок', 'лучницы': 'стрелок',
-    tank: 'щит', 'танк': 'щит', giant: 'великан', siege: 'осада', 'катапульта': 'осада', spell: 'заклинание', 'магия': 'заклинание', farm: 'родник', 'источник': 'родник' },
+    tank: 'щит', 'танк': 'щит', giant: 'великан', siege: 'осада', 'катапульта': 'осада', spell: 'заклинание', magic: 'заклинание', fireball: 'заклинание', 'магия': 'заклинание', 'огонь': 'заклинание', farm: 'родник', 'источник': 'родник' },
   // кто кого бьёт вдвое (вариация «Камень-ножницы-бумага»)
   RPS: { 'воин': 'стрелок', 'стрелок': 'щит', 'щит': 'воин', 'рой': 'великан', 'осада': 'рой' },
   // чем бот отвечает на угрозу
@@ -263,16 +263,18 @@ const GAME = {
     const left = cfg.time - lab.t;
     if (!st.over) {
       this.clock(lab, left);
-      for (const S of st.sides) {
+      for (const S of st.flip ? st.sides : st.sides.slice().reverse()) {
         this.drip(lab, S, dt);
         if (S.human) this.input(lab, S);
         else if (S.ai) this.think(lab, S, dt);
       }
       if (left <= 0) this.timeUp(lab);
     }
-    for (const u of st.units) this.stepUnit(lab, u, dt);
+    st.flip = !st.flip; // порядок хода чередуется: ни одна сторона не бьёт первой всегда
+    const U = st.flip ? st.units.slice().reverse() : st.units;
+    for (const u of U) this.stepUnit(lab, u, dt);
     this.separate(lab, dt);
-    for (const S of st.sides) this.stepTower(lab, S, dt);
+    for (const S of st.flip ? st.sides.slice().reverse() : st.sides) this.stepTower(lab, S, dt);
     this.stepShots(lab, dt);
     st.units = st.units.filter(u => !u.dead);
     if (st.pts >= 1 && lab.t - st.ptsAt > 0.6) { // очки за урон по башне — одной надписью раз в полсекунды
@@ -394,7 +396,7 @@ const GAME = {
     if (card.kind !== 'заклинание') x = S.dir > 0 ? lab.clamp(x, -11, -2.6) : lab.clamp(x, 2.6, 11);
     else x = lab.clamp(x, -11.5, 11.5);
     this.deploy(lab, S, card, x);
-    if (lab.cfg.secret >= 1 && cost !== 4) lab.count('_secret'); // цена не «как у всех»: дешёвая карта — быстрый ответ, дорогая — долгое накопление
+    if (lab.cfg.secret >= 1 && cost !== 4 && S.i === 0) lab.count('_secret'); // цена не «как у всех»: дешёвая карта — быстрый ответ, дорогая — долгое накопление
     if (S.human || S.ai && S.ai.style) {
       lab.count('выпущено: ' + card.name);
       S.plays[card.name] = (S.plays[card.name] || 0) + 1;
@@ -468,7 +470,7 @@ const GAME = {
     if (style && style.startsWith('only:')) { // одна карта: играть ею, остальными — только чтобы прокрутить колоду при полном кувшине
       const h = afford.find(x => x.c.name === style.slice(5));
       if (h) this.play(lab, S, h.i, h.c.kind === 'заклинание' ? this.aim(lab, S) : slot(1));
-      else if (afford.length && S.elixir >= Math.min(cap - 0.3, this.cost(lab, st.rows.find(r => r.name === style.slice(5)) || afford[0].c) + 1)) { const c = afford.sort((a, b) => a.cost - b.cost)[0]; this.play(lab, S, c.i, c.c.kind === 'заклинание' ? this.aim(lab, S) : slot(0)); }
+      else if (afford.length && S.elixir >= cap - 0.3) { const c = afford.sort((a, b) => a.cost - b.cost)[0]; this.play(lab, S, c.i, c.c.kind === 'заклинание' ? this.aim(lab, S) : slot(0)); }
       return;
     }
     if (cfg.mirror >= 1 && S.mirrorQ.length) { // «Зеркало»: та же карта, на зеркальное место
@@ -510,12 +512,14 @@ const GAME = {
       }
     }
     // натиск: копим, потом великан или щитоносец за башней, следом поддержка
-    const want = sk >= 2 ? 6.5 : sk >= 1 ? 7.5 : B.want;
+    // ответный натиск: крепкий боец пережил защиту и идёт к чужой башне — поддержать его сразу, не копя
+    const front = sk >= 1 ? st.units.find(u => u.side === S.i && !u.dead && u.deployT <= 0 && u.hp > 250 && u.kind !== 'родник' && (u.x - myX) * dir > 11) : null;
+    const want = front ? 3 : sk >= 2 ? 5.5 : sk >= 1 ? 6 : B.want;
     if (S.elixir + 1e-6 < Math.min(want, cap - 0.3) && !full) return;
     let pick = null, x = slot(3);
     if (sk >= 1) {
       const farm = afford.find(h => h.c.kind === 'родник');
-      const tank = st.units.find(u => u.side === S.i && !u.dead && (u.kind === 'великан' || u.kind === 'щит') && (u.x - myX) * dir > 2);
+      const tank = st.units.find(u => u.side === S.i && !u.dead && (u.kind === 'великан' || u.kind === 'щит') && (u.x - myX) * dir > 2) || front;
       if (farm && !st.units.some(u => u.side === S.i && u.kind === 'родник')) { pick = farm; x = slot(0); }
       else if (tank) {
         pick = afford.filter(h => ['стрелок', 'осада', 'воин', 'рой'].includes(h.c.kind)).sort((a, b) => b.cost - a.cost)[0];
@@ -563,11 +567,11 @@ const GAME = {
       const vx = dx / d, vz = dz / d;
       u.x += vx * u.speed * dt; u.z += vz * u.speed * dt;
       u.face = Math.atan2(vx, vz); u.walk += dt * u.speed * 3.2;
-      u.cd = Math.max(u.cd, 0.3); // замах после остановки: удар предупреждён
+      u.cd = Math.max(u.cd, lab.rand(0.25, 0.4)); // замах после остановки: удар предупреждён
     } else {
       u.face = Math.atan2(dx, dz);
       u.cd -= dt;
-      if (u.cd <= 0) { u.cd = u.hitT; this.attack(lab, u, t); }
+      if (u.cd <= 0) { u.cd = u.hitT * lab.rand(0.9, 1.1); this.attack(lab, u, t); }
     }
     if (u.side === 0 && u.x > 1.8) lab.state.pts += dt * 1.5 / u.card.count; // давление: твои бойцы на чужой половине
     if (!u.crossed && u.x * (u.side ? -1 : 1) > 1.8) { // перешёл мост: натиск на чужой половине

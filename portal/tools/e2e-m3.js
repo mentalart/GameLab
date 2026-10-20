@@ -80,7 +80,10 @@ module.exports = function m3(H) {
     for (let i = 0; i < st.items.length; i++) {
       const text = (await student.textContent(`#step-${id} .item`)).trim();
       if (i === 0 && extra) await extra();
-      const it = st.items.find(x => text.endsWith(x.text) || text === x.text);
+      // одинаковый текст у карточек урока 9 — различает кусок кривой: точки линии считаем так же, как spark() в vybor.js
+      const pts = await student.$eval(`#step-${id} .item`, e => { const l = e.querySelector('svg.spark polyline'); return l ? l.getAttribute('points') : ''; });
+      const line = v => v.map((y, i) => `${6 + i * 208 / Math.max(1, v.length - 1)},${58 - y * 52}`).join(' ');
+      const it = st.items.find(x => (text.endsWith(x.text) || text === x.text) && (!x.spark || line(x.spark) === pts));
       await student.click(`#step-${id} .bins .bin >> nth=${st.bins.findIndex(b => b.id === it.bin)}`);
       await student.waitForSelector(`#step-${id} [data-next]:not([hidden])`, { timeout: 5000 });
       await student.click(`#step-${id} [data-next]`);

@@ -133,7 +133,7 @@ const watch = (p, errors) => {
 
 async function run(browser, base, mode) {
   console.log(`\n▶ Прогон: ${mode === 'mock' ? 'подставной ИИ' : 'демо-режим без ключа'}`);
-  const errors = [];
+  const errors = global.__e2eErrors = []; // ошибки страниц: при обрыве прогона они печатаются рядом с причиной
   const tctx = await browser.newContext({ viewport: { width: 1280, height: 860 } });
   const sctx = await browser.newContext({ viewport: { width: 1280, height: 900 } });
   // вопросы «да / нет» портала (Lab.ask) в прогоне отвечают «да» сами
@@ -2482,7 +2482,7 @@ function cacheCheck() {
       await run(browser, base, 'demo');
     }
   } catch (e) {
-    check('Прогон дошёл до конца', false, e.message.split('\n').slice(0, 3).join(' '));
+    check('Прогон дошёл до конца', false, e.message.split('\n').slice(0, 3).join(' ') + ((global.__e2eErrors || []).length ? ' | ошибки страниц: ' + global.__e2eErrors.slice(0, 3).join(' | ') : ''));
     await failShots();
   }
   await browser.close(); srv.close(); mockSrv.close();
