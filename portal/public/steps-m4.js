@@ -993,6 +993,7 @@
       let raf = 0; const t0 = performance.now();
       const loop = now => {
         if (!cv.isConnected && now - t0 > 1500) { cancelAnimationFrame(raf); return; }
+        if (map.length !== H || map[0].length !== Wd) { raf = requestAnimationFrame(loop); return; } // карту заменили — этот холст уже старый
         const t = (now - t0) / 1000;
         for (let j = 0; j < H; j++) for (let i = 0; i < Wd; i++) drawTile(g, map[j][i], pal[map[j][i]] || pal[' '] || ['#1b2a4a', 'empty'], i * s, j * s, s, t);
         g.strokeStyle = 'rgba(255,255,255,.06)'; g.lineWidth = 1;

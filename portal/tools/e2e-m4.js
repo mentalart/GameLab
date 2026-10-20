@@ -389,7 +389,7 @@ module.exports = function m4(H) {
       check('Без спрятанной механики: без гарантий выход бывает замурован', r.secret === 0 && r.walled > 0, JSON.stringify(r));
     }, { 'перебросы': 3 });
     await motion(student, les, 'secret-story', shot);
-    await variety(student, les, 'peshchery-na-zerne', [['komnaty', 'gen', 1], ['labirint', 'gen', 3], ['myshi', 'enemies', 2.5], ['zerno', 'zerno', 2026]], 'секунд на глубину', 30, 'shablony', 'Лабиринт', shot);
+    await variety(student, les, 'peshchery-na-zerne', [['komnaty', 'gen', 1], ['labirint', 'gen', 3], ['myshi', 'enemies', 2.5], ['zerno', 'zerno', 2026]], 'секунд на глубину', 30, 'labirint', 'Лабиринт', shot);
     // «Найди правило генератора»: три мира одним правилом, ошибка — разбор, итог
     const pq = stepOf(les, 'pravilo');
     await student.waitForSelector('#step-pravilo [data-quiz="0"]');
@@ -459,7 +459,7 @@ module.exports = function m4(H) {
     const tropa = '################################\n#                              #\n#                              #\n#                              #\n#                              #\n#                              #\n#                              #\n#                              #\n#                              #\n# @                         F  #\n################################\n################################';
     const train = await editLevel(student, 'marafon', tropa, clearIt, 'Учит прыгать');
     const tricky = await editLevel(student, 'marafon', tropa.replace('#  ', '   '), clearIt, 'Коварная яма');
-    const lv = await student.evaluate(() => Lab.api('/api/levels').then(r => r.levels.filter(l => l.mine && l.lesson === 18).map(l => l.kind).sort()));
+    const lv = await student.evaluate(() => Lab.api('/api/levels').then(r => r.levels.filter(l => l.mine && l.lesson === 18 && l.game !== 'remake:games/ovechiy-zagon.js').map(l => l.kind).sort()));
     check('Марафон: два уровня для игры соседа — обучающий и коварный, оба пройдены строителем', lv.join(',') === 'train,tricky' && train !== tricky, `${forTxt.slice(0, 80)} · ${lv.join(',')}`);
     await student.waitForSelector('#step-marafon.done', { timeout: 10000 });
     if (shot) await shot(student, 'm4-18-marafon', true);
