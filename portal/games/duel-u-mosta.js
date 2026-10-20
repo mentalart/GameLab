@@ -663,7 +663,7 @@ const GAME = {
     if (!src || !src.dep || src.side === u.side) return;
     const S = st.sides[src.side];
     if (S.human || S.ai && S.ai.style) S.kills++;
-    if (src.side === 0) lab.addScore(Math.round(10 * this.cost(lab, u.card) / u.card.count * this.mult(S)), u.kind === 'рой' ? null : lab.v3(u.x, 1.4, u.z), '#ffd23f');
+    if (src.side === 0) lab.addScore(Math.round(10 * this.cost(lab, u.card) / u.card.count * this.mult(S)), this.cost(lab, u.card) / u.card.count >= 3 ? lab.v3(u.x, 1.4, u.z) : null, '#ffd23f');
     // дешёвый боец снял дорогого — спрятанная механика «цена уравновешивает силу» в деле
     if (lab.cfg.secret >= 1 && this.cost(lab, src.card || src.dep.card) < this.cost(lab, u.card)) lab.count('_secret');
     if (dep && dep.alive <= 0 && src.dep !== dep) {
@@ -673,10 +673,11 @@ const GAME = {
   },
   // обмен в плюс: твоя карта сняла врагов дороже себя
   plusTrade(lab, S, dep, at) {
+    const st = lab.state;
     dep.plus = true;
     const gain = dep.gain - dep.cost, team = this.TEAM[S.i];
     if (S.human || S.ai && S.ai.style) { lab.count('обмены в плюс'); S.plus++; }
-    if (!S.human) { lab.popup(lab.v3(at.x, 2.2, at.z), `Враг выиграл обмен: +${gain} 💧`, team.light, 14); return; }
+    if (!S.human) { if (st.sides[0].human && lab.chance(0.5)) lab.popup(lab.v3(at.x, 2.2, at.z), `Враг в плюсе: +${gain} 💧`, team.light, 13); return; }
     S.streak++; S.best = Math.max(S.best, S.streak);
     const m = this.mult(S);
     if (S.i === 0) lab.addScore(50 * gain * m);
