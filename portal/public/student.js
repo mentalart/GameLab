@@ -544,6 +544,125 @@ STEPS.play = ctx => {
     el('div', {}, el('button', { class: 'btn ghost small', type: 'button', onclick: () => ctx.save(v, true) }, 'Готово, дальше')));
 };
 
+// variety: «Мастерская вариаций» (урок 2, 20.10.2026) — одно ядро механики и много игр. Плитки вариаций ремейка; выбрал — партия,
+// потом по одному вопросу: «Какая это игра по ощущению?» и «Что повернули в правилах?» (деталь-ручка, сразу разбор).
+// После min вариаций — доска «одна механика — N игр» (чувство, деталь, когда стал ясен исход), выбор самой интересной и конструктор своей вариации.
+// Счётчики телеметрии и _secret копятся, как у play: шаг secret сравнивает их с классикой.
+STEPS.variety = ctx => {
+  const st = ctx.step, need = st.min || 4, V = st.variants, dialOf = id => st.dials.find(d => d.id === id);
+  let v = Object.assign({ rounds: 0, best: 0, secret: 0, custom: {}, played: {}, fav: null, mix: {} }, ctx.value);
+  let cur = null, stage = 'grid', h = null, answer = null;
+  const host = el('div', { class: 'stack variety' });
+  const playedN = () => V.filter(x => v.played[x.id] && v.played[x.id].feel).length;
+  const emo = f => (f || '').split(' ')[0];
+  const save = done => ctx.save(v, done == null ? null : done, true);
+  function head() {
+    return el('div', { class: 'var-core' }, el('span', { class: 'ti', 'aria-hidden': 'true' }, '⚙️'),
+      el('div', {}, el('div', { class: 'eyebrow' }, 'Ядро механики — одно на все игры'), el('b', {}, st.core)));
+  }
+  function draw() {
+    if (h) { h.destroy(); h = null; }
+    host.innerHTML = '';
+    if (stage === 'grid') return grid();
+    const x = cur;
+    host.append(el('div', { class: 'row' }, el('button', { class: 'btn ghost small', type: 'button', onclick: () => { stage = 'grid'; cur = null; draw(); } }, '← Все вариации')),
+      el('div', { class: 'var-card' }, el('span', { class: 'ti', 'aria-hidden': 'true' }, x.icon),
+        el('div', {}, el('b', {}, x.label), el('div', { class: 'small muted' }, `как в ${x.like}`), el('div', {}, x.how))),
+      ladder(x.base ? ['Сыграй', 'Ощущение'] : ['Сыграй', 'Ощущение', 'Что повернули?'], stage === 'play' ? 0 : stage === 'feel' ? 1 : 2));
+    if (stage === 'play') {
+      const status = el('b', {}, 'Сыграй партию против мудреца. Tab — ручки, если хочешь покрутить.');
+      h = Games.frame({
+        src: () => '/engine/game.html?game=../' + st.game, key: () => 'remake:' + st.id + ':' + x.id, cfg: Object.assign({}, st.cfg, x.cfg), label: 'Играть: ' + x.label,
+        onOver: m => {
+          const t = m.tele || {}, custom = Object.assign({}, v.custom);
+          for (const [k, n] of Object.entries(t.custom || {})) custom[k] = (custom[k] || 0) + (Number(n) || 0);
+          const s = t.stats || {}, p = Object.assign({}, v.played[x.id]);
+          p.rounds = (p.rounds || 0) + 1;
+          if (s['исход известен с хода'] != null) { p.known = s['исход известен с хода']; p.len = s['ходов в партии'] || null; }
+          v = Object.assign({}, v, { rounds: v.rounds + 1, best: Math.max(v.best, m.score || 0), secret: v.secret + (Number((t.custom || {})._secret) || 0), custom, variant: x.label });
+          v.played = Object.assign({}, v.played, { [x.id]: p });
+          save(); S.hooks.forEach(fn => fn('played', { step: st.id }));
+          if (!p.feel) { stage = 'feel'; beep('good'); draw(); }
+        },
+      });
+      host.append(h.box, Games.bar(h, status));
+      if (v.played[x.id] && v.played[x.id].feel) host.append(el('p', { class: 'muted small' }, 'Ты уже оценил эту вариацию — играй сколько хочешь или вернись к остальным.'));
+      return;
+    }
+    if (stage === 'feel') {
+      host.append(el('p', { class: 'bigq' }, 'Какая это игра по ощущению?'),
+        tiles(st.feelings.map(f => ({ id: f, icon: emo(f), label: f.slice(emo(f).length).trim() })), null, it => {
+          v.played = Object.assign({}, v.played, { [x.id]: Object.assign({}, v.played[x.id], { feel: it.id }) });
+          save(); stage = x.base ? 'grid' : 'dial'; answer = null; draw();
+        }, { attr: 'data-feel', label: 'Ощущение' }));
+      return;
+    }
+    // stage dial: какую деталь повернули — сразу разбор
+    const p = v.played[x.id] || {};
+    host.append(el('p', { class: 'bigq' }, 'Ядро то же. Что повернули в правилах?'),
+      tiles(st.dials.map(d => ({ id: d.id, icon: d.icon, label: d.label, sub: d.hint })), answer, it => {
+        if (answer) return;
+        answer = it.id;
+        v.played = Object.assign({}, v.played, { [x.id]: Object.assign({}, p, { dial: it.id, ok: it.id === x.dial }) });
+        save(); beep(it.id === x.dial ? 'good' : 'bad'); draw();
+      }, { attr: 'data-dial', label: 'Что повернули' }));
+    if (answer) {
+      const ok = answer === x.dial, d = dialOf(x.dial);
+      host.append(el('p', { class: 'verdict ' + (ok ? 'good' : 'bad') }, (ok ? '🎯 Точно: ' : `Не совсем: здесь повернули «${d.label}». `) + x.why),
+        el('div', {}, el('button', { class: 'btn', type: 'button', 'data-next': '1', onclick: () => { stage = 'grid'; cur = null; answer = null; draw(); } }, playedN() >= need ? 'К доске вариаций →' : `Дальше: ещё ${need - playedN()} ${need - playedN() === 1 ? 'вариация' : 'вариации'} →`)));
+    }
+  }
+  function grid() {
+    const n = playedN();
+    host.append(head(), ladder([`Сыграй ${need} вариации`, 'Сравни', 'Выбери лучшую'], n < need ? 0 : !v.fav ? 1 : 3),
+      el('p', { class: 'muted' }, n < need ? `Выбери плитку — сыграй партию — ответь на два вопроса. Сыграно ${n} из ${need}.` : 'Можно сыграть ещё — или посмотри доску ниже.'));
+    host.append(tiles(V.map(x => {
+      const p = v.played[x.id] || {};
+      return { id: x.id, icon: x.icon, label: x.label + (p.feel ? ' ' + emo(p.feel) : ''), sub: p.feel ? (x.base ? 'сыграно' : p.ok ? '✓ угадал деталь' : '✓ сыграно') : `как в ${x.like}` };
+    }), null, it => { cur = V.find(x => x.id === it.id); stage = 'play'; draw(); }, { attr: 'data-var', wide: true, label: 'Вариации' }));
+    if (n >= need) board();
+  }
+  function board() {
+    const rows = V.filter(x => v.played[x.id] && v.played[x.id].feel);
+    const tbl = el('div', { class: 'var-board' }, rows.map(x => {
+      const p = v.played[x.id], d = dialOf(x.dial), open = p.known && p.len ? Math.max(0.04, Math.min(1, (p.known - 1) / Math.max(1, p.len - 1))) : null;
+      return el('div', { class: 'var-row' }, el('span', { class: 'ti' }, x.icon), el('b', {}, x.label), el('span', { class: 'var-emo', title: p.feel }, emo(p.feel)),
+        el('span', { class: 'tag' }, d ? d.icon + ' ' + d.label : 'основа'),
+        el('span', { class: 'var-open', title: 'Сколько партии исход был открыт' }, open == null ? el('small', { class: 'muted' }, '—') : [el('i', { style: `width:${Math.round(open * 100)}%` }), el('small', {}, `исход ясен с хода ${p.known} из ${p.len}`)]));
+    }));
+    host.append(el('h3', {}, `Одна механика — ${rows.length} ${rows.length < 5 ? 'игры' : 'игр'}`), tbl,
+      el('p', { class: 'concept' }, st.reveal));
+    host.append(el('p', { class: 'bigq' }, st.question || 'Какая из этих игр самая интересная?'),
+      tiles(rows.map(x => ({ id: x.id, icon: x.icon, label: x.label })), v.fav, it => { v.fav = it.id; save(true); draw(); }, { attr: 'data-fav', label: 'Самая интересная' }));
+    if (v.fav) host.append(mixer());
+  }
+  // конструктор: по одной плитке на каждую деталь — своя вариация того же ядра
+  function mixer() {
+    const box = el('div', { class: 'simple-step' });
+    const cfg = () => Object.assign({}, st.mixBase || {}, ...st.mix.map(m => (m.options.find(o => o.label === v.mix[m.dial]) || m.options[0]).cfg));
+    const paint = () => {
+      if (h) { h.destroy(); h = null; }
+      box.innerHTML = '';
+      box.append(el('h4', {}, el('b', {}, '🎛'), 'Собери свою вариацию: по одной плитке на каждую деталь'));
+      for (const m of st.mix) {
+        const d = dialOf(m.dial);
+        box.append(el('div', { class: 'eyebrow' }, `${d.icon} ${d.label}`),
+          tiles(m.options.map(o => ({ id: o.label, icon: o.icon, label: o.label })), v.mix[m.dial] || m.options[0].label, it => { v.mix = Object.assign({}, v.mix, { [m.dial]: it.id }); save(); paint(); }, { attr: 'data-mix', label: d.label }));
+      }
+      const changed = st.mix.filter(m => v.mix[m.dial] && v.mix[m.dial] !== m.options[0].label).map(m => v.mix[m.dial]);
+      box.append(el('p', { class: 'pickline' }, changed.length ? `Твоя вариация: ${changed.join(' + ')}` : 'Пока это классика. Поверни хотя бы одну деталь.'));
+      if (changed.length) {
+        h = Games.frame({ src: () => '/engine/game.html?game=../' + st.game, key: () => 'remake:' + st.id + ':mix', cfg: Object.assign({}, st.cfg, cfg()), label: 'Играть свою вариацию' });
+        box.append(h.box, el('p', { class: 'muted small' }, 'Понравилась? Это и есть «одно правило» — унеси его в Фабрику.'));
+      }
+    };
+    paint();
+    return box;
+  }
+  draw();
+  return host;
+};
+
 // teacher-demo: вау-старт учителя. Пока учитель тянет карты и собирает игру — «смотри на проектор» и карты вживую,
 // потом игра учителя в рамке (открывает учитель или таймер шага). Рекорды — общая таблица класса по этой игре.
 const DEMO_CARD_NAMES = [['hero', 'Герой'], ['place', 'Место'], ['twist', 'Поворот']];

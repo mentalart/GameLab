@@ -1574,6 +1574,10 @@ route('GET', '/api/teacher/poll', (ctx) => {
       const list = done(x.id).filter(v => v.vote), felt = x.type === 'abtest' ? list.filter(v => v.vote === v.side).length : list.filter(v => v.felt).length, same = list.filter(v => v.vote === 'same').length;
       steps.push({ cp: cp.id, id: x.id, title: x.title, kind: 'secret', n: list.length,
         bars: [{ label: 'Почувствовали спрятанную механику', n: felt }, { label: 'Выбрали копию без спрятанной механики', n: list.length - felt - same }, { label: 'Разницы нет', n: same }] });    // разбор прототипа (урок 1, чекпоинт 5): «Совпало?», находки разбора (главные — словами), «Ближе к чувству?» — проектор и карточка учителя
+    } else if (x.type === 'variety') { // мастерская вариаций: самая интересная вариация и какие детали угадали
+      const list = done(x.id).filter(v => v.fav);
+      steps.push({ cp: cp.id, id: x.id, title: x.question || 'Самая интересная вариация', kind: 'choice', n: list.length,
+        bars: x.variants.map(o => ({ label: `${o.icon} ${o.label}`, n: list.filter(v => v.fav === o.id).length })).filter(b => b.n) });
     } else if (x.type === 'ownplay' && x.match) {
       const list = all.map(a => (a[x.id] || {}).value || {}).filter(v => v.match);
       steps.push({ cp: cp.id, id: x.id, title: x.match.question, kind: 'choice', n: list.length, bars: x.match.options.map(o => ({ label: o, n: list.filter(v => v.match === o).length })) });

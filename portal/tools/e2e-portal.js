@@ -1047,17 +1047,37 @@ async function lessonTwo(mode, teacher, student, shot) {
   await student.waitForSelector('#step-donor-hook.done');
   await shot(student, '20-u2-donor');
 
-  // одно правило: варианты игры кнопками, спрятанная механика считается скрытым счётчиком
-  await student.click('.cp >> text=Спрятанная механика');
-  await student.click('#step-secret-play .seg .opt >> nth=1');
-  await student.click('#step-secret-play .veil button');
-  gf = await gameFrame(student, 'kamni-mudreca', 0);
-  await gf.waitForFunction(() => window.__lab.cfg.rule === 2, null, { timeout: 5000 }).catch(() => {});
-  check('Вариант «Ветер с Фишта» включил правило 2', await gf.evaluate(() => window.__lab.cfg.rule === 2));
-  await gf.evaluate(() => window.__lab.confirm());
-  await sleep(300);
-  await gf.evaluate(() => { window.__lab.lab.count('_secret', 4); window.__lab.lab.count('победы', 1); window.__lab.lab.score = 150; window.__lab.end('win', 'Проверка'); });
+  // мастерская вариаций: плитка — партия — «какая это игра» — «что повернули»; после четырёх — доска, самая интересная и конструктор
+  const vstep = step2('secret-play');
+  await student.click('.cp >> text=Одна механика');
+  await student.waitForSelector('#step-secret-play [data-var]');
+  check('Мастерская вариаций: ядро и плитки всех вариаций', /положи камень → собери линию/.test(await student.textContent('#step-secret-play')) && await student.locator('#step-secret-play [data-var]').count() === vstep.variants.length);
+  const tryVars = [['veter', v => v.rule === 2], ['connect', v => v.drop === 1 && v.size === 7 && v.need === 4], ['bomby', v => v.bombs === 2 && v.size === 5], ['naoborot', v => v.misere === 1 && v.size === 4]];
+  for (const [k, [id, ok]] of tryVars.entries()) {
+    const x = vstep.variants.find(y => y.id === id);
+    await student.click(`#step-secret-play [data-var=${id}]`);
+    await student.click('#step-secret-play .veil button');
+    gf = await gameFrame(student, 'kamni-mudreca', 0);
+    await gf.waitForFunction(() => window.__lab.cfg.games === 1, null, { timeout: 5000 }).catch(() => {});
+    check(`Вариация «${x.label}» включила свои ручки`, ok(await gf.evaluate(() => window.__lab.cfg)));
+    await gf.evaluate(() => window.__lab.confirm());
+    await sleep(300);
+    await gf.evaluate(k => { const L = window.__lab.lab; if (k === 0) { L.count('_secret', 4); L.count('победы', 1); } L.stat('исход известен с хода', 5); L.stat('ходов в партии', 8); L.score = 150; window.__lab.end('win', 'Проверка'); }, k);
+    await student.waitForSelector('#step-secret-play [data-feel]', { timeout: 10000 });
+    await student.click(`#step-secret-play [data-feel] >> nth=${k}`);
+    const dial = k === 1 ? vstep.dials.find(d => d.id !== x.dial).id : x.dial; // на второй ошибаемся
+    await student.click(`#step-secret-play [data-dial=${dial}]`);
+    await student.waitForSelector('#step-secret-play .verdict');
+    if (k === 1) check('Вариации: ошибка в детали — разбор, какую деталь повернули', /Не совсем/.test(await student.textContent('#step-secret-play .verdict')) && (await student.textContent('#step-secret-play .verdict')).includes(x.why));
+    await student.click('#step-secret-play [data-next]');
+  }
+  await student.waitForSelector('#step-secret-play .var-board');
+  check('Доска вариаций: четыре игры, чувство и когда стал ясен исход', await student.locator('#step-secret-play .var-row').count() === 4 && /исход ясен с хода 5 из 8/.test(await student.textContent('#step-secret-play .var-board')));
+  await shot(student, '21-u2-variacii', true);
+  await student.click('#step-secret-play [data-fav=connect]');
   await student.waitForSelector('#step-secret-play.done', { timeout: 10000 });
+  await student.click('#step-secret-play [data-mix="Падают вниз"]');
+  check('Конструктор вариации: выбранная плитка становится своей вариацией', /Твоя вариация: Падают вниз/.test(await student.textContent('#step-secret-play .pickline')));
 
   // «Найди спрятанную механику» донора: ответ — с сервера только после догадки
   const hunt = step2('secret-hunt').hunt;

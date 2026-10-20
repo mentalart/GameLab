@@ -13,6 +13,12 @@ function answerText(step, a, game) {
   switch (step.type) {
     case 'play': case 'teacher-demo': return v.rounds ? `партий ${v.rounds}, лучший счёт ${v.best || 0}` : (a.done ? 'сыграно' : '');
     case 'cards': return a.done ? 'карты на столе' : '';
+    case 'variety': { // мастерская вариаций: сыгранные вариации с чувством и угаданной деталью, самая интересная
+      const played = (step.variants || []).filter(x => (v.played || {})[x.id] && v.played[x.id].feel);
+      if (!played.length) return '';
+      const fav = (step.variants || []).find(x => x.id === v.fav);
+      return played.map(x => `${x.label}: ${v.played[x.id].feel}` + (x.base ? '' : v.played[x.id].ok ? ', деталь угадал' : v.played[x.id].dial ? ', деталь не угадал' : '')).join('; ') + (fav ? `\nсамая интересная: ${fav.label}` : '');
+    }
     case 'abtest': return v.A ? `спрятанная механика в игре ${v.side === 'A' ? 'А' : 'Б'}; голос: ${v.vote ? (v.vote === 'same' ? 'разницы нет' : 'игра ' + (v.vote === 'A' ? 'А' : 'Б')) : 'нет'}${v.vote && v.vote === v.side ? ' — почувствовал' : ''}; партий А ${v.A.rounds}, Б ${v.B.rounds}` : '';
     case 'secret': return v.guess ? `догадка: ${v.guess} — ${v.correct ? 'угадал' : v.trap ? 'ловушка: это было на картах' : 'не угадал'}` : '';
     case 'rounds': case 'sort': return v.total ? quizLine(v) : '';
