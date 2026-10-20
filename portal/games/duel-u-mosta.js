@@ -71,7 +71,7 @@ const GAME = {
     double: { value: 40, min: 0, max: 120, step: 5, label: 'Двойной эликсир: последние … с', hint: 'капли текут вдвое быстрее; 0 — без двойного эликсира' },
     time: { value: 120, min: 30, max: 300, step: 10, label: 'Длина партии, с', restart: true },
     towerHp: { value: 2000, min: 500, max: 8000, step: 100, label: 'Прочность башни', restart: true },
-    towerDmg: { value: 50, min: 0, max: 300, step: 10, label: 'Урон башни за выстрел' },
+    towerDmg: { value: 70, min: 0, max: 300, step: 10, label: 'Урон башни за выстрел' },
     towerRange: { value: 6.5, min: 3, max: 10, step: 0.5, label: 'Дальность башни, м' },
     botSkill: { value: 1, min: 0, max: 2, step: 0.5, label: 'Сила бота', hint: '0 — играет наугад, 1 — защищается и копит на натиск, 2 — быстрее и точнее' },
     vs: { value: 0, min: 0, max: 1, step: 1, label: 'Вдвоём: игрок 2 справа', restart: true },

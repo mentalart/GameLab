@@ -341,6 +341,7 @@ module.exports = function m3(H) {
     // таблица баланса: таблица донора честная, рой за 1 каплю — «дёшево», дуэль идёт этой таблицей, разбор по выпускам
     await student.waitForSelector('#step-tablica [data-fair]');
     check('Таблица баланса: 8 юнитов донора, все по силе честные', await student.locator('#step-tablica [data-fair].ok').count() === 8);
+    await student.fill('#step-tablica [data-cell="0-dmg"]', '80');
     await student.fill('#step-tablica [data-cell="0-cost"]', '1');
     await student.fill('#step-tablica [data-cell="0-name"]', 'Снежки');
     await student.waitForSelector('#step-tablica [data-fair="0"].cheap');
