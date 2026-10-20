@@ -15,7 +15,7 @@
 // Данные и настройки — во временной папке, настоящий portal/config.json и portal/data/ не трогаются.
 // Урок 5 в обоих прогонах: «Тур над Хаджохом», сырой прыжок и «Найди спрятанную механику», мастерская вариаций платформера (variety с полосой спасённых нажатий), лаборатория прыжка, слепой турнир по одной ручке,
 // образец урока в промпте программиста и демо-игра урока, спидран с призраком лучшей попытки.
-// Урок 6 в обоих прогонах: «Ледолом» и 12 переключателей сочности оболочки 0.3, сухой «Ледолом» и «Найди спрятанную механику», квиз «Сухая или сочная?»,
+// Урок 6 в обоих прогонах: «Ледолом» и 12 переключателей сочности оболочки 0.3, сухой «Ледолом» и «Найди спрятанную механику», мастерская вариаций арканоида (лазер, невидимки, тяжесть, мультибол — доска с лучшей серией и конструктор), квиз «Сухая или сочная?»,
 // образец урока и демо-игра, кооператив двух лопат, слепая проба игры соседа (сухая и сочная копии).
 // Урок 7 в обоих прогонах: «Шаг в такт» на одних часах и без спрятанной механики, предсказание «что будет без звука», квиз «Угадай по звуку»,
 // секвенсор мелодии: своя мелодия уходит в ремейк (lab.data) и в черновик ИГРА, образец урока, ритм-дуэль.
@@ -1813,7 +1813,7 @@ async function lessonSix(mode, teacher, student, shot) {
   await student.waitForSelector('#step-donor-hook.done');
 
   // сухой «Ледолом»: переключатели из шага, оболочка глушит эффекты в самих lab.shake, lab.burst, lab.tone
-  await student.click('.cp >> text=Спрятанная механика');
+  await student.click('.cp >> text=Один отскок');
   await student.click('#step-secret-play .veil button');
   gf = await gameFrame(student, 'ledolom', 0);
   await gf.waitForFunction(() => window.__lab.cfg.j_shake === 0, null, { timeout: 5000 }).catch(() => {});
@@ -1832,6 +1832,37 @@ async function lessonSix(mode, teacher, student, shot) {
   check(mode === 'mock' ? 'Спрятанная механика урока 6: ловушка «хычин летал быстрее» распознана' : 'Спрятанная механика урока 6 угадана: сочность',
     (mode === 'mock' ? /Ловушка! Скорость не менялась/.test(reveal) : /Точно!/.test(reveal)) && /Сочность: игра отзывается/.test(reveal) && /удары 12/.test(reveal) && /удары 9/.test(reveal), reveal.slice(0, 120));
   await storyDone(student);
+
+  // мастерская вариаций арканоида: плитка — партия с ручками вариации — «какая это игра» — «что повернули»; полоса доски — лучшая серия
+  const vstep6 = step6('variacii');
+  await student.waitForSelector('#step-variacii [data-var]');
+  check('Урок 6: мастерская вариаций — отскок и плитки всех вариаций', /лопата → отскок/.test(await student.textContent('#step-variacii')) && await student.locator('#step-variacii [data-var]').count() === vstep6.variants.length);
+  const tryVars6 = [['lazer', 'laser', 1], ['nevidimki', 'hidden', 1], ['tyazhest', 'gravity', 5], ['multibol', 'multi', 3]];
+  for (const [k, [id, knob, val]] of tryVars6.entries()) {
+    const x = vstep6.variants.find(y => y.id === id);
+    await student.click(`#step-variacii [data-var=${id}]`);
+    await student.click('#step-variacii .veil button');
+    gf = await gameFrame(student, 'ledolom', 0);
+    await gf.waitForFunction(([kn, vl]) => window.__lab.cfg[kn] === vl, [knob, val], { timeout: 5000 }).catch(() => {});
+    check(`Вариация урока 6 «${x.label}» включила свои ручки`, await gf.evaluate(([kn, vl]) => window.__lab.cfg[kn] === vl && window.__lab.cfg.limit === 90, [knob, val]));
+    await gf.evaluate(() => window.__lab.confirm());
+    await sleep(300);
+    await gf.evaluate(() => { const L = window.__lab.lab; L.stat('серия', 7); L.score = 400; window.__lab.end('lose', 'Проверка'); });
+    await student.waitForSelector('#step-variacii [data-feel]', { timeout: 10000 });
+    await student.click(`#step-variacii [data-feel] >> nth=${k}`);
+    const dial = k === 1 ? vstep6.dials.find(d => d.id !== x.dial).id : x.dial;
+    await student.click(`#step-variacii [data-dial=${dial}]`);
+    await student.waitForSelector('#step-variacii .verdict');
+    if (k === 1) check('Вариации урока 6: ошибка в детали — разбор', /Не совсем/.test(await student.textContent('#step-variacii .verdict')) && (await student.textContent('#step-variacii .verdict')).includes(x.why));
+    await student.click('#step-variacii [data-next]');
+  }
+  await student.waitForSelector('#step-variacii .var-board');
+  check('Доска вариаций урока 6: четыре игры и лучшая серия', await student.locator('#step-variacii .var-row').count() === 4 && /лучшая серия ×7/.test(await student.textContent('#step-variacii .var-board')));
+  await shot(student, '49b-u6-variacii', true);
+  await student.click('#step-variacii [data-fav=lazer]');
+  await student.waitForSelector('#step-variacii.done', { timeout: 10000 });
+  await student.click('#step-variacii [data-mix="Магнит"]');
+  check('Конструктор вариации урока 6: своя вариация из плиток', /Твоя вариация: Магнит/.test(await student.textContent('#step-variacii .pickline')));
 
   // квиз «Сухая или сочная?»: основа сухая, в загадке включён один переключатель
   const quiz = step6('suhaya-sochnaya');

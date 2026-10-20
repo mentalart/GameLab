@@ -12,6 +12,9 @@
 // Пресет «Без спрятанной механики» выключает все 12 и финал: механика та же.
 // Палитра: холодная синь пещеры и льда против горячего оранжевого хычина; гостинцы — яркие цвета.
 // Разбор лучших игр жанра (Breakout, Arkanoid, Peggle, Shatter, «Juice it or lose it») — в docs/01_Журнал_курса.md, раздел урока 6.
+// Вариации (урок 6, мастерская «Тот же отскок — другая игра»): ручки multi, pierce, laser, magnet, hidden, slide, gravity, descend, shrink —
+// приёмы настоящих арканоидов (Breakout 1976, Super Breakout, Arkanoid, Alleyway, DX-Ball, Shatter, Peggle). Отскок от лопаты и сочность
+// в каждой те же; имя вариации и её правило — баннер в начале партии, строка над полем и экран конца. Пресеты с теми же именами — в Tab.
 // Ось Z в three.js смотрит на игрока: лёд вдали (−Z), лопата у нижнего края экрана (+Z).
 const GAME = {
   engine: 'three',
@@ -22,8 +25,9 @@ const GAME = {
   duo: 'coop', // ручка coop = 1 — две лопаты, один хычин
   controls: [
     { input: 'move', text: 'двигать лопату' },
-    { input: 'a', text: 'запустить хычин' },
+    { input: 'a', text: 'запустить хычин (в вариациях: лазер или магнит)' },
   ],
+  scoreColor: '#ffb347', // счёт цвета хычина
   camera: { type: 'iso', tilt: 0.72, target: [0, 0, -0.4] },
   field: { w: 19.4, h: 25.6 },
   sky: ['#081230', '#4f74b8'],
@@ -51,6 +55,17 @@ const GAME = {
     ovenSpeed: { value: 3, min: 0, max: 8, step: 0.5, label: 'Скорость жаровни' },
     finale: { value: 1, min: 0, max: 1, step: 1, label: 'Финал на последнем кирпиче', hint: 'замедление, наезд камеры, барабанная дробь, салют' },
     coop: { value: 0, min: 0, max: 1, step: 1, label: 'Вдвоём: две лопаты', restart: true },
+    limit: { value: 0, min: 0, max: 300, step: 10, label: 'Время на партию, с (0 — без времени)' },
+    // вариации арканоида
+    multi: { value: 1, min: 1, max: 5, step: 1, label: 'Мультибол: хычинов на подаче', hint: 'как капсула D в Arkanoid: подача сразу делится на несколько хычинов' },
+    pierce: { value: 0, min: 0, max: 1, step: 1, label: 'Огненный хычин: пробивает лёд насквозь', hint: 'как огненный шар DX-Ball' },
+    laser: { value: 0, min: 0, max: 1, step: 1, label: 'Лазер: пробел в полёте стреляет', hint: 'как капсула L в Arkanoid' },
+    magnet: { value: 0, min: 0, max: 1, step: 1, label: 'Магнит: держи пробел — хычин тянется к лопате', hint: 'как притяжение в Shatter' },
+    hidden: { value: 0, min: 0, max: 1, step: 1, label: 'Невидимый лёд: виден только в миг удара', hint: 'как режим Invisible в Breakout для Atari 2600' },
+    slide: { value: 0, min: 0, max: 4, step: 0.5, label: 'Карусель: ряды льда ездят, скорость', hint: 'как ездящие стены в Alleyway (Game Boy); стена уже — 8 кирпичей в ряду', restart: true },
+    gravity: { value: 0, min: 0, max: 12, step: 0.5, label: 'Тяжесть: хычин падает дугой', hint: 'как шарик Peggle; лопата бьёт сильнее, чтобы хычин долетал до льда' },
+    descend: { value: 0, min: 0, max: 20, step: 1, label: 'Наступление: лёд опускается на ряд каждые N с (0 — стоит)', hint: 'как режим Progressive в Super Breakout: дойдёт до лопаты — конец' },
+    shrink: { value: 0, min: 0, max: 1, step: 1, label: 'Короткая лопата после прорыва', hint: 'как в Breakout 1976: хычин долетел до дальней стены — лопата вдвое короче, пока не упустишь хычин' },
   },
   presets: {
     'Новичок': { speed: 8, speedup: 0.08, paddle: 5, maxSpeed: 13, gifts: 0.22 },
@@ -59,7 +74,28 @@ const GAME = {
     'Ураган': { speed: 15, speedup: 0.4, maxSpeed: 24 },
     'Гостинцы': { gifts: 0.4, rows: 7, giftTime: 18 },
     'Классика': { gifts: 0, through: 1, oven: 0 },
+    'Мультибол': { multi: 3 },
+    'Огненный': { pierce: 1 },
+    'Лазер': { laser: 1 },
+    'Магнит': { magnet: 1 },
+    'Невидимки': { hidden: 1 },
+    'Карусель': { slide: 2 },
+    'Тяжесть': { gravity: 5 },
+    'Наступление': { descend: 5 },
+    'Короткая лопата': { shrink: 1 },
   },
+  // имя вариации и её правило для строки над полем, баннера в начале и экрана конца партии
+  VARIANTS: [
+    { key: 'multi', on: c => c.multi > 1, name: 'Мультибол', how: c => `подача делится на ${Math.round(c.multi)} хычина — упусти все, тогда минус жизнь` },
+    { key: 'pierce', name: 'Огненный хычин', how: () => 'пробивает лёд насквозь, не отскакивая' },
+    { key: 'laser', name: 'Лазер', how: () => 'пробел в полёте — выстрел из лопаты' },
+    { key: 'magnet', name: 'Магнит', how: () => 'держи пробел — хычин тянется к лопате' },
+    { key: 'hidden', name: 'Невидимки', how: () => 'лёд виден только в миг удара — запомни стену' },
+    { key: 'slide', name: 'Карусель', how: () => 'ряды льда ездят туда-сюда' },
+    { key: 'gravity', name: 'Тяжесть', how: () => 'хычин падает дугой, лопата бьёт сильнее' },
+    { key: 'descend', name: 'Наступление', how: c => `лёд опускается на ряд каждые ${Math.round(c.descend)} с — не пусти его к лопате` },
+    { key: 'shrink', name: 'Короткая лопата', how: () => 'прорвался к дальней стене — лопата вдвое короче, очки ×2' },
+  ],
   notes: [
     'Жар: каждое отбивание лопатой нагревает хычин (до 5), растаявший лёд стоит дороже, пламя растёт. Иначе очки шли бы и без игры: хычин сам бьётся о лёд после подачи.',
     'Подача медленнее (65% скорости) до первого отбивания, как в Arkanoid: первый промах не раньше 6–7-й секунды.',
@@ -80,7 +116,8 @@ const GAME = {
   start(lab, scene) {
     const st = lab.state, T = lab.THREE;
     Object.assign(st, { combo: 0, bestCombo: 0, hits: 0, broke: 0, juicy: 0, throughs: 0, caught: 0, saved: 0, finale: 0, finT: 0, fw: 0,
-      balls: [], gifts: [], power: { wide: 0, sticky: 0 }, zoom: null });
+      balls: [], gifts: [], power: { wide: 0, sticky: 0 }, zoom: null,
+      banner: false, bolts: [], laserT: 0, shrunk: false, reveal: lab.cfg.hidden > 0 ? 2.2 : 0, descT: null, dropZ: 0, dropNow: 0, lasers: 0, pulls: 0, pierced: 0, drops: 0 });
     this.cave(lab, scene);
     this.wall(lab);
     this.debris(lab);
@@ -89,11 +126,50 @@ const GAME = {
     st.lights = [0, 1, 2].map(() => { const l = new T.PointLight('#ff9a3c', 0, 9, 2); l.position.set(0, -5, 0); scene.add(l); return l; }); // три лампы на всю партию: число огней не меняется — шейдеры не перестраиваются
     this.newBall(lab);
     lab.hero(st.paddles[0].node);
+    this.extras(lab);
+    lab.stat('серия', 0);
+    if (!lab.playing) this.poster(lab);
+  },
+  // детали вариаций, которые можно включить и посреди партии (ручки без перезапуска)
+  extras(lab) {
+    const st = lab.state, c = lab.cfg;
+    if (c.laser > 0 && !st.boltMesh) {
+      st.boltMesh = Array.from({ length: 12 }, () => { const m = lab.box(0.14, 0.14, 0.8, lab.mat('#ff5a4d', { glow: 1.6 }), { shadow: false }); m.visible = false; return m; });
+      st.paddles.forEach(p => { p.guns = [-1, 1].map(s => lab.cone(0.16, 0.5, '#ff5a4d', { parent: p.node, at: [s, this.BY + 0.2, -0.2], rot: [-Math.PI / 2, 0, 0], glow: 0.8, sides: 6 })); });
+    }
+    if (c.magnet > 0 && !st.beam) { st.beam = lab.box(0.09, 0.09, 1, lab.mat('#9fe6ff', { glow: 1.5 }), { shadow: false }); st.beam.visible = false; }
+  },
+  // афиша в меню: хычин летит в лёд, лопата наклонилась после удара. Двигается только картинка — первый кадр партии всё возвращает
+  poster(lab) {
+    const st = lab.state, b = st.balls[0], p = st.paddles[0];
+    b.node.position.set(-1.6, this.BY, -3.4); b.node.rotation.y = Math.atan2(-0.55, -1); b.node.scale.set(0.92, 1, 1.25);
+    b.fire.scale.set(1.5, 1.5, 1.5);
+    if (b.light) { b.light.position.set(-1.6, 1.3, -3.4); b.light.intensity = 18; }
+    p.node.rotation.z = 0.08;
+    st.posterOn = true;
+  },
+  // имя вариации: все включённые ручки вариаций
+  variant(lab) {
+    const c = lab.cfg, on = this.VARIANTS.filter(v => (v.on ? v.on(c) : c[v.key] > 0));
+    if (!on.length) return { name: 'Классика', how: 'растопи весь лёд; край лопаты — острый угол' };
+    return { name: on.map(v => v.name).join(' + '), how: on.map(v => v.how(c)).join('; ') };
   },
 
   update(lab, dt) {
-    const st = lab.state;
+    const st = lab.state, c = lab.cfg;
+    if (st.posterOn) { st.posterOn = false; st.paddles[0].node.rotation.z = 0; }
+    this.extras(lab);
+    if (!st.banner) { // имя вариации и её правило крупно в начале партии
+      st.banner = true;
+      const v = this.variant(lab);
+      lab.popup([0, 2.6, 1.5], v.name, '#ffe680', 32);
+      lab.after(0.35, () => lab.popup([0, 1.4, 3], v.how, '#ffffff', 17));
+    }
+    lab.hud('rule', `${this.variant(lab).name}: ${this.variant(lab).how}`, { color: '#ffe680', size: 14 });
     st.paddles.forEach(p => this.movePaddle(lab, p, dt));
+    this.moveBricks(lab, dt);
+    this.tickLaser(lab, dt);
+    this.tickMagnet(lab, dt);
     this.keepApart(lab);
     this.tickPower(lab, dt);
     this.tickBricks(lab, dt);
@@ -117,11 +193,16 @@ const GAME = {
     if (st.power.sticky > 0) pw.push(`Липкая ${Math.ceil(st.power.sticky)} с`);
     lab.hud('lives', `Лёд: ${left} · жар ${Math.max(0, ...st.balls.map(b => b.heat))} из 5 · серия ×${st.combo}`);
     lab.hud('power', pw.length ? pw.join(' · ') : null);
+    lab.hud('time', c.limit > 0 ? `⏱ ${Math.max(0, Math.ceil(c.limit - lab.t))} с` : null, { color: '#ffffff', size: 16 });
+    lab.hud('march', c.descend > 0 && st.descT != null ? `Лёд опустится через ${Math.ceil(st.descT)} с` : null, { color: st.descT < 1.5 ? '#ff7a6b' : '#bff4ff', size: 15 });
+    if (c.limit > 0 && lab.t > c.limit && st.finT <= 0) lab.gameOver('Время вышло');
   },
 
   overNote(lab) {
     const st = lab.state, on = Object.keys(lab.cfg).filter(k => k.startsWith('j_') && lab.cfg[k] >= 1).length;
-    return [`Растоплено льда: ${st.broke} из ${st.bricks.length}, ударов ${st.hits}, лучшая серия ${st.bestCombo}`,
+    const v = this.variant(lab);
+    return [v.name !== 'Классика' ? `Вариация: ${v.name} — ${v.how}` : null,
+      `Растоплено льда: ${st.broke} из ${st.bricks.length}, ударов ${st.hits}, лучшая серия ${st.bestCombo}`,
       `Прорывов за лёд: ${st.throughs}, гостинцев поймано: ${st.caught}, жаровня спасла: ${st.saved}`,
       `Сочных эффектов на ударах сработало: ${st.juicy} (включено переключателей сочности: ${on} из 12)`,
       on ? 'Выключи сочность пресетом «Без спрятанной механики» — механика та же. Хочется вернуться?' : 'Сочность выключена: игра та же, но удары «немые». Включи «Как задумано» и сравни.'];
@@ -148,14 +229,28 @@ const GAME = {
     if (((lab.p1.pressed.a || (lab.players === 2 && lab.p2.pressed.a)) && lab.t >= 1.2) || b.hold <= 0) this.launch(lab, b, p); // первые 1,2 с лёд встаёт на место
   },
   launch(lab, b, p) {
-    const half = this.half(lab, p), a = lab.clamp(b.off / half, -1, 1) * lab.cfg.angle * Math.PI / 180;
-    b.stuck = -1; b.speed = b.serve ? lab.cfg.speed * 0.65 : Math.max(b.speed, lab.cfg.speed); // подача медленнее, как в Arkanoid
-    b.vx = Math.sin(a) * b.speed; b.vz = -Math.cos(a) * b.speed;
+    const st = lab.state, c = lab.cfg, half = this.half(lab, p), a = lab.clamp(b.off / half, -1, 1) * c.angle * Math.PI / 180;
+    b.stuck = -1; b.speed = b.serve ? c.speed * 0.65 : Math.max(b.speed, c.speed); // подача медленнее, как в Arkanoid
+    const sp = this.kick(lab, b.speed);
+    b.vx = Math.sin(a) * sp; b.vz = -Math.cos(a) * sp;
     b.sq = 0.4;
     lab.sfx.whoosh();
+    if (b.serve && c.multi > 1) { // мультибол: подача делится на несколько хычинов
+      for (let i = 1; i < Math.round(c.multi) && st.balls.length < 6; i++) {
+        const turn = (i % 2 ? 1 : -1) * 0.38 * Math.ceil(i / 2), n = this.newBall(lab, b), cs = Math.cos(turn), sn = Math.sin(turn);
+        n.vx = b.vx * cs - b.vz * sn; n.vz = Math.min(-sp * 0.3, b.vx * sn + b.vz * cs);
+      }
+      lab.ring([b.x, 0.3, b.z], { color: '#ff8ad8', radius: 1.6 }); lab.tone(660, 0.1, 'triangle', 0.06, 990);
+    }
+  },
+  // сила удара лопатой: с тяжестью хычин должен долетать до дальнего льда
+  kick(lab, speed) {
+    const g = lab.cfg.gravity;
+    return g > 0 ? Math.max(speed, Math.sqrt(2 * g * (this.PZ + this.TOP - 3))) : speed;
   },
   step(lab, b, dt) {
-    const st = lab.state, R = this.R, W = this.W;
+    const st = lab.state, R = this.R, W = this.W, c = lab.cfg;
+    if (c.gravity > 0) b.vz += c.gravity * dt; // тяжесть: хычин падает дугой к лопате, как шарик Peggle
     b.x += b.vx * dt; b.z += b.vz * dt;
     // стены пещеры
     if (b.x < -W + R) { b.x = -W + R; b.vx = Math.abs(b.vx); this.wallHit(lab, b, -W, b.z); }
@@ -174,6 +269,7 @@ const GAME = {
       if (k.hp <= 0) continue;
       const dx = b.x - k.x, dz = b.z - k.z, ox = k.w / 2 + R - Math.abs(dx), oz = k.d / 2 + R - Math.abs(dz);
       if (ox <= 0 || oz <= 0) continue;
+      if (c.pierce > 0) { k.hp = 1; st.pierced++; lab.count('насквозь'); this.hitBrick(lab, k, b); continue; } // огненный хычин: насквозь, без отскока
       const sx = dx >= 0 ? 1 : -1, sz = dz >= 0 ? 1 : -1;
       if (ox < oz) { b.vx = sx * Math.abs(b.vx); b.x += sx * ox; } else { b.vz = sz * Math.abs(b.vz); b.z += sz * oz; }
       this.hitBrick(lab, k, b);
@@ -186,8 +282,8 @@ const GAME = {
   paddleHit(lab, b, p, half) {
     if (b.serve) { b.serve = false; b.speed = Math.max(b.speed, lab.cfg.speed); }
     b.heat = Math.min(5, b.heat + 1); // жар: каждое отбивание нагревает хычин, лёд тает дороже
-    const st = lab.state, off = lab.clamp((b.x - p.x) / half, -1, 1), a = off * lab.cfg.angle * Math.PI / 180;
-    b.vx = Math.sin(a) * b.speed; b.vz = -Math.cos(a) * b.speed; b.z = this.PZ - 0.32 - this.R;
+    const st = lab.state, off = lab.clamp((b.x - p.x) / half, -1, 1), a = off * lab.cfg.angle * Math.PI / 180, sp = this.kick(lab, b.speed);
+    b.vx = Math.sin(a) * sp; b.vz = -Math.cos(a) * sp; b.z = this.PZ - 0.32 - this.R;
     b.through = false; b.sq = 0.45;
     if (b.trail) b.trail.color.set('#ff8a3d').multiplyScalar(1.8);
     st.combo = 0; // серия — пока хычин в полёте, как выстрел в Peggle
@@ -210,11 +306,17 @@ const GAME = {
     if (b.trail) b.trail.color.set('#8fe8ff').multiplyScalar(2);
     if (lab.cfg.through > 1) lab.popup([b.x, 1.4, b.z + 1], `Прорыв! Очки ×${lab.cfg.through}`, '#8fe8ff', 24);
     lab.tone(400, 0.25, 'sawtooth', 0.05, 1200); lab.flash('#8fe8ff', 0.12);
+    if (lab.cfg.shrink > 0 && !st.shrunk) { // как в Breakout 1976: прорыв к дальней стене — лопата вдвое короче
+      st.shrunk = true; lab.count('лопата короче');
+      const p = st.paddles[0];
+      lab.after(0.3, () => { lab.popup([p.x, 1.6, this.PZ - 0.5], 'Лопата вдвое короче!', '#ff9a8a', 24); lab.tone(300, 0.3, 'sawtooth', 0.06, 120); lab.shake(0.25); });
+    }
   },
   hitBrick(lab, k, b) {
     const st = lab.state, c = lab.cfg;
-    st.combo++; st.bestCombo = Math.max(st.bestCombo, st.combo); b.sq = 0.5; b.squint = 0.25;
-    k.hp--;
+    st.combo++; b.sq = 0.5; b.squint = 0.25;
+    if (st.combo > st.bestCombo) { st.bestCombo = st.combo; lab.stat('серия', st.bestCombo); }
+    k.hp--; k.seen = 1.4; st.reveal = Math.max(st.reveal, 0.22); // невидимый лёд: удар на миг показывает стену
     // звук выше с каждым ударом подряд: lab.pitch(n) — множитель частоты (переключатель j_pitch)
     lab.tone(520 * lab.pitch(st.combo), 0.16, 'triangle', 0.14); lab.tone(1040 * lab.pitch(st.combo), 0.1, 'sine', 0.06, 0, 0.03);
     if (b.through) lab.tone(1560 * lab.pitch(st.combo), 0.12, 'sine', 0.05, 0, 0.06);
@@ -238,7 +340,7 @@ const GAME = {
     const mult = b.through ? Math.max(1, Math.round(c.through)) : 1;
     lab.addScore((20 + 15 * b.heat + 10 * Math.min(st.combo, 20)) * mult, [k.x, 1, k.z], mult > 1 ? '#8fe8ff' : '#ffffff');
     b.speed = Math.min(c.maxSpeed, b.speed + c.speedup);
-    const sp = Math.hypot(b.vx, b.vz) || 1; b.vx *= b.speed / sp; b.vz *= b.speed / sp;
+    if (!(c.gravity > 0)) { const sp = Math.hypot(b.vx, b.vz) || 1; b.vx *= b.speed / sp; b.vz *= b.speed / sp; } // с тяжестью скорость задаёт падение
     if (k.gift) this.dropGift(lab, k);
     if (st.bricks.every(x => x.hp <= 0)) this.finaleStart(lab, k);
   },
@@ -253,7 +355,7 @@ const GAME = {
     if (st.balls.length) return;
     const x = lab.clamp(st.lastX || 0, -this.W, this.W);
     lab.hurt([x, 0.5, this.PZ + 1.2], 'Хычины кончились');
-    st.combo = 0; st.power.wide = 0; st.power.sticky = 0; // как в Arkanoid: гостинцы сгорают вместе с мячом
+    st.combo = 0; st.power.wide = 0; st.power.sticky = 0; st.shrunk = false; // как в Arkanoid: гостинцы сгорают вместе с мячом
     lab.vibrate(300, 0.8);
     this.newBall(lab);
   },
@@ -369,10 +471,10 @@ const GAME = {
   },
 
   /* ---------- лопаты ---------- */
-  half(lab, p) { return lab.cfg.paddle * p.k * p.wk / 2; },
+  half(lab, p) { return lab.cfg.paddle * p.k * p.wk / 2; }, // wk плавно идёт к ×1,5 (гостинец «Шире!») или ×0,5 (короткая лопата)
   movePaddle(lab, p, dt) {
     const st = lab.state;
-    p.wk = lab.damp(p.wk, st.power.wide > 0 ? 1.5 : 1, 10, dt);
+    p.wk = lab.damp(p.wk, (st.power.wide > 0 ? 1.5 : 1) * (st.shrunk ? 0.5 : 1), 10, dt);
     const half = this.half(lab, p), x0 = p.x;
     p.x = lab.clamp(p.x + p.input.x * lab.cfg.move * dt, -this.W + half, this.W - half);
     p.vx = (p.x - x0) / Math.max(dt, 1e-4);
@@ -382,6 +484,7 @@ const GAME = {
     p.node.rotation.z = juicy ? -p.lean * 0.12 : 0;
     p.blade.scale.x = half * 2; p.rim.scale.x = half * 2 * 0.96;
     for (const s of [-1, 1]) p.ends[s > 0 ? 1 : 0].position.x = s * (half + 0.05);
+    if (p.guns) p.guns.forEach((g, i) => { g.position.x = (i ? 1 : -1) * half * 0.8; });
   },
   draw(lab, p) { p.node.position.x = p.x; },
   keepApart(lab) { // вдвоём лопаты не заходят друг на друга
@@ -397,13 +500,14 @@ const GAME = {
 
   /* ---------- лёд ---------- */
   wall(lab) {
-    const st = lab.state, c = lab.cfg, T = lab.THREE, cols = 10, w = 1.5, d = 0.78, rows = Math.round(c.rows), list = [];
+    const st = lab.state, c = lab.cfg, T = lab.THREE, cols = c.slide > 0 ? 8 : 10, w = 1.5, d = 0.78, rows = Math.round(c.rows), list = []; // карусели нужен простор по бокам
     const RB = lab.addons.RoundedBoxGeometry;
     for (let r = 0; r < rows; r++) for (let i = 0; i < cols; i++) {
       const tough = r < c.tough, gift = lab.chance(c.gifts) ? lab.pick(['wide', 'wide', 'sticky', 'sticky', 'multi', 'multi', 'slow', 'life']) : null;
-      list.push({ i: list.length, x: (i - (cols - 1) / 2) * (w + 0.08), z: -this.TOP + 1.7 + r * (d + 0.14), w, d, row: r, hp: tough ? 2 : 1, tough,
+      const x = (i - (cols - 1) / 2) * (w + 0.08), z = -this.TOP + 1.7 + r * (d + 0.14);
+      list.push({ i: list.length, x, z, x0: x, z0: z, seen: 0, w, d, row: r, hp: tough ? 2 : 1, tough,
         color: tough ? '#3f7fd9' : this.ROWS[r % this.ROWS.length], gift, pop: 0, wob: 0, white: 0,
-        y: lab.juicy('squash') ? 7 : 0, delay: 0.15 + (rows - 1 - r) * 0.08 + Math.abs(i - 4.5) * 0.03 }); // лёд падает на место рядами
+        y: lab.juicy('squash') ? 7 : 0, delay: 0.15 + (rows - 1 - r) * 0.08 + Math.abs(i - (cols - 1) / 2) * 0.03 }); // лёд падает на место рядами
     }
     st.bricks = list;
     st.ice = lab.instances(new RB(w - 0.12, 0.9, d - 0.12, 2, 0.14), lab.mat('#ffffff', { shiny: true }), list.length);
@@ -415,6 +519,79 @@ const GAME = {
       lab.place(st.gems, k.i, [0, -50, 0], { scale: 0.001, color: k.gift ? this.GIFTS[k.gift].color : '#ffffff' });
     }
   },
+  // карусель и наступление: лёд двигается, удары считаются там, где он сейчас
+  moveBricks(lab, dt) {
+    const st = lab.state, c = lab.cfg;
+    if (c.descend > 0 && st.finT <= 0) {
+      if (st.descT == null || st.descT > c.descend) st.descT = c.descend;
+      if (st.balls.some(b => b.stuck < 0)) st.descT -= dt; // пока хычин лежит на лопате, лёд ждёт
+      if (st.descT <= 0) {
+        st.descT = c.descend; st.dropZ += 0.92; st.drops++; lab.count('наступление');
+        const front = Math.max(...st.bricks.filter(k => k.hp > 0).map(k => k.z), -this.TOP);
+        lab.shake(0.3); lab.vibrate(120, 0.4); lab.tone(110, 0.35, 'sawtooth', 0.08, 70); lab.noise(0.25, 0.1, 400);
+        lab.popup([0, 1.6, front + 1.6], 'Лёд ползёт!', '#bff4ff', 22);
+      }
+    } else st.descT = null;
+    st.dropNow = lab.damp(st.dropNow, st.dropZ, 5, dt);
+    let front = -99;
+    for (const k of st.bricks) {
+      if (k.hp <= 0) continue;
+      k.x = c.slide > 0 ? k.x0 + Math.sin(lab.t * c.slide * 0.45 + (k.row % 2) * Math.PI) * 1.7 : k.x0; // соседние ряды едут навстречу
+      k.z = k.z0 + st.dropNow;
+      front = Math.max(front, k.z + k.d / 2);
+    }
+    if (front > this.PZ - 1.4 && st.finT <= 0 && !st.crushed) { st.crushed = true; lab.shake(1); lab.gameOver('Лёд дошёл до лопаты'); }
+  },
+  // лазер (капсула L в Arkanoid): пробел, пока хычин в полёте, — два выстрела с краёв лопаты
+  tickLaser(lab, dt) {
+    const st = lab.state, c = lab.cfg;
+    st.laserT -= dt;
+    if (c.laser > 0 && st.boltMesh && st.finT <= 0 && st.laserT <= 0 && !st.balls.some(b => b.stuck >= 0)) {
+      for (const p of st.paddles) {
+        if (!p.input.pressed.a) continue;
+        const half = this.half(lab, p);
+        for (const s of [-1, 1]) {
+          const m = st.boltMesh.find(q => !q.visible);
+          if (!m) break;
+          m.visible = true; st.bolts.push({ m, x: p.x + s * half * 0.8, z: this.PZ - 0.7 });
+        }
+        st.laserT = 0.3; st.lasers++; lab.count('лазер');
+        lab.tone(1250, 0.07, 'square', 0.04, 520); p.lean = lab.rand(-0.2, 0.2);
+        if (lab.juicy('flash')) lab.whiten(p.blade, 0.05, '#ff5a4d');
+      }
+    }
+    if (!st.fake) st.fake = { vx: 0, vz: -10, speed: 0, heat: 0, through: false, sq: 0, squint: 0 }; // «хычин» для удара лазером
+    st.bolts = st.bolts.filter(q => {
+      q.z -= 26 * dt;
+      q.m.position.set(q.x, this.BY + 0.2, q.z);
+      const k = st.finT <= 0 && st.bricks.find(n => n.hp > 0 && Math.abs(q.x - n.x) < n.w / 2 + 0.07 && Math.abs(q.z - n.z) < n.d / 2 + 0.4);
+      if (k) { this.hitBrick(lab, k, st.fake); lab.ring([q.x, 0.4, q.z + 0.4], { color: '#ff5a4d', radius: 0.7, life: 0.2 }); }
+      if (k || q.z < -this.TOP) { q.m.visible = false; return false; }
+      return true;
+    });
+  },
+  // магнит (притяжение в Shatter): держишь пробел — хычины в полёте тянутся к лопате по горизонтали, скорость та же
+  tickMagnet(lab, dt) {
+    const st = lab.state, c = lab.cfg, held = c.magnet > 0 && st.finT <= 0 && (lab.p1.a || (lab.players === 2 && lab.p2.a));
+    const fly = held ? st.balls.filter(b => b.stuck < 0) : [];
+    if (fly.length && !st.pulling) { st.pulls++; lab.count('магнит'); lab.tone(180, 0.2, 'sine', 0.05, 360); }
+    st.pulling = fly.length > 0;
+    for (const b of fly) {
+      const p = st.paddles.reduce((a, q) => (Math.abs(q.x - b.x) < Math.abs(a.x - b.x) ? q : a));
+      b.vx += lab.clamp(p.x - b.x, -2.5, 2.5) * 5 * dt;
+      if (c.gravity > 0) continue;
+      const sp = b.speed, k = sp / (Math.hypot(b.vx, b.vz) || 1), vz = Math.sign(b.vz || -1) * Math.max(Math.abs(b.vz * k), sp * 0.3); // скорость та же, вдоль стены не летает
+      b.vz = vz; b.vx = Math.sign(b.vx || 1) * Math.sqrt(Math.max(0, sp * sp - vz * vz));
+    }
+    if (!st.beam) return;
+    const b = fly.sort((a, q) => q.z - a.z)[0];
+    st.beam.visible = !!b;
+    if (!b) return;
+    const p = st.paddles.reduce((a, q) => (Math.abs(q.x - b.x) < Math.abs(a.x - b.x) ? q : a)), z0 = this.PZ - 0.4, dx = b.x - p.x, dz = b.z - z0;
+    st.beam.position.set(p.x + dx / 2, this.BY + 0.1, z0 + dz / 2);
+    st.beam.rotation.y = Math.atan2(dx, dz);
+    st.beam.scale.set(lab.juicy('glow') ? 1 + Math.sin(lab.t * 40) * 0.4 : 1, 1, Math.hypot(dx, dz));
+  },
   crackGeo(lab, w) { // трещина многолетнего льда: ломаная из тонких брусков
     const T = lab.THREE, parts = [];
     [[-0.42, 0.05, 0.5], [-0.12, -0.08, -0.6], [0.2, 0.06, 0.7], [0.45, -0.05, -0.4]].forEach(([x, z, r]) => {
@@ -423,7 +600,8 @@ const GAME = {
     return lab.addons.BufferGeometryUtils.mergeGeometries(parts);
   },
   tickBricks(lab, dt) {
-    const st = lab.state, juicy = lab.juicy('squash'), C = lab.THREE.Color, col = st.tmpC || (st.tmpC = new C());
+    const st = lab.state, juicy = lab.juicy('squash'), C = lab.THREE.Color, col = st.tmpC || (st.tmpC = new C()), hide = lab.cfg.hidden > 0;
+    st.reveal = Math.max(0, st.reveal - dt);
     for (const k of st.bricks) {
       if (k.hp <= 0) {
         if (!k.gone) { k.gone = true; lab.place(st.ice, k.i, [0, -50, 0], { scale: 0.001 }); lab.place(st.cracks, k.i, [0, -50, 0], { scale: 0.001 }); lab.place(st.gems, k.i, [0, -50, 0], { scale: 0.001 }); }
@@ -433,7 +611,11 @@ const GAME = {
         if (!juicy) k.y = 0;
         else { k.delay -= dt; if (k.delay <= 0) { k.ft = (k.ft || 0) + dt; const q = Math.min(1, k.ft / 0.45); k.y = q >= 1 ? 0 : 7 * (1 - lab.ease.outBounce(q)); if (q >= 1) k.pop = 0.6; } }
       }
-      k.pop = Math.max(0, k.pop - dt * 6); k.wob = Math.max(0, k.wob - dt * 3); k.white = Math.max(0, k.white - dt);
+      k.pop = Math.max(0, k.pop - dt * 6); k.wob = Math.max(0, k.wob - dt * 3); k.white = Math.max(0, k.white - dt); k.seen = Math.max(0, k.seen - dt);
+      if (hide && k.seen <= 0 && st.reveal <= 0) { // невидимый лёд: прячется, пока его не ударили
+        lab.place(st.ice, k.i, [0, -50, 0], { scale: 0.001 }); lab.place(st.cracks, k.i, [0, -50, 0], { scale: 0.001 }); lab.place(st.gems, k.i, [0, -50, 0], { scale: 0.001 });
+        continue;
+      }
       const s = juicy ? k.pop * 0.22 : 0, rot = juicy ? Math.sin(lab.t * 40 + k.i) * k.wob * 0.12 : 0;
       col.set(k.tough && k.hp === 1 ? '#86b6ff' : k.color);
       if (k.white > 0) col.set('#ffffff').multiplyScalar(1.5);
@@ -532,7 +714,7 @@ const GAME = {
     const st = lab.state, v = lab.view, z = st.zoom;
     if (!v) return;
     if (!st.cam) st.cam = { d: v.distance, x: v.target.x, z: v.target.z };
-    if (!z) return;
+    if (!z) { v.target.x = lab.damp(v.target.x, st.cam.x + lab.clamp(st.lastX || 0, -this.W, this.W) * 0.05, 2, dt); return; } // камера чуть следит за хычином
     const k = z.out ? 0 : 1;
     v.target.x = lab.damp(v.target.x, lab.lerp(st.cam.x, z.x, 0.45 * k), 5, dt);
     v.target.z = lab.damp(v.target.z, lab.lerp(st.cam.z, z.z, 0.45 * k), 5, dt);
