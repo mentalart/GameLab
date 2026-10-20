@@ -12,6 +12,9 @@
 // Разбор лучших игр жанра («Тетрис» 1984 и Game Boy, правила Tetris Guideline, Tetris Effect, Tetris 99 и TETR.IO,
 // Tetris: The Grand Master, Puyo Puyo Tetris) — в docs/01_Журнал_курса.md, раздел урока 4.
 // Спрятанная механика донора — честный проигрыш: «мешок» из семи камней и предпросмотр (ручки bag и preview, пресет «Без спрятанной механики»).
+// Вариации жанра из настоящих игр — пресеты меню Tab (урок 4, чекпоинт 2 «Один глагол — много игр», 20.10.2026): спринт и блиц (TETR.IO,
+// Tetris Effect), копатель и подъём мусора (TETR.IO), пентамино (Pentix), бомбы (Tetris Blast), лавина (Cascade в Tetris Worlds),
+// цвет к цвету (Puyo Puyo, Columns), туман и 20G (Tetris: The Grand Master). Глагол везде тот же; имя вариации и её правило — строкой HUD.
 // Вид сбоку: плоскость XY, X вправо, Y вверх; лицо камней смотрит на камеру (+Z), плита стакана позади (−Z).
 const GAME = {
   engine: 'three',
@@ -31,6 +34,7 @@ const GAME = {
   sky: ['#3f8fd8', '#bfe3f5'],
   fog: 0.005,
   accent: '#ffd23f',
+  scoreColor: '#ffd23f', // счёт золотом, как вспышка «Четыре разом»
   lives: 0,
   decisions: [
     'Чувство: «ещё один камень» — каждое движение звучит нотой, четыре линии разом взрываются золотом',
@@ -59,13 +63,48 @@ const GAME = {
     rows: { value: 20, min: 12, max: 24, step: 1, label: 'Высота стакана', restart: true },
     vs: { value: 0, min: 0, max: 1, step: 1, label: 'Вдвоём: два стакана', restart: true },
     garbage: { value: 1, min: 0, max: 2, step: 0.5, label: 'Вдвоём: мусор соседу за линии' },
+    // вариации жанра: 0 — как в классике
+    sprint: { value: 0, min: 0, max: 60, step: 5, label: 'Вариация «Цель»: спринт — собрать … линий на время', hint: 'как 40 линий в TETR.IO и Tetris Effect; 0 — играть, пока стакан не переполнится', restart: true },
+    blitz: { value: 0, min: 0, max: 300, step: 15, label: 'Вариация «Давление»: блиц — очки за … секунд', hint: 'как Blitz в Tetris Friends и Ultra в Tetris Effect; 0 — без часов', restart: true },
+    rise: { value: 0, min: 0, max: 20, step: 1, label: 'Вариация «Давление»: ряд мусора снизу раз в … с', hint: 'как Survival в TETR.IO; красный ряд под стаканом мигает перед подъёмом; 0 — выключено' },
+    dig: { value: 0, min: 0, max: 12, step: 1, label: 'Вариация «Стакан»: рядов мусора в начале', hint: 'как Dig в TETR.IO и Tetris Effect: раскопай мусор до дна — победа', restart: true },
+    fog: { value: 0, min: 0, max: 10, step: 1, label: 'Вариация «Стакан»: легший камень прячется в тумане через … с', hint: 'как невидимый финал Tetris: The Grand Master; линия на миг показывает всё; 0 — без тумана' },
+    penta: { value: 0, min: 0, max: 1, step: 1, label: 'Вариация «Фигуры»: пентамино из пяти камней', hint: 'как Pentix: к семи фигурам добавляются шесть фигур из пяти камней', restart: true },
+    bombs: { value: 0, min: 0, max: 10, step: 1, label: 'Вариация «Фигуры»: бомба в каждом …-м камне', hint: 'как Tetris Blast: линия через бомбу взрывает всё вокруг, камни осыпаются; 0 — без бомб', restart: true },
+    g20: { value: 0, min: 0, max: 1, step: 1, label: 'Вариация «Ход»: 20G — камень сразу на дне', hint: 'как 20G в Tetris: The Grand Master: камень не падает, а скользит по дну' },
+    cascade: { value: 0, min: 0, max: 1, step: 1, label: 'Вариация «Результат»: лавина — камни осыпаются в дыры', hint: 'как Cascade в Tetris Worlds: после линии каждый камень падает сам, линии собираются цепочкой' },
+    colors: { value: 0, min: 0, max: 1, step: 1, label: 'Вариация «Результат»: четыре одного цвета лопаются', hint: 'как Puyo Puyo и Columns: камни двух цветов, лопаются группы от четырёх, потом лавина', restart: true },
   },
   presets: {
     'Новичок': { fall: 1.1, speedup: 0.9, perLevel: 12, levelTime: 60, preview: 5, lock: 0.9 },
     'Без спрятанной механики': { bag: 0, preview: 0 },
     'Безумие': { fall: 0.25, speedup: 0.75, perLevel: 5, levelTime: 15, lock: 0.25 },
     'Вдвоём': { vs: 1 },
+    // вариации из настоящих игр: те же значения — в сценарии урока 4 (VARIATIONS), держать вместе
+    'Спринт: 20 линий': { sprint: 20 },
+    'Блиц: 2 минуты': { blitz: 120, levelTime: 20 },
+    'Подъём': { rise: 6, levelTime: 0 },
+    'Копатель': { dig: 8, levelTime: 0 },
+    'Туман': { fog: 3 },
+    'Пентамино': { penta: 1 },
+    'Бомбы': { bombs: 4 },
+    '20G': { g20: 1, lock: 0.7, levelTime: 0 },
+    'Лавина': { cascade: 1 },
+    'Цвет к цвету': { colors: 1 },
   },
+  // имя вариации и её правило для строки HUD и экрана конца партии
+  VARIANTS: [
+    { key: 'sprint', name: 'Спринт', like: '40 линий в TETR.IO и Tetris Effect', how: c => `собери ${Math.round(c.sprint)} линий как можно быстрее` },
+    { key: 'blitz', name: 'Блиц', like: 'Blitz в Tetris Friends', how: c => `набери очки за ${Math.round(c.blitz)} с` },
+    { key: 'rise', name: 'Подъём', like: 'Survival в TETR.IO', how: c => `снизу лезет ряд мусора каждые ${c.rise} с` },
+    { key: 'dig', name: 'Копатель', like: 'Dig в TETR.IO и Tetris Effect', how: () => 'раскопай мусор до дна' },
+    { key: 'fog', name: 'Туман', like: 'невидимый финал Tetris: The Grand Master', how: c => `легший камень прячется через ${c.fog} с, линия показывает всё` },
+    { key: 'penta', name: 'Пентамино', like: 'Pentix', how: () => 'бывают фигуры из пяти камней' },
+    { key: 'bombs', name: 'Бомбы', like: 'Tetris Blast', how: () => 'линия через бомбу взрывает всё вокруг' },
+    { key: 'g20', name: '20G', like: 'Tetris: The Grand Master', how: () => 'камень сразу на дне — веди его по дну' },
+    { key: 'cascade', name: 'Лавина', like: 'Cascade в Tetris Worlds', how: () => 'после линии камни осыпаются в дыры' },
+    { key: 'colors', name: 'Цвет к цвету', like: 'Puyo Puyo и Columns', how: () => 'четыре камня одного цвета рядом лопаются' },
+  ],
 
   // n — рамка поворота, c — клетки [x, y], y вверх
   KINDS: {
@@ -78,9 +117,22 @@ const GAME = {
     L: { n: 3, c: [[0, 1], [1, 1], [2, 1], [2, 2]], color: '#ff5fa2' },
   },
   ORDER: 'IOTSZJL',
+  // пентамино (вариация «Пентамино», как в Pentix): строчные буквы, чтобы не путать с тетрамино и мусором X
+  PENTA: {
+    i: { n: 5, c: [[0, 2], [1, 2], [2, 2], [3, 2], [4, 2]], color: '#ffe08a' },
+    p: { n: 3, c: [[0, 0], [1, 0], [0, 1], [1, 1], [0, 2]], color: '#ff9a5c' },
+    u: { n: 3, c: [[0, 0], [1, 0], [2, 0], [0, 1], [2, 1]], color: '#5fd8ff' },
+    x: { n: 3, c: [[1, 0], [0, 1], [1, 1], [2, 1], [1, 2]], color: '#ff4d6d' },
+    v: { n: 3, c: [[0, 0], [1, 0], [2, 0], [0, 1], [0, 2]], color: '#c6f06a' },
+    t: { n: 3, c: [[1, 0], [1, 1], [0, 2], [1, 2], [2, 2]], color: '#a58bff' },
+  },
+  PENTA_ORDER: 'ipuxvt',
+  COLOR_KINDS: ['O', 'T', 'Z', 'L'], // «Цвет к цвету»: четыре цвета, у каждого своя руна
   GARBAGE_COLOR: '#6d6f8c',
+  FOG_COLOR: '#2c3d66',
   // руна на лице камня: поворот и размер [rz, sx, sy] — у каждого вида свой знак
-  RUNE: { I: [0, 0.45, 1.5], O: [Math.PI / 4, 1.2, 1.2], T: [0, 1.5, 0.45], S: [0.6, 0.5, 1.4], Z: [-0.6, 0.5, 1.4], J: [Math.PI / 4, 0.5, 1.5], L: [-Math.PI / 4, 0.5, 1.5], X: [0, 0.7, 0.7] },
+  RUNE: { I: [0, 0.45, 1.5], O: [Math.PI / 4, 1.2, 1.2], T: [0, 1.5, 0.45], S: [0.6, 0.5, 1.4], Z: [-0.6, 0.5, 1.4], J: [Math.PI / 4, 0.5, 1.5], L: [-Math.PI / 4, 0.5, 1.5], X: [0, 0.7, 0.7],
+    i: [Math.PI / 2, 0.4, 1.6], p: [0.3, 1, 0.6], u: [0, 1.4, 0.4], x: [Math.PI / 4, 1.4, 0.35], v: [-0.3, 1, 0.6], t: [Math.PI / 2, 1.3, 0.45] },
   BASE: 0.8, // высота дна стакана
   LINE_PTS: [0, 100, 300, 500, 800],
   GARBAGE: [0, 0, 1, 2, 4],
@@ -105,40 +157,137 @@ const GAME = {
     this.field = { w: duo ? 2 * W + 19.5 : W + 13.5, h: this.BASE + H + 2.6 };
     lab.setCamera('side', { tilt: 1.42 });
     this.tmp = { M: new T.Matrix4(), P: new T.Vector3(), Q: new T.Quaternion(), E: new T.Euler(), S: new T.Vector3(), C: new T.Color(), C2: new T.Color(), white: new T.Color('#ffffff'), grey: new T.Color('#4d4f63'), hot: new T.Color('#fff1c9') };
+    this.K = Object.assign({}, this.KINDS, this.PENTA);
     this.col = { X: new T.Color(this.GARBAGE_COLOR) };
-    for (const k of this.ORDER) this.col[k] = new T.Color(this.KINDS[k].color);
+    for (const k in this.K) this.col[k] = new T.Color(this.K[k].color);
+    this.fogCol = new T.Color(this.FOG_COLOR);
     this.skyPal = this.SKY.map(([a, b, s, i, n]) => ({ top: new T.Color(a), bot: new T.Color(b), sun: new T.Color(s), power: i, stars: n }));
-    Object.assign(st, { seq: [], bag: [], pieces: 0, rots: 0, tetris: 0, pcs: 0, bestCombo: 0, beat: 0, skyK: -1, ended: false, watch: 0 });
+    Object.assign(st, { seq: [], pal: [], bag: [], pieces: 0, rots: 0, tetris: 0, pcs: 0, bestCombo: 0, beat: 0, skyK: -1, ended: false, watch: 0,
+      chains: 0, booms: 0, popped: 0, banner: false, tick: 0 });
     this.makeSky(lab, scene);
     this.scenery(lab, scene);
     this.makeStones(lab, duo ? 2 : 1);
     st.wells = (duo ? [-1, 1] : [0]).map((side, i) => this.buildWell(lab, side, i));
     this.buildMarmot(lab, duo ? 0 : -(W / 2 + 3.4), duo);
     lab.hero(st.wells[0].panel);
+    st.wells.forEach(w => this.digIn(lab, w));
     st.wells.forEach(w => this.spawn(lab, w));
+    const v = lab.view; // живая камера: база — расстояние, которое подобрала оболочка
+    st.cam = { d: v.distance, k: 1, punch: 0, last: v.distance, ty: v.target.y };
+    if (!lab.playing) this.poster(lab);
     this.tickWorld(lab, 0);
     this.render(lab);
   },
+  // афиша в меню: стакан в разгаре партии, колодец справа ждёт палку, камера ближе. Первый кадр партии всё возвращает
+  poster(lab) {
+    const st = lab.state, w = st.wells[0], W = st.W, ks = this.ORDER.split('');
+    st.posterSave = { grid: w.grid, piece: w.piece, pd: w.pd, px: w.px, py: w.py };
+    w.grid = w.grid.map(r => r.slice());
+    for (let x = 0; x < W - 1; x++) {
+      const h = 4 + ((x * 5) % 3) - (x === 4 ? 1 : 0);
+      for (let y = 0; y < h; y++) if (!w.grid[y][x]) w.grid[y][x] = { k: ks[Math.floor((x + 3 * y) / 3) % 7], y, f: 0, s: 1, v: 0, seen: 1e9 };
+    }
+    const I = { k: 'I', n: 4, cells: [[2, 3], [2, 2], [2, 1], [2, 0]] }; // палка стоит над колодцем: сейчас будет «Четыре разом»
+    w.piece = I; w.px = W - 3; w.py = 7;
+    w.pd = I.cells.map(([cx, cy]) => [w.px + cx, w.py + cy]);
+    const C = st.cam;
+    C.k = 0.88; lab.view.distance = C.d * C.k; C.last = lab.view.distance; lab.view.target.y = C.ty - 1.5;
+  },
+  unposter(lab) {
+    const st = lab.state, w = st.wells[0], s = st.posterSave;
+    if (!s) return;
+    Object.assign(w, { grid: s.grid, piece: s.piece, pd: s.pd, px: s.px, py: s.py });
+    st.posterSave = null;
+  },
+  // копатель: ряды мусора с дырой, у соседних рядов дыры в разных местах (как «сыр» в TETR.IO)
+  digIn(lab, w) {
+    const st = lab.state, n = Math.min(Math.round(lab.cfg.dig), st.H - 7);
+    let prev = -1;
+    for (let r = 0; r < n; r++) {
+      let gap; do gap = lab.randInt(0, st.W - 1); while (gap === prev);
+      prev = gap;
+      w.grid[r] = w.grid[r].map((_, x) => (x === gap ? null : { k: 'X', y: r, f: 0, s: 1, v: 0, dig: true, seen: 0 }));
+    }
+    w.digTotal = n * (st.W - 1); w.digLeft = w.digTotal;
+  },
+  // имя вариации: все включённые ручки вариаций; «Цвет к цвету» и так с лавиной
+  variant(lab) {
+    const cfg = lab.cfg, on = this.VARIANTS.filter(v => cfg[v.key] > 0 && !(v.key === 'cascade' && cfg.colors >= 1));
+    if (!on.length) return { name: 'Классика', like: '«Тетрис»', how: 'собирай линии, пока стакан не переполнится' };
+    return { name: on.map(v => v.name).join(' + '), like: on.map(v => v.like).join(', '), how: on.map(v => v.how(cfg)).join('; ') };
+  },
 
   update(lab, dt) {
-    const st = lab.state, W = st.wells, dying = W.some(w => w.dead);
-    W.forEach((w, i) => { if (w.dead) this.dying(lab, w, dt); else if (!dying) this.tickWell(lab, w, i ? lab.p2 : lab.p1, dt); });
+    const st = lab.state, W = st.wells, dying = W.some(w => w.dead), cfg = lab.cfg;
+    this.unposter(lab);
+    if (!st.banner) { // имя вариации и её правило крупно в начале партии
+      st.banner = true;
+      const v = this.variant(lab), at = lab.v3(W.length > 1 ? 0 : W[0].ox, this.wy(st.H * 0.62), 1.4);
+      lab.popup(at, v.name, '#ffe680', 34);
+      lab.after(0.35, () => lab.popup(lab.v3(at.x, at.y - 1.8, 1.4), v.how, '#ffffff', 18));
+    }
+    W.forEach((w, i) => { if (w.dead) this.dying(lab, w, dt); else if (!dying && !st.finished) this.tickWell(lab, w, i ? lab.p2 : lab.p1, dt); });
     W.forEach(w => this.settle(lab, w, dt));
+    if (W.length === 1 && !st.ended) this.goals(lab, W[0], dt);
     this.tickWorld(lab, dt);
+    this.liveCamera(lab, dt);
     this.render(lab);
-    const cyc = this.cycle(W[0]), combo = Math.max(...W.map(w => w.combo));
-    if (W.length > 1) lab.hud('duo', `Линий: игрок 1 — ${W[0].lines}, игрок 2 — ${W[1].lines}`);
-    else lab.hud('lvl', `Уровень ${W[0].level} · линий ${W[0].lines}`);
-    lab.hud('cycle', cyc ? `Цикл: камень за ${cyc.toFixed(1)} с` : null);
-    lab.hud('combo', combo > 0 ? `Серия ×${combo + 1}` : null);
-    lab.hud('danger', W.some(w => w.danger && !w.dead) ? '⚠ Стакан почти полон!' : null);
+    const cyc = this.cycle(W[0]), combo = Math.max(...W.map(w => w.combo)), v = this.variant(lab);
+    lab.hud('rule', `${v.name}: ${v.how}`, { color: '#ffe680', size: 14 });
+    if (W.length > 1) lab.hud('duo', `Линий: игрок 1 — ${W[0].lines}, игрок 2 — ${W[1].lines}`, { color: '#ffffff', size: 15 });
+    else lab.hud('lvl', `Уровень ${W[0].level} · линий ${W[0].lines}`, { color: '#7cf5a8', size: 15 });
+    const w0 = W[0], sp = Math.round(cfg.sprint);
+    lab.hud('goal', W.length > 1 ? null
+      : sp > 0 ? `🏁 Линий ${Math.min(sp, w0.lines)} из ${sp} · ${lab.t.toFixed(1)} с`
+      : cfg.blitz > 0 ? `⏱ Осталось ${Math.max(0, Math.ceil(cfg.blitz - lab.t))} с`
+      : w0.digTotal ? `⛏ Мусора осталось: ${w0.digLeft} камней` : null,
+      { color: cfg.blitz > 0 && !sp && cfg.blitz - lab.t <= 10 ? '#ff5d6c' : '#ffd23f', size: 18 });
+    lab.hud('rise', cfg.rise > 0 && !w0.dead ? `⬆ Ряд мусора снизу через ${Math.max(0, Math.ceil(cfg.rise - (w0.riseT || 0)))} с` : null, { color: '#ff9a8a', size: 14 });
+    lab.hud('cycle', cyc ? `Цикл: камень за ${cyc.toFixed(1)} с` : null, { color: '#c8ecff' });
+    lab.hud('combo', combo > 0 ? `Серия ×${combo + 1}` : null, { color: '#7cf5ff', size: 16 + Math.min(8, combo * 2) });
+    lab.hud('danger', W.some(w => w.danger && !w.dead) ? '⚠ Стакан почти полон!' : null, { color: '#ff5d6c', size: 20 });
+  },
+  // цели вариаций в одиночной игре: спринт, блиц, копатель
+  goals(lab, w, dt) {
+    const st = lab.state, cfg = lab.cfg, sp = Math.round(cfg.sprint);
+    w.digLeft = w.digTotal ? w.grid.reduce((a, r) => a + r.filter(c => c && c.dig).length, 0) : 0;
+    if (w.dead || st.finished) return;
+    if (sp > 0 && w.lines >= sp) return this.finish(lab, w, `Спринт: ${sp} линий за ${lab.t.toFixed(1)} с`, Math.max(0, Math.round((sp * 6 - lab.t) * 50)));
+    if (w.digTotal && !w.digLeft) return this.finish(lab, w, `Раскопал до дна за ${lab.t.toFixed(1)} с`, Math.max(0, Math.round((w.digTotal / 9 * 12 - lab.t) * 60)));
+    if (cfg.blitz > 0) {
+      const left = cfg.blitz - lab.t;
+      if (left <= 5 && Math.ceil(left) !== st.tick) { st.tick = Math.ceil(left); lab.tone(880, 0.06, 'square', 0.05); } // последние секунды тикают
+      if (left <= 0) this.finish(lab, w, `Блиц: ${lab.score} очков за ${Math.round(cfg.blitz)} с`, 0);
+    }
+  },
+  finish(lab, w, text, bonus) {
+    const st = lab.state;
+    st.finished = true; w.piece = null;
+    if (bonus) { this.points(lab, w, bonus); lab.popup(lab.v3(w.ox, this.wy(st.H / 2), 1.4), `Бонус за время +${bonus}`, '#7cf5a8', 30); }
+    lab.flash('#ffd23f', 0.3); lab.sfx.win(); w.ornK = 1; this.spin(lab);
+    lab.burst(lab.v3(w.ox, this.wy(st.H / 2), 1), { count: 60, colors: ['#ffd23f', '#ffffff', '#7cf5a8'], speed: 12, size: 0.3 });
+    lab.after(1.1, () => { if (!st.ended) { st.ended = true; lab.win(text); } });
+  },
+  // живая камера: еле заметно дышит, к тревоге чуть наезжает, от «Четыре разом» — короткий толчок
+  liveCamera(lab, dt) {
+    const st = lab.state, v = lab.view, C = st.cam;
+    if (!v || !C) return;
+    if (Math.abs(v.distance - C.last) > 0.01) C.d = v.distance / C.k; // окно поменяло размер — оболочка подобрала новое расстояние
+    const danger = st.wells.some(w => w.danger && !w.dead);
+    C.punch = Math.max(0, C.punch - dt * 1.6);
+    C.k = lab.damp(C.k, (danger ? 0.95 : 1) * (1 - 0.05 * C.punch) * (1 + Math.sin(lab.t * 0.4) * 0.006), 2, dt);
+    v.distance = C.d * C.k; C.last = v.distance;
+    v.target.y = lab.damp(v.target.y, C.ty + Math.sin(lab.t * 0.27) * 0.12, 2, dt);
   },
 
   overNote(lab) {
-    const st = lab.state, W = st.wells, n = Math.max(1, st.pieces), dry = Math.max(...W.map(w => w.maxDry));
-    return [`Цикл: камень за ${(lab.t * W.length / n).toFixed(1)} с, «повернуть и поставить» ${st.pieces} раз, поворотов на камень ${(st.rots / n).toFixed(1)}`,
+    const st = lab.state, W = st.wells, n = Math.max(1, st.pieces), dry = Math.max(...W.map(w => w.maxDry)), v = this.variant(lab);
+    const out = [`Вариация: ${v.name} (как ${v.like}) — ${v.how}`,
+      `Цикл: камень за ${(lab.t * W.length / n).toFixed(1)} с, «повернуть и поставить» ${st.pieces} раз, поворотов на камень ${(st.rots / n).toFixed(1)}`,
       W.length > 1 ? `Линий: ${W[0].lines} и ${W[1].lines}, мусора: ${W[0].sent} и ${W[1].sent}` : `Линий: ${W[0].lines} · уровень ${W[0].level} · четыре разом: ${st.tetris} · лучшая серия ×${st.bestCombo}` + (st.pcs ? ` · чистый стакан: ${st.pcs}` : ''),
-      `Палка не приходила ${dry} камней подряд` + (lab.cfg.bag >= 1 ? ' (мешок: не больше 12)' : ' (без мешка — сколько угодно)')];
+      `Палка не приходила ${dry} камней подряд` + (lab.cfg.bag >= 1 ? ` (мешок: не больше ${lab.cfg.penta >= 1 ? 24 : 12})` : ' (без мешка — сколько угодно)')];
+    if (st.chains || st.booms || st.popped) out.push([st.chains ? `цепочек: ${st.chains}` : '', st.booms ? `взрывов: ${st.booms}` : '', st.popped ? `камней лопнуло цветом: ${st.popped}` : ''].filter(Boolean).join(' · '));
+    return out;
   },
 
   /* ---------- камни: три пачки копий на все стаканы (тело, светлое лицо, руна) ---------- */
@@ -156,7 +305,9 @@ const GAME = {
     st.runeHot = mk(runeGeo, lab.mat('#fff6dc', { unlit: true, glow: 1.7 }), wells * 4 + 2);
     st.ghost = mk(new RB(0.9, 0.9, 0.6, 1, 0.08), lab.mat('#ffffff', { unlit: true, alpha: 0.42 }), wells * 4 + 2);
     st.warnMat = lab.mat('#ff3b4e', { unlit: true, alpha: 0.45 });
-    st.spawnWarn = mk(new T.BoxGeometry(0.9, 0.9, 0.3), st.warnMat, wells * 4 + 2);
+    st.spawnWarn = mk(new T.BoxGeometry(0.9, 0.9, 0.3), st.warnMat, wells * (st.W + 6) + 2);
+    // бомба (вариация «Бомбы»): тёмное ядро с красным фитилём на лице камня
+    st.bomb = mk(new T.IcosahedronGeometry(0.34, 0), lab.mat('#ff3b2e', { unlit: true, glow: 2 }), wells * 20 + 10);
   },
   // одна копия: место, размер (число или [x, y, z]), цвет, поворот вокруг Z (лицом к камере)
   put(inst, i, x, y, z, s, color, rz) {
@@ -166,58 +317,83 @@ const GAME = {
     inst.setMatrixAt(i, t.M.compose(t.P, t.Q, t.S));
     if (color) inst.setColorAt(i, color);
   },
-  stoneAt(lab, R, x, y, k, s, color, hot) {
+  // hot — руна горит ярче (падающий камень), rune = false — руны не видно (камень в тумане)
+  stoneAt(lab, R, x, y, k, s, color, hot, rune = true) {
     const st = lab.state, t = this.tmp, r = this.RUNE[k];
     this.put(st.stone, R.n, x, y, 0, s, color);
     t.C2.copy(color).lerp(t.white, 0.32);
     this.put(st.plate, R.n, x, y, 0.45 * s, s, t.C2);
     R.n++;
+    if (!rune) return;
     if (hot) this.put(st.runeHot, R.h++, x, y, 0.51 * s, [r[1] * s, r[2] * s, s], null, r[0]);
     else this.put(st.rune, R.r++, x, y, 0.51 * s, [r[1] * s, r[2] * s, s], null, r[0]);
   },
+  // бомба на лице камня: пульсирует, к фиксации — чаще
+  bombAt(lab, R, x, y, s) {
+    const st = lab.state;
+    if (R.b >= st.bomb.instanceMatrix.count) return;
+    this.put(st.bomb, R.b++, x, y, 0.62 * s, s * (0.85 + 0.25 * Math.sin(lab.t * 12)), null, lab.t * 3);
+  },
+  // вид камня у фигуры: у «Цвета к цвету» две половины своих цветов, иначе — вид фигуры
+  cellK(p, i) { return p.ks ? p.ks[i < p.cells.length / 2 ? 0 : 1] : p.k; },
 
   render(lab) {
-    const st = lab.state, t = this.tmp, R = { n: 0, r: 0, h: 0, g: 0, w: 0 }, time = lab.t, H = st.H;
+    const st = lab.state, t = this.tmp, R = { n: 0, r: 0, h: 0, g: 0, w: 0, b: 0 }, time = lab.t, H = st.H, fog = lab.cfg.fog;
     for (const w of st.wells) {
       const sink = w.bump * 0.09;
       for (let y = 0; y < w.grid.length; y++) for (let x = 0; x < st.W; x++) {
         const c = w.grid[y][x];
         if (!c) continue;
         const C = t.C.copy(this.col[c.k]);
+        // туман: легший камень гаснет в цвет плиты, руна пропадает; линия на миг показывает всё
+        const hid = fog > 0 && !c.clear && !c.grey && c.seen != null ? lab.clamp((time - c.seen - fog) / 0.5, 0, 1) : 0;
         if (c.grey) C.lerp(t.grey, 0.85);
         else if (c.clear) C.lerp(t.white, 0.75).multiplyScalar(1.5 + 0.4 * Math.sin(time * 40));
         else if (c.f > 0) C.lerp(t.white, Math.min(1, c.f)).multiplyScalar(1 + c.f * 0.6);
-        this.stoneAt(lab, R, this.wx(w, x), this.wy(c.y) - sink, c.k, c.s, C, false);
+        if (hid) C.lerp(this.fogCol, 0.9 * hid);
+        this.stoneAt(lab, R, this.wx(w, x), this.wy(c.y) - sink, c.k, c.s * (1 - 0.08 * hid), C, false, hid < 0.6);
+        if (c.b && hid < 0.6) this.bombAt(lab, R, this.wx(w, x), this.wy(c.y) - sink, c.s);
       }
       const p = w.piece;
       if (p) {
         const floor = !this.fits(w, p.cells, w.px, w.py - 1), heat = floor && lab.cfg.lock > 0 ? Math.min(1, w.lockT / lab.cfg.lock) : 0;
         const s = 1 + 0.22 * w.spawnK + 0.1 * w.rotK;
         // видно = правда: камень на дне раскаляется — скоро ляжет
-        const C = t.C.copy(this.col[p.k]).lerp(t.hot, 0.55 * heat).multiplyScalar(1 + 0.35 * heat * (0.6 + 0.4 * Math.sin(time * 30)));
-        w.pd.forEach(([x, y]) => this.stoneAt(lab, R, this.wx(w, x), this.wy(y), p.k, s, C, true));
+        w.pd.forEach(([x, y], i) => {
+          const k = this.cellK(p, i), C = t.C.copy(this.col[k]).lerp(t.hot, 0.55 * heat).multiplyScalar(1 + 0.35 * heat * (0.6 + 0.4 * Math.sin(time * 30)));
+          this.stoneAt(lab, R, this.wx(w, x), this.wy(y), k, s, C, true);
+          if (i === p.bomb) this.bombAt(lab, R, this.wx(w, x), this.wy(y), s);
+        });
         let d = 0;
         while (this.fits(w, p.cells, w.px, w.py - d - 1)) d++;
-        if (lab.cfg.ghost >= 1 && d > 0) p.cells.forEach(([cx, cy]) => this.put(st.ghost, R.g++, this.wx(w, w.px + cx), this.wy(w.py - d + cy), -0.05, 1, this.col[p.k]));
+        if (lab.cfg.ghost >= 1 && d > 0) p.cells.forEach(([cx, cy], i) => this.put(st.ghost, R.g++, this.wx(w, w.px + cx), this.wy(w.py - d + cy), -0.05, 1, this.col[this.cellK(p, i)]));
       }
       // тревога: красный контур там, где появится следующий камень
       if (w.danger && !w.dead && st.seq[w.qi]) {
-        const k = st.seq[w.qi], K = this.KINDS[k], px = Math.floor((st.W - K.n) / 2), py = H - Math.max(...K.c.map(c => c[1]));
+        const k = st.seq[w.qi], K = this.K[k], px = Math.floor((st.W - K.n) / 2), py = H - Math.max(...K.c.map(c => c[1]));
         K.c.forEach(([cx, cy]) => this.put(st.spawnWarn, R.w++, this.wx(w, px + cx), this.wy(py + cy), 0.15, 1));
       }
+      // подъём: за полторы секунды до нового ряда мусора под стаканом мигает красный ряд — видно = правда
+      const rise = lab.cfg.rise;
+      if (rise > 0 && !w.dead && (w.riseT || 0) > rise - 1.5)
+        for (let x = 0; x < st.W; x++) if (x !== w.riseGap) this.put(st.spawnWarn, R.w++, this.wx(w, x), this.BASE - 0.5, 1.75, [0.9, 0.7, 1]);
       // предпросмотр: очередь въезжает снизу, когда первый камень ушёл в стакан
       const n = Math.round(lab.cfg.preview), top = this.BASE + H - 1.6, gap = Math.min(2.2, (H - 4) / 5);
       w.slots.count = n;
       for (let i = 0; i < n; i++) {
-        const k = st.seq[w.qi + i];
+        const q = w.qi + i, k = st.seq[q];
         if (!k) break;
-        const c = this.KINDS[k].c, s = (i ? 0.52 : 0.74) * (1 + 0.15 * w.prevK * (i === 0)), y = (i ? top - 0.6 - i * gap : top) - w.prevK * gap;
-        const mx = c.reduce((a, q) => a + q[0], 0) / 4, my = c.reduce((a, q) => a + q[1], 0) / 4;
-        for (const [cx, cy] of c) this.stoneAt(lab, R, w.pvx + (cx - mx) * s, y + (cy - my) * s, k, s, this.col[k], false);
+        const c = this.K[k].c, big = c.length > 4 ? 0.82 : 1, s = (i ? 0.52 : 0.74) * big * (1 + 0.15 * w.prevK * (i === 0)), y = (i ? top - 0.6 - i * gap : top) - w.prevK * gap;
+        const mx = c.reduce((a, v) => a + v[0], 0) / c.length, my = c.reduce((a, v) => a + v[1], 0) / c.length, fake = { k, ks: st.pal[q], cells: c }, bomb = this.bombIdx(lab, q, c.length);
+        c.forEach(([cx, cy], j) => {
+          const kk = this.cellK(fake, j), X = w.pvx + (cx - mx) * s, Y = y + (cy - my) * s;
+          this.stoneAt(lab, R, X, Y, kk, s, this.col[kk], false);
+          if (j === bomb) this.bombAt(lab, R, X, Y, s);
+        });
       }
     }
-    st.stone.count = st.plate.count = R.n; st.rune.count = R.r; st.runeHot.count = R.h; st.ghost.count = R.g; st.spawnWarn.count = R.w;
-    for (const m of [st.stone, st.plate, st.rune, st.runeHot, st.ghost, st.spawnWarn]) {
+    st.stone.count = st.plate.count = R.n; st.rune.count = R.r; st.runeHot.count = R.h; st.ghost.count = R.g; st.spawnWarn.count = R.w; st.bomb.count = R.b;
+    for (const m of [st.stone, st.plate, st.rune, st.runeHot, st.ghost, st.spawnWarn, st.bomb]) {
       m.instanceMatrix.needsUpdate = true;
       if (m.instanceColor) m.instanceColor.needsUpdate = true;
     }
@@ -300,6 +476,42 @@ const GAME = {
     const g = new T.BufferGeometry(); g.setAttribute('position', new T.Float32BufferAttribute(pts, 3));
     st.starMat = new T.PointsMaterial({ color: '#ffffff', size: 1, fog: false, transparent: true, opacity: 0 });
     scene.add(new T.Points(g, st.starMat));
+    // живое плато: орлы кружат над пихтами, бабочки порхают над цветами перед стаканом
+    st.eagles = [0, 1, 2].map(i => {
+      const e = lab.group(), body = [lab.ball(0.45, '#4a3426', { ...N, scale: [0.7, 0.55, 1.9] }), lab.ball(0.28, '#f1ead8', { ...N, at: [0, 0.1, 0.85] }),
+        lab.box(0.5, 0.06, 0.5, '#4a3426', { ...N, at: [0, 0, -0.95], rot: [0, Math.PI / 4, 0] }), lab.box(0.12, 0.08, 0.2, '#ffc23a', { ...N, at: [0, 0.05, 1.1] })];
+      lab.merge(body, e);
+      const wings = [-1, 1].map(sd => { const w = lab.group({ parent: e }); lab.box(2.6, 0.06, 0.9, '#5a3e2a', { parent: w, at: [sd * 1.35, 0, 0] }); return w; });
+      return { e, wings, a: lab.rand(0, 6.3), r: lab.rand(16, 26), cx: lab.rand(-20, 20), y: lab.rand(24, 32), z: lab.rand(-48, -34), v: lab.rand(0.14, 0.22) * (i % 2 ? 1 : -1), ph: i * 2.1 };
+    });
+    const BF = 14;
+    st.flies = { mesh: lab.instances(new T.BoxGeometry(0.34, 0.02, 0.22), lab.mat('#ffffff', { rough: 0.5, glow: 0.3 }), BF, { shadow: false }), list: [] };
+    for (let i = 0; i < BF; i++) {
+      const o = { x: lab.rand(-F.w / 2 - 4, F.w / 2 + 4), y: lab.rand(0.4, 1.6), z: lab.rand(2.2, 7), ph: lab.rand(0, 6.3), sp: lab.rand(0.5, 1.1) };
+      st.flies.list.push(o);
+      lab.place(st.flies.mesh, i, [o.x, o.y, o.z], { color: lab.pick(['#ffe66b', '#ff8fc8', '#7cd4ff', '#ffffff', '#ffb35c']) });
+    }
+    st.flies.mesh.frustumCulled = false;
+  },
+  // орлы и бабочки: живое плато, пока камни падают
+  life(lab, dt) {
+    const st = lab.state, t = lab.t;
+    for (const o of st.eagles) {
+      o.a += o.v * dt;
+      const x = o.cx + Math.cos(o.a) * o.r, z = o.z + Math.sin(o.a) * o.r * 0.35;
+      o.e.position.set(x, o.y + Math.sin(t * 0.7 + o.ph) * 0.8, z);
+      o.e.rotation.y = Math.atan2(-Math.sin(o.a) * o.v, Math.cos(o.a) * o.v * 0.35);
+      o.e.rotation.z = -Math.sign(o.v) * 0.25; // крен в вираже
+      const flap = Math.sin(t * 0.9 + o.ph) > 0.4 ? Math.sin(t * 9 + o.ph) * 0.45 : 0.08; // взмахи, потом парит
+      o.wings[0].rotation.z = flap; o.wings[1].rotation.z = -flap;
+    }
+    const f = st.flies;
+    f.list.forEach((o, i) => {
+      o.ph += dt * o.sp;
+      const x = o.x + Math.sin(o.ph) * 1.6, y = o.y + Math.sin(o.ph * 2.3) * 0.35 + 0.2, z = o.z + Math.cos(o.ph * 0.8) * 0.9;
+      this.put(f.mesh, i, x, y, z, [0.2 + 0.8 * Math.abs(Math.sin(t * 18 + i)), 1, 1], null, Math.sin(o.ph) * 0.3);
+    });
+    f.mesh.instanceMatrix.needsUpdate = true;
   },
 
   /* ---------- стакан из песчаника: плита с бороздами, кладка с узорами, предпросмотр ---------- */
@@ -353,7 +565,7 @@ const GAME = {
     // полосы вспышки собранных рядов и следы «уронить сразу» — заготовки, светятся сложением
     const fxMat = () => new T.MeshBasicMaterial({ color: '#ffffff', transparent: true, opacity: 0, depthWrite: false, blending: T.AdditiveBlending });
     w.bars = [0, 1, 2, 3].map(() => { const m = lab.box(W + 0.3, 0.98, 0.2, fxMat(), { at: [ox, 0, 0.62], shadow: false }); m.visible = false; return m; });
-    w.streaks = [0, 1, 2, 3].map(() => { const m = lab.box(0.86, 1, 0.1, fxMat(), { at: [0, 0, -0.3], shadow: false }); m.visible = false; return m; });
+    w.streaks = [0, 1, 2, 3, 4].map(() => { const m = lab.box(0.86, 1, 0.1, fxMat(), { at: [0, 0, -0.3], shadow: false }); m.visible = false; return m; });
     return w;
   },
   placeOrn(lab, w, s) {
@@ -382,6 +594,11 @@ const GAME = {
     const cfg = lab.cfg;
     if (w.clearT > 0) { w.clearT -= dt; if (w.clearT <= 0) this.collapse(lab, w); return; }
     this.levelUp(lab, w);
+    if (cfg.rise > 0) { // подъём: ряд мусора лезет снизу по часам, а не по соседу
+      if (w.riseGap == null) w.riseGap = lab.randInt(0, lab.state.W - 1);
+      w.riseT = (w.riseT || 0) + dt;
+      if (w.riseT >= cfg.rise) { w.riseT = 0; this.pushRows(lab, w, 1, w.riseGap); w.riseGap = lab.randInt(0, lab.state.W - 1); if (w.dead) return; }
+    }
     if (!w.piece) { this.spawn(lab, w); if (!w.piece) return; }
     w.pt += dt;
     // сдвиг: сразу, а если держишь — автоповтор
@@ -390,6 +607,10 @@ const GAME = {
     else if (dir) { w.das -= dt; while (w.das <= 0) { w.das += cfg.arr; if (!this.shift(lab, w, dir)) break; } }
     if (p.pressed.a || p.pressed.up) this.rotate(lab, w);
     if (p.pressed.b) return this.hardDrop(lab, w);
+    if (cfg.g20 >= 1) { // 20G: камень всегда лежит на самом низу, куда его ни сдвинь
+      while (this.fits(w, w.piece.cells, w.px, w.py - 1)) w.py--;
+      w.fallT = 0;
+    }
     const step = this.interval(lab, w), iv = p.down ? Math.min(step, 1 / cfg.soft) : step;
     w.fallT += dt;
     while (w.fallT >= iv) {
@@ -451,31 +672,43 @@ const GAME = {
 
   // камень из общей очереди: у соперников одинаковые
   spawn(lab, w) {
-    const st = lab.state, k = this.deal(lab, w), K = this.KINDS[k], cells = K.c.map(c => c.slice());
-    w.piece = { k, n: K.n, cells };
+    const st = lab.state, k = this.deal(lab, w), q = w.qi - 1, K = this.K[k], cells = K.c.map(c => c.slice());
+    w.piece = { k, n: K.n, cells, ks: st.pal[q], bomb: this.bombIdx(lab, q, cells.length) };
     w.px = Math.floor((st.W - K.n) / 2); w.py = st.H - Math.max(...cells.map(c => c[1]));
     w.fallT = w.lockT = w.resets = w.pt = 0;
     if (!this.fits(w, cells, w.px, w.py)) { w.piece = null; return this.topOut(lab, w); }
     w.pd = cells.map(([cx, cy]) => [w.px + cx, w.py + cy + 1.3]); // въезжает сверху
     if (lab.juicy('squash')) { w.spawnK = 1; w.prevK = 1; }
-    while (st.seq.length < w.qi + 6) st.seq.push(this.gen(lab));
+    while (st.seq.length < w.qi + 6) this.more(lab);
   },
   deal(lab, w) {
     const st = lab.state;
-    while (st.seq.length < w.qi + 8) st.seq.push(this.gen(lab));
+    while (st.seq.length < w.qi + 8) this.more(lab);
     const k = st.seq[w.qi++];
     w.sinceI = k === 'I' ? 0 : w.sinceI + 1;
-    if (w.sinceI === 13) lab.count('засухи'); // мешок такого не допускает
+    if (w.sinceI === (lab.cfg.penta >= 1 ? 25 : 13)) lab.count('засухи'); // мешок такого не допускает
     w.maxDry = Math.max(w.maxDry, w.sinceI);
     return k;
   },
-  // спрятанная механика донора: «мешок» — семь камней перемешаны, по одному до конца мешка; без мешка — чистый случай
+  // очередь общая на оба стакана: вид камня и, в «Цвете к цвету», два цвета его половин
+  more(lab) {
+    const st = lab.state;
+    st.seq.push(this.gen(lab));
+    st.pal.push(lab.cfg.colors >= 1 ? [lab.pick(this.COLOR_KINDS), lab.pick(this.COLOR_KINDS)] : null);
+  },
+  // бомба — в каждом N-м камне очереди (у соперников в тех же), в своей клетке фигуры
+  bombIdx(lab, q, n) {
+    const b = Math.round(lab.cfg.bombs);
+    return b > 0 && q % b === b - 1 ? (q * 3) % n : -1;
+  },
+  // спрятанная механика донора: «мешок» — семь камней перемешаны, по одному до конца мешка; без мешка — чистый случай.
+  // С пентамино в мешке тринадцать фигур: семь тетрамино и шесть пентамино
   gen(lab) {
-    const st = lab.state, all = this.ORDER.split('');
+    const st = lab.state, all = (this.ORDER + (lab.cfg.penta >= 1 ? this.PENTA_ORDER : '')).split('');
     if (lab.cfg.bag < 1) return lab.pick(all);
     if (!st.bag.length) {
       st.bag = all;
-      for (let i = 6; i > 0; i--) { const j = lab.randInt(0, i); [all[i], all[j]] = [all[j], all[i]]; }
+      for (let i = all.length - 1; i > 0; i--) { const j = lab.randInt(0, i); [all[i], all[j]] = [all[j], all[i]]; }
       lab.count('_secret'); // спрятанная механика сработала: новый мешок
     }
     return st.bag.pop();
@@ -484,77 +717,146 @@ const GAME = {
   wy(y) { return this.BASE + y + 0.5; },
 
   lockPiece(lab, w, hard) {
-    const st = lab.state, p = w.piece, flash = lab.juicy('whiten') ? 1 : 0;
+    const st = lab.state, p = w.piece, flash = lab.juicy('whiten') ? 1 : 0, n = p.cells.length;
     let low = 99, over = false, sx = 0;
-    p.cells.forEach(([cx, cy]) => {
+    p.cells.forEach(([cx, cy], i) => {
       const x = w.px + cx, y = w.py + cy;
-      w.grid[y][x] = { k: p.k, y, f: flash, s: 1, v: 0 }; // вспышка фиксации, как в The Grand Master
+      w.grid[y][x] = { k: this.cellK(p, i), y, f: flash, s: 1, v: 0, b: i === p.bomb, seen: lab.t }; // вспышка фиксации, как в The Grand Master
       over = over || y >= st.H; low = Math.min(low, y); sx += x;
     });
     w.piece = null;
     st.pieces++; lab.count('камни');
+    lab.stat('камень за, с', Math.round(10 * lab.t * st.wells.length / st.pieces) / 10);
     w.cyc.push(w.pt); if (w.cyc.length > 8) w.cyc.shift();
-    lab.burst([this.wx(w, sx / 4), this.wy(low) - 0.5, 0.5], { count: hard ? 14 : 7, colors: ['#f1e2c4', '#c9a77c'], speed: hard ? 4 : 2.5, up: 1.5, size: 0.16 });
+    lab.burst([this.wx(w, sx / n), this.wy(low) - 0.5, 0.5], { count: hard ? 14 : 7, colors: ['#f1e2c4', '#c9a77c'], speed: hard ? 4 : 2.5, up: 1.5, size: 0.16 });
     lab.tone(this.note(w, 0) / 2, 0.1, 'sine', 0.12, this.note(w, 0) / 4); lab.noise(0.05, 0.05, 900);
     if (over) return this.topOut(lab, w);
-    w.rows = [];
-    for (let y = 0; y < st.H; y++) if (w.grid[y].every(Boolean)) w.rows.push(y);
-    if (!w.rows.length) { w.combo = -1; this.raiseGarbage(lab, w); return this.checkDanger(lab, w); }
-    w.combo++;
-    w.clearT = 0.3;
-    const up = lab.pitch(Math.max(0, w.combo) * 2);
+    const cl = this.findClears(lab, w);
+    if (!cl.rows.length && !cl.cells.length) { w.combo = -1; this.raiseGarbage(lab, w); return this.checkDanger(lab, w); }
+    w.combo++; w.chain = 1;
+    this.markClear(lab, w, cl);
+  },
+  // что исчезнет: полные ряды, а в «Цвете к цвету» — ещё и группы от четырёх камней одного цвета
+  findClears(lab, w) {
+    const st = lab.state, rows = [], cells = [];
+    for (let y = 0; y < st.H; y++) if (w.grid[y].every(Boolean)) rows.push(y);
+    if (lab.cfg.colors >= 1) {
+      const seen = new Set(), key = (x, y) => y * st.W + x;
+      for (let y = 0; y < st.H; y++) for (let x = 0; x < st.W; x++) {
+        const c = w.grid[y][x];
+        if (!c || c.k === 'X' || seen.has(key(x, y))) continue;
+        const grp = [[x, y]]; seen.add(key(x, y));
+        for (let i = 0; i < grp.length; i++) for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+          const nx = grp[i][0] + dx, ny = grp[i][1] + dy, o = ny >= 0 && ny < st.H && nx >= 0 && nx < st.W && w.grid[ny][nx];
+          if (o && o.k === c.k && !seen.has(key(nx, ny))) { seen.add(key(nx, ny)); grp.push([nx, ny]); }
+        }
+        if (grp.length >= 4) grp.forEach(g => { if (!rows.includes(g[1])) cells.push(g); });
+      }
+    }
+    return { rows, cells };
+  },
+  // ряды и клетки вспыхивают, через 0,3 с исчезают (collapse); туман на миг отступает
+  markClear(lab, w, cl) {
+    w.rows = cl.rows; w.kill = cl.cells; w.clearT = w.chain > 1 ? 0.42 : 0.3;
+    const up = lab.pitch(Math.max(0, w.combo + w.chain - 1) * 2);
+    w.grid.forEach(r => r.forEach(c => { if (c) c.seen = lab.t; }));
     w.rows.forEach((y, i) => {
       w.grid[y].forEach(c => { c.clear = true; });
       const bar = w.bars[i];
-      bar.visible = true; bar.position.y = this.wy(y);
-      bar.material.color.set(w.rows.length === 4 ? '#ffd23f' : '#fff6dc').multiplyScalar(1.4);
-      lab.tween(0.32, (e, raw) => { bar.scale.x = 0.1 + 0.95 * Math.min(1, e * 1.6); bar.material.opacity = 0.9 * (1 - e * e); if (raw >= 1) bar.visible = false; }, 'outCubic');
+      if (bar) {
+        bar.visible = true; bar.position.y = this.wy(y);
+        bar.material.color.set(w.rows.length >= 4 ? '#ffd23f' : '#fff6dc').multiplyScalar(1.4);
+        lab.tween(0.32, (e, raw) => { bar.scale.x = 0.1 + 0.95 * Math.min(1, e * 1.6); bar.material.opacity = 0.9 * (1 - e * e); if (raw >= 1) bar.visible = false; }, 'outCubic');
+      }
       lab.tone(this.note(w, 4 + i * 2) * up, 0.12, 'square', 0.05, 0, i * 0.06);
     });
+    w.kill.forEach(([x, y], i) => { w.grid[y][x].clear = true; if (i < 6) lab.tone(this.note(w, 6 + i) * up, 0.08, 'triangle', 0.04, 0, i * 0.04); });
     lab.hitstop(0.04);
   },
   collapse(lab, w) {
-    const st = lab.state, cfg = lab.cfg, n = w.rows.length, at = lab.v3(w.ox, this.wy(w.rows[0] + n / 2), 1.2), lvl = w.level;
-    for (const y of w.rows) w.grid[y].forEach((c, x) => {
-      lab.burst([this.wx(w, x), this.wy(y), 0.3], { count: n === 4 ? 6 : 4, colors: [c.k === 'X' ? '#9a9cb8' : this.KINDS[c.k].color, '#ffffff'], speed: 6, size: 0.24, life: 0.6, gravity: 10, dir: [(x - st.W / 2 + 0.5) * 0.15, 0.6, 0.8] });
-    });
+    const st = lab.state, cfg = lab.cfg, n = w.rows.length, lvl = w.level, Wd = st.W;
+    // что исчезает: ряды, группы цвета и всё, что накрыли взрывы бомб (бомба взрывает и соседнюю бомбу)
+    const dead = new Map(), add = (x, y) => { const c = w.grid[y] && w.grid[y][x]; if (c && !dead.has(y * Wd + x)) dead.set(y * Wd + x, [x, y, c]); };
+    w.rows.forEach(y => { for (let x = 0; x < Wd; x++) add(x, y); });
+    w.kill.forEach(([x, y]) => add(x, y));
+    const before = dead.size, bombs = [...dead.values()].filter(d => d[2].b);
+    for (let i = 0; i < bombs.length; i++) {
+      const [bx, by] = bombs[i], at = lab.v3(this.wx(w, bx), this.wy(by), 0.8);
+      for (let dy = -2; dy <= 2; dy++) for (let dx = -2; dx <= 2; dx++) {
+        if (Math.abs(dx) + Math.abs(dy) > 2) continue;
+        const c = w.grid[by + dy] && w.grid[by + dy][bx + dx];
+        if (!c || dead.has((by + dy) * Wd + bx + dx)) continue;
+        add(bx + dx, by + dy);
+        if (c.b) bombs.push([bx + dx, by + dy, c]);
+      }
+      st.booms++; lab.count('взрывы');
+      lab.after(i * 0.08, () => {
+        lab.burst(at, { count: 40, colors: ['#ff6a3d', '#ffd34d', '#ffffff'], speed: 11, size: 0.3 });
+        lab.ring(at, { color: '#ff8a3d', radius: 3.2, life: 0.4 });
+        lab.sfx.explode(); lab.shake(0.35); lab.popup(at, 'Бум!', '#ff8a3d', 30);
+      });
+    }
+    const blasted = dead.size - before, popped = w.kill.length;
+    for (const [x, y, c] of dead.values()) {
+      lab.burst([this.wx(w, x), this.wy(y), 0.3], { count: n === 4 ? 6 : 4, colors: [this.K[c.k] ? this.K[c.k].color : '#9a9cb8', '#ffffff'], speed: 6, size: 0.24, life: 0.6, gravity: 10, dir: [(x - Wd / 2 + 0.5) * 0.15, 0.6, 0.8] });
+      w.grid[y][x] = null;
+    }
     w.grid = w.grid.filter((row, y) => !w.rows.includes(y)); // камни выше падают сами: settle
-    while (w.grid.length < st.H + 6) w.grid.push(new Array(st.W).fill(null));
-    const b2b = n === 4 && w.b2b, pc = w.grid.every(r => r.every(c => !c));
-    const pts = Math.round(this.LINE_PTS[n] * lvl * (b2b ? cfg.b2b : 1)), comboPts = w.combo > 0 ? Math.round(cfg.combo * w.combo * lvl) : 0, pcPts = pc ? 2000 * lvl : 0;
+    while (w.grid.length < st.H + 6) w.grid.push(new Array(Wd).fill(null));
+    // лавина: каждый камень падает сам до опоры (в «Цвете к цвету» и после взрыва — тоже)
+    if (cfg.cascade >= 1 || cfg.colors >= 1 || blasted) {
+      for (let x = 0; x < Wd; x++) {
+        let to = 0;
+        for (let y = 0; y < w.grid.length; y++) {
+          const c = w.grid[y][x];
+          if (!c) continue;
+          if (y !== to) { w.grid[to][x] = c; w.grid[y][x] = null; }
+          to++;
+        }
+      }
+    }
+    const at = lab.v3(w.ox, this.wy((w.rows.length ? w.rows[0] : (w.kill[0] || [0, 4])[1]) + Math.max(1, n) / 2), 1.2);
+    const b2b = n === 4 && w.b2b, pc = w.grid.every(r => r.every(c => !c)), ch = w.chain;
+    const pts = Math.round((this.LINE_PTS[Math.min(4, n)] + 40 * popped + 25 * blasted) * lvl * (b2b ? cfg.b2b : 1) * ch);
+    const comboPts = ch === 1 && w.combo > 0 ? Math.round(cfg.combo * w.combo * lvl) : 0, pcPts = pc ? 2000 * lvl : 0;
     this.points(lab, w, pts + comboPts + pcPts);
-    w.lines += n; lab.count('линии', n);
-    const name = b2b ? 'Снова четыре! ' : ['', '', 'Две линии! ', 'Три линии! ', 'Четыре разом! '][n];
-    lab.popup(at, name + '+' + pts, n === 4 ? '#ffd23f' : '#ffffff', 18 + 6 * n + (b2b ? 6 : 0));
+    w.lines += n; if (n) lab.count('линии', n);
+    if (popped) { st.popped += popped; lab.count('лопнуло цветом', popped); }
+    const name = (ch > 1 ? `Цепочка ×${ch}! ` : '') + (b2b ? 'Снова четыре! ' : ['', '', 'Две линии! ', 'Три линии! ', 'Четыре разом! '][Math.min(4, n)]);
+    lab.popup(at, name + '+' + pts, n >= 4 ? '#ffd23f' : ch > 1 ? '#ff9f1c' : popped ? '#7cf5ff' : '#ffffff', 18 + 6 * Math.min(4, n) + (b2b ? 6 : 0) + 4 * (ch - 1));
     if (comboPts) {
       lab.popup(lab.v3(w.ox, at.y + 1.6, 1.2), `Серия ×${w.combo + 1}  +${comboPts}`, '#7cf5ff', 18 + Math.min(12, w.combo * 2));
       if (w.combo === 1) lab.count('серии');
     }
+    if (ch === 2) { st.chains++; lab.count('цепочки'); }
     st.bestCombo = Math.max(st.bestCombo, w.combo + 1);
-    lab.shake(0.12 * n); this.cheer(lab, 3 + 0.7 * n, w);
-    lab.tone(this.note(w, 0) * lab.pitch(w.combo * 2), 0.18, 'triangle', 0.07); lab.tone(this.note(w, 2) * lab.pitch(w.combo * 2), 0.2, 'triangle', 0.06, 0, 0.05);
-    if (n === 4) {
+    lab.shake(0.12 * Math.max(1, n) + 0.1 * (ch - 1)); this.cheer(lab, 3 + 0.7 * Math.max(1, n) + (ch - 1), w);
+    lab.tone(this.note(w, 0) * lab.pitch((w.combo + ch - 1) * 2), 0.18, 'triangle', 0.07); lab.tone(this.note(w, 2) * lab.pitch((w.combo + ch - 1) * 2), 0.2, 'triangle', 0.06, 0, 0.05);
+    if (n >= 4) {
       st.tetris++; lab.count('четыре разом');
       lab.flash('#ffd23f', 0.35); lab.hitstop(0.1); lab.sfx.power(); lab.slowmo(0.35, 0.45);
       lab.burst(at, { count: 60, colors: ['#ffd23f', '#ffffff', '#ff8a3d'], speed: 13, size: 0.3 });
-      lab.ring(at, { color: '#ffd23f', radius: st.W * 0.8, life: 0.5 });
-      w.ornK = 1;
+      lab.ring(at, { color: '#ffd23f', radius: Wd * 0.8, life: 0.5 });
+      w.ornK = 1; st.cam.punch = 1;
       if (st.mm && lab.juicy('squash')) this.spin(lab);
     }
-    w.b2b = n === 4;
+    if (n) w.b2b = n >= 4;
     if (pc) { // чистый стакан: ни одного камня
       st.pcs++; lab.count('чистый стакан');
       lab.popup(lab.v3(w.ox, this.wy(st.H / 2), 1.2), `Чистый стакан! +${pcPts}`, '#7cf5a8', 34);
       lab.flash('#7cf5a8', 0.3); lab.sfx.win(); w.ornK = 1;
-      lab.ring(lab.v3(w.ox, this.wy(2), 1), { color: '#7cf5a8', radius: st.W, life: 0.7 });
+      lab.ring(lab.v3(w.ox, this.wy(2), 1), { color: '#7cf5a8', radius: Wd, life: 0.7 });
     }
     // линии гасят свой мусор, остаток летит соседу
     const other = st.wells.find(x => x !== w);
-    let g = Math.round((this.GARBAGE[n] + this.COMBO_G[Math.min(w.combo, this.COMBO_G.length - 1)] + (b2b ? 1 : 0) + (pc ? 4 : 0)) * cfg.garbage);
+    let g = Math.round((this.GARBAGE[Math.min(4, n)] + (ch === 1 ? this.COMBO_G[Math.min(w.combo, this.COMBO_G.length - 1)] : ch - 1) + (b2b ? 1 : 0) + (pc ? 4 : 0) + Math.floor((popped + blasted) / 8)) * cfg.garbage);
     const cancel = Math.min(g, w.pending); w.pending -= cancel; g -= cancel;
     if (other && g > 0) this.sendGarbage(lab, w, other, g);
+    // после лавины могли собраться новые ряды или группы — цепочка
+    const next = this.findClears(lab, w);
+    if (next.rows.length || next.cells.length) { w.chain++; this.markClear(lab, w, next); return; }
     this.levelUp(lab, w);
-    w.rows = [];
+    w.rows = []; w.kill = [];
     this.checkDanger(lab, w);
   },
   // уровень — от линий, а если ручка levelTime > 0, то и от времени
@@ -581,15 +883,22 @@ const GAME = {
   },
   // мусор поднимается снизу, когда ляжет камень; во всех рядах одна дыра
   raiseGarbage(lab, w) {
-    const st = lab.state, n = Math.min(w.pending, 8), gap = lab.randInt(0, st.W - 1);
+    const n = Math.min(w.pending, 8);
     if (n <= 0) return;
     w.pending -= n;
-    const rows = [];
-    for (let r = 0; r < n; r++) rows.push(w.grid[0].map((_, x) => (x === gap ? null : { k: 'X', y: r - n, f: 0, s: 1, v: 0 })));
+    this.pushRows(lab, w, n, lab.randInt(0, lab.state.W - 1));
+  },
+  // n рядов мусора с дырой gap снизу; падающий камень, если его задело, поднимается вместе со стопкой
+  pushRows(lab, w, n, gap) {
+    const st = lab.state, rows = [];
+    for (let r = 0; r < n; r++) rows.push(w.grid[0].map((_, x) => (x === gap ? null : { k: 'X', y: r - n, f: 0, s: 1, v: 0, seen: lab.t })));
     w.grid.unshift(...rows);
     w.grid.splice(st.H + 6);
+    if (w.piece) while (!this.fits(w, w.piece.cells, w.px, w.py) && w.py < st.H + 2) w.py++;
     lab.sfx.warn(); lab.shake(0.3);
+    lab.burst(lab.v3(w.ox, this.BASE + 0.3, 1.6), { count: 16, colors: ['#ff6a6a', '#9a9cb8'], speed: 4, up: 3, size: 0.2 });
     if (w.grid.slice(st.H).some(r => r.some(Boolean))) this.topOut(lab, w);
+    else this.checkDanger(lab, w);
   },
   checkDanger(lab, w) { w.danger = w.grid.slice(lab.state.H - 6).some(r => r.some(Boolean)); },
   // переполнен: камни гаснут снизу вверх, потом конец партии
@@ -645,6 +954,7 @@ const GAME = {
       st.sunMat.color.copy(sun).multiplyScalar(1.6); st.sun.position.y = 46 - k * 6;
       st.starMat.opacity = lab.lerp(A.stars, B.stars, f);
     }
+    this.life(lab, dt);
     const c = st.clouds;
     c.list.forEach((o, i) => { o.x += o.v * dt; if (o.x > 100) o.x = -100; this.put(c.mesh, i, o.x, o.y, o.z, [o.s, o.s * 0.55, o.s * 0.8]); });
     c.mesh.instanceMatrix.needsUpdate = true; c.mesh.computeBoundingSphere();

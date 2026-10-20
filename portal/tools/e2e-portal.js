@@ -11,7 +11,7 @@
 // Урок 3 в обоих прогонах: «Ночной лабиринт», предсказание динамики против телеметрии, «Найди спрятанную механику», квиз «Угадай охотника по следу»,
 // квиз MDA, Фабрика MDA с колодами урока, образец урока в промпте программиста, демо-сборка урока, дуэль с Вожаком (ручка vs), предсказание в плейтесте.
 // Урок 4 в обоих прогонах: «Каменный стакан» и его спрятанная механика (мешок и предпросмотр), квиз «Собери цикл», Фабрика под донора,
-// образец урока в промпте программиста и демо-игра урока, релиз модуля с чек-листом, дуэль двух стаканов по ручке duo.
+// мастерская вариаций «Тетриса» (шаг variety с полосой длины цикла), образец урока в промпте программиста и демо-игра урока, релиз модуля с чек-листом, дуэль двух стаканов по ручке duo.
 // Данные и настройки — во временной папке, настоящий portal/config.json и portal/data/ не трогаются.
 // Урок 5 в обоих прогонах: «Тур над Хаджохом», сырой прыжок и «Найди спрятанную механику», лаборатория прыжка, слепой турнир по одной ручке,
 // образец урока в промпте программиста и демо-игра урока, спидран с призраком лучшей попытки.
@@ -1407,7 +1407,7 @@ async function lessonFour(mode, teacher, student, shot) {
   await student.waitForSelector('#step-donor-hook.done');
 
   // тот же стакан без спрятанной механики: ручки из шага выключают мешок и предпросмотр
-  await student.click('.cp >> text=Спрятанная механика');
+  await student.click('.cp >> text=Один глагол');
   await student.click('#step-secret-play .veil button');
   gf = await gameFrame(student, 'kamennyi-stakan', 0);
   await gf.waitForFunction(() => window.__lab.cfg.bag === 0 && window.__lab.cfg.preview === 0, null, { timeout: 5000 }).catch(() => {});
@@ -1430,6 +1430,37 @@ async function lessonFour(mode, teacher, student, shot) {
   check('Сравнение: линии и засухи с мешком и без, мешок сработал', /линии 3/.test(reveal) && /засухи 2/.test(reveal) && /спрятанная механика сработала [1-9]\d* раз/.test(reveal), (reveal.match(/С мешком.*?вслепую[^О]*/) || [''])[0].slice(0, 200));
   await shot(student, '30-u4-secret', true);
   await storyDone(student);
+
+  // мастерская вариаций «Тетриса»: плитка — партия с ручками вариации — «какая это игра» — «что повернули»; полоса доски — длина цикла
+  const vstep = step4('variacii');
+  await student.waitForSelector('#step-variacii [data-var]');
+  check('Урок 4: мастерская вариаций — глагол и плитки всех вариаций', /повернуть и поставить/.test(await student.textContent('#step-variacii')) && await student.locator('#step-variacii [data-var]').count() === vstep.variants.length);
+  const tryVars4 = [['sprint', 'sprint', 20], ['cvet', 'colors', 1], ['bomby', 'bombs', 4], ['g20', 'g20', 1]];
+  for (const [k, [id, knob, val]] of tryVars4.entries()) {
+    const x = vstep.variants.find(y => y.id === id);
+    await student.click(`#step-variacii [data-var=${id}]`);
+    await student.click('#step-variacii .veil button');
+    gf = await gameFrame(student, 'kamennyi-stakan', 0);
+    await gf.waitForFunction(([kn, vl]) => window.__lab.cfg[kn] === vl, [knob, val], { timeout: 5000 }).catch(() => {});
+    check(`Вариация урока 4 «${x.label}» включила свои ручки`, await gf.evaluate(([kn, vl]) => window.__lab.cfg[kn] === vl && window.__lab.cfg.vs === 0, [knob, val]));
+    await gf.evaluate(() => window.__lab.confirm());
+    await sleep(300);
+    await gf.evaluate(() => { const L = window.__lab.lab; L.stat('камень за, с', 2.4); L.score = 400; window.__lab.end('win', 'Проверка'); });
+    await student.waitForSelector('#step-variacii [data-feel]', { timeout: 10000 });
+    await student.click(`#step-variacii [data-feel] >> nth=${k}`);
+    const dial = k === 1 ? vstep.dials.find(d => d.id !== x.dial).id : x.dial;
+    await student.click(`#step-variacii [data-dial=${dial}]`);
+    await student.waitForSelector('#step-variacii .verdict');
+    if (k === 1) check('Вариации урока 4: ошибка в детали — разбор', /Не совсем/.test(await student.textContent('#step-variacii .verdict')) && (await student.textContent('#step-variacii .verdict')).includes(x.why));
+    await student.click('#step-variacii [data-next]');
+  }
+  await student.waitForSelector('#step-variacii .var-board');
+  check('Доска вариаций урока 4: четыре игры и длина цикла', await student.locator('#step-variacii .var-row').count() === 4 && /камень за 2,4 с/.test(await student.textContent('#step-variacii .var-board')));
+  await shot(student, '30b-u4-variacii', true);
+  await student.click('#step-variacii [data-fav=cvet]');
+  await student.waitForSelector('#step-variacii.done', { timeout: 10000 });
+  await student.click('#step-variacii [data-mix="Лавина"]');
+  check('Конструктор вариации урока 4: своя вариация из плиток', /Твоя вариация: Лавина/.test(await student.textContent('#step-variacii .pickline')));
 
   // квиз «Собери цикл»: ошибка с чужой карточкой и мышь, клавиши 1–4, стрелки с пробелом
   const quiz = step4('sobery-cikl');
