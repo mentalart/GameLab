@@ -58,6 +58,7 @@ async function refresh(full, poll) {
   let o;
   try { o = await api('/api/teacher/overview?code=' + T.code); } catch (e) { if (full) toast(e.message, 'err'); return; }
   T.overview = o; T.skew = Date.parse(o.now) - Date.now();
+  $('#m7Tab').hidden = !o.lesson.checkpoints.some(c => c.steps.some(s => ['arena', 'bracket', 'team'].includes(s.type)));
   $('#classCode').textContent = o.class.code;
   $('#classLink').textContent = `Адрес: ${location.origin}/?code=${o.class.code}`;
   if (T.lastLesson !== o.class.lesson) { // урок класса сменился — меню модулей переходит в его модуль
@@ -795,7 +796,9 @@ async function drawNotes() {
 /* ---------- события ---------- */
 document.querySelectorAll('.tabs button').forEach(b => b.addEventListener('click', () => {
   document.querySelectorAll('.tabs button').forEach(x => x.classList.toggle('on', x === b));
-  ['lesson', 'wow', 'answers', 'arcade', 'ai', 'notes'].forEach(t => { $('#tab-' + t).hidden = t !== b.dataset.tab; });
+  ['lesson', 'wow', 'answers', 'arcade', 'm7', 'ai', 'notes'].forEach(t => { $('#tab-' + t).hidden = t !== b.dataset.tab; });
+  // модуль 7: пульт арены, турнирной сетки и команд джема (public/m7-pult.js)
+  if (b.dataset.tab === 'm7') { if (!T.m7) T.m7 = LabM7.pult($('#tab-m7'), { code: () => T.code, lesson: () => T.overview && T.overview.lesson }); T.m7.show(); } else if (T.m7) T.m7.hide();
   if (b.dataset.tab !== 'wow' && W.preview) { W.preview.destroy(); W.preview = null; W.gameKey = null; }
   if (b.dataset.tab === 'wow') drawWow(true);
   if (b.dataset.tab === 'answers') drawAnswers();

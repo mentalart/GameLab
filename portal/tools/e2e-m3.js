@@ -284,8 +284,10 @@ module.exports = function m3(H) {
     for (const [label, knob, val] of [['Снежный ком', 'snowball', 2], ['Помощь отстающему', 'rubber', 2]]) {
       await student.click(`#step-avtoprogon .seg .opt >> text=${label}`);
       await student.click('#step-avtoprogon .veil button');
-      const gf = await gameFrame(student, F, 0);
-      check(`Урок 11: автопрогон «${label}» — ботов гоняет ручка sim`, await gf.evaluate(([k, v]) => window.__lab.cfg.sim === 1 && window.__lab.cfg[k] === v, [knob, val]));
+      // рамка перезапускается с новой ручкой не сразу: ждём до 5 с, пока игра получит ручки этой петли
+      let gf = await gameFrame(student, F, 0), ok = false;
+      for (let k = 0; k < 25 && !ok; k++) { ok = await gf.evaluate(([k, v]) => !!window.__lab && window.__lab.cfg.sim === 1 && window.__lab.cfg[k] === v, [knob, val]).catch(() => false); if (!ok) { await student.waitForTimeout(200); gf = await gameFrame(student, F, 0); } }
+      check(`Урок 11: автопрогон «${label}» — ботов гоняет ручка sim`, ok);
       await playRound(gf, { score: 0 });
     }
     await student.waitForSelector('#step-avtoprogon.done', { timeout: 10000 });

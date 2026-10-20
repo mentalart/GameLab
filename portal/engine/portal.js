@@ -9,6 +9,8 @@
      portal.notes(['что программист решил сам', ...]) — записи программиста для шага «Найди, где ИИ своевольничал» (портал читает их из кода).
      portal.levels([{ name, map }], легенда) — уровни как данные (модуль 4): свои и уровни гостей; portal.level(i[, карта]) — начался уровень,
        portal.death(x, y), portal.where(x, y), portal.secret(x, y) — точки в клетках карты для тепловой карты, portal.clear({ moves, time }) — уровень пройден.
+     portal.net — сеть класса (урок 26): on — портал передаёт игроков, others — [{ nick, x, y, z, ... }] соседей, room — правила и фаза забега,
+       now() — часы сервера в мс, send({ x, y, ... }) — моё положение (портал отправляет не чаще 10 раз в секунду).
      portal.input — 'pad' или 'keys': чем игрок управляет сейчас. Подписи кнопок игра пишет парой <span class="keys-only">Пробел</span><span class="pad-only">A</span>,
        мост показывает нужную: геймпад подключён или нажата его кнопка — pad-only, нажата клавиша — keys-only.
    Страховка конца партии: Start на геймпаде после portal.over(), если игра сама не начала новую партию, нажимает за неё Enter, потом R.
@@ -35,6 +37,7 @@
   function setValues(cfg) { for (var k in cfg) if (Object.prototype.hasOwnProperty.call(config, k)) values[k] = Number(cfg[k]); else pending[k] = Number(cfg[k]); if (panel) draw(); }
   var portal = {
     paused: false,
+    net: { on: false, others: [], room: {}, at: 0, clock: 0, now: function () { return portal.net.clock + (performance.now() - portal.net.at); }, send: function (me) { if (portal.net.on) send({ type: 'net', me: me }); } },
     knobs: function (cfg, pre) {
       config = {}; presets = pre || {};
       for (var k in cfg || {}) {
@@ -231,6 +234,7 @@
     if (m.target !== 'lab-game') return;
     if (m.type === 'reveal') setLupa(m.title);
     if (m.type === 'setCfg') setValues(m.cfg || {});
+    if (m.type === 'net') { var N = portal.net; N.on = true; N.others = Array.isArray(m.others) ? m.others.slice(0, 60) : []; N.room = m.room && typeof m.room === 'object' ? m.room : {}; N.at = performance.now(); N.clock = Number(m.now) || Date.now(); }
     if (m.type === 'records') { last = { record: m.record, best: m.best }; if (typeof onRecord === 'function') onRecord(m.record, m.best); }
     if (m.type === 'playtest') send({ type: 'playtest', error: 'игра без оболочки Лаб3D: бот-плейтестер в неё не играет' });
     if (m.type === 'botShow') send({ type: 'showDone', error: 'игра без оболочки Лаб3D: бот в неё не играет' });

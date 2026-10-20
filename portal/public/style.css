@@ -1058,3 +1058,73 @@ body:has(#noteBtn:not([hidden])) .side{max-height:calc(100vh - 53px - 68px);padd
   .mo.go .draw,.mo.go .pop,.mo.go .fade,.mo.go .pulse,.mo.go .wob,.curve-ed .cline,.curve-ed .hit,.sorter .item .spark .line,.pig-die.roll,.pig-turn.up,.ph-col i,.pulse .bars .bt i,.pulse-top li,.scale-pro,.scale-why,.bfair.flash{animation:none}
   .curve-ed .bar,.pig-bar i{transition:none}
 }
+
+/* ---------- модуль 7: играть вместе (steps-m7.js, m7-pult.js) ---------- */
+@keyframes m7Pop{0%{transform:scale(.6);opacity:0}70%{transform:scale(1.06);opacity:1}100%{transform:scale(1)}}
+@keyframes m7Up{from{transform:translateY(10px);opacity:0}to{transform:none;opacity:1}}
+@keyframes m7Spin{0%{transform:rotateY(0)}100%{transform:rotateY(720deg)}}
+@keyframes m7Glow{0%,100%{box-shadow:0 0 0 0 rgba(255,224,138,.0)}50%{box-shadow:0 0 18px 2px rgba(255,224,138,.45)}}
+.m7-phase{padding:10px 14px;border-radius:12px;background:var(--panel);border:1px solid var(--line2);font-weight:700;animation:m7Up .4s both}
+.m7-phase.lobby{border-color:var(--warm)}.m7-phase.run{border-color:var(--accent);animation:m7Glow 1.6s infinite}.m7-phase.done{border-color:var(--info)}
+.m7-arena{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.3fr);gap:14px}
+@media (max-width:760px){.m7-arena{grid-template-columns:1fr}}
+.m7-podium{list-style:none;margin:6px 0 0;padding:0;display:flex;flex-direction:column;gap:4px}
+.m7-podium li{display:grid;grid-template-columns:34px 1fr auto;gap:8px;align-items:center;padding:6px 10px;border-radius:10px;background:var(--panel);border-left:4px solid var(--c);animation:m7Up .45s both;animation-delay:var(--d)}
+.m7-podium li.me{background:var(--panel2);outline:1px solid var(--accent)}
+.m7-podium li b{text-align:center}
+.m7-podium.big li{font-size:20px;padding:10px 14px}
+.m7-rulegrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:8px}
+.m7-rule{display:flex;flex-direction:column;gap:4px;align-items:flex-start;text-align:left;padding:10px;border-radius:12px;border:1px solid var(--line2);background:var(--panel);cursor:pointer;transition:transform .2s,border-color .2s}
+div.m7-rule{cursor:default}
+.m7-rule:hover{transform:translateY(-2px);border-color:var(--accent)}
+.m7-rule.on{border-color:#ffe08a;background:#2a2410;animation:m7Glow 2s infinite}
+.m7-ic{font-size:26px;line-height:1}
+.m7-bar{display:block;width:100%;height:8px;border-radius:4px;background:var(--line);overflow:hidden}
+.m7-bar>i{display:block;height:100%;background:linear-gradient(90deg,var(--info),#ffe08a);transition:width .6s cubic-bezier(.2,.9,.3,1.2)}
+.m7-bracket{width:100%;height:auto;max-height:70vh;font:600 12px system-ui,sans-serif}
+.m7-wire{fill:none;stroke:var(--line2);stroke-width:2;stroke-dasharray:400;stroke-dashoffset:400;transition:stroke-dashoffset 1s}
+.m7-wire.lit{stroke:#ffe08a;stroke-dashoffset:0}
+.m7-seat rect{fill:var(--panel);stroke:var(--line2);stroke-width:1.5}
+.m7-seat text{fill:var(--text)}
+.m7-seat{animation:m7Up .4s both;animation-delay:var(--d)}
+.m7-seat.won rect{fill:#2a2410;stroke:#ffe08a!important;stroke-width:2.5}
+.m7-seat.lost text{fill:var(--muted);text-decoration:line-through}
+.m7-seat.me rect{stroke:var(--accent)!important;stroke-width:3}
+.m7-seat.click{cursor:pointer}
+.m7-champ{animation:m7Pop .8s cubic-bezier(.2,.9,.3,1.4) both}
+.m7-champ text{font-size:22px}.m7-champ text.name{fill:#ffe08a;font-size:16px;font-weight:800}
+.m7-champline{font-size:20px;font-weight:800;color:#ffe08a;animation:m7Pop .7s both}
+.m7-mymatch{display:flex;flex-direction:column;gap:8px;padding:12px;border-radius:12px;background:var(--panel2);border:1px solid var(--accent);animation:m7Up .4s both}
+.m7-team{display:flex;flex-direction:column;gap:10px;padding:14px;border-radius:14px;background:var(--panel);border:1px solid var(--line2)}
+.m7-members{display:flex;flex-wrap:wrap;gap:10px}
+.m7-member{display:grid;grid-template-columns:40px auto;grid-template-rows:auto auto;column-gap:8px;align-items:center;padding:8px 12px;border-radius:12px;background:var(--panel2);animation:m7Pop .5s both;animation-delay:var(--d)}
+.m7-member i{grid-row:1/3;width:40px;height:40px;border-radius:50%;background:var(--c);color:#0b1020;display:grid;place-items:center;font-style:normal;font-weight:800;font-size:18px}
+.m7-member.me{outline:2px solid var(--accent)}
+.m7-roles{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:8px}
+.m7-roles .opt{text-align:left}
+.m7-teams{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:8px}
+.m7-teamcard{display:flex;flex-direction:column;gap:4px;text-align:left;padding:12px;border-radius:12px;border:1px solid var(--line2);background:var(--panel);animation:m7Up .4s both;animation-delay:var(--d)}
+button.m7-teamcard{cursor:pointer}button.m7-teamcard:hover{border-color:var(--accent)}
+.m7-jam{display:grid;grid-template-columns:1fr auto 1fr;gap:12px;align-items:stretch}
+@media (max-width:640px){.m7-jam{grid-template-columns:1fr}.m7-plus{display:none}}
+.m7-plus{align-self:center;font-size:34px;font-weight:800;color:var(--muted)}
+.m7-jamcard{display:flex;flex-direction:column;gap:8px;perspective:600px}
+.m7-face{display:flex;flex-direction:column;gap:6px;align-items:center;justify-content:center;text-align:center;min-height:170px;padding:14px;border-radius:14px;background:repeating-linear-gradient(45deg,#1a2445,#1a2445 10px,#202b52 10px,#202b52 20px);border:2px solid var(--line2)}
+.m7-face.back{background:linear-gradient(160deg,#2a2410,#141c36);border-color:#ffe08a;animation:m7Pop .6s cubic-bezier(.2,.9,.3,1.4) both}
+.m7-face .m7-ic{font-size:40px}
+.m7-jamcard.spin .m7-face{animation:m7Spin .7s cubic-bezier(.3,.1,.3,1) both}
+.m7-locked{padding:10px 14px;border-radius:12px;background:#0c2418;border:1px solid var(--accent);font-weight:700;animation:m7Pop .5s both}
+.m7-brain{display:flex;gap:14px;align-items:center;flex-wrap:wrap}
+.m7-brain .row input{flex:1 1 220px}
+.m7-ring{width:120px;height:120px;flex:none}
+.m7-ideas{display:flex;flex-direction:column;gap:6px}
+.m7-idea{display:flex;gap:10px;align-items:center;padding:8px 10px;border-radius:10px;background:var(--panel);border-left:4px solid var(--c)}
+.m7-idea.pop{animation:m7Pop .45s cubic-bezier(.2,.9,.3,1.4) both}
+.m7-idea.late{background:#221f12}
+.m7-idea.picked{outline:2px solid #ffe08a;animation:m7Glow 2s infinite}
+.m7-idea .on{border-color:var(--accent);color:var(--accent)}
+.m7-n{width:26px;height:26px;border-radius:50%;display:grid;place-items:center;background:var(--bg);font-weight:800;font-size:12px;flex:none}
+.m7-map{display:block;width:100%;height:auto;border-radius:12px;border:1px solid var(--line2)}
+.pj-m7{padding:16px}
+.pj-m7 .m7-bracket{font-size:14px}
+@media (prefers-reduced-motion:reduce){.m7-phase,.m7-podium li,.m7-seat,.m7-champ,.m7-member,.m7-teamcard,.m7-face.back,.m7-idea.pop,.m7-locked,.m7-champline{animation:none}.m7-jamcard.spin .m7-face{animation:none}}

@@ -9,13 +9,13 @@ module.exports = function m4(H) {
 
   async function open(teacher, student, les, first = '#step-donor-play') {
     await teacher.click('.tabs >> text=Урок');
-    await teacher.selectOption('#moduleSel', '4');
+    await teacher.selectOption('#moduleSel', String(les.module || 4));
     await teacher.selectOption('#lessonSel', les.id);
     await teacher.waitForSelector('text=Открыть все', { timeout: 10000 });
     await teacher.click('text=Открыть все');
     await student.waitForFunction(t => document.querySelector('#lessonTitle').textContent.includes(t), `Урок ${les.number}`, { timeout: 15000 });
     await student.waitForSelector(first, { timeout: 15000 });
-    check(`Урок ${les.number} открылся у ученика: модуль 4`, (await student.textContent('#lessonTitle')).includes(les.title));
+    check(`Урок ${les.number} открылся у ученика: модуль ${les.module || 4}`, (await student.textContent('#lessonTitle')).includes(les.title));
   }
   async function choice(student, id, nth = 0) {
     await student.click(`#step-${id} .opt >> nth=${nth}`);
@@ -62,7 +62,10 @@ module.exports = function m4(H) {
     await student.keyboard.press('ArrowRight');
     for (let i = 2; i < st.scenes.length - 1; i++) await student.click(`#step-${id} [data-motion=next]`);
     const last = (await student.textContent(`#step-${id} .m4-cap h3`)).trim();
-    const pix = await student.$eval(`#step-${id} canvas.m4-motion`, c => { const d = c.getContext('2d').getImageData(0, 0, c.width, c.height).data; const set = new Set(); for (let i = 0; i < d.length; i += 4 * 97) set.add(d[i] >> 4 << 8 | d[i + 1] >> 4 << 4 | d[i + 2] >> 4); return set.size; });
+    // сцена может начинаться с пустого кадра (проявляется): ждём до 2 с, пока на холсте появится рисунок
+    const pixAt = () => student.$eval(`#step-${id} canvas.m4-motion`, c => { const d = c.getContext('2d').getImageData(0, 0, c.width, c.height).data; const set = new Set(); for (let i = 0; i < d.length; i += 4 * 97) set.add(d[i] >> 4 << 8 | d[i + 1] >> 4 << 4 | d[i + 2] >> 4); return set.size; });
+    let pix = await pixAt();
+    for (let k = 0; k < 10 && pix <= 6; k++) { await student.waitForTimeout(200); pix = await pixAt(); }
     check(`Урок ${les.number}: объяснялка — ${st.scenes.length} сцен анимацией, листается кнопкой и стрелкой`, first === st.scenes[0].title && last === st.scenes[st.scenes.length - 1].title && pix > 6, `${first} → ${last}, оттенков ${pix}`);
     if (shot) await shot(student, `m4-${les.number}-motion`);
     await student.click(`#step-${id} [data-motion=next]`);
@@ -505,5 +508,6 @@ module.exports = function m4(H) {
     await final(student, les, 'чужих глаз');
   }
 
-  return { lesson14, lesson15, lesson16, lesson17, lesson18, neighbourLevels, editLevel };
+  // помощники общего формата урока — их берёт и e2e-m7.js (модуль 7)
+  return { lesson14, lesson15, lesson16, lesson17, lesson18, neighbourLevels, editLevel, helpers: { open, choice, donor, hunt, motion, variety, build, final } };
 };

@@ -133,6 +133,7 @@ const GAME = {
 | Звук | `lab.sfx.jump/shoot/coin/hit/explode/power/beep/warn/whoosh/win/lose()`, `lab.tone(частота, сек, 'square'/'sine'/'triangle'/'sawtooth', громкость, скольжениеДо, задержка)`, `lab.noise(сек, громкость, частотаФильтра, задержка)`. Без файлов, через компрессор: много звуков разом не хрипят |
 | Случайность | Только через зерно: `lab.rand(a, b)`, `lab.randInt(a, b)`, `lab.pick(массив)`, `lab.chance(p)`. `Math.random` в игре не используется — иначе `?seed=` не повторит мир |
 | Математика | `lab.clamp`, `lab.lerp`, `lab.v3(x, y, z)` (Vector3), `lab.dist(a, b)`, `lab.flat(a, b)` (по земле), `lab.near(a, b, r)`, `lab.toScreen(где)` → `{ x, y, visible }`. «Где» — объект сцены (берётся мировая позиция), Vector3, `{x, y, z}` или `[x, y, z]` |
+| Сеть класса | `lab.net` (урок 26, «Арена класса»): `on` — портал передаёт игроков класса, `others` — соседи `[{ nick, x, y, z, ry, a, cp, f }]` (до 60), `room` — забег от учителя `{ round, phase: 'lobby'/'run'/'done', start, rules }`, `now()` — часы сервера в мс (одинаковые у всего класса: по ним препятствия идут в одной фазе), `send(me)` — моё положение (портал отправляет на сервер не чаще 10 раз в секунду). Без портала `on: false` — игра играет с ботами |
 | Мир | см. ниже |
 | Интерфейс | `lab.hud('ключ', 'текст', { color, size })` (`null` убирает; `color` — `#hex`, `size` — 10–32 px, жирным), `scoreColor` в GAME — цвет счёта, `lab.count('имя', n)` — счётчик телеметрии (имя с `_` — скрытый: уходит порталу, на экран не попадает; так считается спрятанная механика `_secret`, её секунды копятся в `marks`), `lab.stat('имя', значение)` |
 
@@ -183,8 +184,8 @@ const GAME = {
 
 | Направление | Сообщения |
 | --- | --- |
-| Игра → портал (`source: 'lab-game'`) | `ready` (`shell`, `engine: 'three'`, версия, описание игры `meta`), `start`, `again`, `over` (очки, рекорд, зерно, телеметрия `tele`, изменённые ручки `cfg`), `cfg`, `error` (фаза, текст, строка), `poster` (кадр для аркады), `playtest`, `playtestStep`, `showStep`, `showDone` |
-| Портал → игра (`target: 'lab-game'`) | `records`, `seed`, `data` (`lab.data`, раньше `setCfg`), `setCfg` (копии А и Б, эксперимент с ручкой), `pause`, `poster`, `playtest`, `challengeOn`, `ghost` (`{ nick, score, line }` — призрак соперника под счётом), `reveal` (`{ title }` — лупа спрятанной механики), `botShow` (бот играет на проекторе) |
+| Игра → портал (`source: 'lab-game'`) | `ready` (`shell`, `engine: 'three'`, версия, описание игры `meta`), `start`, `again`, `over` (очки, рекорд, зерно, телеметрия `tele`, изменённые ручки `cfg`), `cfg`, `error` (фаза, текст, строка), `poster` (кадр для аркады), `playtest`, `playtestStep`, `showStep`, `showDone`, `net` (`{ me }` — моё положение для сети класса) |
+| Портал → игра (`target: 'lab-game'`) | `records`, `seed`, `data` (`lab.data`, раньше `setCfg`), `setCfg` (копии А и Б, эксперимент с ручкой), `pause`, `poster`, `playtest`, `challengeOn`, `ghost` (`{ nick, score, line }` — призрак соперника под счётом), `reveal` (`{ title }` — лупа спрятанной механики), `botShow` (бот играет на проекторе), `net` (`{ now, room, others }` — сеть класса, `lab.net`) |
 
 Телеметрия `tele`: `time`, `presses`, `hold`, `hurts`, `custom` (счётчики `lab.count`), `stats`, `marks` (секунды скрытых счётчиков), `line` (счёт на каждой секунде, до 600).
 

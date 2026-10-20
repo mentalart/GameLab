@@ -76,6 +76,18 @@ function listen() {
   es.addEventListener('demo', e => { const d = JSON.parse(e.data); S.hooks.forEach(h => h('demo', d)); });
   // уровни класса (модуль 4): новый уровень, партия, оценка — галерея и редактор обновляются сами
   es.addEventListener('levels', e => { const d = JSON.parse(e.data); S.hooks.forEach(h => h('levels', d)); });
+  // модуль 7: забег арены, турнирная сетка, команда джема — шаги arena, bracket, team и другие обновляются сами
+  ['arena', 'bracket', 'team'].forEach(ev => es.addEventListener(ev, e => { const d = JSON.parse(e.data); S.hooks.forEach(h => h(ev, d)); }));
+  // джем: товарищ по команде заполнил общий шаг (team: true) — ответ и игра команды приходят сюда; шаг перерисуется, если в нём не печатают
+  es.addEventListener('team', e => {
+    const d = JSON.parse(e.data);
+    if (!d.step || d.from === S.me.nick) return;
+    api('/api/me').then(r => {
+      S.answers[d.step] = r.answers[d.step]; if (r.game) S.game = r.game;
+      const card = document.getElementById('step-' + d.step);
+      if (card && !card.contains(document.activeElement)) renderMain();
+    }).catch(() => {});
+  });
   es.addEventListener('help', e => { if (JSON.parse(e.data).nick === S.me.nick) { S.me.help = null; drawHelp(); } });
   es.addEventListener('limits', e => {
     const d = JSON.parse(e.data);
@@ -269,7 +281,7 @@ function ownCounter(values) {
 /* =================== типы шагов =================== */
 const STEPS = {};
 // шаги модуля 4 «Пространство и уровни» лежат в steps-m4.js (motion, order, mapquiz, heat, leveledit, gallery): он загружается раньше
-Object.assign(STEPS, window.LabStepsM4 || {});
+Object.assign(STEPS, window.LabStepsM4 || {}, window.LabStepsM7 || {});
 
 // lens: линза урока как ритуал финала (С3) — карта переворачивается по нажатию и ложится в колоду «Моей студии»
 STEPS.lens = ctx => {
@@ -3623,7 +3635,7 @@ function stepSummary(step) {
     case 'arcade': return v.game ? `игра «${v.title || ''}» (автор ${v.author || '—'}), партий ${v.rounds || 0}, лучший счёт ${v.best || 0}${v.beat ? ', рекорд автора побит' : ''}` : 'не играл';
     case 'playtest': return (v.sent ? `отзыв на «${v.title || ''}»: ${(v.emotions || []).join(' ')}; нравится: ${f(v.like)}; хочется: ${f(v.want)}; а что если: ${f(v.whatif)}` : 'отзыв не отправлен') +
       (S.me.feedback ? `\nотзыв учителя: понятие — ${valText(S.me.feedback.concept)}; вопрос — ${valText(S.me.feedback.question)}` : '');
-    default: return (window.LabStepsM4Summary && window.LabStepsM4Summary(step, v, a)) || (window.LabStepsM3Summary && window.LabStepsM3Summary(step, v, a)) || JSON.stringify(v);
+    default: return (window.LabStepsM7Summary && window.LabStepsM7Summary(step, v, a)) || (window.LabStepsM4Summary && window.LabStepsM4Summary(step, v, a)) || (window.LabStepsM3Summary && window.LabStepsM3Summary(step, v, a)) || JSON.stringify(v);
   }
 }
 function cpSummary(cp) {

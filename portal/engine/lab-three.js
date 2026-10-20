@@ -226,6 +226,9 @@ const lab = {
   t: 0, dt: 0, state: {}, cfg, seed: 0, round: 0, data: {}, // data — данные от портала (урок 7: мелодия ученика из секвенсора)
   p1: P[0], p2: P[1], players: 1,
   score: 0, lives: 3, invuln: 0, best: 0,
+  // сеть (урок 26, «Арена класса»): портал пересылает игру класса через сервер. on — портал на связи, others — другие игроки
+  // ({ n, x, y, z, ry, a, c, f }), room — забег ({ round, phase, start, rules, results }), now() — часы сервера в мс; send(me) — своё место
+  net: { on: false, others: [], room: {}, at: 0, clock: 0, now() { return lab.net.clock + (performance.now() - lab.net.at); }, send(me) { if (lab.net.on) post({ type: 'net', me }); } },
   get playing() { return state === 'play' && !paused; },
 
   // очки, жизни, конец партии
@@ -1369,6 +1372,7 @@ addEventListener('message', e => {
   if (m.type === 'botShow') botShow(m.options || {}).catch(err => post({ type: 'showDone', error: err.message }));
   if (m.type === 'reveal') setLupa(m.title || null);
   if (m.type === 'challengeOn') challengeOn = true;
+  if (m.type === 'net') { const N = lab.net; N.on = true; N.others = Array.isArray(m.others) ? m.others.slice(0, 60) : []; N.room = m.room && typeof m.room === 'object' ? m.room : {}; N.at = performance.now(); N.clock = Number(m.now) || Date.now(); }
   if (m.type === 'ghost') ghost = m.ghost && Array.isArray(m.ghost.line) ? { nick: String(m.ghost.nick || 'соперник').slice(0, 24), score: Number(m.ghost.score) || 0, line: m.ghost.line.slice(0, 600) } : null;
 });
 

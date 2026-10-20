@@ -359,6 +359,8 @@ route('POST', '/api/teacher/help', (ctx) => {
 });
 route('GET', '/api/me', (ctx) => {
   const { w, cls, les, s, st } = needStudent(ctx);
+  const tg = M7.teamGameId(w.class, w.nick, les.id); // джем: игра команды — и в уроке 28, где ученик ещё ничего не собирал
+  if (tg && tg !== st.gameId && store.getGame(tg)) st.gameId = tg;
   s.seen = store.now(); store.saveStudent(w.class, s);
   const g = st.gameId ? store.getGame(st.gameId) : null;
   return { nick: w.nick, class: { code: cls.code, name: cls.name, opened: cls.opened, authorMode: cls.authorMode, current: (cls.timer || {}).cp || null }, lesson: studentLesson(les, cls), answers: st.answers, game: g, wow: les.wow ? publicWow(cls, les) : null, feedback: st.feedback || null, demo: ai.demo(), chat: true, aiCalls: st.aiCalls, aiLimit: aiLimit(st), prevPlan: prevPlan(s, les), help: s.help || null };
@@ -372,6 +374,7 @@ route('POST', '/api/answer', (ctx) => {
   st.answers[step] = { value: value === undefined ? prev.value : value, done: done === undefined ? !!prev.done : !!done, at: store.now() };
   s.where = step; s.seen = store.now(); s.moved = store.now(); // moved — для фильтра «застряли» у учителя
   store.saveStudent(w.class, s);
+  M7.fanout(w.class, w.nick, les, stepOf(les, step).step, st.answers[step]); // джем: общий замысел команды
   return { ok: true };
 });
 
@@ -461,10 +464,10 @@ function heatOf(overs) {
 function classGame(w, id) { const g = id && store.getGame(id); return g && g.class === w.class && g.current ? g : null; }
 // все собранные игры класса: по одной на ученика и урок
 function classGames(code) {
-  const out = [];
+  const out = [], seen = new Set(); // игра команды джема записана у каждого участника — в аркаде она одна
   for (const s of store.students(code)) for (const st of Object.values(s.lessons || {})) {
-    const g = st.gameId && store.getGame(st.gameId);
-    if (g && g.current) out.push(g);
+    const g = st.gameId && !seen.has(st.gameId) && store.getGame(st.gameId);
+    if (g && g.current) { seen.add(g.id); out.push(g); }
   }
   return out;
 }
@@ -484,12 +487,13 @@ function gameCard(code, g, viewer) {
     again: store.plays(g.id).filter(p => p.type === 'again' && p.nick !== g.nick).length, // «ещё раз» чужих игроков — главный тест курса
     poster: g.poster ? `/poster/${g.id}.jpg?v=${g.poster.version}` : null,
     guests: (g.guestLevels || []).map(x => ({ code: x.code, name: x.name, author: x.author })), // уровни гостей, принятые автором (урок 18)
-    hidden: !!g.hidden, mine: g.nick === viewer, knob: g.knob || null, effect: les && g.plan && g.plan.secret ? secretEffect(les, g.plan.secret.title) : '', emblem: (store.getStudent(code, g.nick) || {}).emblem || '',
+    team: g.team || null, members: g.members || null, // игра команды джема (модуль 7): моя у каждого участника
+    hidden: !!g.hidden, mine: g.nick === viewer || (g.members || []).includes(viewer), knob: g.knob || null, effect: les && g.plan && g.plan.secret ? secretEffect(les, g.plan.secret.title) : '', emblem: (store.getStudent(code, g.nick) || {}).emblem || '',
   };
 }
 // игра соседа по кругу: следующий по алфавиту автор после after (по умолчанию — после меня); игры этого урока — первыми
 function neighbour(cards, me, after, lessonId) {
-  const pool = cards.filter(c => !c.hidden && c.nick !== me);
+  const pool = cards.filter(c => !c.hidden && c.nick !== me && !(c.members || []).includes(me));
   const same = pool.filter(c => c.lesson && c.lesson.id === lessonId);
   const list = (same.length ? same : pool).sort((a, b) => a.nick.localeCompare(b.nick, 'ru'));
   return list.find(c => c.nick.localeCompare(after || me, 'ru') > 0) || list[0] || null;
@@ -608,7 +612,7 @@ route('POST', '/api/arcade/hide', (ctx) => {
 route('POST', '/api/release', (ctx) => {
   const { w, les } = needStudent(ctx);
   const g = classGame(w, ctx.body.game);
-  if (!g || g.nick !== w.nick) throw Object.assign(new Error('Выпустить можно только свою игру'), { status: 403 });
+  if (!g || (g.nick !== w.nick && !(g.members || []).includes(w.nick))) throw Object.assign(new Error('Выпустить можно только свою игру'), { status: 403 });
   const gl = lesson(g.lesson), mod = les.module || 0;
   if (!gl || (gl.module || 0) !== mod) throw Object.assign(new Error('На релиз идёт игра этого модуля'), { status: 400 });
   const note = cleanField(ctx.body.note);
@@ -1411,11 +1415,16 @@ route('POST', '/api/ai/producer-fix', (ctx) => {
   return { job: job.id };
 });
 
+// модуль 7: арена класса, турнирная сетка, команды джема (lib/m7.js)
+const M7 = require('./lib/m7')({ route, needStudent, needTeacher, needDayClass, broadcast, store, saveStudentField });
 function ensureGame(c) {
+  const teamId = M7.teamGameId(c.w.class, c.w.nick, c.les.id); // джем: игра одна на команду
+  if (teamId && teamId !== c.st.gameId && store.getGame(teamId)) { c.st.gameId = teamId; saveStudentField(c.w.class, c.w.nick, c.les.id, st => { st.gameId = teamId; }); }
   let g = c.st.gameId ? store.getGame(c.st.gameId) : null;
   if (!g) {
     g = store.createGame({ class: c.w.class, nick: c.w.nick, lesson: c.les.id });
     saveStudentField(c.w.class, c.w.nick, c.les.id, st => { st.gameId = g.id; });
+    M7.claimGame(c.w.class, c.w.nick, c.les.id, g.id);
   }
   return g;
 }

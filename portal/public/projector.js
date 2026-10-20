@@ -7,6 +7,7 @@
 // Вкладка «Мир дня»: учитель даёт всему классу один мир одной из игр урока, таблица мира растёт на проекторе.
 // Вкладка «Финал»: стена аркады урока — игры урока с рекордами, игра класса, лидер мира дня и провал дня (самый смешной баг урока).
 // Вкладка «Выставка и турнир» (урок с шагом vote): лидеры номинаций и кнопочный турнир в игре-победителе номинации step.tournament.
+// Вкладка «Вместе» (модуль 7, уроки с шагами arena, bracket, team): карта забега «Арены класса», итоги, голоса за правило, турнирная сетка, команды джема (public/m7-pult.js).
 'use strict';
 const { el, api, toast, beep } = Lab;
 const $ = s => document.querySelector(s);
@@ -19,7 +20,7 @@ async function boot() {
   const q = new URLSearchParams(location.search);
   try { P.code = q.get('code') || localStorage.getItem('lab:teacher:class'); } catch (e) { P.code = q.get('code'); }
   if (!P.code) { $('#pj-lesson').append(el('div', { class: 'card' }, 'Сначала создайте класс в панели учителя.')); return; }
-  if (['demo', 'day', 'poll', 'final', 'pair'].includes(q.get('tab'))) P.tab = q.get('tab');
+  if (['demo', 'day', 'poll', 'final', 'pair', 'm7'].includes(q.get('tab'))) P.tab = q.get('tab');
   await refresh();
   setInterval(refresh, 2000);
   setInterval(tick, 250);
@@ -39,6 +40,9 @@ async function refresh() {
     $('#pj-demo').innerHTML = ''; P.lastMode = P.mode;
   }
   if (!P.mode && P.tab === 'demo') P.tab = 'lesson';
+  const m7 = o.lesson.checkpoints.some(c => c.steps.some(s => ['arena', 'bracket', 'team'].includes(s.type)));
+  $('#m7Tab').hidden = !m7;
+  if (!m7 && P.tab === 'm7') P.tab = 'lesson';
   const vs = voteStep();
   $('#cupTab').hidden = !vs;
   if (!vs && P.tab === 'cup') P.tab = 'lesson';
@@ -60,6 +64,9 @@ function showTab() {
   if (P.tab !== 'poll') P.pollKey = null;
   if (P.tab !== 'final') { P.finalKey = null; if (P.failFrame) { P.failFrame.destroy(); P.failFrame = null; } }
   $('#pj-cup').hidden = P.tab !== 'cup';
+  $('#pj-m7').hidden = P.tab !== 'm7';
+  if (P.tab === 'm7' && !P.m7) { P.m7 = LabM7.pult($('#pj-m7'), { code: () => P.code, lesson: () => P.o && P.o.lesson, projector: true }); P.m7.show(); }
+  if (P.tab !== 'm7' && P.m7) { P.m7.hide(); P.m7 = null; $('#pj-m7').innerHTML = ''; }
   $('#pj-pair').hidden = P.tab !== 'pair';
   if (P.tab !== 'pair' && P.pair) { P.pair.frames.forEach(f => f.h.destroy()); P.pair = null; $('#pj-pair').innerHTML = ''; }
   if (P.tab !== 'cup' && P.cupFrame) { P.cupFrame.destroy(); P.cupFrame = null; P.cupKey = null; $('#pj-cup').innerHTML = ''; }

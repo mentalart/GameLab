@@ -170,7 +170,8 @@
   function stage(W, H, draw, cls = 'm4-cv') {
     const cv = el('canvas', { width: W, height: H, class: cls }), g = cv.getContext('2d');
     let raf = 0; const t0 = performance.now();
-    const loop = now => { if (!cv.isConnected && performance.now() - t0 > 1500) { cancelAnimationFrame(raf); return; } draw(g, (now - t0) / 1000); raf = requestAnimationFrame(loop); };
+    let drawn = 0;
+    const loop = now => { if (!cv.isConnected && performance.now() - t0 > 1500) { cancelAnimationFrame(raf); return; } if (!(window.LAB_LOWRES && now - drawn < 100)) { drawn = now; draw(g, (now - t0) / 1000); } raf = requestAnimationFrame(loop); };
     raf = requestAnimationFrame(loop);
     return cv;
   }
@@ -601,8 +602,12 @@
     cv.addEventListener('keydown', e => { if (['ArrowRight', 'Space', 'Enter'].includes(e.code)) { e.preventDefault(); go(1); } if (e.code === 'ArrowLeft') { e.preventDefault(); go(-1); } });
     cv.addEventListener('click', () => go(1));
     let raf = 0;
+    let drawn = 0;
     const loop = now => {
       if (!cv.isConnected && now - sceneT0 > 2000) { cancelAnimationFrame(raf); return; }
+      // в проверке без видеокарты (LAB_LOWRES) сцена рисуется 10 раз в секунду, иначе соседние рамки замирают
+      if (window.LAB_LOWRES && now - drawn < 100) { raf = requestAnimationFrame(loop); return; }
+      drawn = now;
       const sc = st.scenes[i], f = MOTION[sc.anim];
       g.save(); g.clearRect(0, 0, 640, 300);
       try { if (f) f(g, (now - sceneT0) / 1000 * (fast() ? 2 : 1), 640, 300); else { g.fillStyle = '#141c36'; g.fillRect(0, 0, 640, 300); text(g, sc.title, 320, 150, '#f2efe6', 18); } } catch (e) { /* сцена не рисуется — текст остаётся */ }
@@ -1219,6 +1224,8 @@
     return host;
   }
 
+  // сцены и примитивы холста открыты другим модулям: шаги модуля 7 (steps-m7.js) добавляют свои сцены в ту же библиотеку
+  window.LabMotion = { MOTION, rr, text, disc, glow, sky, hero, arrow, confetti, stage, padReader, seg, io, ob, lerp, clamp, rng, hashStr, TAU };
   window.LabStepsM4 = { motion: stepMotion, order: stepOrder, mapquiz: stepMapquiz, heat: stepHeat, leveledit: stepLeveledit, gallery: stepGallery };
   // итог шага одной строкой: для «Скопировать результат» в режиме автора
   window.LabStepsM4Summary = (step, v, a) => {

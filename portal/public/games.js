@@ -14,7 +14,8 @@ const Games = (() => {
   // reveal — название спрятанной механики: оболочка зажигает лупу на каждом срабатывании _secret (урок 1). pair — имя пары рамок, которые идут
   // одновременно (проектор «Спрятанная механика рядом»): запуск одной не останавливает другую. onShow — ход и итог показа бота (botShow).
   // onLevels — игра сообщила свои уровни и легенду (модуль 4, portal.levels / lab.levels), onLevel — начался уровень, onClear — уровень пройден.
-  function frame({ src, key, info, cfg, data, label, onReady, onOver, onScore, onAgain, onError, onPlaytest, onPlaytestStep, onPoster, onShow, onLevels, onLevel, onClear, autostart, score = true, challenge, ghost, reveal, pair }) {
+  // onNet — игра сообщила положение игрока для сети класса (lab.net.send, урок 26); ответ сервера уходит в игру через post({ type: 'net', ... }).
+  function frame({ src, key, info, cfg, data, label, onReady, onOver, onScore, onAgain, onError, onPlaytest, onPlaytestStep, onPoster, onShow, onLevels, onLevel, onClear, onNet, autostart, score = true, challenge, ghost, reveal, pair }) {
     const box = el('div', { class: 'gamebox' });
     const veil = el('div', { class: 'veil' });
     let iframe = null, timer = null, ready = false;
@@ -49,6 +50,7 @@ const Games = (() => {
       if (m.type === 'levels') { h.levels = { legend: m.legend || {}, list: Array.isArray(m.list) ? m.list : [], playing: m.playing || [] }; if (onLevels) onLevels(h.levels); }
       if (m.type === 'level' && onLevel) onLevel(m);
       if (m.type === 'clear' && onClear) onClear(m);
+      if (m.type === 'net' && onNet) onNet(m); // сеть класса (урок 26): положение игрока для арены
     }
     addEventListener('message', onMsg);
     function showVeil(content) { veil.innerHTML = ''; veil.append(content); veil.hidden = false; }
