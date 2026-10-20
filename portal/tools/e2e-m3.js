@@ -87,7 +87,8 @@ module.exports = function m3(H) {
       await student.click(`#step-${id} .bins .bin >> nth=${st.bins.findIndex(b => b.id === it.bin)}`);
       await student.waitForSelector(`#step-${id} [data-next]:not([hidden])`, { timeout: 5000 });
       await student.click(`#step-${id} [data-next]`);
-      await student.waitForFunction(([s, p]) => { const e = document.querySelector(s + ' .item'); return !!document.querySelector(s + '.done') || !e || !e.textContent.trim().endsWith(p); }, [`#step-${id}`, it.text], { timeout: 15000 });
+      // текст следующей карточки может совпасть с этой — ждём, пока спрячется «Далее»
+      await student.waitForFunction(s => !!document.querySelector(s + '.done') || !!document.querySelector(s + ' [data-next][hidden]'), `#step-${id}`, { timeout: 15000 });
     }
     await student.waitForSelector(`#step-${id}.done`, { timeout: 10000 });
     const res = (await student.textContent(`#step-${id}`)).replace(/\s+/g, ' ');
