@@ -22,6 +22,7 @@
 // Урок 8 в обоих прогонах: «Башня до неба» с окном «идеально» и без спрятанной механики, мастерская вариаций на одну кнопку (маятник, ритм, инерция, блиц — доска со спасёнными плитами и конструктор), квиз «Какой это приём?», джем с донором Stack из колоды «одна кнопка»,
 // образец урока, две башни вдвоём, релиз модуля 2; с подставным ИИ — выставка: соседка собирает игру джема, голоса в номинациях,
 // итоги класса и кнопочный турнир на проекторе.
+// Модуль 4 (уроки 14–18) — tools/e2e-m4.js: объяснялки motion, квизы по картам, уровни как данные, тепловая карта, редактор и галерея уровней.
 // Запуск: node portal/tools/e2e-portal.js [--headed] [--from=5]   Снимки — в portal/.check/portal-*.png
 //         --only=5 или --only=3,6 — только эти уроки: от урока 1 остаются вход, вау-старт, Фабрика и сборка (класс, ученик, своя игра),
 //         «Играем вместе» — только для уроков 4 и 6 (им нужны игры соседей). --mock-only — без второго, демо-прогона.
@@ -52,6 +53,8 @@ const lesson5 = require('../lessons/urok-05');
 const lesson6 = require('../lessons/urok-06');
 const lesson7 = require('../lessons/urok-07');
 const lesson8 = require('../lessons/urok-08');
+// модуль 4 «Пространство и уровни»: уроки 14–18 проверяет tools/e2e-m4.js теми же помощниками
+const M4 = [14, 15, 16, 17, 18].filter(n => fs.existsSync(path.join(__dirname, '..', 'lessons', `urok-${n}.js`)));
 const store = require('../lib/store');
 
 const PASSWORD = 'e2e-пароль';
@@ -497,6 +500,10 @@ async function run(browser, base, mode) {
   if (want(6)) await lessonSix(mode, teacher, student, shot);
   if (want(7)) await lessonSeven(mode, teacher, student, shot);
   if (want(8)) await lessonEight(mode, teacher, student, shot, { browser, base, code, errors, pj });
+  { // модуль 4: уроки 14–18
+    const m4 = require('./e2e-m4')({ check, gameFrame, playRound, sleep, mock, lessons: Object.fromEntries(M4.map(n => [n, require(`../lessons/urok-${n}`)])) });
+    for (const n of M4) if (want(n) && m4['lesson' + n]) await m4['lesson' + n](mode, teacher, student, shot, { browser, base, code, errors, pj });
+  }
   // учитель возвращает класс к модулю 1: следующий прогон начинает с него
   await teacher.click('.tabs >> text=Урок');
   await teacher.selectOption('#moduleSel', '1');
@@ -539,6 +546,7 @@ async function wowStart(teacher, student, pj, mode, shot) {
   await pj.waitForSelector('#pjAsk .op-pick.win', { timeout: 8000 });
   await shot(pj, 'p2-wow-itog');
   await pj.waitForSelector(`#pjAsk .op-mini.on[data-op=${q1.id}]`, { timeout: 8000 });
+  await pj.waitForSelector(`#pjAsk .op-pil.up[data-op=${q1.id}]`, { timeout: 5000 }).catch(() => {}); // «up» ставится через два кадра анимации
   check('Проектор: карта-победитель улетела под опору, опора выросла, строка в документе', await pj.locator(`#pjAsk .op-pil.up[data-op=${q1.id}]`).count() === 1 && await pj.locator(`#pjAsk .op-ln.on[data-op=${q1.id}]`).count() === 1);
   await pj.waitForFunction(q => (document.querySelector('#pjAsk .op-q h1') || {}).textContent === q, q2.q, { timeout: 8000 });
   check('Проектор: следующий вопрос ждёт пробела', true);

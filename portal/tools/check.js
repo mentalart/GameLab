@@ -38,7 +38,7 @@ function changedFiles() {
 function lessonsWithGame(file) {
   const name = path.basename(file);
   const dir = path.join(ROOT, 'portal', 'lessons');
-  return fs.readdirSync(dir).filter(f => /^urok-0\d\.js$/.test(f) && fs.readFileSync(path.join(dir, f), 'utf8').includes(name)).map(f => Number(f.slice(5, 7)));
+  return fs.readdirSync(dir).filter(f => /^urok-\d\d\.js$/.test(f) && fs.readFileSync(path.join(dir, f), 'utf8').includes(name)).map(f => Number(f.slice(5, 7)));
 }
 
 function plan(files) {
@@ -56,10 +56,10 @@ function plan(files) {
     } else if (r === 'engine/portal.js') { p.qwen = true; p.why.push(f); }
     else if (/^engine\//.test(r) || /^tools\/(check-game|serve)\.js$/.test(r) || /^tools\/fixtures\/oshibka/.test(r)) {
       p.self = true; p.allGames = true; whole(f, false);
-    } else if (/^lessons\/urok-0\d(-v2|-kolody|-miry)?\.js$/.test(r)) {
+    } else if (/^lessons\/urok-\d\d(-v2|-kolody|-miry)?\.js$/.test(r)) {
       const n = Number(r.slice(13, 15));
       p.e2e = true; p.lessons.add(n); p.demo = true; portal(); p.why.push(f);
-    } else if (r === 'lib/ai.js' || r === 'server.js' || /^lib\//.test(r) || /^tools\/(mock-ai|e2e-portal)\.js$/.test(r) || /^tools\/fixtures\/lessons\//.test(r)) whole(f, true);
+    } else if (r === 'lib/ai.js' || r === 'server.js' || /^lib\//.test(r) || /^tools\/(mock-ai|e2e-portal|e2e-m4)\.js$/.test(r) || /^tools\/fixtures\/lessons\//.test(r)) whole(f, true);
     else if (/^(public|ai)\//.test(r) || r === 'lessons/moduli.js' || r === 'lessons/slovar.js') whole(f, false);
     else if (/^tools\/(e2e-qwen-chat\.js|fixtures\/qwen)/.test(r)) { p.qwen = true; p.why.push(f); }
     else if (/^tools\/(check|playtest|vendor-three\.sh)/.test(r) || /^(README|\.gitignore|config\.example\.json)/.test(r) || r.startsWith('.check/')) continue;

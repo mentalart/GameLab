@@ -153,6 +153,19 @@ const store = {
   saveChallenge(code, ch) { const all = this.challenges(code); all[ch.code] = ch; writeJSON(path.join(classDir(code), 'challenges.json'), all); return ch; },
   getChallenge(code, ch) { return this.challenges(code)[String(ch || '').trim().toUpperCase()] || null; },
 
+  // ---------- уровни класса (модуль 4): галерея уровней, коды уровней, пар, уровни гостей ----------
+  levels(code) { return readJSON(path.join(classDir(code), 'levels.json'), {}); },
+  createLevel(code, info) {
+    const all = this.levels(code);
+    let lv;
+    do { lv = 'L' + newCode(); } while (all[lv]);
+    all[lv] = Object.assign({ code: lv, at: now(), plays: {}, likes: {}, rates: {} }, info);
+    writeJSON(path.join(classDir(code), 'levels.json'), all);
+    return all[lv];
+  },
+  saveLevel(code, lv) { const all = this.levels(code); all[lv.code] = lv; writeJSON(path.join(classDir(code), 'levels.json'), all); return lv; },
+  getLevel(code, lv) { return this.levels(code)[String(lv || '').trim().toUpperCase()] || null; },
+
   // ---------- вау-старт: игра учителя на проекторе, своя на каждый урок класса ----------
   getDemo(code, lesson) { return readJSON(path.join(classDir(code), 'demo-' + safeName(lesson) + '.json'), null); },
   saveDemo(code, lesson, d) { writeJSON(path.join(classDir(code), 'demo-' + safeName(lesson) + '.json'), d); return d; },

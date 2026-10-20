@@ -13,7 +13,8 @@ const Games = (() => {
   // challenge — под игрой есть кнопка вызова (оболочка пишет о ней на экране конца партии), ghost — призрак соперника { nick, score, line }.
   // reveal — название спрятанной механики: оболочка зажигает лупу на каждом срабатывании _secret (урок 1). pair — имя пары рамок, которые идут
   // одновременно (проектор «Спрятанная механика рядом»): запуск одной не останавливает другую. onShow — ход и итог показа бота (botShow).
-  function frame({ src, key, info, cfg, data, label, onReady, onOver, onScore, onAgain, onError, onPlaytest, onPlaytestStep, onPoster, onShow, autostart, score = true, challenge, ghost, reveal, pair }) {
+  // onLevels — игра сообщила свои уровни и легенду (модуль 4, portal.levels / lab.levels), onLevel — начался уровень, onClear — уровень пройден.
+  function frame({ src, key, info, cfg, data, label, onReady, onOver, onScore, onAgain, onError, onPlaytest, onPlaytestStep, onPoster, onShow, onLevels, onLevel, onClear, autostart, score = true, challenge, ghost, reveal, pair }) {
     const box = el('div', { class: 'gamebox' });
     const veil = el('div', { class: 'veil' });
     let iframe = null, timer = null, ready = false;
@@ -45,6 +46,9 @@ const Games = (() => {
       if (m.type === 'playtestStep' && onPlaytestStep) onPlaytestStep(m);
       if (m.type === 'playtest' && onPlaytest) onPlaytest(m);
       if ((m.type === 'showStep' || m.type === 'showDone') && onShow) onShow(m);
+      if (m.type === 'levels') { h.levels = { legend: m.legend || {}, list: Array.isArray(m.list) ? m.list : [], playing: m.playing || [] }; if (onLevels) onLevels(h.levels); }
+      if (m.type === 'level' && onLevel) onLevel(m);
+      if (m.type === 'clear' && onClear) onClear(m);
     }
     addEventListener('message', onMsg);
     function showVeil(content) { veil.innerHTML = ''; veil.append(content); veil.hidden = false; }
@@ -69,13 +73,20 @@ const Games = (() => {
       destroy() { removeEventListener('message', onMsg); h.stop(true); const i = frames.indexOf(h); if (i >= 0) frames.splice(i, 1); },
       fullscreen() { if (box.requestFullscreen) box.requestFullscreen().catch(() => {}); },
       post,
-      meta: null, changed: {}, onCfg: null, pair: pair || null,
+      meta: null, changed: {}, onCfg: null, pair: pair || null, levels: null,
       get ready() { return ready; },
     };
     box.append(veil);
     frames.push(h);
     if (autostart) h.start(); else h.stop();
     return h;
+  }
+  // адрес игры с уровнями гостей (модуль 4): mode 'only' — только эти уровни (проба в редакторе, галерея), 'add' — после своих
+  function withLevels(src, list, mode = 'only') {
+    if (!list || !list.length) return src;
+    const json = JSON.stringify({ mode, list: list.map(x => ({ name: x.name, map: x.map, author: x.author || '' })) });
+    const b64 = btoa(unescape(encodeURIComponent(json))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+    return src + (src.includes('?') ? '&' : '?') + 'levels=' + b64;
   }
   function bar(h, extra) {
     return el('div', { class: 'gamebar' },
@@ -432,5 +443,5 @@ const Games = (() => {
     return trait ? [el('span', { class: 'cn' }, name), el('span', { class: 'ct' }, trait)] : [text];
   }
 
-  return { cardParts, cardFace, frames, frame, teacherFrame, bar, stopAll, card, scores, challenge, challengeStage, openChallenge, board, challengeEvent, linkBox, playtestBox, discovery, feedback };
+  return { cardParts, cardFace, frames, frame, teacherFrame, bar, withLevels, stopAll, card, scores, challenge, challengeStage, openChallenge, board, challengeEvent, linkBox, playtestBox, discovery, feedback };
 })();

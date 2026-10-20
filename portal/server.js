@@ -118,6 +118,7 @@ function buildPlan(les, st) {
     twist: fieldText(facFields.twist), world: fieldText(facFields.world),
     secret: secText ? { title: secText, prompt: secDef ? secDef.prompt : secText, base: secDef ? secDef.base || null : null, howto: secDef ? secDef.howto || null : null } : null,
     level: `${level.label} (${level.hint})`, details,
+    levels: les.levels || null, // модуль 4: уровни как данные — раздел levels задания Qwen
     decisions: { feeling: fieldText(dec.feeling), honesty: fieldText(dec.honesty), choice: fieldText(dec.choice) },
     igra: { i: fieldText(igra.i), g: fieldText(igra.g), r: fieldText(igra.r), a: fieldText(igra.a) },
     forks,
@@ -222,15 +223,18 @@ const CORS = { 'Access-Control-Allow-Origin': '*' };
 // номера строк ошибок совпадают с кодом из чата. В скачанной игре мост — внутри файла.
 const bridgeTag = inline => inline ? inlineScript(fs.readFileSync(path.join(PORTAL, 'engine', 'portal.js'), 'utf8')) : '<script src="/engine/portal.js"></script>';
 const htmlGame = (code, inline) => (/<head[^>]*>/i.test(code) ? code.replace(/<head[^>]*>/i, m => m + bridgeTag(inline)) : code.replace(/<html[^>]*>/i, m => m + bridgeTag(inline)));
+// уровни гостей, которые автор принял в игру (урок 18): игра получает их после своих, как будто они в её коде (portal.levels / lab.levels)
+const guestScript = g => (g && Array.isArray(g.guestLevels) && g.guestLevels.length
+  ? '<script>window.__labGuest=' + JSON.stringify({ mode: 'add', list: g.guestLevels.map(x => ({ name: x.name, map: x.map, author: x.author })) }).replace(/</g, '\\u003c') + '</script>' : '');
 function playPage(res, gameId, n) {
   const g = store.getGame(gameId);
   const code = g && store.versionCode(gameId, n || g.current);
   if (!code) return send(res, 404, 'Нет такой версии игры', 'text/plain; charset=utf-8');
-  // страница HTML из чата Qwen (урок 1, версия 2) — как есть, в той же песочнице
-  if (ai.isHtml(code)) return send(res, 200, htmlGame(code), 'text/html; charset=utf-8', Object.assign({ 'Content-Security-Policy': 'sandbox allow-scripts allow-pointer-lock' }, CORS));
+  // страница HTML из чата Qwen (урок 1, версия 2) — как есть, в той же песочнице; уровни гостей — в той же строке, что и мост: номера строк не сдвигаются
+  if (ai.isHtml(code)) return send(res, 200, htmlGame(code).replace('<script src="/engine/portal.js"></script>', m => guestScript(g) + m), 'text/html; charset=utf-8', Object.assign({ 'Content-Security-Policy': 'sandbox allow-scripts allow-pointer-lock' }, CORS));
   // объект GAME — в оболочке «Лаб3D» на three.js (engine/game.html)
   const html = fs.readFileSync(path.join(PORTAL, 'engine', 'game.html'), 'utf8')
-    .replace('<head>', '<head>\n<base href="/engine/">')
+    .replace('<head>', () => '<head>\n<base href="/engine/">' + guestScript(g))
     .replace('<!--GAME-->', () => '<script>\n' + code.replace(/<\/script/gi, '<\\/script') + '\n</script>'); // функцией: «$&» и «$'» в коде игры — не шаблоны замены
   // CSP sandbox: даже открытая отдельной вкладкой игра не видит данных портала (своё «пустое» происхождение)
   send(res, 200, html, 'text/html; charset=utf-8', Object.assign({ 'Content-Security-Policy': 'sandbox allow-scripts allow-pointer-lock' }, CORS));
@@ -424,8 +428,30 @@ function cleanTele(t) {
   // line — счёт по секундам партии (не больше 120 точек): из него у автора полоска каждой чужой партии
   const line = Array.isArray(t.line) ? t.line.slice(0, 600).map(v => Math.round(Number(v) || 0)) : [];
   const step = Math.max(1, Math.ceil(line.length / 120));
+  // spots и maps — точки на картах уровней (модуль 4): где погибли и где ходили чужие игроки, для тепловой карты автора
+  const spots = Array.isArray(t.spots) ? t.spots.slice(0, 420).filter(x => Array.isArray(x) && 'dws'.includes(x[0]) && Number.isFinite(Number(x[1])) && Number.isFinite(Number(x[2])))
+    .map(x => [x[0], Math.round(Number(x[1]) * 10) / 10, Math.round(Number(x[2]) * 10) / 10, Math.max(0, Math.min(99, Math.round(Number(x[3]) || 0)))]) : [];
+  const maps = Object.fromEntries(Object.entries(t.maps && typeof t.maps === 'object' ? t.maps : {}).slice(0, 8)
+    .filter(([, m]) => m && typeof m.map === 'string').map(([k, m]) => [String(Math.max(0, Math.min(99, Math.round(Number(k) || 0)))), { name: String(m.name || '').slice(0, 40), map: m.map.slice(0, 4900) }]));
   return { time: Math.max(0, Math.round((Number(t.time) || 0) * 10) / 10), hold: nums(t.hold, btn), presses: nums(t.presses, btn), custom: nums(t.custom),
-    hurts: Math.max(0, Math.min(999, Math.round(Number(t.hurts) || 0))), line: line.filter((_, i) => i % step === 0), lineStep: step };
+    hurts: Math.max(0, Math.min(999, Math.round(Number(t.hurts) || 0))), line: line.filter((_, i) => i % step === 0), lineStep: step, spots, maps };
+}
+// тепловая карта (модуль 4): по каждому уровню — карта и точки чужих партий: смерти, следы, найденные секреты.
+// Уровень узнаётся по имени и карте: у сгенерированных уровней (урок 17) карта своя в каждой партии, берём самые частые
+function heatOf(overs) {
+  const by = new Map();
+  for (const p of overs) {
+    const t = p.tele || {};
+    for (const [i, m] of Object.entries(t.maps || {})) {
+      const key = m.name + '\n' + m.map;
+      if (!by.has(key)) by.set(key, { name: m.name, map: m.map, deaths: [], trail: [], secrets: [], players: new Set(), runs: 0 });
+      const h = by.get(key);
+      h.players.add(p.nick); h.runs++;
+      for (const sp of t.spots || []) if (String(sp[3]) === String(i)) (sp[0] === 'd' ? h.deaths : sp[0] === 's' ? h.secrets : h.trail).push([sp[1], sp[2], p.nick]);
+    }
+  }
+  return [...by.values()].sort((a, b) => b.runs - a.runs).slice(0, 6)
+    .map(h => ({ name: h.name, map: h.map, runs: h.runs, players: h.players.size, deaths: h.deaths.slice(-400), trail: h.trail.slice(-1500), secrets: h.secrets.slice(-200) }));
 }
 function classGame(w, id) { const g = id && store.getGame(id); return g && g.class === w.class && g.current ? g : null; }
 // все собранные игры класса: по одной на ученика и урок
@@ -452,6 +478,7 @@ function gameCard(code, g, viewer) {
     plays: store.plays(g.id).filter(p => p.type === 'over' && p.nick !== g.nick).length,
     again: store.plays(g.id).filter(p => p.type === 'again' && p.nick !== g.nick).length, // «ещё раз» чужих игроков — главный тест курса
     poster: g.poster ? `/poster/${g.id}.jpg?v=${g.poster.version}` : null,
+    guests: (g.guestLevels || []).map(x => ({ code: x.code, name: x.name, author: x.author })), // уровни гостей, принятые автором (урок 18)
     hidden: !!g.hidden, mine: g.nick === viewer, knob: g.knob || null, effect: les && g.plan && g.plan.secret ? secretEffect(les, g.plan.secret.title) : '', emblem: (store.getStudent(code, g.nick) || {}).emblem || '',
   };
 }
@@ -486,6 +513,8 @@ function discovery(g) {
     presses: { a: Math.round(presses.a || 0), b: Math.round(presses.b || 0) },
     custom: Object.entries(custom).sort((a, b) => b[1] - a[1]).slice(0, 4).map(([k, v]) => ({ name: k, value: Math.round(v * 10) / 10 })),
     cards, emotions,
+    heat: heatOf(overs),
+    heatMine: heatOf(store.plays(g.id).filter(p => p.nick === g.nick && p.type === 'over')), // свои партии автора: тепловая карта до первых соседей
   };
 }
 const cleanField = f => ({ text: String((f && typeof f === 'object' ? f.text : f) || '').trim().slice(0, 400), dice: !!(f && f.dice) });
@@ -588,6 +617,118 @@ route('POST', '/api/release', (ctx) => {
   broadcast(w.class, 'arcade', { game: g.id, author: g.nick });
   return { release: g.release };
 });
+/* ---------- уровни класса (модуль 4): редактор, коды уровней, пар, галерея, уровни гостей ---------- */
+// Уровень — текстовая карта для игры: донора урока (ключ remake:games/x.js) или игры одноклассника (game:<id>). Урок 17 — зерно и ручки вместо карты.
+// Уровень принимается, только если строитель сам его прошёл (как в Super Mario Maker): клиент присылает ход и время прохождения
+// из сообщения игры clear. Пар — ходы автора (или его время, если ходов в игре нет).
+const LEVEL_KINDS = { train: 'Обучающий', tricky: 'Коварный', free: 'Свой' };
+function cleanMap(map) {
+  const lines = String(map || '').replace(/\r/g, '').split('\n');
+  while (lines.length && !lines[0].trim()) lines.shift();
+  while (lines.length && !lines[lines.length - 1].trim()) lines.pop();
+  if (!lines.length || lines.length > 40 || lines.some(l => l.length > 60)) return '';
+  return lines.join('\n');
+}
+function levelGame(w, key) {
+  key = String(key || '');
+  const rm = /^remake:(games\/[\w-]+\.js)$/.exec(key);
+  if (rm) { const les = lessons().find(l => l.sample && l.sample.file === rm[1]); return { key, title: les ? les.donor : rm[1], author: 'донор урока', lesson: les ? les.number : null, remake: rm[1] }; }
+  const g = classGame(w, (/^game:([\w-]+)$/.exec(key) || [])[1]);
+  if (!g) return null;
+  const les = lesson(g.lesson);
+  return { key, title: g.title || 'Моя игра', author: g.nick, lesson: les ? les.number : null, game: g };
+}
+function levelView(lv, me) {
+  const plays = Object.values(lv.plays || {}), rates = Object.values(lv.rates || {});
+  const yes = k => rates.filter(r => r[k] === true).length;
+  const mine = (lv.plays || {})[me] || null;
+  return {
+    code: lv.code, title: lv.title, kind: lv.kind, kindLabel: LEVEL_KINDS[lv.kind] || 'Свой', game: lv.game, gameTitle: lv.gameTitle, gameAuthor: lv.gameAuthor, lesson: lv.lesson,
+    author: lv.author, map: lv.map || '', seed: lv.seed == null ? null : lv.seed, cfg: lv.cfg || null, par: lv.par, parTime: lv.parTime, at: lv.at,
+    tried: plays.length, cleared: plays.filter(p => p.cleared).length, likes: Object.keys(lv.likes || {}).length, liked: !!(lv.likes || {})[me],
+    rates: { n: rates.length, teach: yes('teach'), rhythm: yes('rhythm'), goal: yes('goal') }, myRate: (lv.rates || {})[me] || null,
+    mine: lv.author === me, my: mine, accepted: !!lv.accepted,
+    top: plays.filter(p => p.cleared).sort((a, b) => (a.moves == null ? 1e9 : a.moves) - (b.moves == null ? 1e9 : b.moves) || a.time - b.time).slice(0, 5).map(p => ({ nick: p.nick, moves: p.moves, time: p.time })),
+  };
+}
+route('GET', '/api/levels', (ctx) => {
+  const { w } = needStudent(ctx);
+  const game = ctx.url.searchParams.get('game'), code = ctx.url.searchParams.get('code');
+  let list = Object.values(store.levels(w.class));
+  if (code) list = list.filter(x => x.code === String(code).trim().toUpperCase());
+  if (game) list = list.filter(x => x.game === game);
+  return { levels: list.sort((a, b) => (b.at > a.at ? 1 : -1)).map(x => levelView(x, w.nick)) };
+});
+route('POST', '/api/levels', (ctx) => {
+  const { w, les } = needStudent(ctx);
+  const b = ctx.body, G = levelGame(w, b.game);
+  if (!G) throw Object.assign(new Error('Нет такой игры'), { status: 404 });
+  const map = b.map ? cleanMap(b.map) : '';
+  const seed = b.seed == null || b.seed === '' ? null : seedOf(b.seed);
+  if (!map && seed == null) throw Object.assign(new Error('Пустой уровень: нарисуй карту или выбери зерно'), { status: 400 });
+  if (b.map && !map) throw Object.assign(new Error('Карта слишком большая: не больше 40 строк по 60 клеток'), { status: 400 });
+  const c = b.cleared && typeof b.cleared === 'object' ? b.cleared : null;
+  if (!c) throw Object.assign(new Error('Сначала пройди свой уровень сам — как в Super Mario Maker'), { status: 400 });
+  const title = String(b.title || '').trim().replace(/\s+/g, ' ').slice(0, 40) || 'Уровень ' + w.nick;
+  const kind = LEVEL_KINDS[b.kind] ? b.kind : 'free';
+  const cfg = b.cfg && typeof b.cfg === 'object' ? Object.fromEntries(Object.entries(b.cfg).slice(0, 12).filter(([, v]) => Number.isFinite(Number(v))).map(([k, v]) => [String(k).slice(0, 30), Number(v)])) : null;
+  const moves = c.moves == null ? null : Math.max(0, Math.round(Number(c.moves) || 0)), time = Math.max(0, Math.round((Number(c.time) || 0) * 10) / 10);
+  const lv = store.createLevel(w.class, { title, kind, game: G.key, gameTitle: G.title, gameAuthor: G.author, lesson: les.number, author: w.nick, map, seed, cfg, par: moves, parTime: time });
+  lv.plays[w.nick] = { nick: w.nick, tries: 1, cleared: true, moves, time, at: store.now() };
+  store.saveLevel(w.class, lv);
+  broadcast(w.class, 'levels', { code: lv.code, kind: 'new', author: w.nick, game: G.key, gameAuthor: G.author });
+  return { level: levelView(lv, w.nick) };
+});
+// партия в чужом уровне: попытка и прохождение (ходы и время — для «пройди за пар»)
+route('POST', '/api/levels/play', (ctx) => {
+  const { w } = needStudent(ctx);
+  const lv = store.getLevel(w.class, ctx.body.code);
+  if (!lv) throw Object.assign(new Error('Нет уровня с таким кодом'), { status: 404 });
+  const p = lv.plays[w.nick] = Object.assign({ nick: w.nick, tries: 0, cleared: false, moves: null, time: null }, lv.plays[w.nick]);
+  p.tries++; p.at = store.now();
+  if (ctx.body.cleared) {
+    const moves = ctx.body.moves == null ? null : Math.max(0, Math.round(Number(ctx.body.moves) || 0)), time = Math.max(0, Math.round((Number(ctx.body.time) || 0) * 10) / 10);
+    const better = !p.cleared || (moves != null && (p.moves == null || moves < p.moves)) || (moves == null && time < (p.time || 1e9));
+    p.cleared = true;
+    if (better) { p.moves = moves; p.time = time; }
+  }
+  store.saveLevel(w.class, lv);
+  broadcast(w.class, 'levels', { code: lv.code, kind: 'play', nick: w.nick, author: lv.author });
+  const view = levelView(lv, w.nick);
+  return { level: view, underPar: !!(p.cleared && lv.par != null && p.moves != null && p.moves <= lv.par) };
+});
+// «хочу ещё» и оценка уровня по трём вопросам (урок 18): учит ли без слов, есть ли ритм, ясна ли цель
+route('POST', '/api/levels/rate', (ctx) => {
+  const { w } = needStudent(ctx);
+  const lv = store.getLevel(w.class, ctx.body.code);
+  if (!lv) throw Object.assign(new Error('Нет уровня с таким кодом'), { status: 404 });
+  if (lv.author === w.nick) throw Object.assign(new Error('Свой уровень оценивают соседи'), { status: 400 });
+  if ('like' in ctx.body) { lv.likes = lv.likes || {}; if (ctx.body.like) lv.likes[w.nick] = store.now(); else delete lv.likes[w.nick]; }
+  if (ctx.body.rate && typeof ctx.body.rate === 'object') {
+    const r = ctx.body.rate, yn = v => (v === true || v === false ? v : null);
+    lv.rates = lv.rates || {}; lv.rates[w.nick] = { teach: yn(r.teach), rhythm: yn(r.rhythm), goal: yn(r.goal), at: store.now() };
+  }
+  store.saveLevel(w.class, lv);
+  broadcast(w.class, 'levels', { code: lv.code, kind: 'rate', nick: w.nick, author: lv.author });
+  return { level: levelView(lv, w.nick) };
+});
+// автор игры принимает уровень гостя: он входит в игру после своих уровней (страница игры получает его в window.__labGuest)
+route('POST', '/api/levels/accept', (ctx) => {
+  const { w } = needStudent(ctx);
+  const lv = store.getLevel(w.class, ctx.body.code);
+  if (!lv || !lv.map) throw Object.assign(new Error('Нет такого уровня'), { status: 404 });
+  const g = classGame(w, (/^game:([\w-]+)$/.exec(lv.game) || [])[1]);
+  if (!g || g.nick !== w.nick) throw Object.assign(new Error('Принять уровень в игру может только её автор'), { status: 403 });
+  g.guestLevels = (g.guestLevels || []).filter(x => x.code !== lv.code);
+  if (ctx.body.on !== false) g.guestLevels.push({ code: lv.code, name: lv.title, map: lv.map, author: lv.author });
+  g.guestLevels = g.guestLevels.slice(-8);
+  lv.accepted = ctx.body.on !== false;
+  store.saveGame(g); store.saveLevel(w.class, lv);
+  broadcast(w.class, 'levels', { code: lv.code, kind: 'accept', author: lv.author, gameAuthor: g.nick });
+  broadcast(w.class, 'arcade', { game: g.id, author: g.nick });
+  return { level: levelView(lv, w.nick), guests: g.guestLevels.length };
+});
+
 // выставка джема (шаг vote): голоса класса по номинациям. Итог виден тому, кто уже проголосовал, и учителю
 function voteTally(code, les, step) {
   const games = new Map(classGames(code).map(g => [g.id, g]));

@@ -1,4 +1,4 @@
-// Страница ученика: урок по чекпоинтам и типовые шаги (play, teacher-demo, choice, text, sort, rounds, cycle, trace, predict, blind, blindpair, listen, sequencer, vote, cards, secret, factory, decisions, igra, producer, build, aicheck, razbor, workshop, verify, release, arcade, playtest).
+// Страница ученика: урок по чекпоинтам и типовые шаги (шаги модуля 4 — в steps-m4.js; play, teacher-demo, choice, text, sort, rounds, cycle, trace, predict, blind, blindpair, listen, sequencer, vote, cards, secret, factory, decisions, igra, producer, build, aicheck, razbor, workshop, verify, release, arcade, playtest).
 // Рамка игры, карточки аркады и открытие плейтеста — в games.js, поле с кубиком — в common.js.
 'use strict';
 const { el, api, toast, roll, beep, copy, valText, fieldEditor } = Lab;
@@ -73,6 +73,8 @@ function listen() {
   });
   // вау-старт учителя: карты, сборка, игра открылась — шаг teacher-demo обновляется сам
   es.addEventListener('demo', e => { const d = JSON.parse(e.data); S.hooks.forEach(h => h('demo', d)); });
+  // уровни класса (модуль 4): новый уровень, партия, оценка — галерея и редактор обновляются сами
+  es.addEventListener('levels', e => { const d = JSON.parse(e.data); S.hooks.forEach(h => h('levels', d)); });
   es.addEventListener('help', e => { if (JSON.parse(e.data).nick === S.me.nick) { S.me.help = null; drawHelp(); } });
   es.addEventListener('limits', e => {
     const d = JSON.parse(e.data);
@@ -263,6 +265,8 @@ function ownCounter(values) {
 
 /* =================== типы шагов =================== */
 const STEPS = {};
+// шаги модуля 4 «Пространство и уровни» лежат в steps-m4.js (motion, order, mapquiz, heat, leveledit, gallery): он загружается раньше
+Object.assign(STEPS, window.LabStepsM4 || {});
 
 // lens: линза урока как ритуал финала (С3) — карта переворачивается по нажатию и ложится в колоду «Моей студии»
 STEPS.lens = ctx => {
@@ -3592,7 +3596,7 @@ function stepSummary(step) {
     case 'arcade': return v.game ? `игра «${v.title || ''}» (автор ${v.author || '—'}), партий ${v.rounds || 0}, лучший счёт ${v.best || 0}${v.beat ? ', рекорд автора побит' : ''}` : 'не играл';
     case 'playtest': return (v.sent ? `отзыв на «${v.title || ''}»: ${(v.emotions || []).join(' ')}; нравится: ${f(v.like)}; хочется: ${f(v.want)}; а что если: ${f(v.whatif)}` : 'отзыв не отправлен') +
       (S.me.feedback ? `\nотзыв учителя: понятие — ${valText(S.me.feedback.concept)}; вопрос — ${valText(S.me.feedback.question)}` : '');
-    default: return JSON.stringify(v);
+    default: return (window.LabStepsM4Summary && window.LabStepsM4Summary(step, v, a)) || JSON.stringify(v);
   }
 }
 function cpSummary(cp) {

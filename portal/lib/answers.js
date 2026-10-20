@@ -43,6 +43,12 @@ function answerText(step, a, game) {
     case 'workshop': return (v.requests || []).map(r => `${r.chat ? '[чат] ' : ''}${r.text}${r.dice ? ' [кубик]' : ''} → v${r.version}${r.repair ? ' (пропало: ' + r.repair.split('\n')[0].replace(/^.*нашёл, что пропало: /, '').replace(/\.$/, '') + ')' : ''}`).join('\n');
     case 'arcade': return v.game ? `«${v.title || ''}» (автор ${v.author || '—'}), партий ${v.rounds || 0}, лучший счёт ${v.best || 0}${v.beat ? ', рекорд автора побит' : ''}` : '';
     case 'playtest': return v.sent ? `${(v.emotions || []).join(' ')}; нравится: ${dice(v.like)}; хочется: ${dice(v.want)}; а что если: ${dice(v.whatif)}` : '';
+    // модуль 4: объяснялки, квизы по картам, тепловая карта, редактор и галерея уровней
+    case 'motion': return a.done ? 'посмотрел до конца' : v.seen ? `сцен: ${v.seen} из ${(step.scenes || []).length}` : '';
+    case 'order': case 'mapquiz': return v.total ? quizLine(Object.assign({ bestStreak: v.bestStreak || 0 }, v)) : '';
+    case 'heat': return v.finding ? `находка: ${v.finding}` : (v.marks || []).length ? `отметок на карте: ${v.marks.length}` : '';
+    case 'leveledit': return Object.entries(v.levels || {}).map(([k, x]) => `${{ train: 'обучающий', tricky: 'коварный' }[k] || 'уровень'} «${x.title}», код ${x.code}, пар ${x.par != null ? x.par + ' ходов' : x.parTime + ' с'}`).join('; ');
+    case 'gallery': return Object.keys(v.played || {}).length ? `сыграно уровней ${Object.keys(v.played).length}, пройдено ${Object.keys(v.cleared || {}).length}` + (Object.keys(v.rated || {}).length ? `, оценено ${Object.keys(v.rated).length}` : '') + ((v.accepted || []).length ? `, взял в игру ${v.accepted.length}` : '') : '';
     default: return a.done ? 'готово' : '';
   }
 }

@@ -7,6 +7,8 @@
      portal.count('событие') — счётчик партии (_secret — сработала спрятанная механика), portal.onRecord = (рекорд, мой) => {} — рекорд класса,
      portal.score(очки) — текущий счёт (из него полоска партии по секундам), portal.hurt() — герою нанесён урон,
      portal.notes(['что программист решил сам', ...]) — записи программиста для шага «Найди, где ИИ своевольничал» (портал читает их из кода).
+     portal.levels([{ name, map }], легенда) — уровни как данные (модуль 4): свои и уровни гостей; portal.level(i[, карта]) — начался уровень,
+       portal.death(x, y), portal.where(x, y), portal.secret(x, y) — точки в клетках карты для тепловой карты, portal.clear({ moves, time }) — уровень пройден.
      portal.input — 'pad' или 'keys': чем игрок управляет сейчас. Подписи кнопок игра пишет парой <span class="keys-only">Пробел</span><span class="pad-only">A</span>,
        мост показывает нужную: геймпад подключён или нажата его кнопка — pad-only, нажата клавиша — keys-only.
    Страховка конца партии: Start на геймпаде после portal.over(), если игра сама не начала новую партию, нажимает за неё Enter, потом R.
@@ -21,11 +23,11 @@
   var BTN = ['left', 'right', 'up', 'down', 'a', 'b'];
   var KEYS = { ArrowLeft: 'left', KeyA: 'left', ArrowRight: 'right', KeyD: 'right', ArrowUp: 'up', KeyW: 'up', ArrowDown: 'down', KeyS: 'down', Space: 'a', ShiftLeft: 'b', ShiftRight: 'b' };
   var tele, held = {}, padHeld = {}, score = 0, t = 0, lastFrame = 0, isOver = false;
-  function reset() { tele = { presses: {}, hold: {}, hurts: 0, marks: {}, line: [] }; BTN.forEach(function (k) { tele.presses[k] = 0; tele.hold[k] = 0; }); counts = {}; score = 0; t = 0; }
+  function reset() { tele = { presses: {}, hold: {}, hurts: 0, marks: {}, line: [], spots: [], maps: {} }; if (typeof LV === 'object' && LV) { LV.lastWhere = -1; LV.gen = {}; } BTN.forEach(function (k) { tele.presses[k] = 0; tele.hold[k] = 0; }); counts = {}; score = 0; t = 0; }
   reset();
   function teleData() {
     var hold = {}; BTN.forEach(function (k) { hold[k] = Math.round(tele.hold[k] * 10) / 10; });
-    return { time: Math.round(t * 10) / 10, presses: JSON.parse(JSON.stringify(tele.presses)), hold: hold, hurts: tele.hurts, custom: JSON.parse(JSON.stringify(counts)), marks: JSON.parse(JSON.stringify(tele.marks)), line: tele.line.slice(0, 600) };
+    return { time: Math.round(t * 10) / 10, presses: JSON.parse(JSON.stringify(tele.presses)), hold: hold, hurts: tele.hurts, custom: JSON.parse(JSON.stringify(counts)), marks: JSON.parse(JSON.stringify(tele.marks)), line: tele.line.slice(0, 600), spots: tele.spots.slice(), maps: JSON.parse(JSON.stringify(tele.maps)) };
   }
   var title = function () { return document.title || 'Игра'; };
   function hello() { if (ready) return; ready = true; send({ type: 'ready', meta: { html: true, title: title(), config: config, presets: presets, controls: [], decisions: [], notes: [] } }); }
@@ -57,7 +59,63 @@
     score: function (n) { score = Math.round(Number(n) || 0); },
     hurt: function () { tele.hurts++; },
     notes: function () { /* записи программиста портал читает из кода игры */ },
+    // уровни как данные (модуль 4): игра отдаёт свои уровни текстом и легенду символов, получает свои и уровни гостей
+    levels: function (list, legend) {
+      var own = [], i, g = guest(), out;
+      for (i = 0; i < (list && list.length || 0) && own.length < 30; i++) { var n = normLevel(list[i]); if (n) own.push(n); }
+      LV.legend = {};
+      if (legend && typeof legend === 'object') for (var k in legend) LV.legend[String(k).charAt(0)] = String(legend[k]).slice(0, 30);
+      out = own;
+      if (g && g.list && g.list.length) {
+        var gl = [];
+        for (i = 0; i < g.list.length && i < 12; i++) { var x = normLevel(g.list[i]); if (x) { x.guest = String(g.list[i].author || 'гость').slice(0, 24); gl.push(x); } }
+        out = g.mode === 'add' ? own.concat(gl) : gl;
+      }
+      LV.list = out; LV.cur = 0;
+      send({ type: 'levels', legend: LV.legend, list: own, playing: out.map(function (x) { return { name: x.name, guest: x.guest || null }; }) });
+      return out.map(function (x) { return { name: x.name, map: x.map, guest: x.guest || null }; });
+    },
+    level: function (i, map) {
+      LV.cur = Math.max(0, Math.round(Number(i) || 0));
+      var lv = LV.list[LV.cur] || {};
+      if (map != null) { var m = normLevel({ name: lv.name, map: map }); if (m) LV.gen[LV.cur] = m.map; }
+      noteMap();
+      send({ type: 'level', level: LV.cur, name: lv.name || '' });
+    },
+    death: function (x, y) { spot('d', x, y); },
+    where: function (x, y) { if (t - LV.lastWhere < 0.5) return; LV.lastWhere = t; spot('w', x, y); },
+    secret: function (x, y) { spot('s', x, y); },
+    clear: function (o) {
+      o = o || {}; var lv = LV.list[LV.cur] || {};
+      send({ type: 'clear', level: LV.cur, name: lv.name || '', guest: lv.guest || null, map: LV.gen[LV.cur] || lv.map || '', moves: o.moves == null ? null : Math.round(Number(o.moves) || 0), time: Math.round((o.time == null ? t : Number(o.time) || 0) * 10) / 10, score: score });
+    },
   };
+  // уровни партии: свои и гостей (?levels=<base64 JSON> в адресе — редактор и галерея; window.__labGuest — уровни, принятые автором)
+  var LV = { list: [], legend: {}, cur: 0, lastWhere: -1, gen: {} };
+  function normLevel(x) {
+    if (!x || typeof x !== 'object') return null;
+    var lines = (Object.prototype.toString.call(x.map) === '[object Array]' ? x.map.join('\n') : String(x.map || '')).replace(/\r/g, '').split('\n');
+    while (lines.length && !lines[0].replace(/\s/g, '')) lines.shift();
+    while (lines.length && !lines[lines.length - 1].replace(/\s/g, '')) lines.pop();
+    lines = lines.slice(0, 60).map(function (l) { return l.slice(0, 80); });
+    return lines.length ? { name: String(x.name || 'Уровень').slice(0, 40), map: lines.join('\n') } : null;
+  }
+  function guest() {
+    var m = /[?&]levels=([^&#]+)/.exec(location.search || '');
+    if (m) { try { return JSON.parse(decodeURIComponent(escape(atob(decodeURIComponent(m[1]).replace(/-/g, '+').replace(/_/g, '/'))))); } catch (e) { /* испорченный адрес — свои уровни */ } }
+    return window.__labGuest || null;
+  }
+  function noteMap() {
+    var lv = LV.list[LV.cur], map = LV.gen[LV.cur] || (lv && lv.map), n = 0;
+    for (var k in tele.maps) n++;
+    if (map && !tele.maps[LV.cur] && n < 8) tele.maps[LV.cur] = { name: lv ? lv.name : 'Уровень ' + (LV.cur + 1), map: map };
+  }
+  function spot(k, x, y) {
+    x = Number(x); y = Number(y);
+    if (!isFinite(x) || !isFinite(y) || tele.spots.length >= 420) return;
+    noteMap();
+    tele.spots.push([k, Math.round(x * 10) / 10, Math.round(y * 10) / 10, LV.cur]);
+  }
   // подписи кнопок: геймпад или клавиатура — класс на <html>, стиль прячет вторую подпись
   var input = 'keys';
   Object.defineProperty(portal, 'input', { get: function () { return input; } });

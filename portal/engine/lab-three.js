@@ -188,7 +188,7 @@ let scene = null, cam = null, skyTex = null;
 let parts = null, popups = [], warns = [], pulses = [], whites = [], rings = [], trails = [], tweens = [], timers = [], follow = null, sceneGen = 0;
 let shakeAmp = 0, flashA = 0, hitstopT = 0, matCache = {}, glowMats = [];
 const cfg = {}, DEFAULTS = {}, META = {};
-const tele = { presses: {}, hold: {}, hurts: 0, custom: {}, stats: {}, marks: {}, line: [] }; // line — счёт на каждой секунде партии (призрак соперника в вызове)
+const tele = { presses: {}, hold: {}, hurts: 0, custom: {}, stats: {}, marks: {}, line: [], spots: [], maps: {} }; // line — счёт на каждой секунде партии (призрак соперника в вызове)
 const session = { rounds: 0, restarts: 0 };
 let classRecord = null;
 let frameNo = 0, fps = 0, lastDraws = 0, lastTris = 0; const frameWaiters = [];
@@ -322,7 +322,63 @@ const lab = {
     if (m.length < 300 && !(m.length && t - m[m.length - 1] < 0.25)) m.push(t);
   },
   stat(name, value) { tele.stats[name] = value; },
+
+  // уровни как данные (модуль 4): уровень — текстовая карта, символ — клетка. Игра отдаёт свои уровни и легенду,
+  // а получает свои и уровни гостей (редактор и галерея портала: ?levels= в адресе или lab.data.levels; принятые автором — window.__labGuest).
+  levels(list, legend) {
+    const own = (Array.isArray(list) ? list : []).map(normLevel).filter(Boolean);
+    LV.legend = legend && typeof legend === 'object' ? Object.fromEntries(Object.entries(legend).slice(0, 24).map(([k, v]) => [String(k).slice(0, 1), String(v).slice(0, 30)])) : {};
+    const g = guestLevels();
+    let out = own;
+    if (g && Array.isArray(g.list) && g.list.length) {
+      const gl = g.list.map(x => { const n = normLevel(x); return n && Object.assign(n, { guest: String(x.author || 'гость').slice(0, 24) }); }).filter(Boolean);
+      out = g.mode === 'add' ? own.concat(gl) : gl;
+    }
+    LV.list = out; LV.cur = 0;
+    post({ type: 'levels', legend: LV.legend, list: own.slice(0, 30), playing: out.map(x => ({ name: x.name, guest: x.guest || null })) });
+    return out.map(x => Object.assign({}, x));
+  },
+  // начался уровень i; у сгенерированного уровня (урок 17) — его карта вторым аргументом
+  level(i, map) {
+    LV.cur = Math.max(0, Math.round(Number(i) || 0));
+    const lv = LV.list[LV.cur] || {}, m = map != null ? normLevel({ name: lv.name || 'Уровень ' + (LV.cur + 1), map }) : null;
+    if (m) LV.gen[LV.cur] = m.map;
+    noteMap();
+    post({ type: 'level', level: LV.cur, name: lv.name || (m && m.name) || '' });
+  },
+  // точка на карте уровня в клетках: 'death' — герой погиб здесь, 'where' — где герой сейчас (берётся раз в 0,5 с), 'secret' — найден секрет
+  spot(kind, x, y) {
+    if (!Number.isFinite(Number(x)) || !Number.isFinite(Number(y))) return;
+    const k = { death: 'd', where: 'w', secret: 's' }[kind] || 'w';
+    if (k === 'w') { if (lab.t - LV.lastWhere < 0.5) return; LV.lastWhere = lab.t; }
+    if (tele.spots.length >= 420 || (k === 'w' && tele.spots.filter(s => s[0] === 'w').length >= 300)) return;
+    noteMap();
+    tele.spots.push([k, Math.round(x * 10) / 10, Math.round(y * 10) / 10, LV.cur]);
+  },
+  // уровень пройден: портал засчитывает гостевой уровень строителю (редактор) и пар в галерее
+  clear(o = {}) {
+    const lv = LV.list[LV.cur] || {};
+    post({ type: 'clear', level: LV.cur, name: lv.name || '', guest: lv.guest || null, map: LV.gen[LV.cur] || lv.map || '', moves: o.moves == null ? null : Math.round(Number(o.moves) || 0), time: Math.round((o.time == null ? lab.t : Number(o.time) || 0) * 10) / 10, score: Math.round(lab.score) });
+  },
 };
+// уровни партии: список, легенда, текущий уровень, карты сгенерированных уровней
+const LV = { list: [], legend: {}, cur: 0, lastWhere: -1, gen: {} };
+function normLevel(x) {
+  if (!x || typeof x !== 'object') return null;
+  let lines = (Array.isArray(x.map) ? x.map.join('\n') : String(x.map || '')).replace(/\r/g, '').split('\n');
+  while (lines.length && !lines[0].trim()) lines.shift();
+  while (lines.length && !lines[lines.length - 1].trim()) lines.pop();
+  lines = lines.slice(0, 60).map(l => l.slice(0, 80));
+  return lines.length ? { name: String(x.name || 'Уровень').slice(0, 40), map: lines.join('\n') } : null;
+}
+const b64json = s => { try { return JSON.parse(decodeURIComponent(escape(atob(String(s).replace(/-/g, '+').replace(/_/g, '/'))))); } catch (e) { return null; } };
+const URL_LEVELS = params.get('levels') ? b64json(params.get('levels')) : null;
+function guestLevels() { return (lab.data && lab.data.levels) || URL_LEVELS || window.__labGuest || null; }
+// карта уровня — один раз за партию в телеметрию: по ней портал рисует тепловую карту
+function noteMap() {
+  const lv = LV.list[LV.cur], map = LV.gen[LV.cur] || (lv && lv.map);
+  if (map && !tele.maps[LV.cur] && Object.keys(tele.maps).length < 8) tele.maps[LV.cur] = { name: lv ? lv.name : 'Уровень ' + (LV.cur + 1), map };
+}
 let hudLines = {};
 const accent = () => (G && G.accent) || '#ffe08a';
 const ZERO = new THREE.Matrix4().makeScale(0, 0, 0);
@@ -789,7 +845,8 @@ function tickSun() { // тень там, куда смотрит камера: �
 /* ---------------- телеметрия ---------------- */
 function resetTele() {
   for (const k of BTN) { tele.presses[k] = 0; tele.hold[k] = 0; }
-  tele.hurts = 0; tele.custom = {}; tele.stats = {}; tele.marks = {}; tele.line = [];
+  tele.hurts = 0; tele.custom = {}; tele.stats = {}; tele.marks = {}; tele.line = []; tele.spots = []; tele.maps = {};
+  LV.lastWhere = -1; LV.gen = {};
 }
 function tickTele(dt) {
   for (const k of BTN) {
@@ -809,7 +866,7 @@ function teleNotes() {
   return out;
 }
 function teleData() {
-  return { time: Math.round(lab.t * 10) / 10, presses: { ...tele.presses }, hold: Object.fromEntries(BTN.map(k => [k, Math.round(tele.hold[k] * 10) / 10])), hurts: tele.hurts, custom: { ...tele.custom }, stats: { ...tele.stats }, marks: JSON.parse(JSON.stringify(tele.marks)), line: tele.line.slice() };
+  return { time: Math.round(lab.t * 10) / 10, presses: { ...tele.presses }, hold: Object.fromEntries(BTN.map(k => [k, Math.round(tele.hold[k] * 10) / 10])), hurts: tele.hurts, custom: { ...tele.custom }, stats: { ...tele.stats }, marks: JSON.parse(JSON.stringify(tele.marks)), line: tele.line.slice(), spots: tele.spots.slice(), maps: JSON.parse(JSON.stringify(tele.maps)) };
 }
 
 /* ---------------- ошибки ---------------- */
