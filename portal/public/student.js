@@ -3488,6 +3488,7 @@ const RELEASE_AUTO = {
   plays: g => { const d = g.discovery || {}; return [d.rounds > 0, d.rounds ? `соседи сыграли ${d.rounds} партий, «ещё раз» — ${d.again}, рекорд класса ${g.record ? g.record.score : 0}` : 'в игру ещё не играл никто, кроме тебя']; },
   time: g => { const d = g.discovery || {}; const avg = d.rounds ? Math.round(d.time / d.rounds) : 0; return [avg >= 60, d.rounds ? `соседи играли в среднем ${avg} с за партию` : 'нет чужих партий — проверь с соседом']; },
   versions: g => [g.versions > 1, `версий: ${g.versions}${g.versions > 1 ? ' — были правки' : ' — правок ещё не было'}`],
+  guests: g => { const n = (g.guests || []).length; return [n > 0, n ? `уровней гостей в игре: ${n}` : 'уровней гостей пока нет — возьми лучший в «Гости в моей игре»']; },
   balance: g => [g.balanced > 0, g.balanced ? `свой баланс сохранён ${g.balanced} раз — «Как задумано» это твои числа` : 'баланс ещё не сохранён: поверни ручки (Tab) и нажми «Сохранить мой баланс»'],
 };
 STEPS.release = ctx => {

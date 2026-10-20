@@ -7,14 +7,14 @@ module.exports = function m4(H) {
   const { check, gameFrame, playRound, sleep, mock, lessons } = H;
   const stepOf = (les, id) => les.checkpoints.flatMap(c => c.steps).find(s => s.id === id);
 
-  async function open(teacher, student, les) {
+  async function open(teacher, student, les, first = '#step-donor-play') {
     await teacher.click('.tabs >> text=Урок');
     await teacher.selectOption('#moduleSel', '4');
     await teacher.selectOption('#lessonSel', les.id);
     await teacher.waitForSelector('text=Открыть все', { timeout: 10000 });
     await teacher.click('text=Открыть все');
     await student.waitForFunction(t => document.querySelector('#lessonTitle').textContent.includes(t), `Урок ${les.number}`, { timeout: 15000 });
-    await student.waitForSelector('#step-donor-play', { timeout: 15000 });
+    await student.waitForSelector(first, { timeout: 15000 });
     check(`Урок ${les.number} открылся у ученика: модуль 4`, (await student.textContent('#lessonTitle')).includes(les.title));
   }
   async function choice(student, id, nth = 0) {
@@ -227,16 +227,17 @@ module.exports = function m4(H) {
   // редактор: уровень текстом, «пройди сам» (решение ходами в рамке), выложить — код уровня
   async function editLevel(student, id, map, solveFn, title) {
     await student.waitForSelector(`#step-${id} .m4-pal`, { timeout: 30000 });
-    await student.click(`#step-${id} [data-edit=text]`);
+    if (!(await student.isVisible(`#step-${id} textarea.m4-maptext`))) await student.click(`#step-${id} [data-edit=text]`);
     await student.fill(`#step-${id} textarea.m4-maptext`, map);
     await student.click(`#step-${id} [data-edit=play]`);
     const gf = await frameIn(student, `#step-${id}`);
     await gf.evaluate(solveFn);
     await student.waitForSelector(`#step-${id} [data-edit=status].ok-text`, { timeout: 20000 });
     await student.fill(`#step-${id} input.inp`, title);
+    const before = await student.locator(`#step-${id} .m4-codebig`).count();
     await student.click(`#step-${id} [data-edit=publish]`);
-    await student.waitForSelector(`#step-${id} .m4-codebig`, { timeout: 10000 });
-    return (await student.textContent(`#step-${id} .m4-codebig`)).trim();
+    await student.waitForFunction(([sel, n]) => document.querySelectorAll(sel).length > n, [`#step-${id} .m4-codebig`, before], { timeout: 10000 });
+    return (await student.locator(`#step-${id} .m4-codebig`).last().textContent()).trim();
   }
 
   /* ---------------- урок 15 ---------------- */
@@ -359,5 +360,150 @@ module.exports = function m4(H) {
     await final(student, les, 'любопытства');
   }
 
-  return { lesson14, lesson15, lesson16, neighbourLevels, editLevel };
+  // своя игра без тепловой карты (урок 17): партия и «Совпало?»
+  async function ownPlay(student) {
+    await student.click('.cp >> text=Своя игра');
+    await student.click('#step-ruchki .veil button');
+    await playRound(await gameFrame(student, '/play/', 0), { score: 80 });
+    await student.click('#step-ruchki [data-match="Совпало"]');
+    await student.waitForSelector('#step-ruchki.done', { timeout: 10000 });
+  }
+  // донор «Пещер на зерне»: спелеолог встаёт на выход — глубина пройдена
+  const caveExit = () => { window.__lab.confirm(); const L = window.__lab.lab, st = L.state, h = st.hero; Object.assign(h, { x: st.L.exitW.x, z: st.L.exitW.z }); GAME.touch(L, st.L, h); return { seed: st.seed, depths: st.list.length }; };
+
+  /* ---------------- урок 17 ---------------- */
+  async function lesson17(mode, teacher, student, shot) {
+    const les = lessons[17];
+    await open(teacher, student, les);
+    await donor(student, les, 'peshchery-na-zerne', async gf => {
+      const r = await gf.evaluate(() => {
+        window.__lab.confirm(); const L = window.__lab.lab, st = L.state, c = Object.assign({}, window.__lab.cfg);
+        const a = GAME.world(4242, 1, c).map, b = GAME.world(4242, 1, c).map, d = GAME.world(4243, 1, c).map;
+        let reach = 0; for (let s = 1; s <= 30; s++) reach += GAME.world(s, 1, c).reach ? 1 : 0;
+        return { depths: st.list.length, seed: st.seed, same: a === b, other: a !== d, reach, exit: !!st.L.exitW, map: /E/.test(st.list[0].map) };
+      });
+      check('Донор урока 17: три глубины на зерне, одно зерно — один мир, выход достижим в 30 мирах из 30', r.depths === 3 && r.seed > 0 && r.same && r.other && r.reach === 30 && r.exit && r.map, JSON.stringify(r));
+    });
+    await hunt(student, les, mode, 'peshchery-na-zerne', async gf => {
+      const r = await gf.evaluate(() => { const c = Object.assign({}, window.__lab.cfg); let walled = 0; for (let s = 1; s <= 40; s++) walled += GAME.world(s, 1, c).reach ? 0 : 1; return { secret: c.secret, walled }; });
+      check('Без спрятанной механики: без гарантий выход бывает замурован', r.secret === 0 && r.walled > 0, JSON.stringify(r));
+    }, { 'перебросы': 3 });
+    await motion(student, les, 'secret-story', shot);
+    await variety(student, les, 'peshchery-na-zerne', [['komnaty', 'gen', 1], ['labirint', 'gen', 3], ['myshi', 'enemies', 2.5], ['zerno', 'zerno', 2026]], 'секунд на глубину', 30, 'shablony', 'Лабиринт', shot);
+    // «Найди правило генератора»: три мира одним правилом, ошибка — разбор, итог
+    const pq = stepOf(les, 'pravilo');
+    await student.waitForSelector('#step-pravilo [data-quiz="0"]');
+    check('Найди правило генератора: три карты и четыре правила', await student.locator('#step-pravilo canvas.m4-cv').count() === 1 && await student.locator('#step-pravilo [data-quiz]').count() === 4);
+    for (let r = 0; r < pq.rounds.length; r++) {
+      const rd = pq.rounds[r], pick = r === 1 ? rd.options.find(o => o !== rd.answer) : rd.answer;
+      await student.click(`#step-pravilo [data-quiz="${rd.options.indexOf(pick)}"]`);
+      await student.waitForSelector('#step-pravilo .verdict');
+      if (r === 1) { check('Найди правило генератора: ошибка — разбор почерка', /Не совсем/.test(await student.textContent('#step-pravilo .verdict'))); if (shot) await shot(student, 'm4-17-pravilo'); }
+      await student.click('#step-pravilo [data-quiz=next]');
+    }
+    await student.waitForSelector('#step-pravilo.done');
+    check('Квиз «Найди правило генератора»: итог', new RegExp(`Верно ${pq.rounds.length - 1} из ${pq.rounds.length}`).test(await student.textContent('#step-pravilo .m4-quiz h2')));
+    await build(student, les, mode, 'Шахта сто миров', t => GAME.title === t && window.__lab.lab.state.list.length === 3);
+    await ownPlay(student);
+    // «Зерно дня»: у всех зерно 2026, одна глубина, гонка до выхода
+    await student.click('.cp >> text=Играем вместе');
+    await student.click('#step-zerno-dnya .veil button');
+    const zf = await frameIn(student, '#step-zerno-dnya');
+    await zf.waitForFunction(() => window.__lab.cfg.zerno === 2026, null, { timeout: 5000 }).catch(() => {});
+    const zr = await zf.evaluate(caveExit);
+    check('Зерно дня: зерно 2026 у всех, одна глубина — до выхода', zr.seed === 2026 && zr.depths === 1, JSON.stringify(zr));
+    await student.waitForSelector('#step-zerno-dnya.done', { timeout: 20000 });
+    // галерея зёрен: соседка выложила зерно, ученик смотрит своё, доходит до выхода и выкладывает, потом играет в зерно соседки
+    const seeds = await neighbourLevels(student, [{ game: 'remake:games/peshchery-na-zerne.js', title: 'Хрустальный зал', kind: 'free', seed: 777, cfg: { zerno: 777 }, cleared: { time: 25 } }]);
+    await student.waitForSelector('#step-zerna input.m4-seedin');
+    await student.fill('#step-zerna input.m4-seedin', '4242');
+    await student.click('#step-zerna [data-seed=look]');
+    const sf = await frameIn(student, '#step-zerna');
+    await sf.waitForFunction(() => window.__lab.cfg.zerno === 4242, null, { timeout: 5000 }).catch(() => {});
+    await sf.evaluate(caveExit);
+    await student.waitForSelector('#step-zerna [data-seed=publish]', { timeout: 20000 });
+    await student.fill('#step-zerna input.m4-seedtitle', 'Пещера ученика');
+    await student.click('#step-zerna [data-seed=publish]');
+    await student.waitForSelector(`#step-zerna [data-play="${seeds[0]}"]`, { timeout: 10000 });
+    const mine = await student.evaluate(() => Lab.api('/api/levels?game=' + encodeURIComponent('remake:games/peshchery-na-zerne.js')).then(r => r.levels.filter(l => l.mine).map(l => l.seed)));
+    check('Галерея зёрен: своё зерно выложено после выхода', mine.includes(4242), JSON.stringify(mine));
+    await student.click(`#step-zerna [data-play="${seeds[0]}"]`);
+    const nf = await frameIn(student, '#step-zerna');
+    await nf.waitForFunction(() => window.__lab.lab.state.seed === 777, null, { timeout: 10000 }).catch(() => {});
+    const nr = await nf.evaluate(caveExit);
+    check('Галерея зёрен: зерно соседки — тот же мир 777', nr.seed === 777, JSON.stringify(nr));
+    await student.waitForSelector('#step-zerna.done', { timeout: 20000 });
+    await student.click(`#step-zerna [data-like="${seeds[0]}"]`);
+    await student.waitForSelector(`#step-zerna [data-like="${seeds[0]}"]:has-text("1")`, { timeout: 10000 });
+    check('Галерея зёрен: ♥ «Красивый мир» соседке', true);
+    await final(student, les, 'разнообразия');
+  }
+
+  /* ---------------- урок 18 ---------------- */
+  async function lesson18(mode, teacher, student, shot) {
+    const les = lessons[18];
+    await open(teacher, student, les, '#step-maker-story');
+    await choice(student, 'vopros-uroka', 2);
+    await motion(student, les, 'maker-story', shot);
+    // разминка: обучающий уровень «Овечьего загона», код после прохождения
+    const solve3 = () => { window.__lab.confirm(); const L = window.__lab.lab; for (let i = 0; i < 3; i++) GAME.step(L, [1, 0]); };
+    await student.click('.cp >> nth=1');
+    const warm = await editLevel(student, 'razminka', '#######\n#@ $ .#\n#######', solve3, 'Первый толчок');
+    check('Разминка: обучающий уровень донора, код после прохождения', /^L[A-Z0-9]{5}$/.test(warm), warm);
+    // марафон: игра соседа (или донор урока соседа, если игра не читает карты) — обучающий и коварный уровень
+    await student.click('.cp >> nth=2');
+    await student.waitForSelector('#step-marafon .m4-for', { timeout: 30000 });
+    await student.waitForSelector('#step-marafon .m4-pal', { timeout: 40000 });
+    const forTxt = (await student.textContent('#step-marafon .m4-for')).replace(/\s+/g, ' ');
+    const clearIt = () => { window.__lab.confirm(); window.__lab.lab.clear({ time: 14, moves: 9 }); };
+    const tropa = '################################\n#                              #\n#                              #\n#                              #\n#                              #\n#                              #\n#                              #\n#                              #\n#                              #\n# @                         F  #\n################################\n################################';
+    const train = await editLevel(student, 'marafon', tropa, clearIt, 'Учит прыгать');
+    const tricky = await editLevel(student, 'marafon', tropa.replace('#  ', '   '), clearIt, 'Коварная яма');
+    const lv = await student.evaluate(() => Lab.api('/api/levels').then(r => r.levels.filter(l => l.mine && l.lesson === 18).map(l => l.kind).sort()));
+    check('Марафон: два уровня для игры соседа — обучающий и коварный, оба пройдены строителем', lv.join(',') === 'train,tricky' && train !== tricky, `${forTxt.slice(0, 80)} · ${lv.join(',')}`);
+    await student.waitForSelector('#step-marafon.done', { timeout: 10000 });
+    if (shot) await shot(student, 'm4-18-marafon', true);
+    // галерея: соседка выложила три уровня — играем, оцениваем тремя вопросами и «хочу ещё»
+    const my = await student.evaluate(() => Lab.api('/api/arcade').then(r => r.mine.filter(c => c.lesson && c.lesson.module === 4).map(c => c.id)));
+    const codes = await neighbourLevels(student, [
+      { game: 'remake:games/ovechiy-zagon.js', title: 'Загон соседки', kind: 'train', map: '#######\n#@ $ .#\n#######', cleared: { moves: 3, time: 5 } },
+      { game: 'remake:games/ovechiy-zagon.js', title: 'Хитрый загон', kind: 'tricky', map: '########\n#@ $  .#\n# $  . #\n########', cleared: { moves: 10, time: 20 } },
+      { game: 'remake:games/ovechiy-zagon.js', title: 'Ещё загон', kind: 'train', map: '######\n#@$ .#\n######', cleared: { moves: 2, time: 4 } },
+      ...my.slice(0, 1).map(id => ({ game: 'game:' + id, title: 'Гость в твоей игре', kind: 'train', map: '#####\n#@ E#\n#####', cleared: { time: 9 } })),
+    ]);
+    await student.click('.cp >> nth=4');
+    for (const code of codes.slice(0, 3)) {
+      await student.click(`#step-galereya [data-play="${code}"]`);
+      const gf = await frameIn(student, '#step-galereya');
+      await gf.evaluate(() => { window.__lab.confirm(); const L = window.__lab.lab, st = L.state; const moves = { 'Загон соседки': 'RRR', 'Хитрый загон': 'DRRRLLURRR', 'Ещё загон': 'RR' }[st.list[0].name] || 'RRR'; for (const ch of moves) GAME.step(L, { R: [1, 0], L: [-1, 0], U: [0, -1], D: [0, 1] }[ch]); });
+      await student.waitForSelector('#step-galereya [data-rate="teach:Да"]', { timeout: 20000 });
+      for (const k of ['teach:Да', 'rhythm:Да', 'goal:Нет']) await student.click(`#step-galereya [data-rate="${k}"]`);
+      await student.click(`#step-galereya [data-like="${code}"]`);
+      await student.click('#step-galereya >> text=← Все уровни');
+    }
+    await student.waitForSelector('#step-galereya.done', { timeout: 15000 });
+    const rated = await student.evaluate(c => Lab.api('/api/levels?code=' + c).then(r => r.levels[0]), codes[1]);
+    check('Галерея мейкеров: три чужих уровня — пройдены, оценены тремя вопросами, «хочу ещё»', rated.cleared >= 2 && rated.rates.n === 1 && rated.rates.teach === 1 && rated.likes === 1, JSON.stringify({ cleared: rated.cleared, rates: rated.rates, likes: rated.likes }));
+    if (shot) await shot(student, 'm4-18-galereya', true);
+    // гости в моей игре: уровень соседки для моей игры — «Взять в игру»
+    if (my.length) {
+      await student.waitForSelector(`#step-gosti [data-accept="${codes[3]}"]`, { timeout: 15000 });
+      await student.click(`#step-gosti [data-accept="${codes[3]}"]`);
+      await student.waitForSelector('#step-gosti.done', { timeout: 10000 });
+      const card = await student.evaluate(id => Lab.api('/api/arcade').then(r => r.mine.find(c => c.id === id)), my[0]);
+      check('Гости в моей игре: уровень соседки взят в игру', card && card.guests.length === 1 && card.guests[0].code === codes[3], card ? JSON.stringify(card.guests) : '');
+    }
+    // релиз модуля 4: чек-лист с уровнями гостей
+    await student.click('.cp >> nth=5');
+    await student.waitForSelector('#step-reliz .seg .opt');
+    const ev = (await student.textContent('#step-reliz .checklist')).replace(/\s+/g, ' ');
+    check('Релиз модуля 4: чек-лист про уровни и гостей', /Пять уровней/.test(ev) && /уровни гостей/.test(ev), ev.slice(0, 120));
+    for (const it of stepOf(les, 'reliz').checklist) await student.click(`#step-reliz .check[data-check="${it.id}"]`);
+    await student.click('#step-reliz .dicebtn');
+    await student.click('#step-reliz >> text=🚀 Выпустить версию 1.0');
+    await student.waitForSelector('#step-reliz.done', { timeout: 10000 });
+    await final(student, les, 'чужих глаз');
+  }
+
+  return { lesson14, lesson15, lesson16, lesson17, lesson18, neighbourLevels, editLevel };
 };

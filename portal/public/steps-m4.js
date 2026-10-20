@@ -779,7 +779,7 @@
     function finish() {
       v.tries++; ctx.save(v, true, true); beep('done'); cancelAnimationFrame(raf);
       host.innerHTML = '';
-      host.append(el('h2', {}, `Верно ${v.correct} из ${v.total} · очки ${v.score}`), st.after ? el('p', { class: 'concept' }, st.after) : null,
+      host.append(el('h2', {}, `Верно ${v.correct} из ${v.total} · очки ${v.score}`), st.after ? el('p', { class: 'concept' }, st.after) : '',
         el('div', {}, el('button', { type: 'button', class: 'btn ghost small', onclick: () => { v = Object.assign({}, v, { total: 0, correct: 0, score: 0, bestStreak: 0, mistakes: [] }); r = 0; answered = null; streak = 0; build(); } }, '↻ Ещё раз')));
     }
     function paint() {
@@ -800,7 +800,7 @@
       host.innerHTML = '';
       const tools = kind === 'map' ? el('div', { class: 'row small' }, el('button', { type: 'button', class: 'btn ghost small', 'data-quiz': 'flip', onclick: () => { glyph = !glyph; beep('tick'); } }, '🔤 Символы ↔ 🖼 Картинка'),
         el('span', { class: 'muted' }, st.legendText || '')) : null;
-      host.append(head, qEl, el('div', { class: 'm4-stage' }, cv), bar, tools, optsBox, verdict);
+      host.append(...[head, qEl, el('div', { class: 'm4-stage' }, cv), bar, tools, optsBox, verdict].filter(Boolean));
       t0 = performance.now(); paint();
       cancelAnimationFrame(raf); raf = requestAnimationFrame(loop);
     }
@@ -811,7 +811,7 @@
       if (kind === 'scene') { const m = { ArrowLeft: 0, ArrowUp: 1, ArrowRight: 2 }[e.code]; if (m != null && opts[m]) { e.preventDefault(); pick(opts[m]); } }
     });
     if (ctx.done) {
-      host.append(el('h2', {}, `Верно ${v.correct} из ${v.total} · очки ${v.score}`), st.after ? el('p', { class: 'concept' }, st.after) : null, el('div', {}, el('button', { type: 'button', class: 'btn ghost small', onclick: () => { v = Object.assign({}, v, { total: 0, correct: 0, score: 0, mistakes: [] }); build(); } }, '↻ Пройти ещё раз')));
+      host.append(el('h2', {}, `Верно ${v.correct} из ${v.total} · очки ${v.score}`), st.after ? el('p', { class: 'concept' }, st.after) : '', el('div', {}, el('button', { type: 'button', class: 'btn ghost small', onclick: () => { v = Object.assign({}, v, { total: 0, correct: 0, score: 0, mistakes: [] }); build(); } }, '↻ Пройти ещё раз')));
       return host;
     }
     build();
@@ -914,8 +914,16 @@
       if (st.target === 'mine') return hasGame() ? { id: S.game.id, version: S.game.current, title: S.game.title || 'Моя игра', author: S.me.nick, mine: true } : fallbackTarget();
       const about = st.about && ans(st.about).value;
       if (about && about.game) { const a = await api('/api/arcade'); const c = a.games.find(x => x.id === about.game); if (c) return { id: c.id, version: c.version, title: c.title, author: c.nick, lesson: c.lesson }; }
-      const a = await api('/api/arcade'); const n = a.neighbour;
-      return n ? { id: n.id, version: n.version, title: n.title, author: n.nick, lesson: n.lesson } : null;
+      const a = await api('/api/arcade');
+      let n = a.neighbour;
+      if (st.lessons) { // марафон (урок 18): игра соседа из нужных уроков — по кругу, у соседа берём последнюю
+        const by = new Map();
+        for (const c of a.games) if (c.nick !== S.me.nick && !c.hidden && c.lesson && st.lessons.includes(c.lesson.number) && (!by.has(c.nick) || by.get(c.nick).lesson.number < c.lesson.number)) by.set(c.nick, c);
+        const pool = [...by.values()].sort((x, y) => x.nick.localeCompare(y.nick, 'ru'));
+        n = pool.find(c => c.nick.localeCompare(S.me.nick, 'ru') > 0) || pool[0] || null;
+      }
+      if (n) return { id: n.id, version: n.version, title: n.title, author: n.nick, lesson: n.lesson };
+      return st.fallback || st.fallbacks ? fallbackTarget(null, 'none') : null;
     }
     function probe() {
       // игра сама говорит свою легенду и уровни (portal.levels / lab.levels) — по ним палитра и заготовка
@@ -933,14 +941,22 @@
         },
         onReady: () => { clearTimeout(probeTimer); probeTimer = setTimeout(() => {
           if (legend) return;
-          if (target.mine && st.fallback) { target = fallbackTarget(); v.maps = {}; probe(); draw(); return; } // своя игра не читает уровни-карты — строим для донора
+          if ((target.mine || st.target === 'neighbour') && !target.remake && (st.fallback || st.fallbacks)) { // игра не читает уровни-карты — строим для донора её урока
+            const who = target.author; target = fallbackTarget(target.lesson && target.lesson.number, target.mine ? 'mine' : 'neighbour'); target.forAuthor = who; v.maps = {}; probe(); draw(); return;
+          }
           legend = false; draw();
         }, fast() ? 4000 : 8000); },
         onClear: m => onClear(m),
       });
       fbox.replaceChildren(frame.box);
     }
-    function fallbackTarget() { fellBack = true; return st.fallback ? { remake: st.fallback, title: st.fallbackTitle || S.lesson.donor, author: 'донор урока' } : null; }
+    function fallbackTarget(lessonNo, why) {
+      fellBack = why || 'mine';
+      const f = (st.fallbacks && lessonNo && st.fallbacks[lessonNo]) || st.fallback;
+      if (!f) return null;
+      const file = typeof f === 'string' ? f : f.file, title = typeof f === 'string' ? st.fallbackTitle || S.lesson.donor : f.title;
+      return { remake: file, title, author: 'донор урока' };
+    }
     const blank = () => { const [w, h] = st.size || [20, 10]; return Array.from({ length: h }, (_, j) => (j === h - 1 ? '#'.repeat(w) : ' '.repeat(w))).join('\n'); };
     function onClear(m) {
       if (!map || !frame || !frame.testing) return;
@@ -1011,7 +1027,10 @@
       const host = ui;
       host.append(el('div', { class: 'm4-for' }, el('span', { class: 'ti' }, target.remake ? '🎮' : target.mine ? '⭐' : '👤'), el('div', {}, el('div', { class: 'eyebrow' }, 'Строишь уровень для игры'), el('b', {}, `«${target.title}»`),
         el('div', { class: 'small muted' }, target.remake ? 'донор урока' : target.mine ? 'твоя игра: уровень встанет в неё после твоих' : `автор — ${target.author}`))));
-      if (fellBack) host.append(el('p', { class: 'small warn-text' }, hasGame() ? 'Твоя игра пока не читает уровни-карты, поэтому уровень — для донора урока. Попроси Qwen в «Правке 2»: «научи игру уровням как данным».' : 'Своей игры ещё нет — строим уровень для донора урока.'));
+      if (fellBack === 'neighbour') host.append(el('div', { class: 'stack', style: 'gap:6px' }, el('p', { class: 'small warn-text' }, `Игра ${target.forAuthor || 'соседа'} пока не читает уровни-карты, поэтому уровни — для донора её урока. Подскажи автору просьбу для Qwen:`),
+        st.addLevels ? el('div', { class: 'row' }, el('pre', { class: 'm4-ask grow' }, st.addLevels), el('button', { type: 'button', class: 'btn ghost small', onclick: () => Lab.copy(st.addLevels) }, '⧉ Скопировать')) : null));
+      else if (fellBack === 'none') host.append(el('p', { class: 'small warn-text' }, 'У соседей пока нет игр модуля с уровнями, поэтому уровни — для донора урока.'));
+      else if (fellBack) host.append(el('p', { class: 'small warn-text' }, hasGame() ? 'Твоя игра пока не читает уровни-карты, поэтому уровень — для донора урока. Попроси Qwen в «Правке 2»: «научи игру уровням как данным».' : 'Своей игры ещё нет — строим уровень для донора урока.'));
       if (kinds.length > 1 || kinds[0] !== 'free') host.append(tiles(kinds.map(k => ({ id: k, icon: KIND_UI[k][0], label: KIND_UI[k][1], sub: v.levels[k] ? `✓ код ${v.levels[k].code}` : KIND_UI[k][2] })), v.kind, it => {
         v.maps[v.kind] = map ? asText() : v.maps[v.kind]; v.kind = it.id; cleared = null; setMap(v.maps[it.id] || st.template || (base[0] ? base[0].map : blank())); ctx.save(v); draw();
       }, { attr: 'data-kind', label: 'Какой уровень' }));
