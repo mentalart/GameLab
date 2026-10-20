@@ -24,7 +24,7 @@ function answerText(step, a, game) {
     case 'rounds': case 'sort': return v.total ? quizLine(v) : '';
     case 'blindpair': return v.vote ? (step.mode === 'secret' ? `«${v.title}» (автор ${v.author}): выбрал — ${v.vote === 'same' ? 'разницы нет' : v.felt ? 'со спрятанной механикой, почувствовал' : 'без спрятанной механики'}`
       : `«${v.title}» (автор ${v.author}): хочется вернуться — ${v.vote === 'same' ? 'разницы нет' : v.juicy ? 'в сочную' : 'в сухую'}`) : '';
-    case 'listen': return v.total ? quizLine(v) : '';
+    case 'listen': case 'clues': return v.total ? quizLine(v) : '';
     case 'vote': return v.votes ? 'голоса отданы, сыграно игр: ' + Object.keys(v.played || {}).length : '';
     case 'sequencer': return v.line ? `мелодия: ${v.line}` : '';
     case 'blind': return v.total ? `угадано ${v.correct} из ${v.total}` + ((v.mistakes || []).length ? '; не почувствовал: ' + v.mistakes.join('; ') : '') : '';
@@ -42,7 +42,7 @@ function answerText(step, a, game) {
     case 'aicheck': return val(v.text) ? `догадка: ${val(v.text)}` : '';
     case 'workshop': return (v.requests || []).map(r => `${r.chat ? '[чат] ' : ''}${r.text}${r.dice ? ' [кубик]' : ''} → v${r.version}${r.repair ? ' (пропало: ' + r.repair.split('\n')[0].replace(/^.*нашёл, что пропало: /, '').replace(/\.$/, '') + ')' : ''}`).join('\n');
     case 'arcade': return v.game ? `«${v.title || ''}» (автор ${v.author || '—'}), партий ${v.rounds || 0}, лучший счёт ${v.best || 0}${v.beat ? ', рекорд автора побит' : ''}` : '';
-    case 'playtest': return v.sent ? `${(v.emotions || []).join(' ')}; нравится: ${dice(v.like)}; хочется: ${dice(v.want)}; а что если: ${dice(v.whatif)}` : '';
+    case 'playtest': return v.sent ? `${(v.emotions || []).join(' ')}; ${step.ask && val(v.story) ? `${step.ask.label} ${dice(v.story)}; ` : ''}нравится: ${dice(v.like)}; хочется: ${dice(v.want)}; а что если: ${dice(v.whatif)}` : '';
     // модуль 4: объяснялки, квизы по картам, тепловая карта, редактор и галерея уровней
     case 'motion': return a.done ? 'посмотрел до конца' : v.seen ? `сцен: ${v.seen} из ${(step.scenes || []).length}` : '';
     case 'order': case 'mapquiz': return v.total ? quizLine(Object.assign({ bestStreak: v.bestStreak || 0 }, v)) : '';
@@ -67,7 +67,7 @@ function classAnswers(les, students, gameOf) {
     }
     return { nick: s.nick, answers };
   }).sort((a, b) => a.nick.localeCompare(b.nick, 'ru'));
-  const quizzes = steps.filter(x => ['sort', 'rounds', 'blind', 'listen'].includes(x.type)).map(x => {
+  const quizzes = steps.filter(x => ['sort', 'rounds', 'blind', 'listen', 'clues'].includes(x.type)).map(x => {
     const cards = {};
     for (const s of students) {
       const v = ((((s.lessons || {})[les.id] || {}).answers || {})[x.id] || {}).value || {};

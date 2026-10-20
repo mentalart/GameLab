@@ -405,7 +405,7 @@ const Games = (() => {
     if (emo.length) box.append(el('div', { class: 'row', style: 'gap:6px' }, emo.map(([e, n]) => el('span', { class: 'chip' }, `${e} ×${n}`))));
     d.cards.forEach(c => box.append(el('div', { class: 'ptcard' },
       el('div', { class: 'row small' }, el('b', {}, c.nick), (c.emotions || []).map(e => el('span', { class: 'chip' }, e))),
-      [['like', 'Нравится'], ['want', 'Хочется'], ['whatif', 'А что если']].filter(([k]) => valText(c[k])).map(([k, label]) =>
+      [['story', 'Понял так'], ['like', 'Нравится'], ['want', 'Хочется'], ['whatif', 'А что если']].filter(([k]) => valText(c[k])).map(([k, label]) =>
         el('div', { class: 'small' }, el('b', {}, label + ': '), valText(c[k]), c[k].dice ? el('span', { class: 'tag dice', style: 'margin-left:6px' }, '[кубик]') : null)))));
     return box;
   }

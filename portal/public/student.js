@@ -2964,7 +2964,7 @@ STEPS.playtest = ctx => {
   const st = ctx.step;
   const emotions = st.emotions || ['😄 Весело', '😬 Напряжённо', '🤩 Вау', '🤔 Непонятно', '😤 Обидно', '😴 Скучно'];
   const decks = st.decks || {};
-  let v = Object.assign({ game: null, emotions: [], like: { text: '' }, want: { text: '' }, whatif: { text: '' }, sent: false }, ctx.value);
+  let v = Object.assign({ game: null, emotions: [], story: { text: '' }, like: { text: '' }, want: { text: '' }, whatif: { text: '' }, sent: false }, ctx.value);
   const host = el('div', { class: 'stack' });
   const mineHost = el('div', { class: 'stack' });
   function drawCard() {
@@ -2984,7 +2984,8 @@ STEPS.playtest = ctx => {
       grid.append(b);
     });
     box.append(el('div', { class: 'eyebrow' }, 'Что ты чувствовал? Одна-две кнопки'), grid);
-    const FIELDS = [['like', 'Нравится', 'Что было лучше всего?', '👍'], ['want', 'Хочется', 'Чего не хватило?', '🙏'], ['whatif', 'А что если', 'Одна смелая идея для версии 2', '💡']];
+    // ask (уроки 20 и 22): первый вопрос карточки — «Детектив: что здесь случилось?», «Что ты почувствовал?»; автор сверяет ответы с замыслом
+    const FIELDS = (st.ask ? [['story', st.ask.label, st.ask.hint || '', '🔎']] : []).concat([['like', 'Нравится', 'Что было лучше всего?', '👍'], ['want', 'Хочется', 'Чего не хватило?', '🙏'], ['whatif', 'А что если', 'Одна смелая идея для версии 2', '💡']]);
     // simple (урок 1): карточки колоды касанием, свои слова — одной строкой под ними
     if (st.simple) FIELDS.forEach(([k, label, hint, icon]) => {
       const inp = el('input', { type: 'text', maxlength: 200, id: 'f-' + st.id + k, placeholder: 'или своими словами', value: valText(v[k]) || '' });
@@ -2999,10 +3000,10 @@ STEPS.playtest = ctx => {
     const send = el('button', { class: 'btn', type: 'button' }, v.sent ? 'Отправить заново' : 'Отправить автору');
     send.addEventListener('click', async () => {
       if (!v.emotions.length) { toast('Нажми хотя бы одну эмоцию'); return; }
-      const missing = [['like', 'Нравится'], ['want', 'Хочется'], ['whatif', 'А что если']].filter(([k]) => !valText(v[k]));
+      const missing = (st.ask ? [['story', st.ask.label]] : []).concat([['like', 'Нравится'], ['want', 'Хочется'], ['whatif', 'А что если']]).filter(([k]) => !valText(v[k]));
       if (missing.length) { toast('Заполни: ' + missing.map(m => m[1]).join(', ')); return; }
       send.disabled = true;
-      try { await api('/api/playtest', { game: v.game, card: { emotions: v.emotions, like: v.like, want: v.want, whatif: v.whatif } }); v.sent = true; ctx.save(v, true, true); toast('Отзыв ушёл автору', 'ok'); send.textContent = 'Отправить заново'; }
+      try { await api('/api/playtest', { game: v.game, card: { emotions: v.emotions, story: st.ask ? v.story : undefined, like: v.like, want: v.want, whatif: v.whatif } }); v.sent = true; ctx.save(v, true, true); toast('Отзыв ушёл автору', 'ok'); send.textContent = 'Отправить заново'; }
       catch (e) { toast(e.message, 'err'); }
       send.disabled = false;
     });
@@ -3458,6 +3459,91 @@ STEPS.listen = ctx => {
   return box;
 };
 
+// clues: квиз «Что здесь случилось?» (урок 20). В раунде — одно место и три кадра его вещей (`frames`: `icons` — эмодзи вещей,
+// `caption` — что видно). Сначала открыт один кадр; «Ещё кадр» (пробел) открывает следующий. Ответить можно в любой момент
+// (клавиши 1–4): по одному кадру — 300 очков, по двум — 200, по трём — 100, серия умножает. После ответа видны все кадры и разбор.
+STEPS.clues = ctx => {
+  const st = ctx.step, choices = st.choices || 3;
+  const box = el('div', { class: 'rounds clues', tabindex: '0', 'aria-label': 'Квиз «' + st.title + '»' });
+  let order = [], i = 0, opts = [], open = 1, phase = 'intro', score = 0, streak = 0, bestStreak = 0, correct = 0, picks = [], mistakes = [], early = 0;
+  const shuffle = a => a.map(x => [Math.random(), x]).sort((p, q) => p[0] - q[0]).map(p => p[1]);
+  const round = () => st.rounds[order[i]];
+  function intro() {
+    phase = 'intro'; box.innerHTML = '';
+    const prev = ctx.value;
+    box.append(el('div', { class: 'stack', style: 'align-items:center;text-align:center;margin:auto' },
+      el('div', { class: 'big' }, '🔎'), el('h3', {}, `${st.rounds.length} мест · по три кадра`),
+      el('p', { class: 'muted' }, 'Слов не будет — только вещи. Догадайся, что здесь случилось, по как можно меньшему числу кадров: по одному кадру — 300 очков, по двум — 200, по трём — 100. Пробел — ещё кадр, клавиши 1–4 — ответ.'),
+      prev && prev.total ? el('p', {}, `Твой результат: ${prev.correct} из ${prev.total}, очки ${prev.score}`) : null,
+      el('button', { class: 'btn', type: 'button', onclick: begin }, prev && prev.total ? 'Сыграть ещё раз' : '▶ Начать')));
+  }
+  function begin() { order = shuffle(st.rounds.map((x, k) => k)); i = 0; score = 0; streak = 0; bestStreak = 0; correct = 0; picks = []; mistakes = []; early = 0; show(); }
+  const frameView = (f, k, shown) => el('div', { class: 'cframe' + (shown ? ' on' : ''), 'data-frame': String(k) },
+    el('div', { class: 'eyebrow' }, `Кадр ${k + 1}`),
+    shown ? el('div', { class: 'cicons' }, f.icons) : el('div', { class: 'cicons locked' }, '🔒'),
+    el('div', { class: 'small' }, shown ? f.caption : 'Пробел — открыть'));
+  function frames() {
+    const r = round(), host = box.querySelector('.cframes');
+    host.innerHTML = '';
+    r.frames.forEach((f, k) => host.append(frameView(f, k, k < open)));
+    const more = box.querySelector('[data-more]');
+    if (more) more.hidden = phase !== 'ask' || open >= r.frames.length;
+  }
+  function show() {
+    if (i >= order.length) return finish();
+    phase = 'ask'; open = 1;
+    const r = round(), pool = r.options || st.options;
+    opts = shuffle(shuffle(pool.filter(o => o !== r.answer)).slice(0, choices - 1).concat(r.answer));
+    box.innerHTML = '';
+    box.append(el('div', { class: 'hud' }, el('span', {}, `${i + 1} / ${order.length}`), el('span', { class: 'streak' }, streak > 1 ? `серия ×${streak}` : ''), el('span', {}, `очки ${score}`)),
+      el('div', { style: 'text-align:center' }, el('div', { class: 'eyebrow' }, 'Место'), el('h3', {}, r.place)),
+      el('div', { class: 'cframes' }),
+      el('div', { style: 'text-align:center' }, el('button', { class: 'btn ghost', type: 'button', 'data-more': '1', onclick: more }, '🔓 Ещё кадр (пробел)')),
+      el('div', { class: 'eyebrow', style: 'text-align:center' }, st.question || 'Что здесь случилось?'),
+      el('div', { class: 'opts' }, opts.map((o, k) => el('button', { type: 'button', class: 'opt', onclick: () => answer(k) }, el('kbd', {}, String(k + 1)), ' ', o))),
+      el('div', { class: 'why', 'aria-live': 'polite' }));
+    frames();
+    box.focus({ preventScroll: true });
+  }
+  function more() {
+    if (phase !== 'ask' || open >= round().frames.length) return;
+    open++; beep('tick'); frames();
+  }
+  function answer(k) {
+    if (phase !== 'ask' || !opts[k]) return;
+    phase = 'why';
+    const r = round(), ok = opts[k] === r.answer, used = open;
+    picks.push({ text: r.place, chose: opts[k], ok, right: r.answer, frames: used });
+    if (ok) { correct++; streak++; bestStreak = Math.max(bestStreak, streak); score += 100 * (4 - used) * Math.min(streak, 3); if (used === 1) early++; }
+    else { streak = 0; mistakes.push(`${r.place}: ${r.answer} (выбрал: ${opts[k]})`); }
+    beep(ok ? 'good' : 'bad');
+    open = r.frames.length; frames();
+    box.querySelectorAll('.opts .opt').forEach((b, j) => { b.disabled = true; if (opts[j] === r.answer) b.classList.add('on'); else if (j === k) b.classList.add('miss'); });
+    const why = box.querySelector('.why'); why.innerHTML = '';
+    why.append(el('b', {}, ok ? (used === 1 ? 'Верно — с одного кадра! ' : `Верно, по ${used} кадрам. `) : `Здесь случилось другое: «${r.answer}». `), r.why || '', ' ',
+      el('button', { class: 'btn', type: 'button', onclick: () => { i++; show(); } }, i + 1 >= order.length ? 'Итог ▶' : 'Дальше ▶'));
+  }
+  function finish() {
+    phase = 'end';
+    const v = { score, correct, total: order.length, bestStreak, early, mistakes, picks };
+    ctx.save(v, true);
+    box.innerHTML = '';
+    box.append(el('div', { class: 'stack', style: 'align-items:center;text-align:center;margin:auto' },
+      el('div', { class: 'eyebrow' }, 'Итог'), el('h2', {}, `${correct} из ${order.length} · ${score} очков`),
+      el('p', { class: 'muted' }, early ? `С одного кадра угадано: ${early}` : 'Ни разу с одного кадра — вещи говорят больше, чем кажется'),
+      mistakes.length ? el('div', { class: 'small', style: 'text-align:left' }, el('b', {}, 'Перепутал:'), el('ul', {}, mistakes.map(m => el('li', {}, m)))) : el('p', {}, 'Все истории разгаданы!'),
+      el('button', { class: 'btn', type: 'button', onclick: begin }, 'Ещё раз')));
+  }
+  box.addEventListener('keydown', e => {
+    const m = /^(?:Digit|Numpad)([1-9])$/.exec(e.code);
+    if (phase === 'ask' && m) { e.preventDefault(); answer(Number(m[1]) - 1); }
+    else if (phase === 'ask' && e.code === 'Space') { e.preventDefault(); more(); }
+    else if (phase === 'why' && (e.code === 'Space' || e.code === 'Enter')) { e.preventDefault(); i++; show(); }
+  });
+  intro();
+  return box;
+};
+
 // sequencer: секвенсор мелодии (урок 7). Сетка: колонки — доли (8 тактов по 4), строки — ноты (снизу вверх, notes);
 // в колонке одна нота. «Послушать» играет мелодию в темпе bpm, «Пробежать» отдаёт её ремейку в lab.data.melody —
 // на каждой ноте встаёт препятствие. Мелодия уходит в черновик ИГРА шаблоном {melody} (plan.melody — id этого шага).
@@ -3613,6 +3699,7 @@ function stepSummary(step) {
       return v.game ? `игра «${v.title}» (автор ${v.author}); сухой была ${v.dry === 'A' ? 'А' : 'Б'}; хочется вернуться: ${v.vote ? (v.vote === 'same' ? 'разницы нет' : v.vote === 'A' ? 'в А' : 'в Б') : '—'}${v.vote && v.juicy ? ' — в сочную' : ''}` : 'не играл';
     case 'vote': return v.votes ? 'голоса: ' + Object.values(v.votes).length + ', сыграно игр: ' + Object.keys(v.played || {}).length : `сыграно игр: ${Object.keys(v.played || {}).length}`;
     case 'listen': return v.total ? `верно ${v.correct} из ${v.total}, очки ${v.score}` + ((v.mistakes || []).length ? '; перепутал: ' + v.mistakes.join('; ') : '') : 'не пройден';
+    case 'clues': return v.total ? `верно ${v.correct} из ${v.total}, с одного кадра ${v.early || 0}, очки ${v.score}` + ((v.mistakes || []).length ? '; перепутал: ' + v.mistakes.join('; ') : '') : 'не пройден';
     case 'sequencer': return v.line ? `мелодия: ${v.line}; пробежек ${v.ran || 0}` : 'мелодии нет';
     case 'blind': return v.total ? `угадано ${v.correct} из ${v.total}` + ((v.mistakes || []).length ? '; не почувствовал: ' + v.mistakes.join('; ') : '') : `загадок пройдено ${(v.picks || []).length}`;
     case 'trace': return v.total ? `верно ${v.correct} из ${v.total}, очки ${v.score}, серия ${v.bestStreak}` + ((v.mistakes || []).length ? '; ошибки: ' + v.mistakes.join('; ') : '') : 'не пройден';
@@ -3633,7 +3720,7 @@ function stepSummary(step) {
     case 'aicheck': return `догадка: ${v.text || '—'}` + (v.notes ? '\nрешения программиста: ' + (v.notes.join('; ') || 'нет записей') : '');
     case 'workshop': return (v.requests || []).map(r => `${r.chat ? '[чат] ' : ''}${r.text}${r.dice ? ' [кубик]' : ''} → v${r.version}`).join('\n') || 'правок не было';
     case 'arcade': return v.game ? `игра «${v.title || ''}» (автор ${v.author || '—'}), партий ${v.rounds || 0}, лучший счёт ${v.best || 0}${v.beat ? ', рекорд автора побит' : ''}` : 'не играл';
-    case 'playtest': return (v.sent ? `отзыв на «${v.title || ''}»: ${(v.emotions || []).join(' ')}; нравится: ${f(v.like)}; хочется: ${f(v.want)}; а что если: ${f(v.whatif)}` : 'отзыв не отправлен') +
+    case 'playtest': return (v.sent ? `отзыв на «${v.title || ''}»: ${(v.emotions || []).join(' ')}; ${step.ask && valText(v.story) ? `${step.ask.label} ${f(v.story)}; ` : ''}нравится: ${f(v.like)}; хочется: ${f(v.want)}; а что если: ${f(v.whatif)}` : 'отзыв не отправлен') +
       (S.me.feedback ? `\nотзыв учителя: понятие — ${valText(S.me.feedback.concept)}; вопрос — ${valText(S.me.feedback.question)}` : '');
     default: return (window.LabStepsM7Summary && window.LabStepsM7Summary(step, v, a)) || (window.LabStepsM4Summary && window.LabStepsM4Summary(step, v, a)) || (window.LabStepsM3Summary && window.LabStepsM3Summary(step, v, a)) || JSON.stringify(v);
   }

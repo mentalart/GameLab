@@ -911,6 +911,7 @@ route('POST', '/api/playtest', (ctx) => {
   if (g.nick === w.nick) throw Object.assign(new Error('Плейтест пишут на чужую игру'), { status: 400 });
   const c = ctx.body.card || {};
   const card = { emotions: (Array.isArray(c.emotions) ? c.emotions : []).slice(0, 6).map(e => String(e).slice(0, 40)), like: cleanField(c.like), want: cleanField(c.want), whatif: cleanField(c.whatif) };
+  if (c.story) card.story = cleanField(c.story); // вопрос шага playtest.ask: «что здесь случилось?», «что ты почувствовал?»
   store.addPlay(g.id, { type: 'card', nick: w.nick, card });
   broadcast(w.class, 'arcade', { game: g.id, author: g.nick });
   return { ok: true };
@@ -2160,7 +2161,7 @@ route('GET', '/api/teacher/answers.csv', (ctx) => {
     const rows = r.students.flatMap(s => r.steps.filter(x => s.answers[x.id]).map(x => ({ nick: s.nick, cp: x.cpTitle, step: x.title, type: x.type, text: s.answers[x.id].text, done: s.answers[x.id].done, at: s.answers[x.id].at })));
     body = csv([['Ученик', 'nick'], ['Чекпоинт', 'cp'], ['Шаг', 'step'], ['Тип шага', 'type'], ['Ответ', 'text'], ['Готово', 'done'], ['Когда', r => r.at ? new Date(r.at).toLocaleString('ru-RU') : '']], rows);
   } else {
-    const quiz = les.checkpoints.flatMap(cp => cp.steps).filter(x => ['sort', 'rounds', 'blind', 'listen'].includes(x.type));
+    const quiz = les.checkpoints.flatMap(cp => cp.steps).filter(x => ['sort', 'rounds', 'blind', 'listen', 'clues'].includes(x.type));
     const rows = students.flatMap(s => quiz.flatMap(q => ((((s.lessons || {})[les.id] || {}).answers || {})[q.id] || { value: {} }).value.picks
       ? s.lessons[les.id].answers[q.id].value.picks.map(p => Object.assign({ nick: s.nick, quiz: q.title }, p)) : []));
     body = csv([['Ученик', 'nick'], ['Квиз', 'quiz'], ['Карточка', 'text'], ['Верно', 'ok'], ['Ответил', 'chose'], ['Правильно', 'right'], ['Секунд', r => num(r.sec)]], rows);

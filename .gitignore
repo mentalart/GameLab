@@ -10,3 +10,4 @@ Thumbs.db
 
 # Снимки и отчёты автопроверки игр
 portal/.check/
+.claude/worktrees/
