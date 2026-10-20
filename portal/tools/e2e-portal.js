@@ -1225,7 +1225,7 @@ async function lessonThree(mode, teacher, student, shot) {
   await shot(student, '30-u3-donor');
 
   // предсказание динамики → партия с одним правилом → сравнение с телеметрией шага
-  await student.click('.cp >> text=Спрятанная механика');
+  await student.click('.cp >> text=Механика → динамика');
   const pred = step3('secret-predict'), tail = pred.options.find(o => o.counter === 'хвост');
   await student.click(`#step-secret-predict .opt >> text=${tail.text}`);
   await student.click('#step-secret-predict >> text=🔮 Записать предсказание');
@@ -1260,6 +1260,35 @@ async function lessonThree(mode, teacher, student, shot) {
   const num = re => Number((re.exec(reveal) || [])[1] || -1), offPart = reveal.slice(reveal.indexOf('Одно правило'));
   check('Сравнение: окружения и хвост со спрятанной механикой и без, спрятанная механика сработала', num(/Четыре характера.*?окружения (\d+)/) >= 5 && Number((/хвост (\d+)/.exec(offPart) || [])[1] || -1) >= 6 && num(/спрятанная механика сработала (\d+) раз/) >= 40, reveal.slice(reveal.indexOf('Четыре характера'), reveal.indexOf('Четыре характера') + 160));
   await storyDone(student);
+
+  // мастерская вариаций урока 3: плитка — партия — «какое удовольствие» — «какую механику повернули»; на доске — динамика из телеметрии
+  const vst = step3('variacii');
+  await student.waitForSelector('#step-variacii [data-var]');
+  check('Урок 3: мастерская вариаций — ядро и плитки всех вариаций', /беги по лабиринту → собери всё/.test(await student.textContent('#step-variacii')) && await student.locator('#step-variacii [data-var]').count() === vst.variants.length);
+  const tryV3 = [['pryzhok', c => c.jump === 1, 'прыжки над волком'], ['tma', c => c.dark === 1, 'из темноты'], ['moroz', c => c.freeze === 1, 'мимо замёрзших'], ['navremya', c => c.timeAttack === 120, 'ночи']];
+  for (const [k, [id, ok, counter]] of tryV3.entries()) {
+    const x = vst.variants.find(y => y.id === id);
+    await student.click(`#step-variacii [data-var=${id}]`);
+    await student.click('#step-variacii .veil button');
+    gf = await gameFrame(student, 'nochnoy-labirint', 0);
+    await gf.waitForFunction(() => window.__lab.ready, null, { timeout: 15000 }).catch(() => {});
+    check(`Урок 3: вариация «${x.label}» включила свои ручки`, ok(await gf.evaluate(() => window.__lab.cfg)));
+    await gf.evaluate(() => window.__lab.confirm());
+    await sleep(300);
+    await gf.evaluate(c => { const L = window.__lab.lab; L.count(c, 3); L.count('окружения', 1); L.score = 300; window.__lab.end('lose', 'Проверка'); }, counter);
+    await student.waitForSelector('#step-variacii [data-feel]', { timeout: 10000 });
+    await student.click(`#step-variacii [data-feel] >> nth=${k}`);
+    await student.click(`#step-variacii [data-dial=${k === 2 ? vst.dials.find(d => d.id !== x.dial).id : x.dial}]`);
+    await student.waitForSelector('#step-variacii .verdict');
+    if (k === 2) check('Урок 3: ошибка в механике — разбор, что повернули', /Не совсем/.test(await student.textContent('#step-variacii .verdict')));
+    await student.click('#step-variacii [data-next]');
+  }
+  await student.waitForSelector('#step-variacii .var-board');
+  const board3 = await student.textContent('#step-variacii .var-board');
+  check('Урок 3: доска вариаций — механика, динамика из телеметрии, удовольствие', await student.locator('#step-variacii .var-row:not(.var-head)').count() === 4 && /перепрыгнул ×3/.test(board3) && /проскочил мимо ×3/.test(board3), board3.slice(0, 160));
+  await shot(student, '31b-u3-variacii', true);
+  await student.click('#step-variacii [data-fav=tma]');
+  await student.waitForSelector('#step-variacii.done', { timeout: 10000 });
 
   // квиз «Угадай охотника по следу»: лабиринт на холсте, ответы цифрами и стрелками с пробелом, после ответа — цель охотника
   const sled = step3('sled');

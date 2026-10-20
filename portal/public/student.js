@@ -570,7 +570,7 @@ STEPS.variety = ctx => {
         el('div', {}, el('b', {}, x.label), el('div', { class: 'small muted' }, `как в ${x.like}`), el('div', {}, x.how))),
       ladder(x.base ? ['Сыграй', 'Ощущение'] : ['Сыграй', 'Ощущение', 'Что повернули?'], stage === 'play' ? 0 : stage === 'feel' ? 1 : 2));
     if (stage === 'play') {
-      const status = el('b', {}, 'Сыграй партию против мудреца. Tab — ручки, если хочешь покрутить.');
+      const status = el('b', {}, st.playHint || 'Сыграй партию против мудреца. Tab — ручки, если хочешь покрутить.');
       h = Games.frame({
         src: () => '/engine/game.html?game=../' + st.game, key: () => 'remake:' + st.id + ':' + x.id, cfg: Object.assign({}, st.cfg, x.cfg), label: 'Играть: ' + x.label,
         onOver: m => {
@@ -579,6 +579,7 @@ STEPS.variety = ctx => {
           const s = t.stats || {}, p = Object.assign({}, v.played[x.id]);
           p.rounds = (p.rounds || 0) + 1;
           if (s['исход известен с хода'] != null) { p.known = s['исход известен с хода']; p.len = s['ходов в партии'] || null; }
+          if (st.dyn) { p.dyn = Object.assign({}, p.dyn); for (const d of st.dyn) p.dyn[d.counter] = (p.dyn[d.counter] || 0) + (Number((t.custom || {})[d.counter]) || 0); } // динамика вариации: счётчики телеметрии за все её партии
           v = Object.assign({}, v, { rounds: v.rounds + 1, best: Math.max(v.best, m.score || 0), secret: v.secret + (Number((t.custom || {})._secret) || 0), custom, variant: x.label });
           v.played = Object.assign({}, v.played, { [x.id]: p });
           save(); S.hooks.forEach(fn => fn('played', { step: st.id }));
@@ -590,7 +591,7 @@ STEPS.variety = ctx => {
       return;
     }
     if (stage === 'feel') {
-      host.append(el('p', { class: 'bigq' }, 'Какая это игра по ощущению?'),
+      host.append(el('p', { class: 'bigq' }, st.feelQ || 'Какая это игра по ощущению?'),
         tiles(st.feelings.map(f => ({ id: f, icon: emo(f), label: f.slice(emo(f).length).trim() })), null, it => {
           v.played = Object.assign({}, v.played, { [x.id]: Object.assign({}, v.played[x.id], { feel: it.id }) });
           save(); stage = x.base ? 'grid' : 'dial'; answer = null; draw();
@@ -599,7 +600,7 @@ STEPS.variety = ctx => {
     }
     // stage dial: какую деталь повернули — сразу разбор
     const p = v.played[x.id] || {};
-    host.append(el('p', { class: 'bigq' }, 'Ядро то же. Что повернули в правилах?'),
+    host.append(el('p', { class: 'bigq' }, st.dialQ || 'Ядро то же. Что повернули в правилах?'),
       tiles(st.dials.map(d => ({ id: d.id, icon: d.icon, label: d.label, sub: d.hint })), answer, it => {
         if (answer) return;
         answer = it.id;
@@ -622,14 +623,20 @@ STEPS.variety = ctx => {
     }), null, it => { cur = V.find(x => x.id === it.id); stage = 'play'; draw(); }, { attr: 'data-var', wide: true, label: 'Вариации' }));
     if (n >= need) board();
   }
+  // динамика вариации (урок 3): две самые частые динамики за партию — что рождается из повёрнутой механики
+  function dynChips(p) {
+    const r = Math.max(1, p.rounds || 1), top = st.dyn.map(d => ({ d, n: ((p.dyn || {})[d.counter] || 0) / r })).filter(x => x.n > 0).sort((a, b) => b.n - a.n).slice(0, 2);
+    return el('span', { class: 'var-dyn' }, top.length ? top.map(x => el('span', { class: 'tag' }, `${x.d.icon} ${x.d.label} ×${Math.round(x.n * 10) / 10}`)) : el('small', { class: 'muted' }, '—'));
+  }
   function board() {
     const rows = V.filter(x => v.played[x.id] && v.played[x.id].feel);
     const tbl = el('div', { class: 'var-board' }, rows.map(x => {
       const p = v.played[x.id], d = dialOf(x.dial), open = p.known && p.len ? Math.max(0.04, Math.min(1, (p.known - 1) / Math.max(1, p.len - 1))) : null;
       return el('div', { class: 'var-row' }, el('span', { class: 'ti' }, x.icon), el('b', {}, x.label), el('span', { class: 'var-emo', title: p.feel }, emo(p.feel)),
         el('span', { class: 'tag' }, d ? d.icon + ' ' + d.label : 'основа'),
-        el('span', { class: 'var-open', title: 'Сколько партии исход был открыт' }, open == null ? el('small', { class: 'muted' }, '—') : [el('i', { style: `width:${Math.round(open * 100)}%` }), el('small', {}, `исход ясен с хода ${p.known} из ${p.len}`)]));
+        st.dyn ? dynChips(p) : el('span', { class: 'var-open', title: 'Сколько партии исход был открыт' }, open == null ? el('small', { class: 'muted' }, '—') : [el('i', { style: `width:${Math.round(open * 100)}%` }), el('small', {}, `исход ясен с хода ${p.known} из ${p.len}`)]));
     }));
+    if (st.dyn) tbl.prepend(el('div', { class: 'var-row var-head' }, el('span'), el('small', {}, 'Вариация'), el('small', {}, 'Э'), el('small', {}, 'М: что повернули'), el('small', {}, 'Д: что происходило (телеметрия)')));
     host.append(el('h3', {}, `Одна механика — ${rows.length} ${rows.length < 5 ? 'игры' : 'игр'}`), tbl,
       el('p', { class: 'concept' }, st.reveal));
     host.append(el('p', { class: 'bigq' }, st.question || 'Какая из этих игр самая интересная?'),

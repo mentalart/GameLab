@@ -21,6 +21,8 @@ const GAME = {
   duo: 'vs', // ручка vs > 0 включает второго игрока: он ведёт Вожака
   controls: [
     { input: 'move4', text: 'бежать по лабиринту (поворот жми заранее)' },
+    { input: 'a', text: 'прыжок через волка — в вариации «Прыжок»' },
+    { input: 'b', text: 'закрыть проход за спиной — в вариации «Двери»' },
   ],
   camera: { type: 'iso', tilt: 0.62 },
   field: { w: 24.4, h: 26.6 },
@@ -53,6 +55,14 @@ const GAME = {
     pups: { value: 6, min: 0, max: 12, step: 1, label: 'Спящие волчата', hint: 'проснутся рядом с тобой и встанут цепочкой за волком; с факелом цепочку съедают целиком' },
     pupNight: { value: 2, min: 1, max: 5, step: 1, label: 'Волчата появляются с ночи' },
     close: { value: 1, min: 0, max: 1, step: 1, label: 'На волосок: замедление, когда волк в шаге', hint: 'мир замирает на миг — успеешь свернуть' },
+    // вариации жанра (меню Tab, урок 3 «Мастерская вариаций»): каждая поворачивает одну деталь механики
+    jump: { value: 0, min: 0, max: 1, step: 1, label: 'Прыжок: A — перепрыгнуть волка', hint: 'как в Pac-Mania (1987): в прыжке волк не поймает, перезарядка 2 с' },
+    doors: { value: 0, min: 0, max: 1, step: 1, label: 'Двери: B — закрыть проход за спиной', hint: 'как вертушки в Lady Bug (1981): каменная плита держит волков' },
+    doorTime: { value: 4, min: 1, max: 10, step: 0.5, label: 'Дверь держится, с' },
+    dark: { value: 0, min: 0, max: 1, step: 1, label: 'Тьма: виден только свет фонаря и факелов', hint: 'волков выдают только глаза', restart: true },
+    freeze: { value: 0, min: 0, max: 1, step: 1, label: 'Мороз: факел замораживает волков', hint: 'как бонус Freeze в Pac-Man 256: мимо замёрзших можно пройти, но прогнать их нельзя' },
+    bump: { value: 0, min: 0, max: 1, step: 1, label: 'Толчок: волк сначала только толкает', hint: 'как в Pac-Man Championship Edition 2: три толчка — и волк злится, злой ловит' },
+    timeAttack: { value: 0, min: 0, max: 300, step: 15, label: 'На время: секунд на рекорд (0 — без времени)', hint: 'как в Pac-Man Championship Edition: ночи идут одна за другой, пока не кончится время', restart: true },
     showTargets: { value: 0, min: 0, max: 1, step: 1, label: 'Показать, куда целится каждый волк', hint: 'Крестик цвета волка на клетке, к которой он идёт' },
     vs: { value: 0, min: 0, max: 1, step: 1, label: 'Второй игрок ведёт Вожака', hint: '1 — пастушок на WASD или геймпаде 1, Вожак на стрелках или геймпаде 2', restart: true },
     lives: { value: 3, min: 1, max: 9, step: 1, label: 'Жизни', restart: true },
@@ -62,15 +72,32 @@ const GAME = {
     'Без спрятанной механики': { secret: 0 },
     'Цели видно': { showTargets: 1 },
     'Стая волчат': { pups: 10, pupNight: 1 },
+    'Прыжок': { jump: 1 },
+    'Двери': { doors: 1 },
+    'Тьма': { dark: 1 },
+    'Мороз': { freeze: 1 },
+    'Толчок': { bump: 1 },
+    'На время': { timeAttack: 120, lives: 9 },
     'Безумие': { wolfSpeed: 6.4, heroSpeed: 6.4, powerTime: 3, release: 1, scatterTime: 2, pups: 12, pupNight: 1 },
     'Вдвоём': { vs: 1 },
   },
+  // имя и правило вариации для начала партии: первая, чьи ручки совпали с текущими
+  VARIANTS: [
+    { name: 'На время', like: 'Pac-Man Championship Edition', how: 'собери как можно больше, пока не кончится время', on: c => c.timeAttack > 0 },
+    { name: 'Прыжок', like: 'Pac-Mania', how: 'A — прыжок: в воздухе волк не поймает', on: c => Math.round(c.jump) === 1 },
+    { name: 'Двери', like: 'Lady Bug', how: 'B — каменная плита закрывает проход за спиной', on: c => Math.round(c.doors) === 1 },
+    { name: 'Тьма', like: 'лабиринты-страшилки', how: 'видно только то, что в свете; волков выдают глаза', on: c => Math.round(c.dark) === 1 },
+    { name: 'Мороз', like: 'Pac-Man 256', how: 'факел замораживает волков: проскочи мимо', on: c => Math.round(c.freeze) === 1 },
+    { name: 'Толчок', like: 'Pac-Man Championship Edition 2', how: 'волк сначала толкает, на третий раз злится', on: c => Math.round(c.bump) === 1 },
+    { name: 'Стая волчат', like: 'Pac-Man Championship Edition DX', how: 'спящие волчата встают цепочкой, с факелом её съедают', on: c => c.pups >= 10 && c.pupNight <= 1 },
+  ],
   notes: [
     'Срезка угла только у пастушка: волки поворачивают в центре клетки, поэтому на поворотах пастушок отрывается.',
     'Волчата не сидят ближе 6 клеток к пастушку и к дольмену: просыпаются только там, куда ты сам пришёл.',
   ],
 
   S: 1.25, // шаг клетки, м
+  JUMP: 0.65, // прыжок вариации «Прыжок», с
   // # — стена, . — светлячок, o — факел, P — пастушок, D — дольмен, - — дверь дольмена, x — лес за лабиринтом. Строка 9 — тоннель
   MAP: [
     '###################',
@@ -113,7 +140,10 @@ const GAME = {
     Object.assign(st, {
       night: 1, combo: 0, bestCombo: 0, eaten: 0, chased: 0, pincers: 0, tails: 0, ambush: 0, closeCalls: 0, pupsEaten: 0, cheeses: 0,
       checkT: 0, pinCool: 0, tailT: 0, tailCool: 0, closeCool: 2, freeze: 0, dying: 0, clearT: 0, cheese: null, streak: 0, streakT: 0, eatT: 0, angry: false,
+      mult: 1, banner: false, jumpT: 0, jumpCool: 0, jumps: 0, jumpOver: 0, overThis: false, door: null, doorCool: 0, doorsUsed: 0, doorSaves: 0,
+      ice: false, icePass: 0, darkMeets: 0, bumps: 0, mads: 0, timeLeft: lab.cfg.timeAttack > 0 ? lab.cfg.timeAttack : null, tickAt: 10, starT: 3,
     });
+    st.dark = Math.round(lab.cfg.dark) === 1;
     this.scenery(lab, scene);
     this.buildMaze(lab);
     this.buildHero(lab);
@@ -122,13 +152,20 @@ const GAME = {
     this.fillDots(lab);
     this.resetActors(lab);
     lab.hero(st.hero.g);
-    lab.hud('night', 'Ночь 1');
+    lab.hud('night', 'Ночь 1', { color: '#d8ff6a' });
+    st.camT = lab.view.target.clone();
+    if (!lab.playing) this.poster(lab);
   },
 
   // ---------- каждый кадр ----------
   update(lab, dt) {
     const st = lab.state, cfg = lab.cfg;
+    if (st.poster) this.unposter(lab);
+    if (!st.banner) { st.banner = true; this.banner(lab); }
     this.animate(lab, dt);
+    this.updateCamera(lab, dt);
+    if (st.timeLeft != null && this.clock(lab, dt)) return;
+    this.updateDoor(lab, dt);
     if (st.clearT > 0) { this.clearing(lab, dt); return; }
     if (st.dying > 0) { this.dyingStep(lab, dt); return; }
     if (st.freeze > 0) { st.freeze -= dt; return; }
@@ -140,23 +177,68 @@ const GAME = {
     this.collide(lab);
     this.watchDynamics(lab, dt);
     this.updateCheese(lab, dt);
-    lab.hud('left', 'Светлячков: ' + st.dotsLeft);
-    lab.hud('mode', st.fright > 0 ? `Волки бегут от факела: ${Math.ceil(st.fright)} с` : Math.round(cfg.secret) ? (st.mode === 'scatter' ? 'Волки: разбег по углам' : 'Волки: погоня') : 'Волки: погоня без отдыха');
+    this.hudLines(lab);
+  },
+  // HUD в цветах игры: светлячки — лаймом, погоня — красным, разбег — зелёным, факел — синим, мороз — льдом
+  hudLines(lab) {
+    const st = lab.state, cfg = lab.cfg;
+    lab.hud('left', 'Светлячков: ' + st.dotsLeft, { color: '#d8ff6a' });
+    const fr = st.fright > 0, sc = Math.round(cfg.secret) && st.mode === 'scatter';
+    lab.hud('mode', fr ? (st.ice ? `Волки замёрзли: ${Math.ceil(st.fright)} с` : `Волки бегут от факела: ${Math.ceil(st.fright)} с`) : Math.round(cfg.secret) ? (sc ? 'Волки: разбег по углам' : 'Волки: погоня') : 'Волки: погоня без отдыха',
+      { color: fr ? (st.ice ? '#bfefff' : '#9fb4ff') : sc ? '#7cf5a8' : '#ff7a6a' });
+    lab.hud('streak', st.mult > 1 ? `Хруст подряд ×${st.mult}` : null, { color: '#ffd23f', size: 16 });
+    const extra = [];
+    if (Math.round(cfg.jump)) extra.push(st.jumpCool > 0 ? 'Прыжок: заряжается' : 'Прыжок готов · A или пробел');
+    if (Math.round(cfg.doors)) extra.push(st.door ? `Дверь держит: ${Math.ceil(st.door.t)} с` : st.doorCool > 0 ? 'Дверь: камень ещё не готов' : 'Дверь готова · B или Shift');
+    lab.hud('tool', extra.length ? extra.join(' · ') : null, { color: '#ffb36b', size: 14 });
+    lab.hud('time', st.timeLeft != null ? `Время: ${Math.ceil(Math.max(0, st.timeLeft))} с` : null, { color: st.timeLeft != null && st.timeLeft < 10 ? '#ff5a4a' : '#ffffff', size: st.timeLeft != null && st.timeLeft < 10 ? 22 : 16 });
+  },
+  // какая вариация сейчас: по ручкам, иначе — классика
+  variant(lab) {
+    const hit = this.VARIANTS.find(v => v.on(lab.cfg));
+    return hit || { name: 'Классика', like: 'Pac-Man', how: 'собери всех светлячков, факел меняет охотника и добычу' };
+  },
+  // начало партии: имя вариации и её правило крупно над лабиринтом
+  banner(lab) {
+    const v = this.variant(lab);
+    lab.popup(lab.v3(0, 3.6, 0), v.name === 'Классика' ? 'Ночь 1' : v.name, '#ffffff', 30);
+    lab.after(0.35, () => lab.popup(lab.v3(0, 2.8, 0), v.how, '#ffe680', 17));
+  },
+  // На время (Pac-Man CE): часы идут всегда; последние 10 с тикают и краснеют
+  clock(lab, dt) {
+    const st = lab.state;
+    st.timeLeft -= dt;
+    if (st.timeLeft <= st.tickAt && st.tickAt > 0) { lab.tone(st.tickAt <= 3 ? 1100 : 880, 0.06, 'square', 0.05); st.tickAt--; }
+    if (st.timeLeft > 0) return false;
+    lab.hud('time', 'Время вышло!', { color: '#ff5a4a', size: 22 });
+    lab.win(`Время вышло: ${lab.score} очков за ${Math.round(lab.cfg.timeAttack)} с, ночей пройдено: ${st.night - 1}`);
+    return true;
   },
 
   overNote(lab) {
     const st = lab.state, notes = [];
+    const v = this.variant(lab), cfg = lab.cfg;
+    if (v.name !== 'Классика') notes.push(`Вариация: ${v.name} (как в ${v.like}) — ${v.how}`);
     notes.push(Math.round(lab.cfg.secret) ? 'Механика: у четырёх волков по одному правилу — гонится, наперерез, по напарнику, пугается вблизи' : 'Спрятанная механика выключена: все волки гнались одинаково. Заметил, что они ходят хвостом?');
     notes.push(`Динамика: тебя окружали с разных сторон ${st.pincers} раз, волки шли за тобой хвостом ${st.tails} раз`);
     notes.push(`Ты подманил волков к факелу ${st.ambush} раз и прогнал ${st.chased} волков, лучшая серия ×${st.bestCombo}`);
     notes.push(`Светлячков: ${st.eaten}, ночь ${st.night}` + (st.pupsEaten ? `, волчат прогнано: ${st.pupsEaten}` : '') + (st.closeCalls ? `, на волосок: ${st.closeCalls}` : ''));
+    if (Math.round(cfg.jump)) notes.push(`Прыжков: ${st.jumps}, из них над волком: ${st.jumpOver}`);
+    if (Math.round(cfg.doors)) notes.push(`Дверей закрыто: ${st.doorsUsed}, дверь остановила волка: ${st.doorSaves} раз`);
+    if (Math.round(cfg.dark)) notes.push(`Волки выскакивали из темноты: ${st.darkMeets} раз`);
+    if (Math.round(cfg.freeze)) notes.push(`Ты проскочил мимо замёрзших волков ${st.icePass} раз — прогнать их мороз не даёт`);
+    if (Math.round(cfg.bump)) notes.push(`Толчков: ${st.bumps}, волков разозлил: ${st.mads}`);
     return notes;
   },
 
   // ---------- клетки ----------
   wrap(lab, x) { const W = lab.state.W; return ((x % W) + W) % W; },
   cell(lab, x, y) { return y < 0 || y >= lab.state.H ? '#' : this.MAP[y][this.wrap(lab, x)]; },
-  open(lab, x, y) { const c = this.cell(lab, x, y); return c !== '#' && c !== 'D' && c !== '-' && c !== 'x'; },
+  open(lab, x, y) {
+    const c = this.cell(lab, x, y), d = lab.state.door;
+    if (d && d.y === y && d.x === this.wrap(lab, x)) return false; // каменная дверь вариации «Двери»
+    return c !== '#' && c !== 'D' && c !== '-' && c !== 'x';
+  },
   wx(x) { return (x - (this.MAP[0].length - 1) / 2) * this.S; },
   wz(y) { return (y - (this.MAP.length - 1) / 2) * this.S; },
   posOf(a) { return [a.tx + a.dx * a.t, a.ty + a.dy * a.t]; },
@@ -188,7 +270,11 @@ const GAME = {
     const st = lab.state, h = st.hero, cfg = lab.cfg;
     const d = this.stickDir(lab.p1); if (d) st.want = d;
     const w = st.want;
-    if (w && w[0] === -h.dx && w[1] === -h.dy && (h.dx || h.dy)) this.reverse(lab, h);
+    if (Math.round(cfg.jump) && lab.p1.pressed.a && st.jumpCool <= 0 && st.jumpT <= 0) this.jump(lab);
+    if (Math.round(cfg.doors) && lab.p1.pressed.b && st.doorCool <= 0 && (h.dx || h.dy)) this.closeDoor(lab);
+    st.jumpT -= dt; st.jumpCool -= dt; st.doorCool -= dt;
+    const doorBack = st.door && h.t > 0 && st.door.x === h.tx && st.door.y === h.ty; // назад в свою же дверь не развернуться
+    if (w && w[0] === -h.dx && w[1] === -h.dy && (h.dx || h.dy) && !doorBack) this.reverse(lab, h);
     // срезка угла, как у Pac-Man: поворот засчитывается чуть до центра клетки или чуть после — пастушок идёт по диагонали
     else if (w && (h.dx || h.dy) && (w[0] !== h.dx || w[1] !== h.dy) && cfg.corner > 0) {
       if (h.t <= cfg.corner && this.open(lab, h.tx + w[0], h.ty + w[1])) { h.dx = w[0]; h.dy = w[1]; }
@@ -206,10 +292,10 @@ const GAME = {
     });
     this.place(lab, h, 0, 30);
     const run = !!(h.dx || h.dy);
-    h.body.position.y = run ? Math.abs(Math.sin(lab.t * 15)) * 0.09 : 0;
+    h.body.position.y = st.jumpT > 0 ? Math.sin(Math.PI * (1 - st.jumpT / this.JUMP)) * 1.5 : run ? Math.abs(Math.sin(lab.t * 15)) * 0.09 : 0;
     const sw = run ? Math.sin(lab.t * 15) * 0.7 : 0;
     h.legA.rotation.x = sw; h.legB.rotation.x = -sw; h.arm.rotation.x = -sw * 0.4;
-    if ((st.streakT -= dt) <= 0) st.streak = 0;
+    if ((st.streakT -= dt) <= 0) { st.streak = 0; st.mult = 1; }
     lab.stat('светлячков собрано', st.eaten);
   },
   eat(lab, x, y) {
@@ -225,13 +311,19 @@ const GAME = {
       lab.ring(at, { color: '#ff9a3c', radius: 3.4 }); lab.shake(0.3); lab.pulse(st.hero.body, 1.4, 0.2); lab.vibrate(120, 0.5);
       if (st.wolves.some(wf => wf.state === 'active' && this.near(lab, wf, st.hero) < 4.5)) { st.ambush++; lab.count('засада у факела'); lab.popup([at[0], 2.4, at[2]], 'Засада!', '#ffd23f', 22); }
       st.fright = lab.cfg.powerTime * Math.pow(0.88, st.night - 1); st.combo = 0;
-      st.wolves.forEach(wf => { if (wf.state === 'active') { wf.fr = true; this.reverse(lab, wf); } });
+      st.ice = Math.round(lab.cfg.freeze) === 1; // Мороз (Pac-Man 256): волки замирают на месте, а не убегают
+      st.wolves.forEach(wf => { if (wf.state === 'active') { wf.fr = true; wf.passed = false; if (!st.ice) this.reverse(lab, wf); } });
       st.pups.forEach(p => { if (p.state === 'train') p.fr = true; });
+      if (st.ice) { lab.popup([at[0], 3, at[2]], 'Мороз!', '#bfefff', 26); lab.burst([at[0], 1.3, at[2]], { count: 30, colors: ['#e8fbff', '#9fe6ff'], speed: 6, up: 4 }); lab.tone(1500, 0.5, 'sine', 0.05, 600); }
       if (st.heroTrail) st.heroTrail.dispose();
-      st.heroTrail = lab.trail(st.hero.lantern, { color: '#ff8a3c', width: 0.45, length: 16 });
+      st.heroTrail = lab.trail(st.hero.lantern, { color: st.ice ? '#9fe6ff' : '#ff8a3c', width: 0.45, length: 16 });
     } else {
-      st.eaten++; st.eatT = 0.12; lab.addScore(10); lab.count('светлячки');
+      st.eaten++; st.eatT = 0.12; lab.count('светлячки');
       st.streak++; st.streakT = 0.45; // хруст подряд звенит выше, как серия точек в CE DX
+      const mult = 1 + Math.min(2, Math.floor(st.streak / 30)); // 30 подряд — ×2, 60 — ×3
+      lab.addScore(10 * mult);
+      if (mult > st.mult) { lab.popup([at[0], 2, at[2]], `Хруст подряд ×${mult}!`, '#ffd23f', 20 + mult * 2); lab.ring([at[0], 0, at[2]], { color: '#ffd23f', radius: 2.4 }); lab.tone(990, 0.2, 'triangle', 0.06, 1480); }
+      st.mult = mult;
       lab.tone((st.eaten % 2 ? 560 : 440) * lab.pitch(Math.min(12, Math.floor(st.streak / 8))), 0.06, 'triangle', 0.05);
       d.gone = true; this.hideDot(st, d);
       lab.burst(at, { count: 5, colors: ['#e9ff8a', '#b6ff4a'], speed: 2.4, up: 1.8, size: 0.08, life: 0.4 });
@@ -274,9 +366,10 @@ const GAME = {
     if (st.fright > 0) {
       st.fright -= dt;
       const warn = st.fright < cfg.warnTime && Math.floor(st.fright * 6) % 2 === 0; // честно: факел гаснет — волки мигают белым
-      st.frMat.color.set(warn ? '#f2f4ff' : '#3d5bff'); st.frMat.emissive.set(warn ? '#9aa6ff' : '#1a2a99'); st.frWarn = warn;
+      st.frMat.color.set(warn ? '#f2f4ff' : st.ice ? '#bfefff' : '#3d5bff'); st.frMat.emissive.set(warn ? '#9aa6ff' : st.ice ? '#3a9cc0' : '#1a2a99'); st.frWarn = warn;
       if (st.fright <= 0) {
-        st.wolves.forEach(w => { w.fr = false; });
+        st.ice = false;
+        st.wolves.forEach(w => { w.fr = false; w.passed = false; });
         st.pups.forEach((p, i) => { p.fr = false; if (p.state === 'train' && p.lead.state !== 'active') this.sleepPup(lab, p, i, false); });
         if (st.heroTrail) { st.heroTrail.dispose(); st.heroTrail = null; }
       }
@@ -325,6 +418,7 @@ const GAME = {
   },
   moveWolf(lab, w, dt) {
     const st = lab.state, cfg = lab.cfg;
+    if (st.dark) this.darkWolf(lab, w);
     if (w.state === 'home') { w.mesh.position.y = Math.abs(Math.sin(lab.t * 4 + w.i)) * 0.25; this.skin(lab, w); this.trot(lab, w, 0.4); return; }
     if (w.state === 'exit' || w.state === 'enter') {
       w.k = Math.min(1, w.k + dt * 1.6);
@@ -338,7 +432,8 @@ const GAME = {
       this.skin(lab, w); this.trot(lab, w, 1); return;
     }
     const mul = 1 + cfg.nightUp * (st.night - 1);
-    let speed = w.state === 'eyes' ? cfg.wolfSpeed * 2.2 : w.fr ? cfg.frightSpeed : cfg.wolfSpeed * mul;
+    w.bumpCool = (w.bumpCool || 0) - dt;
+    let speed = w.state === 'eyes' ? cfg.wolfSpeed * 2.2 : w.fr ? (st.ice ? 0 : cfg.frightSpeed) : cfg.wolfSpeed * mul * (w.mad ? 1.1 : 1);
     if (w.state === 'active' && this.inTunnel(lab, w)) speed *= cfg.tunnelSlow;
     if (w.i === 0 && st.angry && w.state === 'active' && !w.fr) speed *= st.dotsLeft <= cfg.elroy / 2 ? 1.2 : 1.1;
     const p2 = lab.p2;
@@ -403,14 +498,21 @@ const GAME = {
   },
   collide(lab) {
     const st = lab.state, h = st.hero;
+    const air = st.jumpT > 0;
     for (const w of st.wolves) {
-      if (w.state !== 'active' || this.near(lab, w, h) > 0.62) continue;
+      if (w.state !== 'active') continue;
+      const d = this.near(lab, w, h);
+      if (air && d < 1 && !st.overThis && !w.fr) { st.overThis = true; st.jumpOver++; lab.count('прыжки над волком'); lab.popup(lab.v3(h.mesh.position.x, 3, h.mesh.position.z), 'Перепрыгнул!', '#ffe680', 22); lab.tone(1046, 0.12, 'triangle', 0.05, 1568); }
+      if (d > 0.62) continue;
+      if (air && !w.fr) continue; // в прыжке волк не поймает
+      if (w.fr && st.ice) { if (!w.passed) { w.passed = true; st.icePass++; lab.count('мимо замёрзших'); lab.popup(lab.v3(w.mesh.position.x, 2.4, w.mesh.position.z), 'Мимо!', '#bfefff', 18); } continue; }
+      if (!w.fr && Math.round(lab.cfg.bump) && !w.mad) { if (w.bumpCool <= 0) this.bumped(lab, w); continue; }
       if (w.fr) { this.chaseAway(lab, w.mesh.position, w.def.color, false); w.state = 'eyes'; w.fr = false; w.eyeTrail = lab.trail(w.ghost, { color: '#9fb4ff', width: 0.25, length: 8 }); }
       else { this.caught(lab); return; }
     }
     const hp = h.mesh.position;
     for (const p of st.pups) {
-      if (p.state !== 'train' || Math.hypot(p.x - hp.x, p.z - hp.z) > 0.72 * this.S) continue;
+      if (p.state !== 'train' || Math.hypot(p.x - hp.x, p.z - hp.z) > 0.72 * this.S || air || (p.fr && st.ice)) continue;
       if (p.fr) { this.chaseAway(lab, [p.x, 0.4, p.z], '#8a8fa8', true); p.state = 'gone'; this.hidePup(lab, st.pups.indexOf(p)); st.pupsEaten++; lab.count('волчата прогнаны'); }
       else { this.caught(lab); return; }
     }
@@ -572,17 +674,114 @@ const GAME = {
     } else if (c.life <= 0) { c.mesh.visible = false; st.cheese = null; lab.burst(c.mesh.position, { count: 8, color: '#a89a70', speed: 2 }); }
   },
 
+  // ---------- вариации: прыжок, двери, толчок, тьма ----------
+  // Прыжок (Pac-Mania): пастушок взлетает над коридором, в воздухе волк не поймает
+  jump(lab) {
+    const st = lab.state, h = st.hero;
+    st.jumpT = this.JUMP; st.jumpCool = 2; st.jumps++; st.overThis = false; lab.count('прыжки');
+    lab.sfx.jump(); lab.pulse(h.body, 1.25, 0.15);
+    lab.burst([h.mesh.position.x, 0.2, h.mesh.position.z], { count: 10, colors: ['#c9c2a8', '#8f8a78'], speed: 3, up: 1.5, size: 0.1 });
+    lab.after(this.JUMP, () => { lab.ring([h.mesh.position.x, 0, h.mesh.position.z], { color: '#ffe680', radius: 1.4 }); lab.tone(180, 0.12, 'sine', 0.06, 90); });
+  },
+  // Двери (вертушки Lady Bug): плита поднимается в клетке за спиной и держит волков doorTime секунд
+  closeDoor(lab) {
+    const st = lab.state, h = st.hero, cfg = lab.cfg;
+    const x = h.t > 0.4 ? h.tx : this.wrap(lab, h.tx - h.dx), y = h.t > 0.4 ? h.ty : h.ty - h.dy;
+    if (!this.open(lab, x, y) || (x === this.EXIT[0] && y === this.EXIT[1])) { lab.tone(160, 0.1, 'square', 0.04); return; }
+    st.door = { x, y, t: cfg.doorTime, saved: false }; st.doorCool = cfg.doorTime + 1; st.doorsUsed++; lab.count('двери');
+    const m = st.doorSlab; m.visible = true; m.position.set(this.wx(x), -0.5, this.wz(y));
+    lab.tween(0.18, k => { m.position.y = -0.5 + k * 0.95; }, 'outBack');
+    lab.shake(0.15); lab.tone(120, 0.25, 'sawtooth', 0.06, 70); lab.burst([this.wx(x), 0.3, this.wz(y)], { count: 14, colors: ['#b3a487', '#e8d9b0'], speed: 4, up: 3 });
+  },
+  updateDoor(lab, dt) {
+    const st = lab.state, d = st.door;
+    if (!d) return;
+    d.t -= dt;
+    // дверь остановила волка: охотник у плиты и шёл на неё
+    if (!d.saved && st.wolves.some(w => w.state === 'active' && !w.fr && Math.hypot(this.wx(d.x) - w.mesh.position.x, this.wz(d.y) - w.mesh.position.z) < 1.7 * this.S)) {
+      d.saved = true; st.doorSaves++; lab.count('двери спасли');
+      lab.popup([this.wx(d.x), 2.2, this.wz(d.y)], 'Не пройдёт!', '#ffb36b', 20); lab.tone(90, 0.2, 'square', 0.05);
+    }
+    const blink = d.t < 1 && Math.floor(d.t * 8) % 2 === 0; // честно: плита мигает перед тем, как уйти в землю
+    st.doorSlabMat.emissiveIntensity = blink ? 1.2 : 0.25;
+    if (d.t > 0) return;
+    st.door = null;
+    const m = st.doorSlab;
+    lab.tween(0.25, k => { m.position.y = 0.45 - k * 1; if (k >= 1) m.visible = false; });
+  },
+  // Толчок (Pac-Man CE 2): волк отталкивает, на третий толчок злится и тогда уже ловит
+  bumped(lab, w) {
+    const st = lab.state, h = st.hero;
+    w.bumps = (w.bumps || 0) + 1; w.bumpCool = 0.9; st.bumps++; lab.count('толчки');
+    this.reverse(lab, w); if (h.dx || h.dy) this.reverse(lab, h);
+    const p = w.mesh.position;
+    lab.shake(0.25); lab.vibrate(60, 0.4); lab.tone(220, 0.12, 'square', 0.06, 140);
+    lab.burst([p.x, 0.8, p.z], { count: 12, colors: [w.def.color, '#ffffff'], speed: 5, up: 2 });
+    if (w.bumps >= 3) {
+      w.mad = true; st.mads++; lab.count('злые волки');
+      lab.popup(lab.v3(p.x, 2.8, p.z), 'Злой!', '#ff3b2e', 26); lab.tone(110, 0.5, 'sawtooth', 0.07, 80);
+      w.madTrail = lab.trail(w.head, { color: '#ff3b2e', width: 0.3, length: 8 });
+    } else lab.popup(lab.v3(p.x, 2.6, p.z), `Толчок ${w.bumps} из 3`, w.def.eye, 20);
+  },
+  // Тьма: волка видно только в свете фонаря и факелов, глаза светятся всегда
+  litAt(lab, x, z) {
+    const st = lab.state, hp = st.hero.mesh.position, S = this.S;
+    let k = 1 - (Math.hypot(x - hp.x, z - hp.z) - 3.6 * S) / (1.4 * S);
+    for (const t of st.torches) if (t.lit) k = Math.max(k, 1 - (Math.hypot(x - this.wx(t.x), z - this.wz(t.y)) - 1.8 * S) / S);
+    return Math.max(0, Math.min(1, k));
+  },
+  darkWolf(lab, w) {
+    const st = lab.state, P = w.mesh.position, on = this.litAt(lab, P.x, P.z) > 0.3;
+    if (!w.darkParts) { w.darkParts = []; w.body.traverse(m => { if (m.isMesh && m !== w.glowEyes) w.darkParts.push(m); }); }
+    if (on === w.lit) return;
+    w.lit = on;
+    w.darkParts.forEach(m => { m.visible = on; });
+    // волк выскочил из темноты рядом с пастушком
+    if (on && w.state === 'active' && !w.fr && (st.darkCool || 0) < lab.t && this.near(lab, w, st.hero) < 5) {
+      st.darkCool = lab.t + 2; st.darkMeets++; lab.count('из темноты'); lab.tone(260, 0.15, 'sawtooth', 0.05, 520);
+    }
+  },
+  // ---------- афиша в меню и живая камера ----------
+  // афиша: погоня в разгаре — пастушок бежит к факелу, Вожак и Хитрец заходят с двух сторон, камера ближе
+  poster(lab) {
+    const st = lab.state, h = st.hero;
+    Object.assign(h, { tx: 4, ty: 13, t: 0.3, dx: 0, dy: -1 }); this.place(lab, h, 0, 0); h.mesh.rotation.y = Math.PI;
+    h.legA.rotation.x = 0.7; h.legB.rotation.x = -0.7;
+    const put = [[0, 8, 13, -1, 0], [1, 4, 16, 0, -1], [2, 1, 9, 1, 0]];
+    for (const [i, x, y, dx, dy] of put) {
+      const w = st.wolves[i]; if (!w) continue;
+      Object.assign(w, { state: 'active', tx: x, ty: y, t: 0.2, dx, dy }); this.place(lab, w, 0, 0); w.mesh.rotation.y = Math.atan2(dx, dy);
+      w.legA.rotation.x = 0.6; w.legB.rotation.x = -0.6;
+    }
+    const v = lab.view;
+    st.poster = { d: v.distance, x: v.target.x, z: v.target.z };
+    v.distance *= 0.8; v.target.x = this.wx(4) * 0.45; v.target.z = this.wz(13) * 0.45;
+  },
+  unposter(lab) {
+    const st = lab.state, v = lab.view, p = st.poster;
+    st.poster = null;
+    v.distance = p.d; v.target.x = p.x; v.target.z = p.z;
+    this.resetActors(lab);
+  },
+  // камера чуть дышит и тянется к пастушку: лабиринт живой, но целиком в кадре
+  updateCamera(lab, dt) {
+    const st = lab.state, v = lab.view, hp = st.hero.mesh.position, b = st.camT;
+    v.target.x = lab.damp(v.target.x, b.x + hp.x * 0.06 + Math.sin(lab.t * 0.3) * 0.12, 2, dt);
+    v.target.z = lab.damp(v.target.z, b.z + hp.z * 0.05 + Math.sin(lab.t * 0.21) * 0.1, 2, dt);
+  },
+
   // ---------- расстановка: пастушок внизу, Вожак у двери, остальные в дольмене ----------
   resetActors(lab) {
     const st = lab.state, cfg = lab.cfg;
     const h = st.hero;
     Object.assign(h, { tx: st.start[0], ty: st.start[1], t: 0, dx: -1, dy: 0 }); st.want = null;
     h.mesh.rotation.y = -Math.PI / 2; this.place(lab, h, 0, 0);
-    st.fright = 0; st.mode = Math.round(cfg.secret) && cfg.scatterTime > 0 ? 'scatter' : 'chase'; st.phase = st.mode === 'scatter' ? 0 : 1;
+    st.fright = 0; st.ice = false; st.jumpT = 0; st.mult = 1; st.streak = 0; st.mode = Math.round(cfg.secret) && cfg.scatterTime > 0 ? 'scatter' : 'chase'; st.phase = st.mode === 'scatter' ? 0 : 1;
     st.modeT = st.mode === 'scatter' ? cfg.scatterTime : cfg.chaseTime; st.relT = 0; st.closeCool = 2;
     if (st.heroTrail) { st.heroTrail.dispose(); st.heroTrail = null; }
     st.wolves.forEach((w, i) => {
-      Object.assign(w, { fr: false, t: 0, dx: -1, dy: 0, k: 0, want: null, look: null });
+      Object.assign(w, { fr: false, t: 0, dx: -1, dy: 0, k: 0, want: null, look: null, bumps: 0, mad: false, bumpCool: 0, passed: false });
+      if (w.madTrail) { w.madTrail.dispose(); w.madTrail = null; }
       w.crumbs.length = 0;
       if (w.eyeTrail) { w.eyeTrail.dispose(); w.eyeTrail = null; }
       if (i === 0) { w.state = 'active'; w.tx = this.EXIT[0]; w.ty = this.EXIT[1]; this.place(lab, w, 0, 0); }
@@ -599,7 +798,7 @@ const GAME = {
     const inDen = (x, y) => x >= dx0 && x <= dx1 && y >= dy0 && y <= dy1;
     lab.box(st.W * S, 0.04, st.H * S, '#24304a', { at: [0, 0.02, 0], shadow: false }); // тропа
     // стена — кладка с мхом поверху: соседние «#» в строке — один пролёт, все пролёты — один меш на материал
-    st.wallMat = new T.MeshStandardMaterial({ color: '#6f6b84', roughness: 0.9, flatShading: true });
+    st.wallMat = new T.MeshStandardMaterial({ color: st.dark ? '#4a475c' : '#6f6b84', roughness: 0.9, flatShading: true });
     const stone = [], moss = [];
     this.MAP.forEach((row, y) => {
       for (let x = 0; x < row.length;) {
@@ -636,6 +835,9 @@ const GAME = {
     lab.merge(P);
     st.doorMat = new T.MeshStandardMaterial({ color: '#2a2018', emissive: '#000000', flatShading: true });
     lab.box(1.1, 0.1, 0.34, st.doorMat, { at: [cx, 0.78, F], shadow: false });
+    // каменная дверь вариации «Двери»: одна плита, поднимается там, где нужно
+    st.doorSlabMat = new T.MeshStandardMaterial({ color: '#c9b78f', emissive: '#ff9a3c', emissiveIntensity: 0.25, flatShading: true });
+    st.doorSlab = lab.box(S - 0.12, 0.9, S - 0.12, st.doorSlabMat, { at: [0, -1, 0] }); st.doorSlab.visible = false;
     // светлячки — одна пачка копий; факелы — шест, чаша, огонь и свой свет
     st.dotMesh = lab.instances(new T.IcosahedronGeometry(0.12, 0), lab.mat('#d8ff6a', { unlit: true, glow: 1.6 }), 200, { shadow: false });
     st.dotMesh.frustumCulled = false; st.zeroM = new T.Matrix4().makeScale(0, 0, 0);
@@ -670,6 +872,9 @@ const GAME = {
     }));
     st.torches.forEach(t => { t.flame.visible = true; t.light.visible = true; t.lit = true; });
     for (let i = st.dotList.length; i < st.dotMesh.count; i++) this.hideDot(st, { i });
+    const M = new lab.THREE.Matrix4(); // сразу на местах: афиша в меню видна до первого кадра партии
+    for (const d of st.dotList) { M.makeTranslation(this.wx(d.x), 0.5, this.wz(d.y)); st.dotMesh.setMatrixAt(d.i, M); }
+    st.dotMesh.instanceMatrix.needsUpdate = true;
     if (st.pups) this.placePups(lab);
   },
   hideDot(st, d) { st.dotMesh.setMatrixAt(d.i, st.zeroM); st.dotMesh.instanceMatrix.needsUpdate = true; },
@@ -695,11 +900,12 @@ const GAME = {
     const lantern = lab.group({ parent: arm, at: [0, -0.22, 0.38] });
     lab.box(0.18, 0.24, 0.18, '#ffd96b', { parent: lantern, glow: 1.2, shadow: false });
     lab.box(0.22, 0.05, 0.22, '#3a3030', { parent: lantern, at: [0, 0.14, 0] });
-    const light = new T.PointLight('#ffcf7a', 16, 8, 1.3); light.position.set(0, 2.4, 0.5); g.add(light); // свет фонаря сверху: освещает коридор, а не слепит
+    const dk = st.dark, base = dk ? 24 : 16; // во Тьме фонарь — единственный свет, он ярче и дальше
+    const light = new T.PointLight('#ffcf7a', base, dk ? 10 : 8, 1.3); light.position.set(0, 2.4, 0.5); g.add(light); // свет фонаря сверху: освещает коридор, а не слепит
     // тёплое пятно света под ногами: пастушка видно в любом углу лабиринта
     const halo = lab.mesh(new T.CircleGeometry(1.5, 20).rotateX(-Math.PI / 2), lab.mat('#4a3410', { unlit: true, add: true }), { parent: g, at: [0, 0.06, 0], shadow: false });
     g.rotation.y = -Math.PI / 2;
-    st.hero = { g, mesh: g, body, legA, legB, arm, lantern, light, halo, baseLight: 16, tx: 0, ty: 0, t: 0, dx: 0, dy: 0 };
+    st.hero = { g, mesh: g, body, legA, legB, arm, lantern, light, halo, baseLight: base, tx: 0, ty: 0, t: 0, dx: 0, dy: 0 };
   },
   // волк: неподвижные детали слиты по материалу, лапы парами и хвост — отдельно для бега рысью
   wolfModel(lab, furMat, eyeMat) {
@@ -765,6 +971,7 @@ const GAME = {
     const T = lab.THREE, F = this.field;
     lab.light.hemi.intensity = 0.55; lab.light.hemi.color.set('#8fa6ff'); lab.light.hemi.groundColor.set('#1a2030');
     lab.light.sun.color.set('#b9c8ff'); lab.light.sun.intensity = 0.9; // луна вместо солнца
+    if (lab.state.dark) { lab.light.hemi.intensity = 0.07; lab.light.sun.intensity = 0.06; } // Тьма: луна за тучами
     lab.ground({ w: 160, h: 160, color: '#14301f', bumps: 3, flat: 0.3 });
     // горы с ледниками вдали — один меш на цвет
     const hills = [];
@@ -789,13 +996,55 @@ const GAME = {
     for (let i = 0; i < 320; i++) { const a = lab.rand(0, Math.PI * 2), e = lab.rand(0.12, 1.25); pts.push(Math.cos(a) * Math.cos(e) * 160, Math.sin(e) * 160, Math.sin(a) * Math.cos(e) * 160); }
     const g = new T.BufferGeometry(); g.setAttribute('position', new T.Float32BufferAttribute(pts, 3));
     scene.add(new T.Points(g, new T.PointsMaterial({ color: '#ffffff', size: 0.9, fog: false })));
+    this.life(lab, scene);
+  },
+  // живая ночь: летучие мыши кружат над лабиринтом, в лесу мерцают светлячки, по небу чиркают падающие звёзды
+  life(lab, scene) {
+    const T = lab.THREE, st = lab.state, F = this.field;
+    st.bats = [];
+    for (let i = 0; i < 4; i++) {
+      const g = lab.group(), wing = s => { const piv = lab.group({ parent: g, at: [s * 0.08, 0, 0] }); lab.box(0.42, 0.03, 0.24, '#20182c', { parent: piv, at: [s * 0.21, 0, 0], shadow: false }); return piv; };
+      lab.ball(0.11, '#2b2238', { parent: g, detail: 0, shadow: false });
+      for (const s of [-1, 1]) lab.box(0.03, 0.03, 0.02, '#ff5a4a', { parent: g, at: [s * 0.04, 0.03, 0.1], glow: 1.4, shadow: false });
+      st.bats.push({ g, wl: wing(-1), wr: wing(1), r: 7 + i * 2.2, h: 5.5 + i * 0.9, sp: (i % 2 ? -1 : 1) * (0.35 + i * 0.07), ph: i * 1.7 });
+    }
+    const N = 90, pos = new Float32Array(N * 3), seeds = [];
+    for (let i = 0; i < N; i++) {
+      let x, z; do { x = lab.rand(-34, 34); z = lab.rand(-30, 26); } while (Math.abs(x) < F.w / 2 + 1 && Math.abs(z) < F.h / 2 + 1);
+      seeds.push([x, z, lab.rand(0.6, 2.4), lab.rand(0, 6)]);
+    }
+    const fg = new T.BufferGeometry(); fg.setAttribute('position', new T.BufferAttribute(pos, 3));
+    st.flies = new T.Points(fg, new T.PointsMaterial({ color: '#d8ff6a', size: 0.32, transparent: true, opacity: 0.9, depthWrite: false })); st.flySeeds = seeds;
+    st.flies.frustumCulled = false; scene.add(st.flies);
+    st.star = lab.box(2.6, 0.08, 0.08, lab.mat('#ffffff', { unlit: true, alpha: 0.9, glow: 1 }), { at: [0, -50, -90], shadow: false });
+  },
+  lifeStep(lab, dt) {
+    const st = lab.state, t = lab.t;
+    for (const b of st.bats) {
+      const a = b.ph + t * b.sp, x = Math.cos(a) * b.r, z = Math.sin(a) * b.r * 0.8 - 1.5;
+      b.g.position.set(x, b.h + Math.sin(t * 1.3 + b.ph) * 0.6, z);
+      b.g.rotation.y = Math.atan2(-Math.sin(a) * Math.sign(b.sp), Math.cos(a) * Math.sign(b.sp) * 0.8);
+      const f = Math.sin(t * 16 + b.ph) * 0.9; b.wl.rotation.z = f; b.wr.rotation.z = -f;
+    }
+    const P = st.flies.geometry.attributes.position;
+    st.flySeeds.forEach(([x, z, h, ph], i) => P.setXYZ(i, x + Math.sin(t * 0.5 + ph) * 0.6, h + Math.sin(t * 1.1 + ph) * 0.4, z + Math.cos(t * 0.4 + ph) * 0.6));
+    P.needsUpdate = true;
+    st.flies.material.opacity = 0.65 + 0.3 * Math.sin(t * 3);
+    // падающая звезда раз в 5–9 секунд
+    st.starT -= dt;
+    if (st.starT <= 0) {
+      st.starT = 6 + 3 * Math.sin(t * 7.3);
+      const m = st.star, x0 = 30 * Math.sin(t * 3.1), y0 = 38 + 6 * Math.cos(t * 2.3);
+      lab.tween(0.9, k => { m.position.set(x0 - k * 26, y0 - k * 9, -90); m.rotation.z = 0.33; m.scale.x = Math.sin(k * Math.PI) * 1.6 + 0.01; if (k >= 1) m.position.y = -50; });
+    }
   },
   animate(lab, dt) {
     const st = lab.state, t = lab.t, M = st.dotM || (st.dotM = new lab.THREE.Matrix4());
-    // светлячки парят и мерцают каждый в свою фазу
+    this.lifeStep(lab, dt);
+    // светлячки парят и мерцают каждый в свою фазу; во Тьме видны только в свете
     for (const d of st.dotList) {
       if (d.gone) continue;
-      const k = 0.75 + 0.35 * Math.sin(t * 5 + d.x * 1.7 + d.y * 2.3);
+      const k = (0.75 + 0.35 * Math.sin(t * 5 + d.x * 1.7 + d.y * 2.3)) * (st.dark ? this.litAt(lab, this.wx(d.x), this.wz(d.y)) : 1);
       M.makeScale(k, k, k).setPosition(this.wx(d.x) + Math.sin(t * 1.3 + d.y) * 0.07, 0.5 + Math.sin(t * 2.2 + d.x * 0.9 + d.y) * 0.1, this.wz(d.y) + Math.cos(t * 1.1 + d.x) * 0.07);
       st.dotMesh.setMatrixAt(d.i, M);
     }
