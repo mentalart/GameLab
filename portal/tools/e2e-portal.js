@@ -17,7 +17,7 @@
 // образец урока в промпте программиста и демо-игра урока, спидран с призраком лучшей попытки.
 // Урок 6 в обоих прогонах: «Ледолом» и 12 переключателей сочности оболочки 0.3, сухой «Ледолом» и «Найди спрятанную механику», мастерская вариаций арканоида (лазер, невидимки, тяжесть, мультибол — доска с лучшей серией и конструктор), квиз «Сухая или сочная?»,
 // образец урока и демо-игра, кооператив двух лопат, слепая проба игры соседа (сухая и сочная копии).
-// Урок 7 в обоих прогонах: «Шаг в такт» на одних часах и без спрятанной механики, предсказание «что будет без звука», квиз «Угадай по звуку»,
+// Урок 7 в обоих прогонах: «Шаг в такт» на одних часах и без спрятанной механики, мастерская вариаций ритм-игры (пригнись, исчезают, держи, двойной темп — доска с точностью и конструктор), предсказание «что будет без звука», квиз «Угадай по звуку»,
 // секвенсор мелодии: своя мелодия уходит в ремейк (lab.data) и в черновик ИГРА, образец урока, ритм-дуэль.
 // Урок 8 в обоих прогонах: «Башня до неба» с окном «идеально» и без спрятанной механики, квиз «Какой это приём?», джем с донором Stack из колоды «одна кнопка»,
 // образец урока, две башни вдвоём, релиз модуля 2; с подставным ИИ — выставка: соседка собирает игру джема, голоса в номинациях,
@@ -1946,7 +1946,7 @@ async function lessonSeven(mode, teacher, student, shot) {
   await student.waitForSelector('#step-donor-hook.done');
 
   // без спрятанной механики: музыка на своих часах, кувшины сдвинуты, щелчка нет
-  await student.click('.cp >> text=Спрятанная механика');
+  await student.click('.cp >> text=Один такт');
   await student.click('#step-secret-play .veil button');
   gf = await gameFrame(student, 'shag-v-takt', 0);
   await gf.waitForFunction(() => window.__lab.cfg.secret === 0, null, { timeout: 5000 }).catch(() => {});
@@ -1966,6 +1966,38 @@ async function lessonSeven(mode, teacher, student, shot) {
   check(mode === 'mock' ? 'Спрятанная механика урока 7: ловушка «танцор бежал медленнее» распознана' : 'Спрятанная механика урока 7 угадана: одни часы',
     (mode === 'mock' ? /Ловушка! Темп не менялся/.test(reveal) : /Точно!/.test(reveal)) && /Одни часы: звук предупреждает/.test(reveal) && /идеально 9/.test(reveal) && /мимо 6/.test(reveal), reveal.slice(0, 120));
   await storyDone(student);
+
+  // мастерская вариаций ритм-игры: плитка — партия с ручками вариации — «какая это игра» — «что повернули»; полоса доски — точность
+  const vstep7 = step7('variacii');
+  await student.waitForSelector('#step-variacii [data-var]');
+  check('Урок 7: мастерская вариаций — такт и плитки всех вариаций', /щелчок → доля/.test(await student.textContent('#step-variacii')) && await student.locator('#step-variacii [data-var]').count() === vstep7.variants.length);
+  const tryVars7 = [['prignis', 'duck', 1], ['ischezayut', 'fade', 1.5], ['derzhi', 'hold', 1], ['dvoynoy', 'bpm', 168]];
+  for (const [k, [id, knob, val]] of tryVars7.entries()) {
+    const x = vstep7.variants.find(y => y.id === id);
+    await student.click(`#step-variacii [data-var=${id}]`);
+    await student.click('#step-variacii .veil button');
+    gf = await gameFrame(student, 'shag-v-takt', 0);
+    await gf.waitForFunction(([kn, vl]) => window.__lab.cfg[kn] === vl, [knob, val], { timeout: 5000 }).catch(() => {});
+    check(`Вариация урока 7 «${x.label}» включила свои ручки`, await gf.evaluate(([kn, vl]) => window.__lab.cfg[kn] === vl && window.__lab.cfg.laps === 2, [knob, val]));
+    if (id === 'prignis') check('Вариация «Пригнись»: высокие ноты стали гирляндами', await gf.evaluate(() => window.__lab.lab.state.obs.filter(o => o.duck).length > 0 && !!window.__lab.lab.state.garland));
+    await gf.evaluate(() => window.__lab.confirm());
+    await sleep(300);
+    await gf.evaluate(() => { const L = window.__lab.lab; L.stat('точность', 84); L.score = 900; window.__lab.end('win', 'Проверка'); });
+    await student.waitForSelector('#step-variacii [data-feel]', { timeout: 10000 });
+    await student.click(`#step-variacii [data-feel] >> nth=${k}`);
+    const dial = k === 1 ? vstep7.dials.find(d => d.id !== x.dial).id : x.dial;
+    await student.click(`#step-variacii [data-dial=${dial}]`);
+    await student.waitForSelector('#step-variacii .verdict');
+    if (k === 1) check('Вариации урока 7: ошибка в детали — разбор', /Не совсем/.test(await student.textContent('#step-variacii .verdict')) && (await student.textContent('#step-variacii .verdict')).includes(x.why));
+    await student.click('#step-variacii [data-next]');
+  }
+  await student.waitForSelector('#step-variacii .var-board');
+  check('Доска вариаций урока 7: четыре игры и точность', await student.locator('#step-variacii .var-row').count() === 4 && /точность 84%/.test(await student.textContent('#step-variacii .var-board')));
+  await shot(student, '51b-u7-variacii', true);
+  await student.click('#step-variacii [data-fav=prignis]');
+  await student.waitForSelector('#step-variacii.done', { timeout: 10000 });
+  await student.click('#step-variacii [data-mix="Синкопы"]');
+  check('Конструктор вариации урока 7: своя вариация из плиток', /Твоя вариация: Синкопы/.test(await student.textContent('#step-variacii .pickline')));
 
   // предсказание «что будет без звука» и партия с выключенным переключателем «Звук»
   const pred = step7('prognoz'), good = pred.options.find(o => o.counter === 'хорошо');

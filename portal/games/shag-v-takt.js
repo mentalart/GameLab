@@ -12,6 +12,9 @@
 // Спрятанная механика донора — игра и музыка на одних часах: кувшин на доле, звук планируется заранее и звучит точно в долю, щелчок за долю
 // до кувшина предупреждает раньше картинки (ручка secret, пресет «Без спрятанной механики» — музыка на своих часах, кувшины сдвинуты, щелчка нет).
 // Уровень строится из мелодии: своя мелодия приходит из секвенсора портала в lab.data.melody. Вдвоём — дуэль «повтори за мной».
+// Вариации (урок 7, мастерская «Тот же такт — другая игра»): ручки duck, hold, sync, roll, fade, echo и темп/жизни — приёмы настоящих
+// ритм-игр (BIT.TRIP RUNNER, Guitar Hero, Taiko no Tatsujin, osu!, Geometry Dash, Rhythm Heaven). Часы музыки и щелчок в каждой те же;
+// имя вариации и её правило — баннер в начале, строка над полем и экран конца. Пресеты с теми же именами — в Tab.
 // Вид сбоку: X — вправо (туда бежит танцор), Y — вверх, дальше от зрителя — меньше Z.
 const GAME = {
   engine: 'three',
@@ -22,7 +25,9 @@ const GAME = {
   duo: 'duel', // ручка duel = 1 — дуэль «повтори за мной»
   controls: [
     { input: 'a', text: 'прыжок в долю' },
+    { input: 'b', text: 'пригнуться под гирлянду (в вариации «Пригнись»)' },
   ],
+  scoreColor: '#ffd23f', // счёт золотом, как фонари
   camera: { type: 'side', tilt: 1.36 },
   field: { w: 22, h: 10 },
   sky: ['#120f3a', '#b2507a'],
@@ -51,6 +56,13 @@ const GAME = {
     lives: { value: 5, min: 1, max: 9, step: 1, label: 'Жизни', restart: true },
     secret: { value: 1, min: 0, max: 1, step: 1, label: 'Спрятанная механика: игра и музыка на одних часах', hint: '0 — кувшины не на долях, музыка на своих часах, без щелчка', restart: true },
     duel: { value: 0, min: 0, max: 1, step: 1, label: 'Вдвоём: дуэль «повтори за мной»', restart: true },
+    // вариации ритм-игры
+    duck: { value: 0, min: 0, max: 1, step: 1, label: 'Пригнись: гирлянды над улицей — B (Shift)', hint: 'как BIT.TRIP RUNNER: самая высокая нота — гирлянда, под неё пригибаются, а не прыгают', restart: true },
+    hold: { value: 0, min: 0, max: 1, step: 1, label: 'Держи: длинные ноты', hint: 'как длинные ноты Guitar Hero: держи прыжок до конца ленты', restart: true },
+    sync: { value: 0, min: 0, max: 1, step: 1, label: 'Синкопы: часть кувшинов на «и» между долями', hint: 'как удары на «и» в Rhythm Heaven', restart: true },
+    roll: { value: 0, min: 0, max: 1, step: 1, label: 'Дробь: двойные кувшины через полдоли', hint: 'как двойные удары в Taiko no Tatsujin', restart: true },
+    fade: { value: 0, min: 0, max: 3, step: 0.5, label: 'Исчезают за … долей до прыжка (0 — видно всегда)', hint: 'как мод Hidden в osu!: последние доли играешь на слух' },
+    echo: { value: 0, min: 0, max: 1, step: 1, label: 'Мелодия звучит только от твоих прыжков', hint: 'как партия в Guitar Hero и Rock Band: не прыгнул — ноты нет' },
   },
   presets: {
     'Новичок': { bpm: 92, ramp: 4, perfect: 0.09, good: 0.22, lives: 7, fever: 6 },
@@ -58,7 +70,28 @@ const GAME = {
     'Дуэль': { duel: 1 },
     'Шторм': { bpm: 150, ramp: 14, perfect: 0.04, good: 0.1 },
     'Тишина после ошибки': { drop: 1, fever: 0 },
+    'Пригнись': { duck: 1 },
+    'Держи': { hold: 1 },
+    'Синкопы': { sync: 1 },
+    'Дробь': { roll: 1 },
+    'Исчезают': { fade: 1.5 },
+    'Без щелчка': { cue: 0 },
+    'Музыка от тебя': { echo: 1 },
+    'Двойной темп': { bpm: 168, ramp: 0 },
+    'Одна попытка': { lives: 1 },
   },
+  // имя вариации и её правило для строки над полем, баннера в начале и экрана конца партии
+  VARIANTS: [
+    { key: 'duck', name: 'Пригнись', how: () => 'кувшин — прыжок (пробел), гирлянда — пригнись (Shift)' },
+    { key: 'hold', name: 'Держи', how: () => 'лента над кувшином — держи пробел до её конца' },
+    { key: 'sync', name: 'Синкопы', how: () => 'часть кувшинов на «и» — между щелчками долей' },
+    { key: 'roll', name: 'Дробь', how: () => 'двойной кувшин — два прыжка через полдоли' },
+    { key: 'fade', name: 'Исчезают', how: c => `кувшин пропадает за ${String(c.fade).replace('.', ',')} доли — дальше на слух` },
+    { key: 'cue', on: c => c.cue <= 0 && c.secret > 0, name: 'Без щелчка', how: () => 'подсказки нет — только музыка' },
+    { key: 'echo', name: 'Музыка от тебя', how: () => 'мелодия звучит только от твоих прыжков' },
+    { key: 'bpm', on: c => c.bpm >= 160, name: 'Двойной темп', how: c => `${Math.round(c.bpm)} ударов в минуту` },
+    { key: 'lives', on: c => c.lives <= 1, name: 'Одна попытка', how: () => 'один промах — и партия окончена' },
+  ],
 
   U: 3, // метров на долю: одна плита улицы — одна доля
   AIR: 0.8, // прыжок длится … доли, верхняя точка — на середине
@@ -69,7 +102,7 @@ const GAME = {
   start(lab, scene) {
     const st = lab.state, duel = lab.players === 2;
     Object.assign(st, { evts: [], ei: 0, obs: [], combo: 0, best: 0, hits: { perfect: 0, good: 0, miss: 0 }, devs: [], extra: 0,
-      fever: false, fevers: 0, muteTill: -1e9, lap: 0, lastBeat: -99, early: 0, late: 0 });
+      fever: false, fevers: 0, muteTill: -1e9, lap: 0, lastBeat: -99, early: 0, late: 0, banner: false, wrong: 0, held: 0, letgo: 0, holding: null });
     st.M = new lab.THREE.Matrix4(); st.Q = new lab.THREE.Quaternion(); st.E = new lab.THREE.Euler(); st.S = new lab.THREE.Vector3(); st.P = new lab.THREE.Vector3(); st.C = new lab.THREE.Color();
     lab.lives = lab.cfg.lives;
     lab.setCamera({ type: 'side', tilt: 1.38, target: [0, 2.4, 0], distance: duel ? 14 : 14.5 });
@@ -89,8 +122,28 @@ const GAME = {
     this.COUNT.forEach((w, i) => { if (w) st.evts.push({ t: (i - 8) * st.laps[0].beat, kind: 'count', hi: i === 0 || i === 4 }); });
     st.evts.sort((a, b) => a.t - b.t);
     st.hero.x = this.xAt(st, st.time); st.hero.node.position.x = st.hero.x; lab.view.target.x = st.hero.x + 3.6;
+    lab.hud('rule', null);
     lab.hud('acc', 'Слушай отсчёт и щелчок: кувшин будет через долю');
+    lab.stat('точность', 0);
+    if (!lab.playing) this.poster(lab);
   },
+  // афиша в меню: танцор в сальто над первым кувшином. Двигается только картинка — первый кадр партии всё возвращает
+  poster(lab) {
+    const st = lab.state, h = st.hero, o = st.obs[0];
+    if (!o) return;
+    h.node.position.set(o.x - 0.2, 2.1, 0); h.rig.rotation.x = -0.9;
+    h.arms.forEach((a, i) => { a.rotation.z = (i ? 1 : -1) * 2.5; });
+    h.legs.forEach((l, i) => { l.rotation.x = i ? 0.9 : -0.4; });
+    lab.view.target.x = o.x + 2.2;
+    st.posterOn = true;
+  },
+  // имя вариации: все включённые ручки вариаций
+  variant(lab) {
+    const c = lab.cfg, on = this.VARIANTS.filter(v => (v.on ? v.on(c) : c[v.key] > 0));
+    if (!on.length) return { name: 'Классика', how: 'прыгай через кувшин ровно в долю; щелчок — за долю до него' };
+    return { name: on.map(v => v.name).join(' + '), how: on.map(v => v.how(c)).join('; ') };
+  },
+  acc(st) { const n = st.hits.perfect + st.hits.good + st.hits.miss; return n ? (st.hits.perfect + st.hits.good * 0.5) / n : 0; },
 
   update(lab, dt) {
     const st = lab.state;
@@ -99,7 +152,18 @@ const GAME = {
     if (st.duel) return this.duelUpdate(lab, dt);
     const c = lab.cfg, h = st.hero, t = st.time + c.offset, L = this.lapAt(st, st.time);
     h.x = this.xAt(st, st.time);
-    if (lab.p1.pressed.a) this.press(lab, t);
+    if (st.posterOn) { st.posterOn = false; h.rig.rotation.x = 0; lab.view.target.x = h.x + 3.6; }
+    if (!st.banner) { // имя вариации и её правило крупно в начале партии
+      st.banner = true;
+      const v = this.variant(lab);
+      lab.popup([h.x + 4, 6.4, 0], v.name, '#ffe680', 32);
+      lab.after(0.35, () => lab.popup([h.x + 4, 5.4, 0], v.how, '#ffffff', 17));
+    }
+    const v = this.variant(lab);
+    lab.hud('rule', `${v.name}: ${v.how}`, { color: '#ffe680', size: 14 });
+    if (lab.p1.pressed.a) this.press(lab, t, 'a');
+    if (lab.p1.pressed.b && c.duck > 0) this.press(lab, t, 'b');
+    if (st.holding) this.tickHold(lab, t);
     for (const o of st.obs) if (!o.done && t > o.t + c.good) this.judge(lab, o, 'miss', 0);
     this.countIn(lab);
     this.lapChange(lab, L);
@@ -117,14 +181,17 @@ const GAME = {
   overNote(lab) {
     const st = lab.state, d = st.devs, avg = d.length ? d.reduce((a, b) => a + b, 0) / d.length : 0;
     if (st.duel) return [`Дуэль: ${st.pts[0]} : ${st.pts[1]}`, 'Кто точнее повторил чужой ритм, тот и сильнее слышит долю'];
-    const [g, name] = this.grade(st);
-    return [`Оценка ${g} — ${name}. Идеально ${st.hits.perfect}, хорошо ${st.hits.good}, мимо ${st.hits.miss}, лучшая серия ${st.best}`,
+    const [g, name] = this.grade(st), v = this.variant(lab);
+    return [v.name !== 'Классика' ? `Вариация: ${v.name} — ${v.how}` : null,
+      `Оценка ${g} — ${name}. Идеально ${st.hits.perfect}, хорошо ${st.hits.good}, мимо ${st.hits.miss}, лучшая серия ${st.best}`,
       d.length ? `В среднем ты жмёшь ${Math.abs(avg) < 0.01 ? 'ровно в долю' : (avg < 0 ? 'раньше' : 'позже') + ' на ' + Math.round(Math.abs(avg) * 1000) + ' мс'} (рано ${st.early}, поздно ${st.late})` : 'Ни одного попадания в окно — попробуй слушать щелчок',
+      st.held + st.letgo ? `Длинных нот удержал ${st.held}, отпустил рано ${st.letgo}` : null,
+      st.wrong ? `Не той кнопкой: ${st.wrong}` : null,
       lab.cfg.fever ? `Жар разгорался ${st.fevers} раз · лишних прыжков без кувшина: ${st.extra}` : `Лишних прыжков без кувшина: ${st.extra}`];
   },
   // оценка как в ритм-играх: точность = идеально + половина «хорошо»
   grade(st) {
-    const n = st.hits.perfect + st.hits.good + st.hits.miss, acc = n ? (st.hits.perfect + st.hits.good * 0.5) / n : 0;
+    const acc = this.acc(st);
     return acc >= 0.95 ? ['S', 'мастер джэгу'] : acc >= 0.85 ? ['A', 'лучший танцор аула'] : acc >= 0.7 ? ['B', 'держишь ритм'] : acc >= 0.5 ? ['C', 'ритм просыпается'] : ['D', 'слушай щелчок'];
   },
 
@@ -138,16 +205,22 @@ const GAME = {
     for (let L = 0; L < c.laps; L++) {
       const beat = 60 / (c.bpm + c.ramp * L);
       st.laps.push({ T, X, beat, n: mel.length });
+      let free = 0; // ноты, за которыми пауза: на них встают синкопы, дробь и длинные ноты по очереди
       mel.forEach((n, i) => {
-        const tb = T + i * beat, drift = c.secret ? 1 : 1.035; // без спрятанной механики музыка идёт на своих часах
-        st.evts.push({ t: tb * drift, tb, kind: i % 4 ? 'kick' : 'bar' }, { t: (tb + beat / 2) * drift, tb, kind: 'hat' });
-        if (i % 4 === 0 || i % 4 === 2) st.evts.push({ t: tb * drift, tb, kind: 'bass', n: i % 8 < 4 ? 0 : 3 });
-        if (i % 2 === 1) st.evts.push({ t: tb * drift, tb, kind: 'clap' });
+        const tb0 = T + i * beat, drift = c.secret ? 1 : 1.035; // без спрятанной механики музыка идёт на своих часах
+        const open = n >= 0 && mel[(i + 1) % mel.length] < 0 && !(L === 0 && i < 4) && i < mel.length - 1, odd = open && free++ % 2 === 0;
+        const shift = c.sync > 0 && odd, twin = c.roll > 0 && odd && !shift, long = c.hold > 0 && open && !shift && !twin && !(c.duck > 0 && n === 4); // под гирляндой не парят
+        const tb = shift ? tb0 + beat / 2 : tb0; // синкопа: нота и кувшин на «и»
+        st.evts.push({ t: tb0 * drift, tb: tb0, kind: i % 4 ? 'kick' : 'bar' }, { t: (tb0 + beat / 2) * drift, tb: tb0, kind: 'hat' });
+        if (i % 4 === 0 || i % 4 === 2) st.evts.push({ t: tb0 * drift, tb: tb0, kind: 'bass', n: i % 8 < 4 ? 0 : 3 });
+        if (i % 2 === 1) st.evts.push({ t: tb0 * drift, tb: tb0, kind: 'clap' });
         if (n < 0) return;
         st.evts.push({ t: tb * drift, tb, kind: 'note', n });
+        if (twin) st.evts.push({ t: (tb + beat / 2) * drift, tb: tb + beat / 2, kind: 'note', n });
         if (L === 0 && i < 4) return; // первый такт — вступление
         const to = c.secret ? tb : tb + lab.rand(-0.4, 0.4) * beat; // без спрятанной механики кувшин не на доле
-        st.obs.push({ t: to, n, done: false });
+        st.obs.push({ t: to, n, done: false, duck: c.duck > 0 && n === 4, hold: long ? beat : 0, sync: shift });
+        if (twin) st.obs.push({ t: to + beat / 2, n, done: false, duck: false, hold: 0, twin: true });
         if (c.secret && c.cue > 0) st.evts.push({ t: to - c.cue * beat, kind: 'cue' });
       });
       T += mel.length * beat; X += mel.length * this.U;
@@ -171,7 +244,7 @@ const GAME = {
       if (e.t < st.time - 0.05) continue;
       if (e.kind === 'kick' || e.kind === 'bar') { lab.tone(e.kind === 'bar' ? 150 : 130, 0.16, 'sine', 0.34, 42, d); lab.noise(0.02, 0.07, 3200, d); }
       if (e.kind === 'hat') lab.noise(0.03, 0.035, 9000, d);
-      if (e.kind === 'note' && !(lab.cfg.drop && e.tb < st.muteTill)) { // пшине — адыгская гармоника: треугольник и два расстроенных язычка
+      if (e.kind === 'note' && !(lab.cfg.drop && e.tb < st.muteTill) && !(lab.cfg.echo > 0)) { // пшине — адыгская гармоника: треугольник и два расстроенных язычка
         const f = N[e.n] * 2;
         lab.tone(f, 0.24, 'triangle', 0.1, 0, d); lab.tone(f * 0.998, 0.26, 'sawtooth', 0.022, 0, d); lab.tone(f * 1.004, 0.26, 'sawtooth', 0.022, 0, d); lab.tone(N[e.n], 0.3, 'sine', 0.05, 0, d);
       }
@@ -208,19 +281,46 @@ const GAME = {
     st.lampCol = col;
     lab.light.hemi.color.set(col).lerp(lab.color('#8f9cff'), 0.6);
   },
-  press(lab, t) {
-    const st = lab.state, c = lab.cfg, L = this.lapAt(st, t), win = Math.max(c.good * 1.4, L.beat * 0.5);
+  press(lab, t, btn) {
+    const st = lab.state, c = lab.cfg, L = this.lapAt(st, t), win = Math.min(Math.max(c.good * 1.4, L.beat * 0.5), c.roll > 0 ? L.beat * 0.25 : 9);
     const o = st.obs.filter(x => !x.done && Math.abs(x.t - t) <= win).sort((a, b) => Math.abs(a.t - t) - Math.abs(b.t - t))[0];
-    this.jump(lab, st.hero, L.beat);
-    lab.count('прыжки');
+    if (btn === 'b') { this.duckDown(lab, st.hero, L.beat); lab.count('пригнулся'); } else { this.jump(lab, st.hero, L.beat); lab.count('прыжки'); }
     if (!o) { st.extra++; lab.count('лишние нажатия'); return; }
     const dev = t - o.t;
+    if (!!o.duck !== (btn === 'b')) { // не та кнопка: через гирлянду не прыгают, под кувшином не пригибаются
+      st.wrong++; lab.count('не та кнопка');
+      lab.popup([o.x, 3.2, 0], o.duck ? 'Пригнись! (Shift)' : 'Прыгай! (пробел)', '#ff9a8a', 18);
+      return this.judge(lab, o, 'miss', 0);
+    }
     if (Math.abs(dev) > c.good) return this.judge(lab, o, 'miss', dev); // ранний или поздний прыжок — тоже промах: мять кнопку не выгодно
     this.judge(lab, o, Math.abs(dev) <= c.perfect ? 'perfect' : 'good', dev);
+    if (o.hold && o.kind !== 'miss') { // длинная нота: держи прыжок до конца ленты
+      st.holding = { o, end: o.t + o.hold };
+      st.hero.hover = true;
+      lab.tone(this.NOTES[o.n % 5] * 2, o.hold, 'triangle', 0.05);
+    }
+  },
+  tickHold(lab, t) {
+    const st = lab.state, H = st.holding, h = st.hero, o = H.o;
+    if (t >= H.end - 0.08) { // додержал
+      st.held++; lab.count('держал');
+      lab.addScore(150 * (st.fever ? 2 : 1), null);
+      lab.popup([o.x + this.U, 3.4, 0], 'Додержал!', '#7cf5a8', 22);
+      lab.ring([o.x + this.U, 2.1, 0], { color: this.NOTE_COLORS[o.n % 5], radius: 1.4 });
+      lab.tone(this.NOTES[o.n % 5] * 4, 0.16, 'sine', 0.06);
+    } else if (!lab.p1.a) { // отпустил рано: серия гаснет, мелодия молчит до конца такта, жизнь цела
+      st.letgo++; st.combo = 0; lab.count('отпустил рано');
+      const L = this.lapAt(st, o.t), bar = 4 * L.beat;
+      st.muteTill = L.T + (Math.floor((st.time - L.T) / bar) + 1) * bar;
+      lab.popup([h.x + 1, 3.4, 0], 'Отпустил рано', '#ff9a8a', 20);
+      lab.tone(98, 0.2, 'sawtooth', 0.08, 70);
+    } else return;
+    st.holding = null; h.hover = false; o.held = true;
   },
   judge(lab, o, kind, dev) {
     const st = lab.state, at = [o.x, 1.6, 0];
     o.done = true; o.kind = kind; o.t0 = lab.t; st.hits[kind]++;
+    lab.stat('точность', Math.round(this.acc(st) * 100));
     if (kind === 'miss') {
       st.combo = 0; lab.count('мимо');
       if (st.fever) { st.fever = false; lab.popup([o.x, 4.4, 0], 'Жар погас', '#9aa6ff', 20); if (st.trail) { st.trail.dispose(); st.trail = null; } }
@@ -276,7 +376,12 @@ const GAME = {
     lab.box(0.2, 0.04, 0.04, '#3a2418', { parent: rig, at: [0, 1.95, 0.24] }); // усы
     const legs = [-1, 1].map(s => { const p = lab.group({ parent: rig, at: [s * 0.13, 0.62, 0] }); lab.box(0.17, 0.62, 0.2, '#1a1a22', { parent: p, at: [0, -0.31, 0.02] }); return p; });
     const arms = [-1, 1].map(s => { const p = lab.group({ parent: rig, at: [s * 0.34, 1.68, 0] }); lab.box(0.15, 0.72, 0.15, coat, { parent: p, at: [0, -0.34, 0] }); lab.box(0.17, 0.12, 0.17, '#ece7da', { parent: p, at: [0, -0.7, 0] }); return p; });
-    return { node, rig, belt, legs, arms, x: 0, jump: 0, air: 1, flip: 0, trip: 0 };
+    return { node, rig, belt, legs, arms, x: 0, jump: 0, air: 1, flip: 0, trip: 0, duck: 0, hover: false };
+  },
+  duckDown(lab, h, beat) { // пригнуться под гирлянду: присед на долю, как подкат в BIT.TRIP RUNNER
+    h.duck = beat * 0.9; h.duckLen = h.duck; h.jump = 0; h.flip = 0;
+    lab.tone(300, 0.06, 'triangle', 0.03, 180);
+    lab.burst([h.x, 0.1, 0], { count: 6, color: '#e8d2a8', speed: 2.5, up: 0.6, life: 0.35 });
   },
   jump(lab, h, beat) {
     h.jump = 0.0001; h.air = beat * this.AIR; h.flip = 0;
@@ -285,6 +390,8 @@ const GAME = {
   },
   // b — сколько долей пройдено: шаг танцора приходится ровно на долю
   animate(lab, h, dt, b) {
+    if (h.hover && h.jump > 0.5) h.jump = 0.5; // длинная нота: танцор парит на вершине прыжка, пока держишь
+    if (h.duck > 0) h.duck = Math.max(0, h.duck - dt);
     if (h.jump > 0) {
       h.jump += dt / h.air;
       if (h.flip > 0 && h.flip < 2) h.flip = 1 + Math.min(1, h.jump); // сальто на «идеально»
@@ -298,6 +405,10 @@ const GAME = {
     // руки в стороны, как в удже; на сильной доле взлетают
     const bar = (b % 4 + 4) % 4 < 1 ? 1 - ((b % 1) + 1) % 1 : 0;
     h.arms.forEach((a, i) => { a.rotation.z = (i ? 1 : -1) * (air ? 2.5 : 1.2 + bar * 0.6 + Math.sin(Math.PI * b) * 0.15); });
+    const dk = h.duck > 0 ? Math.sin(Math.PI * Math.min(1, (1 - h.duck / h.duckLen) * 1.6)) : 0; // присед
+    h.rig.scale.y = 1 - dk * 0.45; h.rig.position.z = 0;
+    if (dk > 0) h.legs.forEach((l, i) => { l.rotation.x = (i ? 1 : -1) * 1.1 * dk; });
+    if (h.hover) h.rig.rotation.y = lab.t * 9; else h.rig.rotation.y = 0; // кружится на длинной ноте
     h.node.visible = !lab.blink();
   },
 
@@ -311,10 +422,26 @@ const GAME = {
     st.jugBody.frustumCulled = st.jugBand.frustumCulled = false;
     st.obs.forEach((o, i) => { o.i = i; st.jugBody.setColorAt(i, lab.color(this.NOTE_COLORS[o.n % 5])); });
     if (st.jugBody.instanceColor) st.jugBody.instanceColor.needsUpdate = true;
+    if (st.obs.some(o => o.duck)) { // гирлянды: перекладина с флажками на высоте груди — под неё пригибаются
+      const g = U.mergeGeometries([new T.BoxGeometry(0.22, 0.22, 3.4).translate(0, 1.75, 0), new T.BoxGeometry(0.1, 1.9, 0.1).translate(0, 0.95, 1.65), new T.BoxGeometry(0.1, 1.9, 0.1).translate(0, 0.95, -1.65),
+        ...[-1.1, -0.35, 0.4, 1.15].map(z => new T.ConeGeometry(0.22, 0.42, 3).rotateX(Math.PI).translate(0, 1.42, z))].map(q => q.toNonIndexed()));
+      st.garland = lab.instances(g, lab.mat('#ffffff', { glow: 0.4 }), Math.max(1, n)); st.garland.frustumCulled = false;
+      st.obs.forEach(o => { lab.place(st.garland, o.i, [0, -50, 0], { scale: 0.001, color: this.NOTE_COLORS[o.n % 5] }); });
+    }
+    if (st.obs.some(o => o.hold)) { // ленты длинных нот: на высоте прыжка, длиной в долю
+      st.ribbon = lab.instances(new T.BoxGeometry(1, 0.16, 0.6), lab.mat('#ffffff', { glow: 0.9 }), Math.max(1, n)); st.ribbon.frustumCulled = false;
+      lab.noShadow(st.ribbon);
+      st.obs.forEach(o => { lab.place(st.ribbon, o.i, o.hold ? [o.x + this.U / 2, 1.95, 0] : [0, -50, 0], { scale: o.hold ? [this.U, 1, 1] : 0.001, color: this.NOTE_COLORS[o.n % 5] }); });
+    }
     this.animateJugs(lab, 0);
   },
   putJug(lab, o, x, y, rz, s) {
     const st = lab.state;
+    if (o.duck) { // гирлянда вместо кувшина
+      st.E.set(0, 0, rz); st.Q.setFromEuler(st.E); st.P.set(x, y, 0); st.S.set(s, s, s); st.M.compose(st.P, st.Q, st.S);
+      st.garland.setMatrixAt(o.i, st.M);
+      s = 0.0001; y = -50;
+    }
     st.E.set(0, 0, rz); st.Q.setFromEuler(st.E); st.P.set(x, y, 0); st.S.set(s, s, s);
     st.M.compose(st.P, st.Q, st.S);
     st.jugBody.setMatrixAt(o.i, st.M); st.jugBand.setMatrixAt(o.i, st.M);
@@ -325,11 +452,18 @@ const GAME = {
       if (Math.abs(o.x - cx) > 40 && o.drawn) continue;
       o.drawn = true;
       const age = o.done ? lab.t - o.t0 : 0;
-      if (!o.done) { const wob = Math.max(0, 1 - Math.abs(st.time - o.t) * 3); this.putJug(lab, o, o.x, 0, Math.sin(lab.t * 18) * 0.06 * wob, 1); }
+      if (!o.done) {
+        const wob = Math.max(0, 1 - Math.abs(st.time - o.t) * 3), f = lab.cfg.fade;
+        const seen = f > 0 ? lab.clamp(((o.t - st.time) / this.lapAt(st, o.t).beat - (f - 0.5)) / 0.5, 0, 1) : 1; // мод Hidden: пропадает за f долей
+        this.putJug(lab, o, o.x, seen > 0 ? 0 : -50, Math.sin(lab.t * 18) * 0.06 * wob, Math.max(0.0001, seen));
+        if (st.ribbon && o.hold) lab.place(st.ribbon, o.i, seen > 0 ? [o.x + this.U / 2, 1.95, 0] : [0, -50, 0], { scale: seen > 0 ? [this.U * seen, 1, 1] : 0.001 });
+      }
       else if (o.kind === 'miss') this.putJug(lab, o, o.x + Math.min(age, 0.4) * 2, Math.max(-0.5, -age * 0.6), -Math.min(1.5, age * 6), Math.max(0, 1 - Math.max(0, age - 0.8))); // упал и раскололся
       else { const k = Math.min(1, age / 0.5); this.putJug(lab, o, o.x, Math.sin(k * Math.PI) * 0.6, Math.sin(k * Math.PI * 4) * 0.2 * (1 - k), 1 + Math.sin(k * Math.PI) * 0.15); } // звенит и подпрыгивает
     }
     st.jugBody.instanceMatrix.needsUpdate = st.jugBand.instanceMatrix.needsUpdate = true;
+    if (st.garland) st.garland.instanceMatrix.needsUpdate = true;
+    for (const o of st.obs) if (st.ribbon && o.hold && o.done && !o.gone && (o.kind === 'miss' || o.held)) { o.gone = true; lab.place(st.ribbon, o.i, [0, -50, 0], { scale: 0.001 }); } // лента уходит, когда нота сыграна
   },
 
   /* ---------- мир: улица аула на празднике ---------- */
