@@ -13,7 +13,7 @@
 // Урок 4 в обоих прогонах: «Каменный стакан» и его спрятанная механика (мешок и предпросмотр), квиз «Собери цикл», Фабрика под донора,
 // мастерская вариаций «Тетриса» (шаг variety с полосой длины цикла), образец урока в промпте программиста и демо-игра урока, релиз модуля с чек-листом, дуэль двух стаканов по ручке duo.
 // Данные и настройки — во временной папке, настоящий portal/config.json и portal/data/ не трогаются.
-// Урок 5 в обоих прогонах: «Тур над Хаджохом», сырой прыжок и «Найди спрятанную механику», лаборатория прыжка, слепой турнир по одной ручке,
+// Урок 5 в обоих прогонах: «Тур над Хаджохом», сырой прыжок и «Найди спрятанную механику», мастерская вариаций платформера (variety с полосой спасённых нажатий), лаборатория прыжка, слепой турнир по одной ручке,
 // образец урока в промпте программиста и демо-игра урока, спидран с призраком лучшей попытки.
 // Урок 6 в обоих прогонах: «Ледолом» и 12 переключателей сочности оболочки 0.3, сухой «Ледолом» и «Найди спрятанную механику», квиз «Сухая или сочная?»,
 // образец урока и демо-игра, кооператив двух лопат, слепая проба игры соседа (сухая и сочная копии).
@@ -1660,7 +1660,7 @@ async function lessonFive(mode, teacher, student, shot) {
   await student.waitForSelector('#step-donor-hook.done');
 
   // сырой прыжок: ручка secret из шага, нажатие чуть позже края «проглочено»
-  await student.click('.cp >> text=Спрятанная механика');
+  await student.click('.cp >> text=Один прыжок');
   await student.click('#step-secret-play .veil button');
   gf = await gameFrame(student, 'tur-nad-hadzhohom', 0);
   await gf.waitForFunction(() => window.__lab.cfg.secret === 0, null, { timeout: 5000 }).catch(() => {});
@@ -1687,6 +1687,37 @@ async function lessonFive(mode, teacher, student, shot) {
     (mode === 'mock' ? /Ловушка! Высота не менялась/.test(reveal) : /Точно!/.test(reveal)) && /Отзывчивость/.test(reveal), reveal.slice(0, 120));
   check('Сравнение: потерянные нажатия со спрятанной механикой и без', /Сырой прыжок/.test(reveal) && /потерянные нажатия 3/.test(reveal), (reveal.match(/Прыжок со спрятанной механикой.*?Сырой прыжок[^О]*/) || [''])[0].slice(0, 200));
   await storyDone(student);
+
+  // мастерская вариаций платформера: плитка — партия с ручками вариации — «какая это игра» — «что повернули»; полоса доски — спасённые нажатия
+  const vstep5 = step5('variacii');
+  await student.waitForSelector('#step-variacii [data-var]');
+  check('Урок 5: мастерская вариаций — прыжок и плитки всех вариаций', /разбег → прыжок/.test(await student.textContent('#step-variacii')) && await student.locator('#step-variacii [data-var]').count() === vstep5.variants.length);
+  const tryVars5 = [['dvoynoy', 'double', 1], ['ryvok', 'dash', 1], ['kamnepad', 'rockfall', 5], ['lyod', 'ice', 0.6]];
+  for (const [k, [id, knob, val]] of tryVars5.entries()) {
+    const x = vstep5.variants.find(y => y.id === id);
+    await student.click(`#step-variacii [data-var=${id}]`);
+    await student.click('#step-variacii .veil button');
+    gf = await gameFrame(student, 'tur-nad-hadzhohom', 0);
+    await gf.waitForFunction(([kn, vl]) => window.__lab.cfg[kn] === vl, [knob, val], { timeout: 5000 }).catch(() => {});
+    check(`Вариация урока 5 «${x.label}» включила свои ручки`, await gf.evaluate(([kn, vl]) => window.__lab.cfg[kn] === vl && window.__lab.cfg.limit === 100, [knob, val]));
+    await gf.evaluate(() => window.__lab.confirm());
+    await sleep(300);
+    await gf.evaluate(() => { const L = window.__lab.lab; L.stat('помощь', 5); L.score = 400; window.__lab.end('win', 'Проверка'); });
+    await student.waitForSelector('#step-variacii [data-feel]', { timeout: 10000 });
+    await student.click(`#step-variacii [data-feel] >> nth=${k}`);
+    const dial = k === 1 ? vstep5.dials.find(d => d.id !== x.dial).id : x.dial;
+    await student.click(`#step-variacii [data-dial=${dial}]`);
+    await student.waitForSelector('#step-variacii .verdict');
+    if (k === 1) check('Вариации урока 5: ошибка в детали — разбор', /Не совсем/.test(await student.textContent('#step-variacii .verdict')) && (await student.textContent('#step-variacii .verdict')).includes(x.why));
+    await student.click('#step-variacii [data-next]');
+  }
+  await student.waitForSelector('#step-variacii .var-board');
+  check('Доска вариаций урока 5: четыре игры и спасённые нажатия', await student.locator('#step-variacii .var-row').count() === 4 && /спасено нажатий: 5/.test(await student.textContent('#step-variacii .var-board')));
+  await shot(student, '38b-u5-variacii', true);
+  await student.click('#step-variacii [data-fav=ryvok]');
+  await student.waitForSelector('#step-variacii.done', { timeout: 10000 });
+  await student.click('#step-variacii [data-mix="Двойной"]');
+  check('Конструктор вариации урока 5: своя вариация из плиток', /Твоя вариация: Двойной/.test(await student.textContent('#step-variacii .pickline')));
 
   // лаборатория прыжка: пресеты кнопками
   await student.click('#step-laboratoriya .seg .opt >> nth=1');
