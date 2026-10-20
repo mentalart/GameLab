@@ -81,13 +81,14 @@ module.exports = function m3(H) {
       const text = (await student.textContent(`#step-${id} .item`)).trim();
       if (i === 0 && extra) await extra();
       const it = st.items.find(x => text.endsWith(x.text) || text === x.text);
-      await student.keyboard.press('Digit' + (st.bins.findIndex(b => b.id === it.bin) + 1));
+      await student.click(`#step-${id} .bins .bin >> nth=${st.bins.findIndex(b => b.id === it.bin)}`);
       await student.waitForSelector(`#step-${id} [data-next]:not([hidden])`, { timeout: 5000 });
       await student.click(`#step-${id} [data-next]`);
       await student.waitForFunction(([s, p]) => { const e = document.querySelector(s + ' .item'); return !!document.querySelector(s + '.done') || !e || !e.textContent.trim().endsWith(p); }, [`#step-${id}`, it.text], { timeout: 15000 });
     }
     await student.waitForSelector(`#step-${id}.done`, { timeout: 10000 });
-    check(`Урок ${les.number}: квиз «${st.title.replace(/^Квиз /, '')}» пройден`, new RegExp(`${st.items.length} из ${st.items.length}`).test(await student.textContent(`#step-${id}`)));
+    const res = (await student.textContent(`#step-${id}`)).replace(/\s+/g, ' ');
+    check(`Урок ${les.number}: квиз ${st.title.replace(/^Квиз /, '')} пройден без ошибок`, new RegExp(`${st.items.length} из ${st.items.length}`).test(res), res.slice(res.indexOf('Итог'), res.indexOf('Итог') + 160));
   }
   // мастерская вариаций: 4 вариации — ручки, чувство, деталь, доска с полосой
   async function variety(student, les, file, tries, statVal, fav, mixLabel, shot) {
@@ -211,6 +212,7 @@ module.exports = function m3(H) {
     const line = await student.textContent('#step-krivaya .pickline');
     check('Кривая сложности: пила с передышками, разбор формы', /пила/i.test(line) && /передышек [1-9]/.test(line), line);
     await sleep(900);
+    await student.click('#step-krivaya .veil button');
     const gf = await gameFrame(student, F, 0);
     const curve = await gf.evaluate(() => (window.__lab.lab.data || {}).curve);
     check('Кривая ушла в «Ущелье»: игра строит трассу по столбикам ученика (lab.data.curve)', Array.isArray(curve) && curve.length === 12, JSON.stringify(curve));

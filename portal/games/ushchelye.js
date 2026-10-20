@@ -294,7 +294,7 @@ const GAME = {
       { geo: new T.ConeGeometry(0.09, 0.32, 4).rotateX(Math.PI), look: glow('#ff4f3a', 1.1), at: tas(1.9, 5), shadow: false },
     ]);
     kind('arch3', 6, 0.5, [
-      { geo: new T.BoxGeometry(0.3, 2.7, 0.3), look: '#5b3b25', at: [[-3.6, 1.35, 0], [3.6, 1.35, 0], [0, 2.5, -0.3]] },
+      { geo: new T.BoxGeometry(0.3, 2.7, 0.3), look: '#5b3b25', at: [[-3.6, 1.35, 0], [3.6, 1.35, 0]] },
       { geo: new T.BoxGeometry(7.5, 0.36, 0.42), look: '#82502c', at: [[0, 2.17, 0]] },
       { geo: new T.ConeGeometry(0.09, 0.32, 4).rotateX(Math.PI), look: glow('#ff4f3a', 1.1), at: tas(6.6, 13), shadow: false },
       { geo: new T.BoxGeometry(0.5, 0.7, 0.04), look: '#ffd23f', at: [[-3.6, 2.85, 0], [3.6, 2.85, 0]] },
@@ -422,8 +422,8 @@ const GAME = {
     }
     // мох на скалах — изумрудные пятна у подножия левой стены и над рекой
     set(ico, '#ffffff', 70, it => {
-      const side = it.i % 3 ? -1 : 1, base = side < 0 ? 5.0 : 9.9, sp = st.spread(it.s) * (side < 0 ? 1 : 0.6);
-      Object.assign(it, { x: side * (base + sp + lab.rand(0, 0.6)), y: lab.rand(0.3, 6), sx: lab.rand(0.5, 1.1), sy: lab.rand(0.3, 0.7), sz: lab.rand(0.5, 1.1), ry: lab.rand(0, 3), color: lab.pick(['#5d9e3f', '#79b84b', '#4c8c36']) });
+      const side = it.i % 3 ? -1 : 1, base = side < 0 ? 5.3 : 9.9, sp = st.spread(it.s) * (side < 0 ? 1 : 0.6);
+      Object.assign(it, { x: side * (base + sp + lab.rand(0, 0.5)), y: lab.rand(0.3, 3.6), sx: lab.rand(0.5, 1.1), sy: lab.rand(0.3, 0.7), sz: lab.rand(0.5, 1.1), ry: lab.rand(0, 3), color: lab.pick(['#5d9e3f', '#79b84b', '#4c8c36']) });
     }, { shadow: false });
     // папоротники и трава у тропы
     set(new T.ConeGeometry(0.35, 0.75, 5), '#ffffff', 150, it => {

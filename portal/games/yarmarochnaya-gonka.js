@@ -703,7 +703,11 @@ const GAME = {
     if (st.duo) { const a = st.humans[0], b = st.humans[1]; return lab.win(a.place < b.place ? `Игрок 1 быстрее: ${a.place} и ${b.place} место` : `Игрок 2 быстрее: ${b.place} и ${a.place} место`); }
     if (h.place <= 3 && h.finished) lab.win(`${h.place} место из ${N}!`); else lab.gameOver(h.finished ? `${h.place} место из ${N}` : `Финиш закрылся: ${h.place} место из ${N}`);
   },
-  addScore(lab, r, n, at) { if (r.human && !lab.state.fast) lab.addScore(n, at, r.pi ? '#5fe0ff' : null); },
+  addScore(lab, r, n, at) { // вдвоём у второго игрока свой счёт
+    const st = lab.state;
+    if (!r.human || st.fast) return;
+    if (r.pi) { st.p2score = (st.p2score || 0) + n; if (at) lab.popup(at, '+' + n, '#5fe0ff'); } else lab.addScore(n, at);
+  },
 
   /* ---------- автопрогон: заезды ботов в быстром времени ---------- */
   simTick(lab, dt) {
@@ -897,23 +901,23 @@ const GAME = {
   carousel(lab, x, z) {
     const T = lab.THREE, st = lab.state;
     lab.merge([lab.cyl(2.9, 3, 0.35, '#c4472f', { at: [x, 0.17, z], sides: 14 }), lab.cyl(0.18, 0.18, 3.4, '#ffd23f', { at: [x, 1.9, z], sides: 8, metal: 0.4 })]);
-    const top = lab.group({ at: [x, 0, z] });
+    const top = lab.group({ at: [0, 0, 0] }); // строим у начала координат, сливаем и ставим на место: крутится вокруг своей оси
     lab.cone(3.3, 1.4, '#fff4e6', { parent: top, at: [0, 4.2, 0], sides: 12 });
     for (let k = 0; k < 6; k++) lab.box(0.6, 0.2, 3.2, '#e2433b', { parent: top, at: [Math.sin(k * 1.047) * 1.55, 4.0, Math.cos(k * 1.047) * 1.55], rot: [0.42, k * 1.047, 0] });
     lab.ball(0.3, '#ffd23f', { parent: top, at: [0, 5.05, 0], glow: 0.6 });
-    lab.merge(top.children.slice(), top);
-    st.caro = { top, x, z, horses: lab.instances(new T.BoxGeometry(0.35, 0.5, 1), '#ffffff', 8), rods: lab.instances(new T.CylinderGeometry(0.04, 0.04, 3.4, 4), '#ffd23f', 8, { shadow: false }) };
+    const roof = lab.merge(top); roof.position.set(x, 0, z);
+    st.caro = { top: roof, x, z, horses: lab.instances(new T.BoxGeometry(0.35, 0.5, 1), '#ffffff', 8), rods: lab.instances(new T.CylinderGeometry(0.04, 0.04, 3.4, 4), '#ffd23f', 8, { shadow: false }) };
     st.caro.horses.frustumCulled = st.caro.rods.frustumCulled = false;
     for (let k = 0; k < 8; k++) st.caro.horses.setColorAt(k, this.tmp.C.set(['#fff4e6', '#5fe0ff', '#ff6ad5', '#ffd23f'][k % 4]));
   },
   wheel(lab, x, z) {
     const T = lab.THREE, st = lab.state, R = 6;
     lab.merge([lab.box(0.3, 7.5, 0.3, '#7a5a8a', { at: [x - 1.6, 3.6, z], rot: [0, 0, 0.22] }), lab.box(0.3, 7.5, 0.3, '#7a5a8a', { at: [x + 1.6, 3.6, z], rot: [0, 0, -0.22] })]);
-    const g = lab.group({ at: [x, 7.2, z + 0.4] });
+    const g = lab.group({ at: [0, 0, 0] });
     lab.mesh(new T.TorusGeometry(R, 0.12, 5, 28), '#fff4e6', { parent: g });
     for (let k = 0; k < 8; k++) lab.box(0.08, R * 2, 0.08, '#fff4e6', { parent: g, rot: [0, 0, k * Math.PI / 8] });
-    lab.merge(g.children.slice(), g);
-    st.ferris = { g, x, z, R, cab: lab.instances(new T.BoxGeometry(0.9, 0.8, 0.9), '#ffffff', 8) };
+    const ring = lab.merge(g); ring.position.set(x, 7.2, z + 0.4);
+    st.ferris = { g: ring, x, z, R, cab: lab.instances(new T.BoxGeometry(0.9, 0.8, 0.9), '#ffffff', 8) };
     st.ferris.cab.frustumCulled = false;
     for (let k = 0; k < 8; k++) st.ferris.cab.setColorAt(k, this.tmp.C.set(['#e2433b', '#ffd23f', '#3d6bff', '#27b35a'][k % 4]));
   },
@@ -1033,8 +1037,10 @@ const GAME = {
   buildBars(lab) {
     const T = lab.THREE, st = lab.state;
     if (!st.sim) return;
-    lab.box(22, 0.2, 1.4, '#7a5230', { at: [1, 0.1, 5.6] });
-    lab.box(22, 3.6, 0.15, '#fff4e6', { at: [1, 1.9, 4.8] });
+    lab.box(22, 0.2, 1.6, '#7a5230', { at: [1, 0.1, 5.7] });
+    const ticks = [lab.box(22, 6.2, 0.15, '#2d3550', { at: [1, 3.1, 4.8] })];
+    for (let k = 1; k <= 4; k++) ticks.push(lab.box(21.6, 0.05, 0.05, '#8a94b8', { at: [1, 0.2 + k * 5 * 0.28, 4.9] })); // черта каждые 5 с разрыва
+    lab.merge(ticks);
     st.barInst = lab.instances(new T.BoxGeometry(0.7, 1, 0.7), '#ffffff', 40); st.barInst.frustumCulled = false; st.barInst.setColorAt(0, this.tmp.C.set('#ffffff'));
     st.leadInst = lab.instances(new T.IcosahedronGeometry(0.16, 0), lab.mat('#ffd23f', { glow: 0.6 }), 400, { shadow: false }); st.leadInst.frustumCulled = false;
   },
@@ -1118,7 +1124,7 @@ const GAME = {
       let nl = 0;
       B.forEach((b, i) => {
         b.h = lab.damp(b.h, b.to, 6, dt || 0.016);
-        const x = -9 + (i + 0.5) * (20 / st.S.n) * 1.0, h = Math.max(0.05, Math.min(3.2, b.h * 0.13));
+        const x = -9 + (i + 0.5) * (20 / st.S.n) * 1.0, h = Math.max(0.05, Math.min(5.8, b.h * 0.28));
         m.compose(P.set(x + 0.5, 0.2 + h / 2, 5.6), Q.identity(), S.set(w * 1.2, h, 1)); st.barInst.setMatrixAt(i, m); st.barInst.setColorAt(i, C.set(b.col));
         for (let k = 0; k < Math.min(10, b.changes) && nl < 400; k++) { m.compose(P.set(x + 0.5, 0.4 + k * 0.3, 6.4), Q.identity(), S.set(1, 1, 1)); st.leadInst.setMatrixAt(nl++, m); }
       });
@@ -1153,7 +1159,7 @@ const GAME = {
       return;
     }
     const h = st.humans[0], N = st.racers.length, col = this.PLACE_COL[Math.min(3, h.place - 1)];
-    lab.hud('place', st.duo ? `Игрок 1: ${st.humans[0].place} место · Игрок 2: ${st.humans[1].place} место` : `${h.place} место из ${N}`, { color: st.duo ? '#ffffff' : col, size: st.duo ? 18 : 26 });
+    lab.hud('place', st.duo ? `Игрок 1: ${st.humans[0].place} место · Игрок 2: ${st.humans[1].place} место, очки ${st.p2score || 0}` : `${h.place} место из ${N}`, { color: st.duo ? '#ffffff' : col, size: st.duo ? 18 : 26 });
     const lap = Math.min(laps, Math.max(1, Math.floor(h.prog / L) + 1)), tm = st.rt, mm = Math.floor(tm / 60), ss = (tm % 60).toFixed(1).padStart(4, '0');
     lab.hud('lap', st.go > 0 ? 'Приготовься…' : `Круг ${lap}/${laps} · ${mm}:${ss}`, { color: '#ffffff', size: 16 });
     for (const r of st.humans) {

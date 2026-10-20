@@ -71,7 +71,7 @@ const GAME = {
     double: { value: 40, min: 0, max: 120, step: 5, label: 'Двойной эликсир: последние … с', hint: 'капли текут вдвое быстрее; 0 — без двойного эликсира' },
     time: { value: 120, min: 30, max: 300, step: 10, label: 'Длина партии, с', restart: true },
     towerHp: { value: 2000, min: 500, max: 8000, step: 100, label: 'Прочность башни', restart: true },
-    towerDmg: { value: 60, min: 0, max: 300, step: 10, label: 'Урон башни за выстрел' },
+    towerDmg: { value: 50, min: 0, max: 300, step: 10, label: 'Урон башни за выстрел' },
     towerRange: { value: 6.5, min: 3, max: 10, step: 0.5, label: 'Дальность башни, м' },
     botSkill: { value: 1, min: 0, max: 2, step: 0.5, label: 'Сила бота', hint: '0 — играет наугад, 1 — защищается и копит на натиск, 2 — быстрее и точнее' },
     vs: { value: 0, min: 0, max: 1, step: 1, label: 'Вдвоём: игрок 2 справа', restart: true },
@@ -104,15 +104,15 @@ const GAME = {
     { key: 'cheap', name: 'Распродажа', like: 'акции в магазинах игр', how: () => 'все карты вдвое дешевле' },
   ],
 
-  // таблица по умолчанию: цена уравновешивает силу. Те же строки — в шаге «Таблица баланса» урока 13
+  // таблица по умолчанию: цена уравновешивает силу. Те же строки — UNITS в portal/lessons/urok-13.js (урок отдаёт их в lab.data.units), держать вместе
   UNITS: [
-    { name: 'Рой пчёл', cost: 2, hp: 60, dmg: 20, speed: 3, range: 0.5, count: 5, kind: 'рой' },
+    { name: 'Рой пчёл', cost: 2, hp: 70, dmg: 28, speed: 3, range: 0.5, count: 6, kind: 'рой' },
     { name: 'Нарт-мечник', cost: 3, hp: 620, dmg: 100, speed: 1.5, range: 0.7, count: 1, kind: 'воин' },
     { name: 'Лучницы', cost: 3, hp: 220, dmg: 55, speed: 1.5, range: 5, count: 2, kind: 'стрелок' },
     { name: 'Щитоносец', cost: 4, hp: 1400, dmg: 50, speed: 1.1, range: 0.7, count: 1, kind: 'щит' },
-    { name: 'Всадник', cost: 5, hp: 1100, dmg: 170, speed: 2.4, range: 0.8, count: 1, kind: 'воин' },
+    { name: 'Всадник', cost: 5, hp: 950, dmg: 160, speed: 2.4, range: 0.8, count: 1, kind: 'воин' },
     { name: 'Катапульта', cost: 5, hp: 450, dmg: 170, speed: 0.7, range: 8, count: 1, kind: 'осада' },
-    { name: 'Иныж-великан', cost: 7, hp: 2600, dmg: 130, speed: 1, range: 0.8, count: 1, kind: 'великан' },
+    { name: 'Иныж-великан', cost: 7, hp: 2000, dmg: 140, speed: 0.9, range: 0.8, count: 1, kind: 'великан' },
     { name: 'Огненный шар', cost: 4, hp: 1, dmg: 380, speed: 0, range: 2.2, count: 1, kind: 'заклинание' },
   ],
   FARM: { name: 'Родник', cost: 3, hp: 600, dmg: 0, speed: 0, range: 0, count: 1, kind: 'родник' },
@@ -176,7 +176,8 @@ const GAME = {
       rows = raw.slice(0, 8).map((r, i) => this.normRow(lab, r, i)).filter(Boolean);
       if (rows.length < 3) { rows = null; bad = true; }
     }
-    const custom = !!rows;
+    const same = (a, b) => ['name', 'kind', 'cost', 'hp', 'dmg', 'speed', 'range', 'count'].every(k => a[k] === b[k]);
+    const custom = !!rows && !(rows.length === this.UNITS.length && rows.every((r, i) => same(r, this.UNITS[i]))); // таблица урока по умолчанию — это «Классика»
     rows = rows || this.UNITS.map(r => Object.assign({}, r));
     if (lab.cfg.farm >= 1 && !rows.some(r => r.kind === 'родник')) {
       const i = custom ? (rows.length < 8 ? rows.length : rows.length - 1) : rows.findIndex(r => r.name === 'Всадник');
@@ -276,7 +277,8 @@ const GAME = {
     st.units = st.units.filter(u => !u.dead);
     if (st.pts >= 1 && lab.t - st.ptsAt > 0.6) { // очки за урон по башне — одной надписью раз в полсекунды
       const n = Math.round(st.pts); st.pts = 0; st.ptsAt = lab.t;
-      lab.addScore(n * this.mult(st.sides[0]), lab.v3(this.TX, 6.6, 0), '#ffd23f');
+      lab.addScore(n * this.mult(st.sides[0]), st.ptsTower ? lab.v3(this.TX, 6.6, 0) : null, '#ffd23f');
+      st.ptsTower = false;
     }
     this.world(lab, dt);
     this.liveCamera(lab, dt);
@@ -392,6 +394,7 @@ const GAME = {
     if (card.kind !== 'заклинание') x = S.dir > 0 ? lab.clamp(x, -11, -2.6) : lab.clamp(x, 2.6, 11);
     else x = lab.clamp(x, -11.5, 11.5);
     this.deploy(lab, S, card, x);
+    if (lab.cfg.secret >= 1 && cost !== 4) lab.count('_secret'); // цена не «как у всех»: дешёвая карта — быстрый ответ, дорогая — долгое накопление
     if (S.human || S.ai && S.ai.style) {
       lab.count('выпущено: ' + card.name);
       S.plays[card.name] = (S.plays[card.name] || 0) + 1;
@@ -416,7 +419,7 @@ const GAME = {
     const n = card.count, form = this.formation(n);
     for (let k = 0; k < n; k++) {
       const [dx, dz] = form[k], u = this.makeUnit(lab, S, card, dep, x + dx * S.dir, lab.clamp(dz, -this.LANE, this.LANE));
-      dep.alive++;
+      dep.alive++; dep.first = dep.first || u;
       u.deployT = 1 + k * 0.03;
     }
     // приземление: круг, пыль, глухой удар — у великана тяжелее
@@ -507,7 +510,7 @@ const GAME = {
       }
     }
     // натиск: копим, потом великан или щитоносец за башней, следом поддержка
-    const want = sk >= 2 ? 7 : sk >= 1 ? 8 : B.want;
+    const want = sk >= 2 ? 6.5 : sk >= 1 ? 7.5 : B.want;
     if (S.elixir + 1e-6 < Math.min(want, cap - 0.3) && !full) return;
     let pick = null, x = slot(3);
     if (sk >= 1) {
@@ -565,6 +568,11 @@ const GAME = {
       u.face = Math.atan2(dx, dz);
       u.cd -= dt;
       if (u.cd <= 0) { u.cd = u.hitT; this.attack(lab, u, t); }
+    }
+    if (u.side === 0 && u.x > 1.8) lab.state.pts += dt * 1.5 / u.card.count; // давление: твои бойцы на чужой половине
+    if (!u.crossed && u.x * (u.side ? -1 : 1) > 1.8) { // перешёл мост: натиск на чужой половине
+      u.crossed = true;
+      if (u.side === 0) { lab.state.pts += 3 * this.cost(lab, u.card) / u.card.count; if (u.card.count === 1 || u === u.dep.first) lab.popup(lab.v3(u.x, 2.2, u.z), 'За мост!', this.TEAM[0].light, 13); }
     }
     const L = u.kind === 'рой' ? this.LANE + 0.3 : this.LANE;
     u.z = lab.clamp(u.z, -L, L);
@@ -634,6 +642,7 @@ const GAME = {
     }
     if (t.isTower && src && src.kind === 'заклинание') d *= 0.35;
     t.hp -= d; t.flash = 0.09;
+    if (!t.isTower && src && src.side === 0 && t.side === 1) st.pts += Math.min(d, t.hp + d) / 40; // очки за бой твоих бойцов
     if (t.isTower) this.towerHit(lab, t, d, src);
     else if (t.hp <= 0) this.kill(lab, t, src);
   },
@@ -694,12 +703,12 @@ const GAME = {
   towerHit(lab, T, d, src) {
     const st = lab.state, S = st.sides[T.side], F = st.sides[1 - T.side];
     if (F.human || F.ai && F.ai.style) F.towerDmg += d;
-    if (T.side === 1) st.pts += d / 10;
+    if (T.side === 1) { st.pts += d / 10; st.ptsTower = true; }
     T.wob = 1;
-    const frac = Math.max(0, T.hp) / T.max, crack = frac <= 0.25 ? 3 : frac <= 0.5 ? 2 : frac <= 0.75 ? 1 : 0;
-    if (crack > S.cracks && T.hp > 0) { // башня треснула: урон игроку, серия обменов сгорает
+    const frac = Math.max(0, T.hp) / T.max, crack = Math.floor((1 - frac) * 10 + 1e-9);
+    if (crack > S.cracks && T.hp > 0) { // каждые 10 % прочности: урон игроку, серия обменов сгорает
       S.cracks = crack;
-      lab.popup(lab.v3(T.x, 6.2, 0), `Башня треснула: ${Math.round(frac * 100)}%`, T.side ? '#ffe680' : '#ff8a7a', 20);
+      lab.popup(lab.v3(T.x, 6.2, 0), crack % 3 === 0 ? `Башня треснула: ${Math.round(frac * 100)}%` : `Башня: ${Math.round(frac * 100)}%`, T.side ? '#ffe680' : '#ff8a7a', crack % 3 === 0 ? 22 : 17);
       lab.burst(lab.v3(T.x, 3, 0.8), { count: 18, colors: ['#f3ead6', '#d9b27c', '#8c7f73'], speed: 5, up: 2, size: 0.22, gravity: 12 });
       if (S.human) { lab.hurt(lab.v3(T.x, 3, 0.8)); S.streak = 0; } else { lab.shake(0.3); lab.sfx.hit(); }
       st.cam.punch = 0.6;
