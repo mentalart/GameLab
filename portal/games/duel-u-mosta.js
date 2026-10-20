@@ -447,7 +447,8 @@ const GAME = {
     const K = this.KIND[card.kind] || this.KIND['воин'];
     const look = card.kind === 'воин' && card.speed >= 2.2 ? 'всадник' : card.kind;
     const u = { side: S.i, card, dep, kind: card.kind, look, x, z, hp: card.hp, max: card.hp, dmg: card.dmg, speed: card.speed, range: card.range,
-      r: K.r * (look === 'всадник' ? 1.4 : 1), hitT: look === 'всадник' ? 1.5 : K.hitT, // всадник бьёт с разворота коня: реже, но так же сильно size: K.size, cd: 0.4, deployT: 0, target: null, retarget: 0,
+      r: K.r * (look === 'всадник' ? 1.4 : 1), hitT: K.hitT, size: K.size,
+      cd: 0.4, deployT: 0, target: null, retarget: 0,
       face: S.dir > 0 ? Math.PI / 2 : -Math.PI / 2, walk: lab.rand(0, 6), lunge: 0, flash: 0, dead: false, life: card.kind === 'родник' ? 40 : 0, gift: 5 };
     lab.state.units.push(u);
     return u;

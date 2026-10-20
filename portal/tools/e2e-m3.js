@@ -301,7 +301,7 @@ module.exports = function m3(H) {
     // шкала: больше половины игр, потом — где их ставят геймдизайнеры
     const sc = stepOf(les, 'shkala');
     await student.waitForSelector('#step-shkala [data-scale]');
-    for (const it of sc.items.slice(0, 7)) await student.locator(`#step-shkala [data-scale=${it.id}]`).fill(String(it.id === 'shahmaty' ? 3 : it.at));
+    for (const it of [...sc.items.slice(0, 6), sc.items.find(x => x.id === 'shahmaty')]) await student.locator(`#step-shkala [data-scale=${it.id}]`).fill(String(it.id === 'shahmaty' ? 3 : it.at));
     await student.click('#step-shkala [data-scale-done]');
     await student.waitForSelector('#step-shkala.done');
     const st = (await student.textContent('#step-shkala')).replace(/\s+/g, ' ');
@@ -332,7 +332,7 @@ module.exports = function m3(H) {
     await hunt(student, les, mode, F, { 'обмены в плюс': 0 });
     await story(student, les, shot);
     await sorter(student, les, 'otkuda-kuda');
-    await variety(student, les, F, [['dvoynoy', 'doubleAll', 1], ['rodnik', 'farm', 1], ['knb', 'rps', 1], ['zerkalo', 'mirror', 1]], 12, 'bez-potolka', 'Зеркало', shot);
+    await variety(student, les, F, [['dvoynoy', 'doubleAll', 1], ['rodnik', 'farm', 1], ['knb', 'rps', 1], ['zerkalo', 'mirror', 1]], 12, 'rodnik', 'Зеркало', shot);
     await cp(student, 'Фабрика');
     await student.click('#step-fabrika >> text=🎲 Кубик для пустых полей');
     await student.fill('#f-fabrikatitle', 'Снежные крепости');
