@@ -782,8 +782,11 @@ ol.tsteps li.now{border-left:3px solid var(--info);padding-left:8px;margin-left:
 .postcard .pc-foot{display:flex;gap:6px;align-items:center;font-size:12px;color:var(--muted);border-top:1px dashed var(--line2);padding-top:6px}
 .postcards{display:flex;flex-wrap:wrap;gap:14px}
 
-/* боковая колонка ученика длиннее (понятия, путь игры): низ не прячется под кнопкой «Заметка автора» */
+/* боковая колонка ученика длиннее (понятия, путь игры): низ не прячется под кнопкой «Заметка автора»;
+   пока кнопка видна, прокрутка колонки кончается над ней — кнопка не ложится на линзу и понятия (прохождение 20.10.2026) */
 .side{padding-bottom:72px}
+body:has(#noteBtn:not([hidden])) .side{max-height:calc(100vh - 53px - 68px);padding-bottom:16px}
+.note-fab.btn.ghost{background:var(--bg2)}
 /* айсберг спрятанной механики (урок 1, шаг 8): сцена на три слоя — верхушка, под водой, дно; ныряние — сдвиг сцены */
 .ice{display:flex;flex-direction:column;gap:12px;outline:none}
 .ice-view{position:relative;height:360px;overflow:hidden;border-radius:var(--r);border:1px solid var(--line2)}

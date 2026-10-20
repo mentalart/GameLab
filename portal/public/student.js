@@ -49,7 +49,8 @@ function listen() {
     if (fresh.length) {
       beep('tick');
       toast(`Учитель открыл: ${fresh.map(c => c.title).join(', ')}`, 'ok');
-      if (wasLocked || cpDone(cpById(S.cpId))) { S.cpId = fresh[0].id; renderMain(); }
+      // учитель открыл новый чекпоинт — ученик переходит туда сам; окно Qwen открыто — остаётся, чтобы не потерять вставку
+      if (wasLocked || !document.querySelector('dialog[open]')) { S.cpId = fresh[0].id; S.me.class.current = fresh[0].id; renderMain(); window.scrollTo(0, 0); }
     }
     renderSide();
     if (!isOpen(cpById(S.cpId))) renderMain();
@@ -86,9 +87,10 @@ const cpById = id => S.lesson.checkpoints.find(c => c.id === id);
 const isOpen = cp => !!cp && S.opened.includes(cp.id);
 const ans = id => S.answers[id] || {};
 const cpDone = cp => !!cp && cp.steps.every(s => ans(s.id).done);
+// после входа и перезагрузки — чекпоинт, который учитель открыл последним (его таймер идёт на проекторе): там сейчас весь класс (прохождение 20.10.2026)
 function pickCheckpoint() {
-  const open = S.lesson.checkpoints.filter(isOpen);
-  return (open.find(cp => !cpDone(cp)) || open[open.length - 1] || S.lesson.checkpoints[0]).id;
+  const open = S.lesson.checkpoints.filter(isOpen), cur = open.find(cp => cp.id === S.me.class.current);
+  return (cur || open.find(cp => !cpDone(cp)) || open[open.length - 1] || S.lesson.checkpoints[0]).id;
 }
 
 let saveTimers = {};
@@ -406,7 +408,9 @@ function postcardView(c) {
     el('div', { class: 'pc-foot' }, c.record ? `🏆 Рекорд ${c.record.score} · ${c.record.nick}` : '🏆 Рекорда пока нет', c.players ? ` · играли ${c.players}` : '', el('span', { class: 'grow' }), c.at || ''));
 }
 
-STEPS.text = ctx => el('div', { class: 'stack' },
+// seen: шаг-памятка без действия (перемена) засчитывается, как только ученик его увидел (прохождение 20.10.2026)
+STEPS.text = ctx => { if (ctx.step.seen && !ctx.done) setTimeout(() => ctx.save({ read: true }, true), 0); return textBody(ctx); };
+const textBody = ctx => el('div', { class: 'stack' },
   el('div', { class: 'text-html', html: ctx.step.html }),
   el('div', {}, el('button', { class: 'btn', type: 'button', onclick: () => ctx.save({ read: true }, true) }, ctx.done ? 'Прочитано ✓' : 'Понятно')));
 
@@ -1134,7 +1138,8 @@ STEPS.choice = ctx => {
 
 // карточки квиза из игры класса: {hero} {action} {place} {threat} {twist} — карты, {heroName} {heroTrait} — имя и особенность карты «имя — особенность»,
 // {secret} — спрятанная механика после шага «Найди спрятанную механику»
-function wowItems(st) {
+// count: для заголовка до начала — спрятанная механика ещё может быть не найдена, но к началу квиза будет: её карточки считаем сразу
+function wowItems(st, count) {
   if (!st.wowItems || !S.wow) return [];
   const vars = {};
   S.wow.cards.forEach(c => {
@@ -1145,6 +1150,7 @@ function wowItems(st) {
   });
   const hunt = lessonSteps().find(x => x.type === 'secret'), sec = hunt && (ans(hunt.id).value || {}).secret;
   if (sec) vars.secret = sec.title;
+  else if (count && hunt) vars.secret = '…';
   return st.wowItems.filter(it => [...it.text.matchAll(/\{(\w+)\}/g)].every(m => vars[m[1]]))
     .map(it => Object.assign({}, it, { text: it.text.replace(/\{(\w+)\}/g, (_, k) => vars[k]) }));
 }
@@ -1170,7 +1176,7 @@ STEPS.sort = ctx => {
     box.innerHTML = '';
     const prev = ctx.value;
     box.append(el('div', { class: 'stack', style: 'align-items:center;text-align:center;margin:auto' },
-      el('h3', {}, `${ITEMS.length} решений · ${st.seconds} секунд на каждое`),
+      el('h3', {}, `${st.items.length + wowItems(st, true).length} решений · ${st.seconds} секунд на каждое`),
       el('p', { class: 'muted' }, many ? `Серия правильных ответов умножает очки. Клавиши 1–${st.bins.length} или стрелки и пробел, на геймпаде — крестовина и A.` : `Серия правильных ответов умножает очки. Геймпад: крестовина ${two ? '◀ ▶' : '◀ ▼ ▶'}.`),
       st.manual ? el('p', { class: 'muted' }, 'После ответа прочитай разбор и жми «Далее»: Enter, пробел или A на геймпаде.') : null,
       prev ? el('p', {}, `Твой результат: ${prev.correct} из ${prev.total}, очки ${prev.score}`) : null,
@@ -2031,7 +2037,13 @@ STEPS.ownplay = ctx => {
       onclick: () => { v.emotions = emo.includes(x) ? emo.filter(y => y !== x) : emo.concat(x).slice(-2); beep('tick'); ctx.save(v, ready() ? true : null); drawMatch(); } }, x)));
     matchBox.append(el('label', { class: 'lbl' }, m.question), seg, m.emotions ? el('div', { class: 'small muted' }, 'Что ты почувствовал на самом деле? Одна-две эмоции.') : '', m.emotions ? emos : ''); // нативный append пишет null словом
   }
-  const og = ownGame({ lite: st.lite, onOver: () => { v.rounds++; show(); ctx.save(v, ready() ? true : null); } });
+  // кривая партии сохраняется: шаг «Найди, что починить» рисует её сразу, без второй партии (прохождение 20.10.2026)
+  const og = ownGame({ lite: st.lite, onOver: m => {
+    v.rounds++;
+    const line = (((m || {}).tele || {}).line || []).slice(0, 600);
+    if (line.length) { v.line = line; v.marks = (((m.tele || {}).marks || {})._secret || []); v.lineVersion = S.game && S.game.current; }
+    show(); ctx.save(v, ready() ? true : null);
+  } });
   if (feel) host.append(el('div', { class: 'recall' }, el('b', {}, 'Ты задумал: '), feel));
   host.append(og.el, el('div', { class: 'small' }, status), matchBox,
     st.question ? fieldEditor({ id: 'answer', label: st.question, deck: st.deck }, v.answer, nv => { v.answer = nv; ctx.save(v, ready() ? true : null); }, { idPrefix: st.id }) : '');
@@ -2237,6 +2249,11 @@ function razborSimple(ctx) {
   const host = el('div', { class: 'stack' });
   if (!hasGame()) { host.append(el('p', { class: 'muted' }, 'Сначала собери игру в чекпоинте «Фабрика и сборка».')); return host; }
   const feel = myFeeling(), plan = planVars(), C = v.tools.curve, T = v.tools.sort;
+  // кривая из партии шага «Сыграй в свою игру» (та же версия) — если в разборе ещё не играли
+  if (!(C.lines && C.lines.length)) {
+    const own = lessonSteps().map(x => x.type === 'ownplay' && ans(x.id).value).find(x => x && x.line && x.lineVersion === (S.game && S.game.current));
+    if (own) { C.lines = [own.line]; C.marks = own.marks || []; }
+  }
   const save = () => ctx.save(v, v.closed ? true : null);
   const fid = () => 'f' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5);
   // находки кривой и ИИ копятся молча: в шаге 3 они станут плитками рядом с частыми бедами
@@ -2317,10 +2334,14 @@ function razborSimple(ctx) {
       save(); draw();
     }, { attr: 'data-finding', wide: true, label: 'Что починим первым?' }));
     const ownIn = el('input', { type: 'text', maxlength: 200, placeholder: 'Что мешает твоему чувству?', 'data-own': 'text', value: ownF ? ownF.text : '' });
-    const ownBox = el('div', { class: 'row', hidden: !(ownF && v.main === ownF.id) }, el('div', { class: 'grow' }, ownIn), el('button', { type: 'button', class: 'btn ghost small', onclick: () => {
+    // своя находка — одной кнопкой (или Enter): сразу главная и в правку, без второго «Готово» (прохождение 20.10.2026)
+    const ownGo = () => {
       const t = ownIn.value.trim(); if (!t) { toast('Напиши, что мешает'); return; }
-      v.findings = v.findings.filter(f => f.key !== 'own').concat({ id: fid(), tool: null, key: 'own', label: 'Своя находка', text: t, kind: 'ask' }); v.main = v.findings[v.findings.length - 1].id; save(); draw();
-    } }, 'Выбрать'));
+      v.findings = v.findings.filter(f => f.key !== 'own').concat({ id: fid(), tool: null, key: 'own', label: 'Своя находка', text: t, kind: 'ask' }); v.main = v.findings[v.findings.length - 1].id;
+      v.closed = true; ctx.save(v, true); toast('Готово: это пойдёт в правку', 'ok'); draw();
+    };
+    ownIn.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); ownGo(); } });
+    const ownBox = el('div', { class: 'row', hidden: !(ownF && v.main === ownF.id) }, el('div', { class: 'grow' }, ownIn), el('button', { type: 'button', class: 'btn small', 'data-own': 'go', onclick: ownGo }, 'Готово: это в правку'));
     body.append(ownBox);
     const main = v.findings.find(f => f.id === v.main);
     if (main) body.append(el('div', { class: 'pickline' }, '➡ В правку: ', main.text));
@@ -2725,7 +2746,9 @@ STEPS.workshop = ctx => {
       host.append(el('p', { class: 'concept' }, st.limit === 1 ? (several ? '✓ Правка этого шага использована.' : '✓ Правка урока использована.') + ' Числа можно и дальше крутить ручками (Tab).' : `✓ Все ${st.limit} правки ${several ? 'шага' : 'урока'} использованы. Числа можно и дальше крутить ручками (Tab).`));
     } else if (S.me.chat && st.simple) {
       // simple: карточки «что меняем» — находки разбора (главная первой), отзывы соседей (cardsFrom), колода шага
-      const choices = (F ? F.list.slice().sort((a, b) => (b === F.main) - (a === F.main)).filter(f => f.kind === 'ask').map(f => ({ key: f.key, attr: 'data-finding', tag: '🔎', text: f.text, main: f === F.main })) : [])
+      // находка, по которой уже была правка (в этом или прошлом шаге правки), второй раз не предлагается (прохождение 20.10.2026)
+      const asked = new Set(lessonSteps().filter(x => x.type === 'workshop').flatMap(x => ((ans(x.id).value || {}).requests || []).map(q => String(q.text || '').trim())));
+      const choices = (F ? F.list.slice().sort((a, b) => (b === F.main) - (a === F.main)).filter(f => f.kind === 'ask' && !asked.has(String(f.text).trim())).map(f => ({ key: f.key, attr: 'data-finding', tag: '🔎', text: f.text, main: f === F.main })) : [])
         .concat((st.deck || []).map(t => ({ tag: '💡', text: t })));
       const wsHost = el('div');
       const paintWs = extra => wsHost.replaceChildren(chatSimple({ v, save: () => ctx.save(v), choices: extra.concat(choices), feel: myFeeling(),

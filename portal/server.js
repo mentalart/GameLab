@@ -224,6 +224,10 @@ const CORS = { 'Access-Control-Allow-Origin': '*' };
 // номера строк ошибок совпадают с кодом из чата. В скачанной игре мост — внутри файла.
 const bridgeTag = inline => inline ? inlineScript(fs.readFileSync(path.join(PORTAL, 'engine', 'portal.js'), 'utf8')) : '<script src="/engine/portal.js"></script>';
 const htmlGame = (code, inline) => (/<head[^>]*>/i.test(code) ? code.replace(/<head[^>]*>/i, m => m + bridgeTag(inline)) : code.replace(/<html[^>]*>/i, m => m + bridgeTag(inline)));
+// three.js из чата Qwen берётся с CDN (unpkg, jsdelivr, esm.sh): в портале — своя копия из engine/vendor, иначе без интернета нет 3D.
+// Замена внутри строки, переносы не меняются: номера строк ошибок совпадают с кодом из чата.
+const CDN_THREE = /https?:\/\/(?:unpkg\.com|cdn\.jsdelivr\.net\/npm|esm\.sh|cdn\.skypack\.dev)\/three(?:@[\w.\-^~]+)?(\/build\/three\.module(?:\.min)?\.js|\/examples\/jsm\/|\/addons\/|(?=["'`]))/g;
+const localThree = code => code.replace(CDN_THREE, (all, tail) => tail.startsWith('/build/') || !tail ? '/engine/vendor/three/three.module.min.js' : '/engine/vendor/three/addons/');
 // уровни гостей, которые автор принял в игру (урок 18): игра получает их после своих, как будто они в её коде (portal.levels / lab.levels)
 const guestScript = g => (g && Array.isArray(g.guestLevels) && g.guestLevels.length
   ? '<script>window.__labGuest=' + JSON.stringify({ mode: 'add', list: g.guestLevels.map(x => ({ name: x.name, map: x.map, author: x.author })) }).replace(/</g, '\\u003c') + '</script>' : '');
@@ -232,7 +236,7 @@ function playPage(res, gameId, n) {
   const code = g && store.versionCode(gameId, n || g.current);
   if (!code) return send(res, 404, 'Нет такой версии игры', 'text/plain; charset=utf-8');
   // страница HTML из чата Qwen (урок 1, версия 2) — как есть, в той же песочнице; уровни гостей — в той же строке, что и мост: номера строк не сдвигаются
-  if (ai.isHtml(code)) return send(res, 200, htmlGame(code).replace('<script src="/engine/portal.js"></script>', m => guestScript(g) + m), 'text/html; charset=utf-8', Object.assign({ 'Content-Security-Policy': 'sandbox allow-scripts allow-pointer-lock' }, CORS));
+  if (ai.isHtml(code)) return send(res, 200, htmlGame(localThree(code)).replace('<script src="/engine/portal.js"></script>', m => guestScript(g) + m), 'text/html; charset=utf-8', Object.assign({ 'Content-Security-Policy': 'sandbox allow-scripts allow-pointer-lock' }, CORS));
   // объект GAME — в оболочке «Лаб3D» на three.js (engine/game.html)
   const html = fs.readFileSync(path.join(PORTAL, 'engine', 'game.html'), 'utf8')
     .replace('<head>', () => '<head>\n<base href="/engine/">' + guestScript(g))
@@ -357,7 +361,7 @@ route('GET', '/api/me', (ctx) => {
   const { w, cls, les, s, st } = needStudent(ctx);
   s.seen = store.now(); store.saveStudent(w.class, s);
   const g = st.gameId ? store.getGame(st.gameId) : null;
-  return { nick: w.nick, class: { code: cls.code, name: cls.name, opened: cls.opened, authorMode: cls.authorMode }, lesson: studentLesson(les, cls), answers: st.answers, game: g, wow: les.wow ? publicWow(cls, les) : null, feedback: st.feedback || null, demo: ai.demo(), chat: true, aiCalls: st.aiCalls, aiLimit: aiLimit(st), prevPlan: prevPlan(s, les), help: s.help || null };
+  return { nick: w.nick, class: { code: cls.code, name: cls.name, opened: cls.opened, authorMode: cls.authorMode, current: (cls.timer || {}).cp || null }, lesson: studentLesson(les, cls), answers: st.answers, game: g, wow: les.wow ? publicWow(cls, les) : null, feedback: st.feedback || null, demo: ai.demo(), chat: true, aiCalls: st.aiCalls, aiLimit: aiLimit(st), prevPlan: prevPlan(s, les), help: s.help || null };
 });
 
 route('POST', '/api/answer', (ctx) => {
