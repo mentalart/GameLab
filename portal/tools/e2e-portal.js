@@ -2204,6 +2204,7 @@ async function lessonEight(mode, teacher, student, shot, { browser, base, code, 
   await student.click('#step-reliz .dicebtn');
   await student.click('#step-reliz >> text=🚀 Выпустить версию 1.0');
   await student.waitForSelector('#step-reliz.done', { timeout: 10000 });
+  await student.waitForSelector('#step-reliz .acard .tag.release', { timeout: 10000 }).catch(() => {}); // карточка аркады приходит с сервера после «готово»
   check('Релиз модуля 2 вышел: метка 1.0 в аркаде', await student.locator('#step-reliz .acard .tag.release').count() >= 1);
 
   // две башни вдвоём по ручке duel
