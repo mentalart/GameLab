@@ -461,13 +461,15 @@ const textBody = ctx => el('div', { class: 'stack' },
 
 // iceberg: «Айсберг» (урок 1, шаг 8, 19.10.2026) — игрок видит верхушку, ученик ныряет: что видно → что спрятано → кто решил и зачем.
 // Два погружения: донор, потом игра класса (спрятанная механика из шага secret, данные по effect); на дне второго — роли и «Понятно».
+// Игра класса ныряет всегда (прохождение 21.10.2026: без картинки для её effect шаг засчитывался после одного донора): нет данных
+// по effect — запасные fallback, механика ещё не найдена — правило под замком. Пройденный айсберг можно пересмотреть с верхушки.
 STEPS.iceberg = ctx => {
   const st = ctx.step;
   // шаги чекпоинта рисуются сразу, а спрятанную механику ученик находит позже — погружения считаем заново при каждом нырке
   const divesNow = () => {
     const hunt = lessonSteps().find(x => x.type === 'secret'), sec = hunt && (ans(hunt.id).value || {}).secret;
-    const mine = sec && st.byEffect && st.byEffect[sec.effect];
-    return [st.donor].concat(mine ? [Object.assign({ rule: sec.title + '.' }, st.ours, mine)] : []);
+    const mine = (sec && st.byEffect && st.byEffect[sec.effect]) || st.fallback;
+    return [st.donor].concat(st.ours ? [Object.assign({}, st.ours, mine, { rule: sec ? sec.title + '.' : st.ours.unknown })] : []);
   };
   let dives = divesNow();
   const LAYERS = [['Что видит игрок', 'верхушка'], ['Что спрятано', 'под водой'], ['Кто решил и зачем', 'на дне']];
@@ -478,8 +480,8 @@ STEPS.iceberg = ctx => {
   const cv = el('canvas', { width: 360, height: 130, class: 'ice-cv', 'aria-hidden': 'true' }), g = cv.getContext('2d');
   const secs = LAYERS.map(([h, where], k) => el('section', { class: 'ice-l ice-l' + k }, el('div', { class: 'eyebrow' }, where), el('h3', {}, h), el('div', { class: 'ice-body' })));
   scene.append(el('div', { class: 'ice-berg' }), el('div', { class: 'ice-water' }), ...secs);
-  const dive = el('button', { type: 'button', class: 'btn', 'data-ice': 'dive', onclick: () => go() });
-  const fin = el('div', { class: 'ice-fin', hidden: true },
+  const dive = el('button', { type: 'button', class: 'btn', 'data-ice': 'dive' });
+  const fin = el('div', { class: 'ice-fin', hidden: !ctx.done },
     el('p', { class: 'ice-sum' }, st.sum),
     el('ul', { class: 'ice-roles' }, st.roles.map((r, k) => el('li', { style: `--k:${k}` }, r))),
     el('div', {}, el('button', { class: 'btn', type: 'button', 'data-ice': 'ok', onclick: () => ctx.save({ read: true }, true) }, ctx.done ? 'Прочитано ✓' : 'Понятно')));
@@ -498,18 +500,34 @@ STEPS.iceberg = ctx => {
     secs.forEach((s, k) => s.classList.toggle('on', k === layer));
     depth.textContent = ['0 м', '−20 м', '−60 м'][layer];
     const last = d === dives.length - 1;
-    dive.hidden = layer === 2 && last;
-    dive.textContent = layer < 2 ? 'Нырнуть глубже ↓' : 'Теперь наша игра ↑';
-    if (layer === 2 && last) { fin.hidden = false; box.classList.add('done'); }
+    const bottom = layer === 2 && last;
+    dive.textContent = bottom ? '↺ Нырнуть заново' : layer < 2 ? 'Нырнуть глубже ↓' : 'Теперь наша игра ↑';
+    dive.classList.toggle('ghost', bottom);
+    if (bottom) { fin.hidden = false; box.classList.add('done'); }
   }
-  function go() {
+  // again — только кнопка: клавиша на дне ничего не делает, страница листается дальше
+  function go(again) {
     if (layer < 2) { layer++; beep('tick'); }
-    else if (d < dives.length - 1) { d++; layer = 0; t0 = performance.now(); fill(); box.classList.add('up'); setTimeout(() => box.classList.remove('up'), pause(500)); beep('good'); }
-    else return;
-    if (layer === 1) t0 = performance.now();
+    else if (d < dives.length - 1) { d++; layer = 0; fill(); box.classList.add('up'); setTimeout(() => box.classList.remove('up'), pause(500)); beep('good'); }
+    else if (again) { d = 0; layer = 0; fill(); beep('tick'); }
+    else return false;
+    t0 = performance.now();
     paint();
+    return true;
   }
+  dive.onclick = () => go(true);
   box.addEventListener('keydown', e => { if (['ArrowDown', 'Space', 'Enter'].includes(e.code) && e.target === box) { e.preventDefault(); go(); } });
+  // ↓ и пробел без клика по картинке: когда фокус ни на чём (body) и айсберг на виду — посреди экрана. Поля, кнопки
+  // и окна игр ловят клавиши сами (фокус не на body), остальные шаги слушают только свой box
+  const onKey = e => {
+    if (!box.isConnected) { document.removeEventListener('keydown', onKey); return; }
+    if (e.defaultPrevented || e.altKey || e.ctrlKey || e.metaKey || !['ArrowDown', 'Space'].includes(e.code)) return;
+    if (e.target !== document.body && e.target !== document.documentElement) return;
+    const r = box.getBoundingClientRect();
+    if (r.top > innerHeight * 0.6 || r.bottom < innerHeight * 0.4) return;
+    if (go()) e.preventDefault();
+  };
+  document.addEventListener('keydown', onKey);
   // анимация на холсте: верхушка — эффект, под водой — правило; донор — пришельцы, игра класса — по спрятанной механике
   let t0 = performance.now(), raf = 0;
   const alien = (x, y, c, s = 3) => { g.fillStyle = c; ['..X..X..', '...XX...', '.XXXXXX.', 'XX.XX.XX', 'XXXXXXXX', '.X....X.'].forEach((r, j) => [...r].forEach((ch, i) => { if (ch === 'X') g.fillRect(x - 4 * s + i * s, y - 3 * s + j * s, s, s); })); };
@@ -527,6 +545,13 @@ STEPS.iceberg = ctx => {
       if (n >= 10) { g.fillStyle = `rgba(255,210,63,${0.35 * (1 - p)})`; g.fillRect(0, 0, 360, 130); for (let k = 0; k < 14; k++) { const a = k / 14 * 6.28; g.fillStyle = k % 2 ? '#ffd23f' : '#ff5d6e'; g.fillRect(60 + Math.cos(a) * 80 * (p + 0.2), 90 + Math.sin(a) * 50 * (p + 0.2), 5, 5); } text('×10 ДЖЕКПОТ!', 200, 60, '#ffd23f', 30); }
     },
     grow(t) { const k = Math.floor(t * 1.5) % 9, r = 12 + (k < 8 ? k : 2) * 4; g.fillStyle = '#5fe0ff'; g.beginPath(); g.arc(180, 120 - r, r, 0, 7); g.fill(); text(k < 8 ? 'ступень ' + (k + 1) : 'удар — сдулся!', 180, 22, k < 8 ? '#7cf5a8' : '#ff5d6e'); },
+    lupa(t) { // запасная: лупа ходит над игрой, над героем вспыхивает «что-то изменилось»
+      const x = 180 + 120 * Math.sin(t * 1.4), on = Math.abs(x - 180) < 30;
+      g.fillStyle = on ? '#ffd23f' : '#5fe0ff'; g.beginPath(); g.arc(180, 92, on ? 17 : 13, 0, 7); g.fill();
+      if (on) text('?!', 180, 52, '#ffd23f', 22);
+      g.strokeStyle = on ? '#ffd23f' : '#9aa3c7'; g.lineWidth = 4; g.beginPath(); g.arc(x, 80, 26, 0, 7); g.stroke();
+      g.beginPath(); g.moveTo(x + 18, 99); g.lineTo(x + 34, 118); g.stroke();
+    },
     comfort(t) { const p = t % 3; g.fillStyle = '#5fe0ff'; g.beginPath(); g.arc(180, 90, 14, 0, 7); g.fill(); if (p < 0.4) { g.fillStyle = 'rgba(255,93,110,.5)'; g.fillRect(0, 0, 360, 130); text('удар!', 180, 40, '#fff', 20); } else { g.strokeStyle = '#ffd23f'; g.lineWidth = 4; g.beginPath(); g.arc(180, 90, 24 + 3 * Math.sin(t * 8), 0, 7); g.stroke(); text('+30', 180 + 60 * Math.sin(p * 2), 60 - 10 * (p % 1), '#ffd23f', 22); } },
   };
   const RULE = {
@@ -538,6 +563,13 @@ STEPS.iceberg = ctx => {
     },
     jackpot(t) { const n = Math.floor(t * 2.5) % 13; for (let k = 0; k < 10; k++) { const on = k < n, gold = k === 9; g.fillStyle = on ? (gold ? '#ffd23f' : '#ffb547') : '#1a2445'; g.beginPath(); g.arc(36 + k * 32, 60, gold && on ? 13 : 10, 0, 7); g.fill(); text(String(k + 1), 36 + k * 32, 92, gold ? '#ffd23f' : '#9aa3c7', 12); } if (n >= 10) text('десятая — ×10', 180, 122, '#ffd23f', 15); },
     grow(t) { const n = Math.floor(t * 2) % 10; for (let k = 0; k < 9; k++) { g.fillStyle = k < n ? '#7cf5a8' : '#1a2445'; g.fillRect(30 + k * 34, 70, 26, 14); } text('каждые 3 удачи — герой больше', 180, 122, '#f2efe6', 13); },
+    lupa(t) { // запасная: «если … → то …» — условие и следствие открываются по очереди
+      const p = t % 3;
+      g.fillStyle = '#1a2445'; g.fillRect(24, 44, 136, 40); g.fillRect(200, 44, 136, 40);
+      text('если …', 92, 70, p > 0.5 ? '#7cf5a8' : '#3a4670', 16); text('то …', 268, 70, p > 1.4 ? '#ffd23f' : '#3a4670', 16);
+      g.fillStyle = p > 1 ? '#f2efe6' : '#3a4670'; g.fillRect(166, 61, 26, 6); g.beginPath(); g.moveTo(198, 64); g.lineTo(186, 54); g.lineTo(186, 74); g.fill();
+      text('правило в коде, игрок его не видит', 180, 118, '#9aa3c7', 13);
+    },
     comfort(t) { const p = (t % 4) / 4; g.fillStyle = '#1a2445'; g.fillRect(30, 60, 300, 14); g.fillStyle = '#ffd23f'; g.fillRect(30, 60, 300 * p, 14); text('удар → 4 секунды очки ×3', 180, 110, '#f2efe6', 14); },
   };
   function loop(now) {
@@ -551,7 +583,6 @@ STEPS.iceberg = ctx => {
     raf = requestAnimationFrame(loop);
   }
   fill(); paint();
-  if (ctx.done) { d = dives.length - 1; layer = 2; fill(); paint(); }
   raf = requestAnimationFrame(loop);
   return el('div', { class: 'stack' }, box);
 };

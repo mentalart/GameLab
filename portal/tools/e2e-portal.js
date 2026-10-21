@@ -818,6 +818,12 @@ async function secretHunt(teacher, student, mode, shot) {
   check('Айсберг: на дне — роли и «Понятно»', await student.locator('#step-secret-story [data-ice=ok]:visible').count() === 1 && /Геймдизайнер решает/.test(await student.textContent('#step-secret-story .ice-fin')));
   await shot(student, '2c-iceberg');
   await storyDone(student);
+  // пройденный айсберг не застывает: «Нырнуть заново» — снова верхушка донора, ↓ без клика по картинке (фокус на body) ныряет
+  await student.click('#step-secret-story [data-ice=dive]');
+  check('Айсберг: пройденный можно пересмотреть с верхушки', /Что видит игрок.*носится/.test(await ice()) && await student.textContent('#step-secret-story .ice-tag') === 'Space Invaders, 1978');
+  await student.evaluate(() => { document.activeElement.blur(); document.querySelector('#step-secret-story .ice').scrollIntoView({ block: 'center' }); });
+  await student.keyboard.press('ArrowDown');
+  check('Айсберг: стрелка ↓ ныряет без клика по картинке', /Что спрятано.*Чем меньше пришельцев/.test(await ice()), await ice());
   // квиз: постоянные карточки + карточки из игры класса (карты и раскрытая спрятанная механика)
   const quiz = lesson1.checkpoints.find(c => c.id === 'secret').steps.find(s => s.id === 'secret-quiz');
   const binOf = text => {
