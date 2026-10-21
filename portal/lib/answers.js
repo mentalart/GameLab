@@ -31,6 +31,11 @@ function answerText(step, a, game) {
     case 'choice': return [(v.selected || []).join('; '), val(v.own) ? 'свои слова: ' + dice(v.own) : ''].filter(Boolean).join(' · ');
     case 'text': return a.done ? 'прочитано' : '';
     case 'samootsenka': return v.scores ? `умею: ${Object.values(v.scores).join(' ')} из 5` + ((v.concepts || []).length ? '; понятия: ' + v.concepts.join('; ') : '') + (val(v.phrase) ? '; ' + dice(v.phrase) : '') : '';
+    // входы модуля 1 (Г1 аудита): спор, загадка-сцена, сломанная игра, колода удовольствий
+    case 'spor': return v.voted ? `голос: ${v.pick === 'same' ? (step.sameLabel || 'одинаково') : ((step.sides || []).find(x => x.id === v.pick) || {}).label || v.pick}; почему: ${(v.why || []).concat(val(v.own) ? [val(v.own)] : []).join('; ') || '—'}` : Object.keys(v.sides || {}).length ? `сыграно: ${Object.entries(v.sides).map(([k, x]) => `${k} — ${x.rounds}`).join(', ')}` : '';
+    case 'zagadka': return v.pick ? `ответ: ${v.pick}${v.correct ? ' — верно' : ''}` : '';
+    case 'slomano': return v.pick ? `сломано: ${v.pick}${v.correct ? ` — нашёл за ${v.t} с` : v.trap ? ' — ловушка' : ' — не то'}` : v.rounds ? `партий ${v.rounds}, ищет` : '';
+    case 'koloda': return v.line ? `главное: ${v.line}` : (v.seen || []).length ? `перевернул ${v.seen.length} из ${(step.cards || []).length}` : '';
     case 'obyasni': return (v.tries || []).length ? `объяснил${v.partner ? ' соседу ' + v.partner : ''}: ${v.tries.map(t => (t === 'got' ? 'понял' : 'не понял')).join(' → ')}` : '';
     case 'factory': return [v.level ? `уровень: ${(step.levels.find(l => l.id === v.level) || {}).label || v.level}` : '', v.limit && v.level === 'boss' ? `карта ограничения: ${v.limit.text}` : '']
       .concat(step.fields.filter(x => val((v.fields || {})[x.id])).map(x => `${x.label}: ${dice(v.fields[x.id])}`)).filter(Boolean).join('\n');

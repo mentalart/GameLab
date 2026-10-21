@@ -1553,3 +1553,46 @@ button.m7-teamcard{cursor:pointer}button.m7-teamcard:hover{border-color:var(--ac
 .pj-reelgame{min-width:0}
 @media (max-width:900px){.kp-stagebox,.pj-goalgrid,.pj-reel{grid-template-columns:1fr}}
 @media (prefers-reduced-motion:reduce){.goal-line b.bump,.goal-conf,.react-btn.pop,.teatr-card,.goal-track i,.teatr-bar{animation:none;transition:none}}
+
+/* ---------- модуль 1 (уроки 2–4, аудит 21.10.2026, сессия 3): входы в урок, колода, детектив и рецепт, подробный текст под сценой ---------- */
+.m1-more{border:1px solid var(--line);border-radius:12px;padding:8px 14px;background:var(--bg2)}
+.m1-more summary{cursor:pointer;font-weight:700;color:var(--muted)}
+.m1-more[open] summary{margin-bottom:8px}
+.m1-more p{margin:0 0 8px;color:var(--text);font-size:14px}
+.m1-q{font-size:19px;font-weight:800;line-height:1.25}
+.m1-lead{font-size:15px}
+.m1-watch{height:8px;border-radius:4px;background:var(--line);overflow:hidden}
+.m1-watch i{display:block;height:100%;width:100%;background:var(--accent);transform-origin:left;animation:m1Shrink linear both;animation-duration:8s}
+.m1-watch.on i{animation:none;transition:width 1s linear;background:var(--warm)}
+@keyframes m1Shrink{from{transform:scaleX(1)}to{transform:scaleX(0)}}
+.m1-clock{font-size:22px;font-variant-numeric:tabular-nums;color:var(--warm)}
+.m1-spor .seg .opt b{font-size:15px}
+.m1-deck{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px}
+.m1-card{position:relative;min-height:168px;border:0;padding:0;background:none;cursor:pointer;perspective:800px;text-align:left;animation:m1Deal .45s cubic-bezier(.3,1.4,.5,1) var(--d,0s) both}
+.m1-card>span{position:absolute;inset:0;display:grid;align-content:start;gap:4px;padding:12px;border-radius:14px;backface-visibility:hidden;transition:transform .5s cubic-bezier(.3,1.4,.5,1)}
+.m1-back{background:repeating-linear-gradient(45deg,var(--panel2) 0 10px,var(--panel) 10px 20px);border:1px solid var(--line2);align-content:center!important;justify-items:center;text-align:center}
+.m1-back b{font-size:34px;color:var(--warm)}
+.m1-face{background:var(--panel2);border:1px solid var(--line2);transform:rotateY(180deg)}
+.m1-face .ic{font-size:28px;line-height:1}
+.m1-face b{font-size:16px}
+.m1-card.flipped .m1-back{transform:rotateY(-180deg)}
+.m1-card.flipped .m1-face{transform:rotateY(0)}
+.m1-card.main .m1-face{border-color:var(--warm);box-shadow:0 0 0 2px var(--warm) inset}
+.m1-card:focus-visible{outline:2px solid var(--accent);outline-offset:3px;border-radius:14px}
+@keyframes m1Deal{from{transform:translateY(18px) rotate(-4deg);opacity:0}to{transform:none;opacity:1}}
+.m1-graphs{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:12px}
+.m1-graphs figure{margin:0;padding:10px;border-radius:12px;background:var(--bg2);border:1px solid var(--line)}
+.m1-graphs figcaption{font-size:14px;margin-bottom:4px}
+.m1-graphs svg{width:100%;height:auto;display:block}
+.m1-graphs .mid{stroke:var(--line2);stroke-dasharray:4 4}
+.m1-graphs .lab{fill:var(--muted);font-size:10px;font-weight:700}
+.m1-graphs .lab.hi{fill:var(--warm)}.m1-graphs .lab.lo{fill:var(--violet)}
+.m1-graphs .ln{fill:none;stroke:var(--accent);stroke-width:3;stroke-linejoin:round;stroke-dasharray:1;stroke-dashoffset:1;animation:m1Draw 1.4s ease-out .1s forwards}
+.m1-graphs .pt{fill:var(--accent);opacity:0;animation:m1Pop .3s ease-out var(--d) forwards}
+.m1-graphs .mark{fill:rgba(255,181,71,.16);stroke:var(--warm);stroke-dasharray:3 3}
+@keyframes m1Draw{to{stroke-dashoffset:0}}
+@keyframes m1Pop{to{opacity:1}}
+.m1-recipe{grid-template-columns:repeat(auto-fit,minmax(200px,1fr))}
+.m1-recipe .opt{display:grid;gap:4px;text-align:left;min-height:96px;align-content:start;background:linear-gradient(var(--bg2),var(--bg2)) padding-box,repeating-linear-gradient(-45deg,var(--line2) 0 6px,transparent 6px 12px) border-box;border:2px dashed transparent}
+@media (max-width:600px){.m1-deck{grid-template-columns:repeat(2,minmax(0,1fr))}.m1-q{font-size:17px}}
+@media (prefers-reduced-motion:reduce){.m1-card,.m1-card>span,.m1-graphs .ln,.m1-graphs .pt,.m1-watch i{animation:none!important;transition:none!important}.m1-graphs .ln{stroke-dashoffset:0}.m1-graphs .pt{opacity:1}}

@@ -33,7 +33,8 @@ function lessons() {
 }
 // ученику — урок без колоды спрятанных механик: какая спрятанная механика в игре класса, он узнаёт только после своей догадки
 // и без ответа шага «Найди спрятанную механику» с hunt в сценарии: правильный вариант, ловушка и раскрытие приходят после догадки
-const publicHunt = h => ({ question: h.question, options: h.options, compare: h.compare, after: h.after });
+// format (Г2 аудита): 'detektiv' — два графика партий (graphs), найди разницу; 'recept' — приёмы рецепта, один лишний; lead — строка над вопросом
+const publicHunt = h => ({ question: h.question, options: h.options, compare: h.compare, after: h.after, format: h.format, graphs: h.graphs, lead: h.lead });
 // Поле Фабрики с secrets: true — карта спрятанной механики своей игры: колода — названия спрятанных механик урока (со звуком — только при наушниках).
 // Сценарий учителя у чекпоинта (teacher) ученику не нужен.
 // Вопрос слепого теста по эффекту спрятанной механики (questions: { эффект: вопрос }, К4 19.10.2026): у abtest — эффект спрятанной механики игры класса;
@@ -874,9 +875,21 @@ function m6Tally(code, les, step, me) {
     const rules = Object.entries(count).sort((a, b) => b[1] - a[1] || (step.deck.indexOf(a[0]) + 1 || 99) - (step.deck.indexOf(b[0]) + 1 || 99)).map(([text, n]) => ({ text, n }));
     return { hidden: me != null && !mine.sent, n: rows.filter(r => r.v.sent).length, rules: rules.slice(0, 12), signed: rows.filter(r => r.v.signed).map(r => r.nick) };
   }
+  // входы модуля 1 (Г1 аудита, сессия 3): спор — голоса за партию и причины; загадка, сломанная игра и колода — ответы по вариантам
+  if (step.type === 'spor') {
+    const voted = rows.filter(r => r.v.voted && r.v.pick), pick = { same: 0 }, count = {};
+    step.sides.forEach(x => { pick[x.id] = 0; });
+    voted.forEach(r => { if (r.v.pick in pick) pick[r.v.pick]++; (r.v.why || []).slice(0, 2).filter(t => (step.reasons || []).includes(t)).forEach(t => { count[t] = (count[t] || 0) + 1; }); });
+    return { hidden: me != null && !mine.voted, n: voted.length, pick, top: Object.entries(count).sort((a, b) => b[1] - a[1]).slice(0, 6).map(([text, n]) => ({ text, n })) };
+  }
+  if (step.type === 'zagadka' || step.type === 'slomano' || step.type === 'koloda') {
+    const labels = step.type === 'koloda' ? step.cards.map(c => [c.id, c.name]) : step.options.map(o => [o, o]);
+    const voted = rows.filter(r => r.v.pick);
+    return { hidden: me != null && !mine.pick, n: voted.length, rows: labels.map(([id, label]) => ({ label, n: voted.filter(r => r.v.pick === id).length })) };
+  }
   return { hidden: true };
 }
-const M6_TALLY = ['setka', 'debate', 'kodeks'];
+const M6_TALLY = ['setka', 'debate', 'kodeks', 'spor', 'zagadka', 'slomano', 'koloda'];
 route('GET', '/api/m6/tally', (ctx) => {
   const { w, les } = needStudent(ctx);
   const step = les.checkpoints.flatMap(c => c.steps).find(x => x.id === ctx.url.searchParams.get('step') && M6_TALLY.includes(x.type));
@@ -1968,6 +1981,13 @@ route('GET', '/api/teacher/poll', (ctx) => {
         bars: [-2, -1, 0, 1, 2].map((p, i) => ({ label: ['⛔ ' + x.left, '👎 скорее ' + x.left.toLowerCase(), '🤔 не знаю', '👍 скорее ' + x.right.toLowerCase(), '✅ ' + x.right][i], n: t.after.n ? t.after.counts[i] : t.before.counts[i], before: t.after.n ? t.before.counts[i] : undefined })),
         compare: t.after.n ? { title: 'до дебатов', n: t.before.n } : null, own: t.top.slice(0, 6).map(a => `${a.side === 'left' ? '⛔' : '✅'} ${a.text} · ${a.n}`) });
       else steps.push({ cp: cp.id, id: x.id, title: 'Кодекс класса', kind: 'choice', n: t.n, max: Math.max(1, t.n), bars: t.rules.slice(0, x.size || 7).map(r => ({ label: r.text, n: r.n })), note: `Подписали: ${t.signed.length}` });
+    } else if (x.type === 'spor') { // вход урока 2: какую партию класс назвал лучше и почему
+      const t = m6Tally(cls.code, les, x, null);
+      steps.push({ cp: cp.id, id: x.id, title: x.question, kind: 'choice', n: t.n,
+        bars: x.sides.map(sd => ({ label: sd.label, n: t.pick[sd.id] || 0 })).concat([{ label: x.sameLabel || 'Одинаково', n: t.pick.same || 0 }]), own: t.top.map(a => `${a.text} · ${a.n}`) });
+    } else if (x.type === 'zagadka' || x.type === 'slomano' || x.type === 'koloda') { // загадка-сцена, сломанная игра, колода удовольствий
+      const t = m6Tally(cls.code, les, x, null);
+      steps.push({ cp: cp.id, id: x.id, title: x.question || x.title, kind: 'choice', n: t.n, bars: t.rows });
     } else if (x.type === 'ownplay' && x.match) {
       const list = all.map(a => (a[x.id] || {}).value || {}).filter(v => v.match);
       steps.push({ cp: cp.id, id: x.id, title: x.match.question, kind: 'choice', n: list.length, bars: x.match.options.map(o => ({ label: o, n: list.filter(v => v.match === o).length })) });

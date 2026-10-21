@@ -1053,6 +1053,23 @@ STEPS.cards = ctx => {
 const lessonSteps = () => S.lesson.checkpoints.flatMap(c => c.steps);
 // hunt в шаге — спрятанная механика донора без игры класса: варианты, сравнение и подписи из сценария, ответ и раскрытие — с сервера после догадки
 const stepById = id => lessonSteps().find(x => x.id === id);
+// детектив по телеметрии (Г2 аудита): два графика записанных партий, найди разницу. line — значения от −1 до 1 по ходам,
+// high и low — подписи верхнего и нижнего края, mark — { from, to } — участок, который подсвечивается после ответа
+function huntGraphs(list, open) {
+  const ns = 'http://www.w3.org/2000/svg', mk = (tag, a, txt) => { const e = document.createElementNS(ns, tag); for (const k in a) e.setAttribute(k, a[k]); if (txt != null) e.textContent = txt; return e; };
+  const W = 320, H = 124, box = el('div', { class: 'm1-graphs' });
+  list.forEach(gr => {
+    const n = gr.line.length, X = i => 34 + i * (W - 48) / Math.max(1, n - 1), Y = v => H / 2 - v * (H / 2 - 16);
+    const svg = mk('svg', { viewBox: `0 0 ${W} ${H}`, role: 'img', 'aria-label': `${gr.label}: ${gr.line.map(v => String(v).replace('.', ',')).join('; ')}` });
+    if (open && gr.mark) svg.append(mk('rect', { x: X(gr.mark.from) - 6, y: 4, width: X(gr.mark.to) - X(gr.mark.from) + 12, height: H - 8, rx: 8, class: 'mark' }));
+    svg.append(mk('line', { x1: 34, x2: W - 14, y1: Y(0), y2: Y(0), class: 'mid' }), mk('text', { x: 2, y: Y(0) + 4, class: 'lab' }, gr.mid || 'ничья'),
+      mk('text', { x: 2, y: 14, class: 'lab hi' }, gr.high || ''), mk('text', { x: 2, y: H - 4, class: 'lab lo' }, gr.low || ''),
+      mk('polyline', { points: gr.line.map((v, i) => `${X(i).toFixed(1)},${Y(v).toFixed(1)}`).join(' '), class: 'ln', pathLength: 1 }));
+    gr.line.forEach((v, i) => svg.append(mk('circle', { cx: X(i).toFixed(1), cy: Y(v).toFixed(1), r: 3.2, class: 'pt', style: `--d:${(i * 0.08).toFixed(2)}s` })));
+    box.append(el('figure', {}, el('figcaption', {}, el('b', {}, gr.label), gr.end ? el('span', { class: 'muted' }, ' · ' + gr.end) : null), svg));
+  });
+  return box;
+}
 STEPS.secret = ctx => {
   const host = el('div', { class: 'stack' });
   const H = ctx.step.hunt || null;
@@ -1066,17 +1083,27 @@ STEPS.secret = ctx => {
     host.innerHTML = '';
     const a = ctx.value && ctx.value.secret ? ctx.value : null;
     if (!data || !data.options.length) { host.append(el('p', { class: 'muted' }, H ? 'Варианты не загрузились — обнови страницу.' : 'Сначала учитель соберёт игру класса в чекпоинте «Вау-старт».')); return; }
+    // форматы поиска (Г2): детектив — графики партий над вопросом; рецепт — варианты как приёмы рецепта, один лишний
+    const recept = H && H.format === 'recept';
+    if (H && H.lead) host.append(el('p', { class: 'concept m1-lead' }, H.lead));
+    if (H && H.format === 'detektiv' && H.graphs) host.append(huntGraphs(H.graphs, !!a));
     if (!a) {
-      const grid = el('div', { class: 'opts', role: 'radiogroup' });
-      data.options.forEach(o => grid.append(el('button', { type: 'button', class: 'opt' + (pick === o ? ' on' : ''), 'aria-pressed': String(pick === o), onclick: () => { pick = o; beep('tick'); draw(); } }, o)));
+      const grid = el('div', { class: 'opts' + (recept ? ' m1-recipe' : ''), role: 'radiogroup' });
+      data.options.forEach((o, k) => grid.append(el('button', { type: 'button', class: 'opt' + (pick === o ? ' on' : ''), 'aria-pressed': String(pick === o), onclick: () => { pick = o; beep('tick'); draw(); } },
+        recept ? el('span', { class: 'eyebrow' }, `Приём ${k + 1}`) : null, o)));
       host.append(el('div', { class: 'eyebrow' }, H ? H.question : 'Что было спрятано в коде игры класса?'), grid,
         el('div', {}, el('button', { class: 'btn', type: 'button', onclick: guess }, H ? 'Ответить' : 'Это спрятанная механика!')));
       return;
     }
-    const verdict = a.correct ? ['good', H ? '🎯 Точно! Ты назвал спрятанную механику донора.' : '🎯 Угадал! Ты почувствовал спрятанную механику, не видя её.']
+    const verdict = a.correct ? ['good', recept ? '🎯 Точно! Этого приёма в коде нет. Два других — и есть спрятанная механика.' : H ? '🎯 Точно! Ты назвал спрятанную механику донора.' : '🎯 Угадал! Ты почувствовал спрятанную механику, не видя её.']
       : a.trap ? ['bad', a.trapText || 'Ловушка! Это было на картах, а значит, не спрятанная механика. Проверяй, а не верь: то, что заказал сам, игра не прятала.']
-        : ['bad', 'Не угадал: спрятанная механика была другой. Зато теперь ты знаешь, что искать.'];
+        : ['bad', recept ? 'Этот приём в коде есть. Лишний — другой: смотри раскрытие.' : 'Не угадал: спрятанная механика была другой. Зато теперь ты знаешь, что искать.'];
     const C = H && H.compare;
+    const revealBox = () => el('div', { class: 'secret-reveal' },
+      el('div', { class: 'eyebrow' }, H ? 'Спрятанная механика донора' : 'Спрятанная механика игры класса'), el('h3', {}, a.secret.title),
+      el('p', {}, a.secret.reveal),
+      a.secret.effect ? el('span', { class: 'tag' }, SECRET_EFFECT[a.secret.effect] || a.secret.effect) : null);
+    if (H && !C) { host.append(el('p', { class: 'verdict ' + verdict[0] }, verdict[1]), revealBox(), H.after ? el('p', { class: 'concept' }, H.after) : ''); return; } // без сравнения партий (рецепт)
     const ab = !H && lessonSteps().find(x => x.type === 'abtest'), AB = ab && ans(ab.id).value;
     if (AB && AB.A) {
       const sk = AB.side, ok = sk === 'A' ? 'B' : 'A', L = k => (k === 'A' ? 'А' : 'Б');
@@ -1098,20 +1125,18 @@ STEPS.secret = ctx => {
     }
     const on = C ? stepById(C.on) : lessonSteps().find(x => x.type === 'play' && x.shared && !x.secretOff && !x.lupa);
     const off = C ? stepById(C.off) : lessonSteps().find(x => x.type === 'play' && x.shared && x.secretOff);
-    const V = step => (step && ans(step.id).value) || {};
+    // onKey/offKey — сторона шага spor (партия А или Б): сравнение с одной из двух партий спора
+    const V = (step, key) => { const x = (step && ans(step.id).value) || {}; return key ? (x.sides || {})[key] || {} : x; };
     // строка сравнения: лучший счёт, партии и счётчики телеметрии из шага play (compare.show — их имена)
-    const line = (step, withSecret) => {
-      const x = V(step), cs = (C && C.show) || [];
+    const line = (step, withSecret, key) => {
+      const x = V(step, key), cs = (C && C.show) || [];
       return [`партий ${x.rounds || 0}`].concat(cs.map(k => `${k} ${(x.custom || {})[k] || 0}`), withSecret ? [`спрятанная механика сработала ${x.secret || 0} раз`] : []).join(' · ');
     };
-    host.append(el('p', { class: 'verdict ' + verdict[0] }, verdict[1]),
-      el('div', { class: 'secret-reveal' },
-        el('div', { class: 'eyebrow' }, H ? 'Спрятанная механика донора' : 'Спрятанная механика игры класса'), el('h3', {}, a.secret.title),
-        el('p', {}, a.secret.reveal),
-        a.secret.effect ? el('span', { class: 'tag' }, SECRET_EFFECT[a.secret.effect] || a.secret.effect) : null),
+    const onK = C && C.onKey, offK = C && C.offKey;
+    host.append(el('p', { class: 'verdict ' + verdict[0] }, verdict[1]), revealBox(),
       el('div', { class: 'compare' },
-        el('div', {}, el('div', { class: 'eyebrow' }, (C && C.onLabel) || 'Со спрятанной механикой'), el('b', {}, `лучший счёт ${V(on).best || 0}`), el('div', { class: 'small muted' }, line(on, true))),
-        el('div', {}, el('div', { class: 'eyebrow' }, (C && C.offLabel) || 'Без спрятанной механики'), el('b', {}, `лучший счёт ${V(off).best || 0}`), el('div', { class: 'small muted' }, line(off, false)))),
+        el('div', {}, el('div', { class: 'eyebrow' }, (C && C.onLabel) || 'Со спрятанной механикой'), el('b', {}, `лучший счёт ${V(on, onK).best || 0}`), el('div', { class: 'small muted' }, line(on, true, onK))),
+        el('div', {}, el('div', { class: 'eyebrow' }, (C && C.offLabel) || 'Без спрятанной механики'), el('b', {}, `лучший счёт ${V(off, offK).best || 0}`), el('div', { class: 'small muted' }, line(off, false, offK)))),
       el('p', { class: 'concept' }, (H && H.after) || 'Открой ручки (Tab) в игре выше и покрути ручку «Спрятанная механика» от 0 до 1. Как меняется чувство игры?'));
   }
   async function guess() {
@@ -1649,6 +1674,24 @@ STEPS.factory = ctx => {
   if (st.levels.some(l => l.id === v.level && locked(l))) v.level = st.levels[0].id;
   // donors — несколько доноров на выбор (урок 2: змейка, пинг-понг…): у каждого свои колоды кубиков, чтобы кубик не приносил правило из другой игры
   if (st.donors && !st.donors.some(d => d.id === v.donor)) v.donor = st.donors[0].id;
+  // from — поле берёт выбор другого шага (урок 3: карта колоды удовольствий): пустое поле получает его картой, ученик может переписать.
+  // Шаг-источник стоит в том же чекпоинте, поэтому выбор приходит событием lab:pick; поле, взятое оттуда (from), обновляется вместе с выбором
+  const fillFrom = () => {
+    let got = false;
+    for (const f of st.fields) {
+      const cur = v.fields[f.id], line = f.from && (ans(f.from).value || {}).line;
+      if (line && (!valText(cur) || (cur.from && cur.text !== line))) { v.fields = Object.assign({}, v.fields, { [f.id]: { text: line, card: true, from: true } }); got = true; }
+    }
+    return got;
+  };
+  fillFrom();
+  if (st.fields.some(f => f.from)) {
+    const onPick = e => {
+      if (!wrap.isConnected) { document.removeEventListener('lab:pick', onPick); return; }
+      if (st.fields.some(f => f.from === e.detail.step) && fillFrom()) { ctx.save(v); draw(); }
+    };
+    document.addEventListener('lab:pick', onPick);
+  }
   const donor = () => st.donors ? st.donors.find(d => d.id === v.donor) : null;
   const withDeck = f => { const d = donor(); return d && d.decks && d.decks[f.id] ? Object.assign({}, f, { deck: d.decks[f.id] }) : f; };
   const wrap = el('div', { class: 'stack' });
@@ -3793,7 +3836,7 @@ function stepSummary(step) {
     case 'arcade': return v.game ? `игра «${v.title || ''}» (автор ${v.author || '—'}), партий ${v.rounds || 0}, лучший счёт ${v.best || 0}${v.beat ? ', рекорд автора побит' : ''}` : 'не играл';
     case 'playtest': return (v.sent ? `отзыв на «${v.title || ''}»: ${(v.emotions || []).join(' ')}; ${step.ask && valText(v.story) ? `${step.ask.label} ${f(v.story)}; ` : ''}нравится: ${f(v.like)}; хочется: ${f(v.want)}; а что если: ${f(v.whatif)}` : 'отзыв не отправлен') +
       (S.me.feedback ? `\nотзыв учителя: понятие — ${valText(S.me.feedback.concept)}; вопрос — ${valText(S.me.feedback.question)}` : '');
-    default: return (window.LabRitualSummary && window.LabRitualSummary(step, v, a)) || (window.LabStepsM8Summary && window.LabStepsM8Summary(step, v, a)) || (window.LabStepsM7Summary && window.LabStepsM7Summary(step, v, a)) || (window.LabStepsM6Summary && window.LabStepsM6Summary(step, v, a)) || (window.LabStepsM4Summary && window.LabStepsM4Summary(step, v, a)) || (window.LabStepsM3Summary && window.LabStepsM3Summary(step, v, a)) || JSON.stringify(v);
+    default: return (window.LabRitualSummary && window.LabRitualSummary(step, v, a)) || (window.LabStepsM1Summary && window.LabStepsM1Summary(step, v, a)) || (window.LabStepsM8Summary && window.LabStepsM8Summary(step, v, a)) || (window.LabStepsM7Summary && window.LabStepsM7Summary(step, v, a)) || (window.LabStepsM6Summary && window.LabStepsM6Summary(step, v, a)) || (window.LabStepsM4Summary && window.LabStepsM4Summary(step, v, a)) || (window.LabStepsM3Summary && window.LabStepsM3Summary(step, v, a)) || JSON.stringify(v);
   }
 }
 function cpSummary(cp) {

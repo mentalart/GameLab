@@ -628,19 +628,24 @@
       if (!cv.isConnected && now - sceneT0 > 2000) { cancelAnimationFrame(raf); return; }
       // за экраном сцена не рисуется; в автопроверке (LAB_LOWRES) — 10 кадров в секунду, чтобы не отнимать процессор у игр
       const box = cv.getBoundingClientRect(), off = !cv.offsetParent || box.bottom < 0 || box.top > innerHeight; // спрятана (театр сцены) — тоже не рисуем
-      if ((window.LAB_LOWRES && now - last < 100) || (off && last)) { raf = requestAnimationFrame(loop); return; }
+      // «уменьшить движение» в системе: сцена стоит на последнем кадре (t = 8 с), переключатели срабатывают сразу, без перехода
+      const still = window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches;
+      if ((window.LAB_LOWRES && now - last < 100) || (still && now - last < 400) || (off && last)) { raf = requestAnimationFrame(loop); return; }
       last = now;
       const sc = st.scenes[i], f = MOTION[sc.anim];
-      ctls[i]._t = (now - ctlT0) / 1000;
+      ctls[i]._t = still ? 99 : (now - ctlT0) / 1000;
       g.save(); g.clearRect(0, 0, 640, 300);
-      try { if (f) f(g, (now - sceneT0) / 1000 * (fast() ? 2 : 1), 640, 300, ctls[i]); else { g.fillStyle = '#141c36'; g.fillRect(0, 0, 640, 300); text(g, sc.title, 320, 150, '#f2efe6', 18); } } catch (e) { /* сцена не рисуется — текст остаётся */ }
+      try { if (f) f(g, still ? 8 : (now - sceneT0) / 1000 * (fast() ? 2 : 1), 640, 300, ctls[i]); else { g.fillStyle = '#141c36'; g.fillRect(0, 0, 640, 300); text(g, sc.title, 320, 150, '#f2efe6', 18); } } catch (e) { /* сцена не рисуется — текст остаётся */ }
       g.restore();
       const p = pad(); if (p.a || p.right) go(1); if (p.left || p.b) go(-1);
       raf = requestAnimationFrame(loop);
     };
     raf = requestAnimationFrame(loop);
     paint();
-    const box = el('div', { class: 'stack m4-motionbox' }, el('div', { class: 'm4-stage' }, cv), tog, read, el('div', { class: 'row' }, back, dots, el('span', { class: 'grow' }), next), fin);
+    // more — прежний текст теории (А2, 21.10.2026): свёрнут под сценами в «Прочитать подробнее», абзацы через пустую строку
+    const more = st.more ? el('details', { class: 'm1-more' }, el('summary', {}, st.moreTitle || 'Прочитать подробнее'),
+      ...String(st.more).split(/\n\s*\n/).map(t => el('p', {}, t.trim()))) : null;
+    const box = el('div', { class: 'stack m4-motionbox' }, el('div', { class: 'm4-stage' }, cv), tog, read, el('div', { class: 'row' }, back, dots, el('span', { class: 'grow' }), next), fin, more);
     if (window.LabKlass) LabKlass.teatr.mount(st.id, box); // театр сцены (В5): учитель ведёт эту сцену на проекторе — здесь только голосование
     return box;
   }
