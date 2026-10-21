@@ -32,6 +32,107 @@
   const MEM = new WeakMap();
   const mem = (g, t, init) => { let m = MEM.get(g); if (!m || t < m.t - 0.5) { m = Object.assign({ t }, init()); MEM.set(g, m); } return m; };
 
+  /* ================= урок 1 ================= */
+  // «Твист и спрятанная механика» (автор, 21.10.2026): перед сортировкой «Твист или спрятанная механика?» — одна мини-игра двумя
+  // способами. Твист игра объявляет, игрок видит правило и играет иначе; спрятанная механика молчит, игрок видит только вспышку.
+  const INV = ['..X..X..', '...XX...', '.XXXXXX.', 'XX.XX.XX', 'XXXXXXXX', '.X....X.'];
+  const inv = (g, x, y, col, s = 4) => { g.fillStyle = col; INV.forEach((r, j) => [...r].forEach((ch, i) => { if (ch === 'X') g.fillRect(x - 4 * s + i * s, y - 3 * s + j * s, s, s); })); };
+  const cannon = (g, x, y, col = '#7cf5a8') => { rr(g, x - 20, y, 40, 12, 4, col); rr(g, x - 4, y - 12, 8, 14, 3, col); };
+  const ALX = [140, 230, 320, 410, 500];
+  // волна пришельцев: dead — кого уже сбили (индексы), пришельцы покачиваются
+  function wave(g, t, dead, y = 74) { ALX.forEach((x, i) => { if (!dead.includes(i)) inv(g, x + 10 * Math.sin(t * 1.6), y, '#ff8fa0'); }); }
+  const pop = (g, x, y, k, col = '#ffe08a') => { if (k <= 0 || k >= 1) return; for (let a = 0; a < 8; a++) disc(g, x + Math.cos(a * TAU / 8) * 26 * k, y + Math.sin(a * TAU / 8) * 26 * k, 4 * (1 - k), col); };
+  // табличка правила в углу: open — правило видно, иначе замок
+  function plate(g, x, y, w, icon, label, col, open = true) { rr(g, x, y, w, 34, 10, open ? 'rgba(124,245,168,.12)' : '#141c36', col); emo(g, icon, x + 20, y + 17, 18); fit(g, label, x + 38, y + 17, w - 46, open ? '#f2efe6' : '#6f7aa8', 14, 'left'); }
+  function bubble(g, s, x, y, col = '#f2efe6', k = 1) { if (k <= 0) return; g.save(); g.translate(x, y); g.scale(k, k); g.font = "800 14px system-ui,-apple-system,'Segoe UI',sans-serif"; const w = g.measureText(s).width + 22; rr(g, -w / 2, -16, w, 32, 14, '#24304f', col); text(g, s, 0, 0, col, 14); g.restore(); }
+  // сцена 1: твист — правило «снаряды летят дугой» объявлено баннером, висит в углу, игрок целится по-новому
+  MOTION['tvist-gromko'] = (g, t, W, H) => {
+    bg(g, W, H);
+    const T = t % 7, hx0 = 230, hx1 = 440;
+    const before = T < 1;
+    // до объявления: стреляет прямо вверх под пришельцем
+    const dead = [];
+    if (T > 0.75) dead.push(1);
+    if (T > 4.4) dead.push(2);
+    wave(g, t, dead);
+    if (before) { const p = seg(T, 0.2, 0.75); if (p > 0 && p < 1) disc(g, hx0, lerp(204, 80, p), 5, '#ffe08a'); }
+    pop(g, ALX[1], 74, seg(T, 0.75, 1.2));
+    // объявление: баннер прилетает крупно, трясёт экран, потом уезжает табличкой в угол
+    const inK = ob(seg(T, 1, 1.4)), outK = io(seg(T, 2.3, 2.8));
+    const hx = lerp(hx0, hx1, io(seg(T, 2.6, 3.2)));
+    cannon(g, hx, 208);
+    if (T > 1 && T < 2.8) {
+      const sh = T < 1.5 ? Math.sin(T * 80) * 6 * (1.5 - T) : 0;
+      g.fillStyle = `rgba(124,245,168,${0.25 * (1 - seg(T, 1, 1.6))})`; g.fillRect(0, 0, W, H);
+      g.save(); g.translate(lerp(320, 470, outK) + sh, lerp(140, 26, outK)); const k = lerp(inK, 0.45, outK); g.scale(k, k);
+      rr(g, -230, -46, 460, 92, 18, '#1a2445', '#7cf5a8');
+      text(g, '📢 НОВОЕ ПРАВИЛО', 0, -18, '#7cf5a8', 16); text(g, 'Снаряды летят дугой!', 0, 16, '#f2efe6', 30);
+      g.restore();
+    }
+    if (T >= 2.8) { plate(g, 380, 10, 250, '👁', 'Снаряды летят дугой', '#7cf5a8'); }
+    // после: прицел-дуга пунктиром, снаряд летит по дуге в пришельца, который не над пушкой
+    if (T > 3.2) {
+      const P0 = [hx1, 200], P1 = [hx1 + 140, 40], P2 = [ALX[2] + 10 * Math.sin(t * 1.6), 74];
+      const at = p => [lerp(lerp(P0[0], P1[0], p), lerp(P1[0], P2[0], p), p), lerp(lerp(P0[1], P1[1], p), lerp(P1[1], P2[1], p), p)];
+      if (T < 4.4) { g.fillStyle = 'rgba(124,245,168,.55)'; for (let k = 0.05; k < 1; k += 0.07) { const [x, y] = at(k); disc(g, x, y, 2.5, 'rgba(124,245,168,.6)'); } }
+      const p = seg(T, 3.7, 4.4); if (p > 0 && p < 1) { const [x, y] = at(p); glow(g, x, y, 16, 'rgba(255,224,138,.5)'); disc(g, x, y, 5, '#ffe08a'); }
+      pop(g, ALX[2], 74, seg(T, 4.4, 4.9));
+    }
+    bubble(g, 'Ага, теперь целюсь иначе!', hx1 - 40, 168, '#7cf5a8', ob(seg(T, 3.3, 3.7)));
+    caption(g, 'Твист: игра объявляет правило громко', 'игрок видит само правило и сразу играет иначе', 320, 268, '#7cf5a8');
+  };
+  // сцена 2: спрятанная механика — каждый пятый сбитый даёт ×5, игра молчит. Лупа автора (c.lupa) открывает правило в углу
+  MOTION['sekret-tiho'] = (g, t, W, H, c = {}) => {
+    const step = 0.55, n = Math.floor(t / step), p = (t % step) / step, hit = n % 5 === 4, flash = n % 5 === 0 && n > 0 && p < 0.9;
+    bg(g, W, H, flash ? '#2a2410' : '#0b1020');
+    if (flash) { g.fillStyle = `rgba(255,210,63,${0.35 * (1 - p)})`; g.fillRect(0, 0, W, H); }
+    const tgt = n % 5, x = ALX[tgt] + 10 * Math.sin(t * 1.6);
+    wave(g, t, [...Array(tgt).keys()]);
+    cannon(g, x, 208, hit ? '#ffd23f' : '#7cf5a8');
+    disc(g, x, lerp(204, 80, p), 5, hit ? '#ffd23f' : '#ffe08a');
+    // счёт: обычный +10, пятый — +50 с золотом
+    const done = Math.floor(n / 5) * 5, base = n - done;
+    text(g, `сбито: ${n}`, 24, 26, '#9aa3c7', 14, 'left', 700);
+    if (flash) {
+      glow(g, ALX[4], 74, 120 * (0.4 + p), 'rgba(255,210,63,.55)');
+      confetti(g, ALX[4], 74, p, 22, n);
+      g.save(); g.translate(320, 150); const k = ob(seg(p, 0, 0.35)); g.scale(k, k); text(g, '×5!', 0, 0, '#ffd23f', 54); g.restore();
+    } else if (base > 0 && p < 0.5) text(g, '+10', ALX[base - 1] + 10 * Math.sin(t * 1.6), 104 - 20 * p, '#9aa3c7', 14);
+    // игрок видит только эффект
+    emo(g, flash ? '🤩' : '🙂', 44, 206, 34);
+    bubble(g, 'Ого! А почему?!', 110, 160, '#ffd23f', flash ? ob(seg(p, 0.05, 0.4)) : 0);
+    // правило: замок у игрока, лупа автора его открывает
+    const lu = !!c.lupa, k = io(seg(since(t, c), 0, 0.5));
+    if (lu) { plate(g, 360, 10, 270, '🔍', 'Каждый 5-й сбитый — очки ×5', '#ffd23f'); g.globalAlpha = k; text(g, 'это знает только автор', 495, 56, '#ffd23f', 12, 'center', 700); g.globalAlpha = 1; }
+    else plate(g, 400, 10, 230, '🔒', 'Правило: ???', '#3a4670', false);
+    if (lu) caption(g, 'Правило знает автор — игра его не объявляет', 'игрок по-прежнему видит только вспышку', 320, 268, '#ffd23f');
+    else caption(g, 'Спрятанная механика: игра молчит', 'игрок видит эффект — золотую вспышку, а правила не видит', 320, 268, '#ffd23f');
+  };
+  // сцена 3: проверка «Увидит ли игрок само правило?» — карточки падают в «Твист» или «Спрятанная механика».
+  // c.obyavit: игра объявляет «×5» — та же механика уходит в твисты
+  MOTION['tvist-proverka'] = (g, t, W, H, c = {}) => {
+    bg(g, W, H);
+    const tt = since(t, c), loud = !!c.obyavit;
+    rr(g, 170, 14, 300, 46, 14, '#1a2445', '#f2efe6');
+    emo(g, '👁', 196, 37, 22); fit(g, 'Увидит ли игрок само правило?', 334, 37, 250, '#f2efe6', 18);
+    const L = [130, 170], R = [510, 170];
+    arrow(g, 260, 62, 168, 132, '#7cf5a8', 3); arrow(g, 380, 62, 472, 132, '#ffd23f', 3);
+    text(g, 'да', 196, 92, '#7cf5a8', 15); text(g, 'нет, только эффект', 470, 92, '#ffd23f', 14, 'left');
+    rr(g, L[0] - 110, 136, 220, 96, 14, 'rgba(124,245,168,.08)', '#7cf5a8'); text(g, '📢 ТВИСТ', L[0], 154, '#7cf5a8', 17);
+    rr(g, R[0] - 120, 136, 240, 96, 14, 'rgba(255,210,63,.08)', '#ffd23f'); text(g, '🔒 СПРЯТАННАЯ МЕХАНИКА', R[0], 154, '#ffd23f', 14);
+    // карточка летит из-под вопроса в свою корзину
+    function card(s, a, to, col) {
+      const k = io(seg(tt, a + 0.4, a + 1.2)), inK = ob(seg(tt, a, a + 0.4)); if (inK <= 0) return;
+      const x = lerp(320, to[0], k), y = lerp(110, to[1] + 12, k), sc = lerp(1, 0.8, k) * inK;
+      g.save(); g.translate(x, y); g.scale(sc, sc); rr(g, -112, -17, 224, 34, 10, '#24304f', col); fit(g, s, 0, 0, 208, '#f2efe6', 14); g.restore();
+    }
+    card('Снаряды летят дугой', 0.2, L, '#7cf5a8');
+    if (loud) card('📢 «Каждый пятый — ×5!»', 2.0, [L[0], L[1] + 30], '#7cf5a8');
+    else card('Каждый 5-й сбитый — ×5', 2.0, R, '#ffd23f');
+    if (loud) caption(g, 'Игра объявила «×5» — и это уже твист', 'игрок видит правило и охотится за пятым: играет иначе', 320, 268, '#7cf5a8');
+    else caption(g, 'Проверка: увидит ли игрок само правило?', 'увидит — твист; видит только эффект — спрятанная механика', 320, 268, '#f2efe6');
+  };
+
   /* ================= урок 2 ================= */
   // Камни мудреца: ☀ — ты, 🌙 — мудрец. Весы исхода: −1 мудрец выигрывает, 0 ничья, +1 ты.
   const CELL = (i, x0, y0, s) => [x0 + (i % 3) * s + s / 2, y0 + Math.floor(i / 3) * s + s / 2];

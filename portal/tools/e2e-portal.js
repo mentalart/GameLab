@@ -308,6 +308,8 @@ async function run(browser, base, mode) {
 
   // Фабрика и решения: карты вместо своих слов, свои слова — только «Чувство»
   await student.click('.cp >> text=Фабрика');
+  // объяснялка «Твист и спрятанная механика» перед сортировкой: три сцены, лупа и «объявить ×5»
+  await scenesM1(student, lesson1, 'tvist-ili-sekret', shot);
   // «Твист или спрятанная механика?» (И2): две корзины, клавиши 1 и 2
   await student.click('#step-tvist-sekret >> text=▶ Начать');
   for (let i = 0; i < 20 && !(await student.locator('#step-tvist-sekret.done').count()); i++) {
