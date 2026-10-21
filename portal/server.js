@@ -119,6 +119,7 @@ function buildPlan(les, st) {
     secret: secText ? { title: secText, prompt: secDef ? secDef.prompt : secText, base: secDef ? secDef.base || null : null, howto: secDef ? secDef.howto || null : null } : null,
     level: `${level.label} (${level.hint})`, details,
     levels: les.levels || null, // модуль 4: уровни как данные — раздел levels задания Qwen
+    proekt: les.proekt || null, // модуль 8: этап итогового проекта — раздел proekt задания Qwen (серый прототип, вертикальный срез)
     player: les.player || null, // модуль 6: игрок в центре — раздел player задания Qwen (загадка дня, обучение и доступность, пресеты «Злая» и «Честная»)
     decisions: { feeling: fieldText(dec.feeling), honesty: fieldText(dec.honesty), choice: fieldText(dec.choice) },
     igra: { i: fieldText(igra.i), g: fieldText(igra.g), r: fieldText(igra.r), a: fieldText(igra.a) },
@@ -362,6 +363,7 @@ route('GET', '/api/me', (ctx) => {
   const { w, cls, les, s, st } = needStudent(ctx);
   const tg = M7.teamGameId(w.class, w.nick, les.id); // джем: игра команды — и в уроке 28, где ученик ещё ничего не собирал
   if (tg && tg !== st.gameId && store.getGame(tg)) st.gameId = tg;
+  M8.carry(s, les, st); // модуль 8: диздок урока 29 — в уроке 30 и дальше
   s.seen = store.now(); store.saveStudent(w.class, s);
   const g = st.gameId ? store.getGame(st.gameId) : null;
   return { nick: w.nick, class: { code: cls.code, name: cls.name, opened: cls.opened, authorMode: cls.authorMode, current: (cls.timer || {}).cp || null }, lesson: studentLesson(les, cls), answers: st.answers, game: g, wow: les.wow ? publicWow(cls, les) : null, feedback: st.feedback || null, demo: ai.demo(), chat: true, aiCalls: st.aiCalls, aiLimit: aiLimit(st), prevPlan: prevPlan(s, les), help: s.help || null };
@@ -1504,7 +1506,9 @@ route('POST', '/api/ai/producer-fix', (ctx) => {
 });
 
 // модуль 7: арена класса, турнирная сетка, команды джема (lib/m7.js)
-const M7 = require('./lib/m7')({ route, needStudent, needTeacher, needDayClass, broadcast, store, saveStudentField });
+const M7 = require('./lib/m7')({ route, needStudent, needTeacher, needDayClass, broadcast, store, saveStudentField, lesson });
+// модуль 8: команды проекта через уроки 29–36, перенос диздока, питчи, дорога к Фестивалю, стенды Фестиваля (lib/m8.js)
+const M8 = require('./lib/m8')({ route, needStudent, needDayClass, broadcast, store, saveStudentField, lessons, M7 });
 function ensureGame(c) {
   const teamId = M7.teamGameId(c.w.class, c.w.nick, c.les.id); // джем: игра одна на команду
   if (teamId && teamId !== c.st.gameId && store.getGame(teamId)) { c.st.gameId = teamId; saveStudentField(c.w.class, c.w.nick, c.les.id, st => { st.gameId = teamId; }); }

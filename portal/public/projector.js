@@ -8,6 +8,7 @@
 // Вкладка «Финал»: стена аркады урока — игры урока с рекордами, игра класса, лидер мира дня и провал дня (самый смешной баг урока).
 // Вкладка «Выставка и турнир» (урок с шагом vote): лидеры номинаций и кнопочный турнир в игре-победителе номинации step.tournament.
 // Вкладка «Вместе» (модуль 7, уроки с шагами arena, bracket, team): карта забега «Арены класса», итоги, голоса за правило, турнирная сетка, команды джема (public/m7-pult.js).
+// Вкладка «Проект» (модуль 8, уроки с teamGroup 'proekt'): дорога к Фестивалю, сцена питча с кольцом, стена питчей, диздоки, Фестиваль и номинации (public/m8-pult.js).
 'use strict';
 const { el, api, toast, beep } = Lab;
 const $ = s => document.querySelector(s);
@@ -20,7 +21,7 @@ async function boot() {
   const q = new URLSearchParams(location.search);
   try { P.code = q.get('code') || localStorage.getItem('lab:teacher:class'); } catch (e) { P.code = q.get('code'); }
   if (!P.code) { $('#pj-lesson').append(el('div', { class: 'card' }, 'Сначала создайте класс в панели учителя.')); return; }
-  if (['demo', 'day', 'poll', 'final', 'pair', 'm7'].includes(q.get('tab'))) P.tab = q.get('tab');
+  if (['demo', 'day', 'poll', 'final', 'pair', 'm7', 'm8'].includes(q.get('tab'))) P.tab = q.get('tab');
   await refresh();
   setInterval(refresh, 2000);
   setInterval(tick, 250);
@@ -43,6 +44,9 @@ async function refresh() {
   const m7 = o.lesson.checkpoints.some(c => c.steps.some(s => ['arena', 'bracket', 'team'].includes(s.type)));
   $('#m7Tab').hidden = !m7;
   if (!m7 && P.tab === 'm7') P.tab = 'lesson';
+  const m8 = o.lesson.teamGroup === 'proekt';
+  $('#m8Tab').hidden = !m8;
+  if (!m8 && P.tab === 'm8') P.tab = 'lesson';
   const vs = voteStep();
   $('#cupTab').hidden = !vs;
   if (!vs && P.tab === 'cup') P.tab = 'lesson';
@@ -67,6 +71,9 @@ function showTab() {
   $('#pj-m7').hidden = P.tab !== 'm7';
   if (P.tab === 'm7' && !P.m7) { P.m7 = LabM7.pult($('#pj-m7'), { code: () => P.code, lesson: () => P.o && P.o.lesson, projector: true }); P.m7.show(); }
   if (P.tab !== 'm7' && P.m7) { P.m7.hide(); P.m7 = null; $('#pj-m7').innerHTML = ''; }
+  $('#pj-m8').hidden = P.tab !== 'm8';
+  if (P.tab === 'm8' && !P.m8) { P.m8 = LabM8.pult($('#pj-m8'), { code: () => P.code, lesson: () => P.o && P.o.lesson, projector: true }); P.m8.show(); }
+  if (P.tab !== 'm8' && P.m8) { P.m8.hide(); P.m8 = null; $('#pj-m8').innerHTML = ''; }
   $('#pj-pair').hidden = P.tab !== 'pair';
   if (P.tab !== 'pair' && P.pair) { P.pair.frames.forEach(f => f.h.destroy()); P.pair = null; $('#pj-pair').innerHTML = ''; }
   if (P.tab !== 'cup' && P.cupFrame) { P.cupFrame.destroy(); P.cupFrame = null; P.cupKey = null; $('#pj-cup').innerHTML = ''; }

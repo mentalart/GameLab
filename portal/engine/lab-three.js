@@ -187,6 +187,7 @@ let G = null, state = 'loading', paused = false, errored = false, freshPreview =
 let scene = null, cam = null, skyTex = null;
 let parts = null, popups = [], warns = [], pulses = [], whites = [], rings = [], trails = [], tweens = [], timers = [], follow = null, sceneGen = 0;
 let shakeAmp = 0, flashA = 0, hitstopT = 0, matCache = {}, glowMats = [];
+let greyOn = false, greyMat = null; // серый прототип: материал-заменитель на всю сцену
 const cfg = {}, DEFAULTS = {}, META = {};
 const tele = { presses: {}, hold: {}, hurts: 0, custom: {}, stats: {}, marks: {}, line: [], spots: [], maps: {} }; // line — счёт на каждой секунде партии (призрак соперника в вызове)
 const session = { rounds: 0, restarts: 0 };
@@ -205,7 +206,10 @@ const JUICE = [['hitstop', 'Стоп-кадр на ударе'], ['shake', 'Тр
   ['flash', 'Вспышка экрана'], ['whiten', 'Вспышка попадания'], ['popup', 'Всплывающие очки и надписи'], ['sound', 'Звук'],
   ['pitch', 'Звук выше с каждым ударом подряд'], ['vibrate', 'Вибрация геймпада'], ['glow', 'Свечение'], ['slowmo', 'Замедление в решающий момент']];
 for (const [k, label] of JUICE) SHELL_KNOBS['j_' + k] = { value: 1, min: 0, max: 1, step: 1, label, names: ['выкл', 'вкл'], juice: true };
-function on(name) { return !(('j_' + name) in cfg) || cfg['j_' + name] >= 1; }
+// серый прототип (модуль 8, урок 30): все модели — один серый цвет, фон серый, без сочности и звука; механика та же. Пресет может включить
+SHELL_KNOBS.grey = { value: 0, min: 0, max: 1, step: 1, label: 'Серый прототип', names: ['цвет', 'серый'], juice: true };
+const grey = () => cfg.grey >= 1;
+function on(name) { if (grey() && name !== 'popup') return false; return !(('j_' + name) in cfg) || cfg['j_' + name] >= 1; }
 let slowT = 0, slowK = 1;
 
 /* ---------------- плавность: easing ---------------- */
@@ -536,6 +540,7 @@ function buildScene() {
   scene = new THREE.Scene(); lab.scene = scene;
   const [top, bottom] = skyColors();
   skyTex = skyTexture(top, bottom); scene.background = skyTex;
+  greyOn = false;
   if (G.fog) scene.fog = new THREE.FogExp2(bottom, G.fog);
   if (envTex && q === 2) { scene.environment = envTex; scene.environmentIntensity = 0.2; } // мягкие блики на гладком
   const hemi = new THREE.HemisphereLight(new THREE.Color(top).lerp(new THREE.Color('#ffffff'), 0.6), '#4a3f35', 0.85);
@@ -1138,6 +1143,14 @@ function effectsStep(dt, live) {
 }
 function render() {
   if (!scene || !cam) return;
+  if (grey() !== greyOn) { // серый прототип включили или выключили ручкой
+    greyOn = grey();
+    if (!greyMat) greyMat = new THREE.MeshLambertMaterial({ color: '#9aa0a8' });
+    scene.overrideMaterial = greyOn ? greyMat : null;
+    scene.background = greyOn ? new THREE.Color('#5d6168') : skyTex;
+    canvas.style.filter = greyOn ? 'grayscale(1)' : ''; // цвета экземпляров и цветной свет тоже серые
+    updateGlow();
+  }
   shakeAmp = Math.max(0, shakeAmp - renderDt * 2.5);
   const a = shakeAmp * shakeAmp, ox = (Math.random() - 0.5) * a * 0.9, oy = (Math.random() - 0.5) * a * 0.9, roll = (Math.random() - 0.5) * a * 0.03;
   if (a) { cam.translateX(ox); cam.translateY(oy); cam.rotateZ(roll); }

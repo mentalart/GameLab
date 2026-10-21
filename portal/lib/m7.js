@@ -17,7 +17,7 @@ const RULES = { beg: [3, 12], pryzhok: [5, 13], gravity: [6, 34], vertushki: [0,
 const cleanRules = r => Object.fromEntries(Object.entries(r && typeof r === 'object' ? r : {}).filter(([k, v]) => RULES[k] && Number.isFinite(Number(v))).map(([k, v]) => [k, num(v, RULES[k][0], RULES[k][1])]));
 const ROLES = ['Режиссёр', 'Мастер Qwen', 'Тестер'];
 
-module.exports = function m7({ route, needStudent, needTeacher, needDayClass, broadcast, store, saveStudentField }) {
+module.exports = function m7({ route, needStudent, needTeacher, needDayClass, broadcast, store, saveStudentField, lesson }) {
   /* ================= арена ================= */
   const arenas = new Map(); // код класса → забег
   const arenaOf = code => {
@@ -181,8 +181,17 @@ module.exports = function m7({ route, needStudent, needTeacher, needDayClass, br
   /* ================= команды джема ================= */
   // cls.teams = { list: [{ id, name, emblem, members, roles, cards, ideas, brainAt, pick, gameId }] }
   // Команды живут через оба урока джема (27 и 28): урок 28 продолжает команды урока 27.
+  // Модуль 8: у уроков 29–36 своя группа команд (teamGroup: 'proekt' в сценарии) — команды проекта живут через все восемь уроков,
+  // не смешиваясь с командами джема. Группа — по уроку, открытому в классе.
   const JAM = new Set(['urok-27', 'urok-28']);
-  const teamsOf = cls => { if (!cls.teams) cls.teams = { list: [] }; return cls.teams; };
+  const groupOf = id => { const l = id && lesson ? lesson(id) : null; return (l && l.teamGroup) || (JAM.has(id) ? 'dzhem' : null); };
+  const teamsOf = cls => {
+    const g = groupOf(cls.lesson);
+    if (!g || g === 'dzhem') { if (!cls.teams) cls.teams = { list: [] }; return cls.teams; }
+    if (!cls.teamsBy) cls.teamsBy = {};
+    if (!cls.teamsBy[g]) cls.teamsBy[g] = { list: [] };
+    return cls.teamsBy[g];
+  };
   const myTeam = (cls, nick) => teamsOf(cls).list.find(t => t.members.includes(nick)) || null;
   const teamCard = t => ({ id: t.id, name: t.name, emblem: t.emblem, members: t.members, roles: t.roles, cards: t.cards ? { donor: t.cards.donor, legend: t.cards.legend, locked: t.cards.locked } : null, ideas: t.ideas.length, pick: t.pick ? t.pick.text : null, gameId: t.gameId || null });
   function teamFull(t) {
@@ -365,13 +374,13 @@ module.exports = function m7({ route, needStudent, needTeacher, needDayClass, br
   // для server.js: ученик в команде с игрой — его версии идут в игру команды
   return {
     teamGameId(code, nick, lessonId) {
-      if (!JAM.has(lessonId)) return null;
+      if (!groupOf(lessonId)) return null;
       const cls = store.getClass(code), t = cls && myTeam(cls, nick);
       return t && t.gameId ? t.gameId : null;
     },
     // первая игра участника команды без игры становится игрой команды
     claimGame(code, nick, lessonId, gameId) {
-      if (!JAM.has(lessonId)) return;
+      if (!groupOf(lessonId)) return;
       const cls = store.getClass(code), t = cls && myTeam(cls, nick);
       if (!t || t.gameId) return;
       t.gameId = gameId; const les = { id: lessonId };
@@ -385,7 +394,7 @@ module.exports = function m7({ route, needStudent, needTeacher, needDayClass, br
       for (const n of t.members) if (n !== nick) saveStudentField(code, n, les.id, st => { st.answers[step.id] = Object.assign({}, answer, { by: nick }); });
       broadcast(code, 'team', { team: t.id, step: step.id, from: nick });
     },
-    teamOf(code, nick) { const cls = store.getClass(code); return cls ? myTeam(cls, nick) : null; },
-    arenaPublic, bracketPublic, ROLES,
+    teamOf(code, nick, id) { const cls = store.getClass(code); if (!cls) return null; return id ? teamsOf(cls).list.find(t => t.id === id) || null : myTeam(cls, nick); },
+    arenaPublic, bracketPublic, ROLES, groupOf,
   };
 };

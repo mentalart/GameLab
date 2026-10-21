@@ -1,7 +1,7 @@
 // Шаги модуля 7 «Игры вместе» (уроки 26–28). Загружается после steps-m4.js и до student.js, тот добавляет их в STEPS.
 //   arena      — «Арена класса»: забег всем классом по сети (games/arena-klassa.js), квота, итоги и голос за правило следующего забега;
 //   bracket    — турнирная сетка дуэлей «Бомб во дворе» вдвоём за одним компьютером: победителя отмечает любой из двоих;
-//   team       — команда джема: создать или вступить, роль (Режиссёр, Мастер Qwen, Тестер);
+//   team       — команда джема: создать или вступить, роль (Режиссёр, Мастер Qwen, Тестер); solo — кнопка «Делаю один» (модуль 8);
 //   jamcards   — карточки джема на кубике: донор-жанр и легенда Адыгеи, по одному перебросу, «Берём!»;
 //   brainstorm — мозговой штурм команды: 10 идей за 10 минут вживую, голоса, выбор одной.
 // Моушн-дизайн (просьба автора, 20.10.2026): сцены-объяснялки модуля добавляются в общую библиотеку шага motion (window.LabMotion из steps-m4.js).
@@ -430,7 +430,7 @@
           el('div', { class: 'eyebrow' }, 'Моя роль'),
           el('div', { class: 'm7-roles' }, ...(d.roles || []).map(r => el('button', { type: 'button', class: 'opt' + (r === myRole ? ' on' : ''), 'aria-pressed': String(r === myRole), onclick: () => act('/api/team/role', { role: r }) },
             el('b', {}, { 'Режиссёр': '🎬 ', 'Мастер Qwen': '🤖 ', 'Тестер': '🧪 ' }[r] + r), el('div', { class: 'small muted' }, (st.roles || {})[r] || ''))))));
-        if (t.members.length < 2) host.append(el('div', { class: 'small muted' }, 'Позови ещё одного-двух: команда — от двух до трёх человек.'));
+        if (t.members.length < 2 && !st.solo) host.append(el('div', { class: 'small muted' }, 'Позови ещё одного-двух: команда — от двух до трёх человек.'));
         return;
       }
       const form = el('form', { class: 'row' }, el('input', { type: 'text', name: 'name', placeholder: 'Имя команды, например «Нарты»', maxlength: '30', style: 'max-width:280px' }), el('button', { class: 'btn small', type: 'submit' }, 'Создать команду'));
@@ -441,6 +441,8 @@
         el('b', {}, `${x.emblem || '🛡'} ${x.name}`), el('span', { class: 'small muted' }, x.members.join(', ') || 'пусто'), el('span', { class: 'small' }, `${x.members.length} из ${st.size || 3} · вступить →`))));
       if (!(d.teams || []).length) grid.append(el('div', { class: 'muted small' }, 'Команд пока нет. Создай первую — или учитель разложит всех сам.'));
       host.append(grid, form);
+      // итоговый проект (модуль 8): можно делать игру одному — команда из одного человека, «Студия <ник>»
+      if (st.solo) host.append(el('div', { class: 'row' }, el('button', { type: 'button', class: 'btn ghost', 'data-solo': '1', onclick: () => act('/api/team/create', { name: 'Студия ' + S.me.nick, emblem: '🎮' }) }, '🎮 Делаю один'), el('span', { class: 'small muted' }, st.solo === true ? 'Своя студия из одного: все роли — твои.' : st.solo)));
     }
     teamLive(host, draw);
     loadTeam().then(draw).catch(e => { host.textContent = e.message; });

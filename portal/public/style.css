@@ -1245,3 +1245,148 @@ button.m7-teamcard{cursor:pointer}button.m7-teamcard:hover{border-color:var(--ac
 .m6-acard:hover{border-color:var(--accent);transform:translateY(-2px)}
 .m6-acard.rel{border-color:var(--warm)}.m6-acard small{color:var(--muted)}
 @media (prefers-reduced-motion:reduce){.m6-bar .track i,.m6-grid .sq,.m6-race .track i,.m6-ring .fg,.m6-scroll,.m6-scroll li,.m6-dcard .in,.m6-rope .line,.m6-stamp,.m6-timeline .pin{animation:none!important;transition:none!important}}
+
+/* ================= модуль 8 «Своя игра: от питча до Фестиваля» (steps-m8.js, m8-pult.js) ================= */
+@keyframes m8In{from{opacity:0;transform:translateY(10px) scale(.96)}to{opacity:1;transform:none}}
+@keyframes m8Pop{0%{transform:scale(1)}40%{transform:scale(1.18)}100%{transform:scale(1)}}
+@keyframes m8Slam{0%{opacity:0;transform:rotate(-14deg) scale(3)}60%{opacity:1;transform:rotate(-14deg) scale(.9)}80%{transform:rotate(-14deg) scale(1.06)}100%{opacity:1;transform:rotate(-14deg) scale(1)}}
+@keyframes m8Cut{0%{transform:none;opacity:1}30%{transform:rotate(-3deg) translateX(-6px)}100%{transform:translateX(120%) rotate(8deg);opacity:0}}
+@keyframes m8Boom{0%{transform:scale(.6);opacity:0}60%{transform:scale(1.12);opacity:1}100%{transform:scale(1)}}
+@keyframes m8Glow{0%,100%{box-shadow:0 0 0 0 rgba(255,93,110,.0)}50%{box-shadow:0 0 0 6px rgba(255,93,110,.35)}}
+/* колода доноров */
+.m8-deck{display:grid;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:10px}
+.m8-dcard{display:flex;flex-direction:column;gap:6px;perspective:700px;animation:m8In .45s var(--d,0ms) both}
+.m8-dface{position:relative;min-height:128px;transform-style:preserve-3d;transition:transform .6s cubic-bezier(.3,.1,.3,1)}
+.m8-dcard.flip .m8-dface{transform:rotateY(180deg)}
+.m8-dfront,.m8-dback{position:absolute;inset:0;backface-visibility:hidden;border-radius:14px;padding:10px;display:flex;flex-direction:column;gap:4px;border:2px solid var(--line2);background:linear-gradient(165deg,var(--panel2),var(--panel));overflow:hidden}
+.m8-dback{transform:rotateY(180deg);background:linear-gradient(165deg,#2a1f4a,var(--panel));border-color:var(--violet)}
+.m8-dback p{margin:0;font-size:12px;line-height:1.3;overflow:auto}
+.m8-dic{font-size:32px;line-height:1}
+.m8-dcard.on .m8-dfront{border-color:var(--accent);box-shadow:0 0 0 3px rgba(124,245,168,.25)}
+.m8-dcard.x .m8-dfront{border-color:var(--warm);box-shadow:0 0 0 3px rgba(255,181,71,.25)}
+.m8-dcard.played .m8-dfront::after{content:'✓ сыграл';position:absolute;top:8px;right:8px;font-size:11px;color:var(--accent)}
+.m8-dbtns{display:flex;gap:4px}.m8-dbtns .btn:last-child{flex:1}
+.m8-pick{display:flex;flex-direction:column;gap:10px;padding:12px;border-radius:14px;background:var(--panel);border:1px solid var(--line)}
+.m8-pick .m6-tog input{position:absolute;opacity:0;pointer-events:none}
+.m8-pickcards{display:flex;align-items:center;gap:12px;justify-content:center}
+.m8-pickcards.boom .m8-mini{animation:m8Boom .5s both}
+.m8-mini{display:flex;flex-direction:column;align-items:center;gap:2px;padding:10px 16px;border-radius:12px;background:var(--panel2);border:2px solid var(--accent);min-width:140px;text-align:center}
+.m8-mini span{font-size:30px}.m8-mini.empty{border-style:dashed;border-color:var(--line2);color:var(--muted)}
+.m8-pickcards.two .m8-mini:last-child{border-color:var(--warm)}
+.m8-x{font-size:30px;font-weight:900;color:var(--warm)}
+/* питч-карта */
+.m8-pitch{display:grid;grid-template-columns:minmax(0,1.3fr) minmax(0,1fr);gap:14px;align-items:start}
+@media (max-width:760px){.m8-pitch{grid-template-columns:1fr}}
+.m8-poster{position:relative;display:flex;flex-direction:column;gap:10px;padding:20px;border-radius:18px;min-height:240px;background:radial-gradient(120% 90% at 20% 0%,#3a2a6a,#141c36 70%);border:2px solid var(--violet);box-shadow:0 10px 30px rgba(0,0,0,.35);transition:transform .4s}
+.m8-poster>*{animation:m8In .4s both}
+.m8-poster.sent{animation:m8Pop .5s}
+.m8-ptitle{font-size:clamp(22px,3vw,34px);font-weight:900;color:var(--warm);line-height:1.1}
+.m8-pphrase{font-size:17px;font-weight:700}
+.m8-pformula{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.m8-pformula span{padding:4px 10px;border-radius:999px;background:rgba(255,255,255,.08);font-size:13px}
+.m8-pformula i{font-style:normal;font-weight:900;color:var(--warm)}
+.m8-pfoot{display:flex;gap:14px;flex-wrap:wrap;color:var(--muted);font-size:13px;margin-top:auto}
+.m8-rehearse{width:min(300px,100%);height:auto;border-radius:14px}
+.m8-pfields{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:8px}
+.m8-pf{display:flex;flex-direction:column;gap:3px}
+/* стена питчей */
+.m8-wall{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:10px}
+.m8-wcard{--c:var(--info);display:flex;flex-direction:column;gap:6px;padding:12px;border-radius:14px;background:var(--panel);border:2px solid var(--line);border-top:5px solid var(--c);animation:m8In .4s var(--d,0ms) both}
+.m8-wcard p{margin:0;font-size:14px}
+.m8-wcard.mine{border-color:var(--accent)}
+.m8-wcard.hearted{background:linear-gradient(165deg,#3a1a2e,var(--panel))}
+.m8-hbar{display:block;height:6px;border-radius:3px;background:var(--line)}.m8-hbar i{display:block;height:100%;border-radius:3px;background:#ff5fa2;transition:width .6s cubic-bezier(.3,1.4,.5,1)}
+.m8-stagebar{display:flex;gap:12px;align-items:center;flex-wrap:wrap;padding:10px 14px;border-radius:12px;background:#2a0f1a;border:2px solid var(--danger);animation:m8Glow 1.6s infinite}
+.m8-live{color:var(--danger);font-weight:900}.m8-left{margin-left:auto;font-size:22px;font-weight:900;font-variant-numeric:tabular-nums}
+/* диздок */
+.m8-doc{position:relative;padding:22px 24px;border-radius:6px;background:#f6f1e3;color:#1d1a14;box-shadow:0 12px 30px rgba(0,0,0,.4);overflow:hidden}
+.m8-doc header{border-bottom:2px solid #1d1a14;margin-bottom:10px}.m8-doc h2{margin:2px 0 8px;color:#1d1a14}.m8-doc .eyebrow{color:#7a6a48}
+.m8-doc dl{display:grid;grid-template-columns:minmax(120px,30%) 1fr;gap:6px 14px;margin:0}
+.m8-doc dt{font-weight:800;color:#5a4a28;animation:m8In .35s var(--d,0ms) both}.m8-doc dd{margin:0;animation:m8In .35s var(--d,0ms) both}
+.m8-doc dd.empty{color:#b0402c;font-style:italic}
+.m8-stamp{position:absolute;right:22px;bottom:18px;padding:6px 14px;border:4px double #c0262d;color:#c0262d;font-weight:900;font-size:24px;letter-spacing:.08em;transform:rotate(-14deg);opacity:.9;border-radius:6px}
+.m8-stamp.slam{animation:m8Slam .55s cubic-bezier(.2,.8,.3,1.2) both}
+/* серый прототип */
+.m8-bars{width:100%;height:auto;max-width:600px}
+/* наблюдение */
+.m8-obs{display:grid;grid-template-columns:repeat(auto-fill,minmax(110px,1fr));gap:8px}
+.m8-mark{position:relative;display:flex;flex-direction:column;align-items:center;gap:2px;padding:10px 6px;border-radius:14px;border:2px solid var(--line2);background:var(--panel);color:var(--text);font:inherit;cursor:pointer}
+.m8-mark:disabled{opacity:.5;cursor:default}.m8-mark .m8-e{font-size:28px}
+.m8-mark .m4-key{position:absolute;top:4px;left:6px}.m8-mark .m8-n{position:absolute;top:4px;right:8px;font-weight:900;color:var(--warm)}
+.m8-mark.pop{animation:m8Pop .35s}
+.m8-tape{width:100%;height:auto;border-radius:12px}
+.m8-sumrow{display:flex;gap:8px;flex-wrap:wrap}
+.m8-sum{position:relative;display:flex;flex-direction:column;align-items:center;min-width:80px;padding:8px;border-radius:12px;background:var(--panel);overflow:hidden}
+.m8-sum::before{content:'';position:absolute;left:0;right:0;bottom:0;height:var(--h,0%);background:rgba(95,224,255,.18);transition:height .6s}
+.m8-sum>*{position:relative}
+/* Должно / Хорошо бы / Потом */
+.m8-mtop{display:flex;gap:14px;align-items:center;flex-wrap:wrap}
+.m8-cutring{width:130px;height:130px;flex:none}
+.m8-moscow{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
+@media (max-width:760px){.m8-moscow{grid-template-columns:1fr}}
+.m8-bask{display:flex;flex-direction:column;gap:6px;padding:10px;border-radius:14px;background:var(--panel);border:2px solid var(--line);min-height:120px}
+.m8-bask.must{border-color:var(--accent)}.m8-bask.nice{border-color:var(--info)}.m8-bask.later{border-style:dashed;opacity:.85}
+.m8-bhead{display:flex;flex-direction:column}
+.m8-feat{display:flex;gap:4px;align-items:center;padding:6px 8px;border-radius:10px;background:var(--panel2);animation:m8In .3s var(--d,0ms) both}
+.m8-bask.later .m8-feat .grow{text-decoration:line-through;color:var(--muted)}
+.m8-feat.cut{animation:m8Cut .42s ease-in both}
+/* контент */
+.m8-pal{gap:6px}
+.m8-kcv{width:100%;height:auto;border-radius:12px;cursor:crosshair}
+/* трейлер */
+.m8-tcv{width:100%;height:auto;border-radius:12px;cursor:pointer;background:#05070f}
+.m8-shots{display:flex;gap:8px;overflow-x:auto;padding-bottom:4px}
+.m8-shot{--c:var(--info);flex:var(--w,6) 0 180px;display:flex;flex-direction:column;gap:6px;padding:10px;border-radius:12px;background:var(--panel);border-top:5px solid var(--c)}
+.m8-shead{display:flex;gap:6px;align-items:center}.m8-shead span:first-child{font-size:22px}
+/* карточка стенда */
+.m8-standwrap{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:14px;align-items:start}
+@media (max-width:760px){.m8-standwrap{grid-template-columns:1fr}}
+.m8-stand{display:grid;grid-template-columns:1fr auto;gap:8px 14px;padding:20px;border-radius:16px;background:#fffdf6;color:#14121a;box-shadow:0 12px 30px rgba(0,0,0,.4)}
+.m8-stand>*{grid-column:1;animation:m8In .4s var(--d,0ms) both}
+.m8-sttl{font-size:28px;font-weight:900;line-height:1.1}.m8-sauth{color:#5a5560}.m8-sphrase{font-size:17px;font-weight:700}
+.m8-skeys{padding:8px 10px;border-radius:10px;background:#efe9da}
+.m8-sqr{grid-column:2!important;grid-row:1/span 4;display:flex;flex-direction:column;align-items:center;gap:4px;text-align:center}
+.m8-qr{width:130px;height:130px}
+.m8-sdonor{font-size:13px;color:#5a5560;font-style:italic}.m8-srec{font-weight:800;color:#b0402c}
+/* Фестиваль: стенд */
+.m8-fest{position:relative}
+.m8-fover{position:absolute;inset:0;display:grid;place-items:center;background:rgba(5,7,15,.72);border-radius:12px;z-index:3}
+.m8-fover[hidden]{display:none}
+.m8-fattract,.m8-flike{display:flex;flex-direction:column;align-items:center;gap:12px;text-align:center;animation:m8Boom .5s both}
+.m8-fttl{font-size:clamp(26px,4vw,48px);font-weight:900;color:var(--warm);animation:m8Pop 1.6s infinite}
+.m8-likebtn{font-size:44px;background:none;border:0;cursor:pointer;transition:transform .15s}.m8-likebtn:hover{transform:scale(1.25)}
+.m8-fstats{display:flex;gap:10px;flex-wrap:wrap}
+.m8-fstats>div{display:flex;flex-direction:column;align-items:center;padding:8px 14px;border-radius:12px;background:var(--panel);min-width:80px}
+.m8-fstats b{font-size:22px}.m8-ftop{margin:0;padding-left:0;list-style:none;display:flex;flex-direction:column;gap:2px}
+.m8-fbanner{padding:8px 12px;border-radius:10px;background:#2a1f4a;font-weight:800}
+.btn.big{font-size:20px;padding:14px 28px}
+/* сертификат */
+.m8-cert{position:relative;display:flex;flex-direction:column;align-items:center;gap:8px;text-align:center;padding:30px 24px;border-radius:12px;background:radial-gradient(120% 80% at 50% 0%,#fff8e2,#f1e6c6);color:#1d1a14;border:6px double #b08a2e;animation:m8Boom .7s both}
+.m8-cert h2{margin:0;color:#1d1a14}.m8-cert .eyebrow{color:#7a6a48}
+.m8-cseal{font-size:46px;animation:m8Pop 1s .6s both}
+.m8-cname{font-size:clamp(26px,4vw,40px);font-weight:900;color:#7a2e8a}
+.m8-cstats{display:flex;gap:14px;flex-wrap:wrap;justify-content:center}
+.m8-cstats>div,.m8-cbadges span{animation:m8In .4s var(--d,0ms) both}
+.m8-cstats>div{display:flex;flex-direction:column;align-items:center;min-width:70px}.m8-cstats b{font-size:26px}
+.m8-cbadges{display:flex;gap:6px;flex-wrap:wrap;justify-content:center;font-size:24px}
+/* вкладка «Проект» у учителя и на проекторе */
+.m8-pult{display:flex;flex-direction:column;gap:14px}
+.m8-road{width:100%;height:auto;border-radius:14px;background:#120f2a}
+.m8-pteams{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:10px}
+.m8-pteam{display:flex;flex-direction:column;gap:6px;padding:12px;border-radius:14px;background:var(--panel);border:2px solid var(--line)}
+.m8-pteam.ok{border-color:var(--accent)}
+.m8-pstage{display:grid;grid-template-columns:auto 1fr;gap:20px;align-items:center;padding:16px;border-radius:18px;background:#1a0f24;border:2px solid var(--danger)}
+.m8-pstage canvas{width:clamp(180px,24vw,320px);height:auto}
+.m8-pstage .m8-ptitle{font-size:clamp(28px,4vw,56px)}.m8-pstage .m8-pphrase{font-size:clamp(18px,2.4vw,30px)}
+.m8-noms{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px}
+.m8-nom{display:flex;flex-direction:column;align-items:center;gap:6px;padding:18px;border-radius:16px;background:linear-gradient(165deg,#3a2a6a,var(--panel));text-align:center;animation:m8Boom .6s var(--d,0ms) both}
+.m8-nom b{font-size:clamp(20px,2.4vw,30px)}.m8-nom .m8-ni{font-size:44px}
+.m8-phase{display:flex;gap:6px;flex-wrap:wrap}
+.m8-phase .opt.on{border-color:var(--warm)}
+.m8-ptimer{font-size:clamp(28px,5vw,64px);font-weight:900;font-variant-numeric:tabular-nums}
+@media print{
+  body.m8-print-doc *,body.m8-print-stand *,body.m8-print-cert *{visibility:hidden}
+  body.m8-print-doc .m8-doc,body.m8-print-doc .m8-doc *,body.m8-print-stand .m8-stand,body.m8-print-stand .m8-stand *,body.m8-print-cert .m8-cert,body.m8-print-cert .m8-cert *{visibility:visible;animation:none!important}
+  body.m8-print-doc .m8-doc,body.m8-print-stand .m8-stand,body.m8-print-cert .m8-cert{position:absolute;left:0;top:0;width:100%;box-shadow:none}
+}
+@media (prefers-reduced-motion:reduce){.m8-dcard,.m8-poster>*,.m8-poster.sent,.m8-wcard,.m8-stagebar,.m8-doc dt,.m8-doc dd,.m8-stamp.slam,.m8-mark.pop,.m8-feat,.m8-feat.cut,.m8-stand>*,.m8-fattract,.m8-flike,.m8-fttl,.m8-cert,.m8-cseal,.m8-cstats>div,.m8-cbadges span,.m8-nom,.m8-pickcards.boom .m8-mini{animation:none!important}.m8-dface,.m8-hbar i{transition:none}}

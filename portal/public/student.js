@@ -78,8 +78,8 @@ function listen() {
   es.addEventListener('demo', e => { const d = JSON.parse(e.data); S.hooks.forEach(h => h('demo', d)); });
   // уровни класса (модуль 4): новый уровень, партия, оценка — галерея и редактор обновляются сами
   es.addEventListener('levels', e => { const d = JSON.parse(e.data); S.hooks.forEach(h => h('levels', d)); });
-  // модуль 7: забег арены, турнирная сетка, команда джема — шаги arena, bracket, team и другие обновляются сами
-  ['arena', 'bracket', 'team'].forEach(ev => es.addEventListener(ev, e => { const d = JSON.parse(e.data); S.hooks.forEach(h => h(ev, d)); }));
+  // модуль 7: забег арены, турнирная сетка, команда джема — шаги arena, bracket, team и другие обновляются сами; модуль 8: питчи и Фестиваль (proekt)
+  ['arena', 'bracket', 'team', 'proekt'].forEach(ev => es.addEventListener(ev, e => { const d = JSON.parse(e.data); S.hooks.forEach(h => h(ev, d)); }));
   // джем: товарищ по команде заполнил общий шаг (team: true) — ответ и игра команды приходят сюда; шаг перерисуется, если в нём не печатают
   es.addEventListener('team', e => {
     const d = JSON.parse(e.data);
@@ -3724,7 +3724,7 @@ function stepSummary(step) {
     case 'arcade': return v.game ? `игра «${v.title || ''}» (автор ${v.author || '—'}), партий ${v.rounds || 0}, лучший счёт ${v.best || 0}${v.beat ? ', рекорд автора побит' : ''}` : 'не играл';
     case 'playtest': return (v.sent ? `отзыв на «${v.title || ''}»: ${(v.emotions || []).join(' ')}; ${step.ask && valText(v.story) ? `${step.ask.label} ${f(v.story)}; ` : ''}нравится: ${f(v.like)}; хочется: ${f(v.want)}; а что если: ${f(v.whatif)}` : 'отзыв не отправлен') +
       (S.me.feedback ? `\nотзыв учителя: понятие — ${valText(S.me.feedback.concept)}; вопрос — ${valText(S.me.feedback.question)}` : '');
-    default: return (window.LabStepsM7Summary && window.LabStepsM7Summary(step, v, a)) || (window.LabStepsM6Summary && window.LabStepsM6Summary(step, v, a)) || (window.LabStepsM4Summary && window.LabStepsM4Summary(step, v, a)) || (window.LabStepsM3Summary && window.LabStepsM3Summary(step, v, a)) || JSON.stringify(v);
+    default: return (window.LabStepsM8Summary && window.LabStepsM8Summary(step, v, a)) || (window.LabStepsM7Summary && window.LabStepsM7Summary(step, v, a)) || (window.LabStepsM6Summary && window.LabStepsM6Summary(step, v, a)) || (window.LabStepsM4Summary && window.LabStepsM4Summary(step, v, a)) || (window.LabStepsM3Summary && window.LabStepsM3Summary(step, v, a)) || JSON.stringify(v);
   }
 }
 function cpSummary(cp) {
