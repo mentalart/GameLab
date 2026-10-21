@@ -1247,8 +1247,10 @@
     return host;
   }
 
-  // сцены и примитивы холста открыты другим модулям: шаги модуля 7 (steps-m7.js) добавляют свои сцены в ту же библиотеку
-  window.LabMotion = { MOTION, rr, text, disc, glow, sky, hero, arrow, confetti, stage, padReader, seg, io, ob, lerp, clamp, rng, hashStr, TAU };
+  // сцены и примитивы холста открыты другим модулям: шаги модулей 6 и 7 (steps-m6.js, steps-m7.js) добавляют свои сцены в ту же библиотеку.
+  // Набор рисования — и прямо в LabMotion (так берёт модуль 7), и в LabMotion.kit (так берёт модуль 6)
+  const kit = { TAU, clamp, seg, io, ob, lerp, rng, hashStr, rr, text, disc, glow, sky, hero, arrow, confetti, fast };
+  window.LabMotion = Object.assign({ MOTION, stage, padReader, kit }, kit);
   window.LabStepsM4 = { motion: stepMotion, order: stepOrder, mapquiz: stepMapquiz, heat: stepHeat, leveledit: stepLeveledit, gallery: stepGallery };
   // итог шага одной строкой: для «Скопировать результат» в режиме автора
   window.LabStepsM4Summary = (step, v, a) => {
@@ -1262,6 +1264,4 @@
     }
   };
   window.LabM4 = { PALETTES, GEN, GEN_NAMES, drawMap, drawTile, autoPalette, sokoSim, genText }; // для проектора и проверок
-  // библиотека сцен и набор рисования — для модулей дальше (steps-m6.js добавляет свои сцены в MOTION и рисует теми же примитивами)
-  window.LabMotion = { MOTION, stage, padReader, kit: { TAU, clamp, seg, io, ob, lerp, rng, hashStr, rr, text, disc, glow, sky, hero, arrow, confetti, fast } };
 })();

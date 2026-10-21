@@ -78,6 +78,8 @@ module.exports = function m6(H) {
       if (i < st.scenes.length - 1) { if (i === 1) { await student.locator(`${sel} canvas.m4-motion`).focus(); await student.keyboard.press('ArrowRight'); } else await student.click(`${sel} [data-motion=next]`); }
     }
     const want = st.scenes.reduce((n, s) => n + (s.toggles || []).length, 0);
+    // сцена вырастает из пустого неба за пару секунд — ждём, пока на холсте появится картинка
+    await student.waitForFunction(s => { const c = document.querySelector(s), d = c.getContext('2d').getImageData(0, 0, c.width, c.height).data, set = new Set(); for (let i = 0; i < d.length; i += 4 * 97) set.add(d[i] >> 4 << 8 | d[i + 1] >> 4 << 4 | d[i + 2] >> 4); return set.size > 6; }, `${sel} canvas.m4-motion`, { timeout: 5000 }).catch(() => {});
     const pix = await student.$eval(`${sel} canvas.m4-motion`, c => { const d = c.getContext('2d').getImageData(0, 0, c.width, c.height).data; const set = new Set(); for (let i = 0; i < d.length; i += 4 * 97) set.add(d[i] >> 4 << 8 | d[i + 1] >> 4 << 4 | d[i + 2] >> 4); return set.size; });
     check(`Урок ${les.number}: интерактивные сцены — переключатели включаются (${want}), холст рисует`, toggled === want && want > 0 && pix > 6, `включено ${toggled} из ${want}, оттенков ${pix}`);
     const tried = await student.evaluate(() => (S.answers['secret-story'] || {}).value || {});

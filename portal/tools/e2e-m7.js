@@ -48,6 +48,7 @@ module.exports = function m7(H) {
     const code = await teacher.evaluate('T.code');
     await open(teacher, student, les);
     await donor(student, les, 'bomby-vo-dvore', async gf => {
+      await gf.waitForFunction(() => window.__lab.cfg.vdvoem === 1, null, { timeout: 10000 }).catch(() => {}); // ручки шага приходят после «готова»
       const r = await gf.evaluate(() => { window.__lab.confirm(); const st = window.__lab.lab.state; return { duo: window.__lab.cfg.vdvoem, heroes: st.h.length, mode: st.mode, solo: st.solo }; });
       check('Донор урока 26: «Бомбы во дворе» вдвоём — два героя, дуэль', r.duo === 1 && r.heroes === 2 && r.mode === 0 && !r.solo, JSON.stringify(r));
     });
@@ -87,10 +88,12 @@ module.exports = function m7(H) {
     await af.waitForFunction(() => window.__lab.lab.net.on && window.__lab.lab.net.room.phase === 'lobby', null, { timeout: 10000 });
     check('Загон: игра получила сеть класса', true);
     // второй игрок по API: его боб приходит в игру ученика
+    const before = await af.evaluate(() => window.__lab.lab.net.now());
     await tapi(teacher, '/api/teacher/arena', { code, action: 'start' });
     await af.waitForFunction(() => window.__lab.lab.net.room.phase === 'run', null, { timeout: 10000 });
-    const t0 = await af.evaluate(() => GAME.clock(window.__lab.lab).tau);
-    check('Старт по часам сервера: отсчёт 3 секунды', t0 < 0 && t0 > -3.5, String(t0));
+    // старт — по часам сервера через 3 с после команды учителя; меряем от команды, а не от «сейчас»: под нагрузкой отсчёт может уже кончиться
+    const lead = await af.evaluate(b => (window.__lab.lab.net.room.start - b) / 1000, before);
+    check('Старт по часам сервера: отсчёт 3 секунды', lead > 2.5 && lead < 4.5, String(lead));
     await af.waitForFunction(() => GAME.clock(window.__lab.lab).tau > 0.2, null, { timeout: 15000 });
     await af.evaluate(() => { const st = window.__lab.lab.state; Object.assign(st.me, { x: 0, y: 4.2, z: GAME.FIN_Z - 0.5, vx: 0, vz: 0, vy: 0 }); });
     await af.waitForFunction(() => window.__lab.lab.state.me.fin != null, null, { timeout: 10000 });

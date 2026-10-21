@@ -189,6 +189,7 @@ module.exports = function m3(H) {
       await student.click(`#step-dve-versii .seg .opt >> text=${label}`);
       await student.click('#step-dve-versii .veil button');
       const gf = await gameFrame(student, F, 0);
+      await gf.waitForFunction(v => window.__lab.cfg.speed0 === v, k ? 22 : 7, { timeout: 10000 }).catch(() => {}); // ручки версии приходят после «готова»
       const sp = await gf.evaluate(() => window.__lab.cfg.speed0);
       check(`Урок 9: версия «${label}» — своя скорость`, sp === (k ? 22 : 7), String(sp));
       await playRound(gf, { score: 100 });
