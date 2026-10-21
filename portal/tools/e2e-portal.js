@@ -149,8 +149,14 @@ async function playRound(frame, { score = 0, hold = null, page = null, restart =
   } else await sleep(300);
   await frame.evaluate(s => { window.__lab.lab.score = s; window.__lab.end('lose', 'Проверка'); }, score);
 }
-// сортировщик квиза: ждём, пока сменится карточка или квиз кончится, а не паузу на анимацию
-const nextItem = (page, step, prev) => page.waitForFunction(([s, p]) => { const e = document.querySelector(s + ' .item'); return !!document.querySelector(s + '.done') || !e || e.textContent.trim() !== p; }, [step, prev], { timeout: 15000 });
+// сортировщик после ответа ждёт «Далее» (по умолчанию с 21.10.2026): если кнопка видна — жмём её, потом ждём новую карточку или итог
+const nextItem = async (page, step, prev) => {
+  const moved = ([s, p, btn]) => { const e = document.querySelector(s + ' .item'); return !!document.querySelector(s + '.done') || !e || e.textContent.trim() !== p || (btn && !!document.querySelector(s + ' [data-next]:not([hidden])')); };
+  await page.waitForFunction(moved, [step, prev, true], { timeout: 15000 });
+  const btn = page.locator(step + ' [data-next]:not([hidden])');
+  if (await btn.count()) await btn.click();
+  return page.waitForFunction(moved, [step, prev, false], { timeout: 15000 });
+};
 // «Айсберг» (шаг 8 урока 1): нырять до дна последнего погружения, потом «Понятно»; в уроках 2–8 шаг — обычный текст с «Понятно»
 async function storyDone(page) {
   if (!(await page.locator('#step-secret-story [data-ice=dive]').count())) return page.click('#step-secret-story >> text=Понятно');
@@ -309,6 +315,7 @@ async function run(browser, base, mode) {
     if (!(await it.count())) { await sleep(200); continue; }
     const text = (await it.textContent()).trim();
     await student.keyboard.press('Digit1');
+    if (i === 0) { await sleep(1500); check('«Твист или спрятанная механика?»: после ответа разбор ждёт «Далее»', (await it.textContent()).trim() === text && await student.locator('#step-tvist-sekret [data-next]:visible').count() === 1); }
     await nextItem(student, '#step-tvist-sekret', text);
   }
   check('«Твист или спрятанная механика?»: сортировка в две корзины пройдена', await student.locator('#step-tvist-sekret.done').count() === 1);

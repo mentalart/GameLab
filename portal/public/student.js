@@ -1261,7 +1261,9 @@ STEPS.sort = ctx => {
   const box = el('div', { class: 'sorter', tabindex: '0', 'aria-label': 'Квиз-сортировщик' });
   let order = [], i = 0, score = 0, streak = 0, bestStreak = 0, correct = 0, mistakes = [], picks = [], left = 0, raf = 0, locked = false, active = false, padPrev = [];
   const hud = el('div', { class: 'hud' }), timer = el('div', { class: 'timer' }, el('i')), item = el('div', { class: 'item' }), why = el('div', { class: 'why', 'aria-live': 'polite' });
-  // manual: после ответа карточка ждёт, пока ученик прочитает разбор и нажмёт «Далее» (Enter, пробел или A); иначе — сама через паузу
+  // после ответа карточка ждёт, пока ученик прочитает разбор и нажмёт «Далее» (Enter, пробел или A), таймер стоит;
+  // manual: false — старый ход: следующая карточка сама через паузу (автор, 21.10.2026: не успеваешь прочитать разбор — по умолчанию ждём клика)
+  const manual = st.manual !== false;
   const nextBtn = el('button', { type: 'button', class: 'btn', 'data-next': '1', hidden: true, onclick: () => go() }, 'Далее ▶');
   // до 3 лотков — клавиши 1 2 3 или ← ↓ →; больше (до 8) — цифры, или стрелками выбрать лоток и пробел; у лотка — пример, после ошибки — подсказка
   const many = st.bins.length > 3;
@@ -1279,7 +1281,7 @@ STEPS.sort = ctx => {
     box.append(el('div', { class: 'stack', style: 'align-items:center;text-align:center;margin:auto' },
       el('h3', {}, `${st.items.length + wowItems(st, true).length} решений · ${st.seconds} секунд на каждое`),
       el('p', { class: 'muted' }, many ? `Серия правильных ответов умножает очки. Клавиши 1–${st.bins.length} или стрелки и пробел, на геймпаде — крестовина и A.` : `Серия правильных ответов умножает очки. Геймпад: крестовина ${two ? '◀ ▶' : '◀ ▼ ▶'}.`),
-      st.manual ? el('p', { class: 'muted' }, 'После ответа прочитай разбор и жми «Далее»: Enter, пробел или A на геймпаде.') : null,
+      manual ? el('p', { class: 'muted' }, 'После ответа прочитай разбор, таймер в это время стоит. Дальше — кнопка «Далее», Enter, пробел или A на геймпаде.') : null,
       prev ? el('p', {}, `Твой результат: ${prev.correct} из ${prev.total}, очки ${prev.score}`) : null,
       el('button', { class: 'btn', type: 'button', onclick: begin }, prev ? 'Сыграть ещё раз' : '▶ Начать')));
   }
@@ -1305,7 +1307,7 @@ STEPS.sort = ctx => {
     let pads = []; try { pads = [...navigator.getGamepads()].filter(Boolean); } catch (e) { return; }
     const gp = pads[0]; if (!gp) return;
     const b = gp.buttons.map(x => !!(x && x.pressed)), edge = n => b[n] && !padPrev[n];
-    if (st.manual && locked) { if (edge(0) || edge(9)) go(); } // ждём «Далее»
+    if (manual && locked) { if (edge(0) || edge(9)) go(); } // ждём «Далее»
     else if (many) { // крестовина выбирает лоток, A кладёт карточку
       [[14, -1], [15, 1], [12, -4], [13, 4]].forEach(([n, d]) => { if (edge(n)) select(sel + d); });
       if (edge(0)) answer(sel);
@@ -1334,7 +1336,7 @@ STEPS.sort = ctx => {
     if (!ok) binBtns[right].classList.add('flash-good');
     const hint = !ok && st.bins[right].hint ? ' Подсказка: ' + st.bins[right].hint : '';
     why.textContent = (ok ? 'Верно! ' : k < 0 ? 'Время вышло. ' : `Это ${st.bins[right].label.toLowerCase()}. `) + it.why + hint;
-    if (st.manual) { nextBtn.hidden = false; box.focus(); return; }
+    if (manual) { nextBtn.hidden = false; nextBtn.textContent = i + 1 >= order.length ? 'Итог ▶' : 'Далее ▶'; box.focus(); return; }
     setTimeout(go, pause(ok ? 900 : hint ? 3200 : 2200));
   }
   function go() {
@@ -1358,7 +1360,7 @@ STEPS.sort = ctx => {
   }
   box.addEventListener('keydown', e => {
     if (!active) return;
-    if (st.manual && locked) { if (['Enter', 'Space', 'NumpadEnter'].includes(e.code)) { e.preventDefault(); go(); } return; }
+    if (manual && locked) { if (['Enter', 'Space', 'NumpadEnter'].includes(e.code)) { e.preventDefault(); go(); } return; }
     if (many) {
       const d = /^(Digit|Numpad)([1-8])$/.exec(e.code);
       if (d && Number(d[2]) <= st.bins.length) { e.preventDefault(); answer(Number(d[2]) - 1); return; }
