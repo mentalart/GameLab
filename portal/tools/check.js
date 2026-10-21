@@ -3,7 +3,7 @@
 // Запуск (из корня репозитория или из portal/):
 //   node portal/tools/check.js              — изменения против origin/main: незакоммиченные, новые файлы и свои коммиты
 //   node portal/tools/check.js --since=REF  — изменения между REF и HEAD, например что пришло после git pull --rebase
-//   node portal/tools/check.js --full       — полная проверка, как раньше: все игры, оба прогона портала, чат Qwen
+//   node portal/tools/check.js --full       — полная проверка, как раньше: все игры, оба прогона портала, чат Qwen, проектор и класс
 //   --dry — только показать план, ничего не запускать; --files=a,b — план для этих файлов (отладка)
 // Что запускается:
 //   документы, skills, README — ничего;
@@ -12,7 +12,8 @@
 //   сценарий урока N — e2e-portal --only=N с демо-прогоном (там развилки демо-продюсера);
 //   lib/ai.js, server.js, lib/, подставной ИИ, сама e2e-проверка — e2e-portal целиком;
 //   public/, промпты ai/ — e2e-portal без демо-прогона;
-//   портал вообще (server, lib, public, ai, lessons, engine/portal.js) — ещё e2e-qwen-chat.js (секунды).
+//   портал вообще (server, lib, public, ai, lessons, engine/portal.js) — ещё e2e-qwen-chat.js (секунды);
+//   проектор и класс (server.js, lib/klass.js, public/klass*.js, projector.js, student.js, arcade.js) — ещё e2e-klass.js (около минуты).
 // Незнакомый файл в portal/ — полная проверка: лучше лишняя, чем пропущенная.
 'use strict';
 const { execSync, spawnSync } = require('child_process');
@@ -42,12 +43,13 @@ function lessonsWithGame(file) {
 }
 
 function plan(files) {
-  const p = { games: new Set(), self: false, allGames: false, e2e: false, e2eAll: false, lessons: new Set(), demo: false, qwen: false, why: [] };
+  const p = { games: new Set(), self: false, allGames: false, e2e: false, e2eAll: false, lessons: new Set(), demo: false, qwen: false, klass: false, why: [] };
   const portal = () => { p.qwen = true; };
   const whole = (f, demo) => { p.e2e = true; p.e2eAll = true; if (demo) p.demo = true; portal(); p.why.push(f); };
   for (const f of files) {
     if (!f.startsWith('portal/') || /\.md$/.test(f) && !f.startsWith('portal/ai/')) continue; // документы, skills, README
     const r = f.slice('portal/'.length);
+    if (/^(server\.js|lib\/klass\.js|public\/(klass|klass-pult|projector|student|arcade)\.js|tools\/e2e-klass\.js)$/.test(r)) { p.klass = true; if (r === 'tools/e2e-klass.js') { p.why.push(f); continue; } }
     if (/^games\/[^/]+\.js$/.test(r)) {
       p.games.add(r);
       const ls = lessonsWithGame(r);
@@ -73,6 +75,7 @@ function steps(p) {
   if (p.self || p.games.size) s.push(['node', ['portal/tools/check-game.js', ...(p.self ? ['--self'] : []), ...(p.allGames ? [] : [...p.games])]]);
   if (p.e2e) s.push(['node', ['portal/tools/e2e-portal.js', ...(p.e2eAll ? [] : ['--only=' + [...p.lessons].sort().join(',')]), ...(p.demo ? [] : ['--mock-only'])]]);
   if (p.qwen) s.push(['node', ['portal/tools/e2e-qwen-chat.js']]);
+  if (p.klass) s.push(['node', ['portal/tools/e2e-klass.js']]);
   return s;
 }
 
@@ -80,7 +83,7 @@ const full = flag('--full');
 const files = full ? [] : changedFiles();
 const p = full ? null : plan(files);
 const list = full
-  ? [['node', ['portal/tools/check-game.js', '--self', '--all']], ['node', ['portal/tools/e2e-portal.js']], ['node', ['portal/tools/e2e-qwen-chat.js']]]
+  ? [['node', ['portal/tools/check-game.js', '--self', '--all']], ['node', ['portal/tools/e2e-portal.js']], ['node', ['portal/tools/e2e-qwen-chat.js']], ['node', ['portal/tools/e2e-klass.js']]]
   : steps(p);
 
 console.log(full ? 'Полная проверка.' : `Изменённых файлов: ${files.length}${since ? ` (с ${since})` : ''}.`);

@@ -24,6 +24,10 @@ async function boot() {
   drawHelp();
   S.cpId = pickCheckpoint();
   S.board = Games.board(); // доска вызовов класса: над шагами любого чекпоинта
+  // проектор и класс (аудит, сессия 2, public/klass.js): цель класса над шагами, реакции на проектор внизу, голосование театра сцены
+  S.goalBar = LabKlass.goalBar(); S.goalBar.update(me.goal);
+  S.reacts = LabKlass.reacts(); document.body.append(S.reacts.box); S.reacts.update(me.live);
+  LabKlass.teatr.update(me.theater);
   render();
   listen();
   failAsk(me.failAsk); // «🤡 Провал дня»: учитель ждёт согласия автора (ritualy.js)
@@ -53,6 +57,8 @@ function listen() {
       // учитель открыл новый чекпоинт — ученик переходит туда сам; окно Qwen открыто — остаётся, чтобы не потерять вставку.
       // «Открыть все» (несколько сразу) никого не переносит: ученик уже мог уйти дальше и быть посреди квиза
       const to = wasLocked && fresh.some(c => c.id === S.cpId) ? cpById(S.cpId) : fresh[0];
+      // заставка чекпоинта (Д7): «Уровень N: название» на секунду со звуком; «Открыть все» — без заставки
+      if (fresh.length === 1 || wasLocked) LabKlass.splash({ n: S.lesson.checkpoints.indexOf(to) + 1, title: to.title, minutes: to.minutes });
       if (wasLocked || (fresh.length === 1 && !document.querySelector('dialog[open]'))) { S.cpId = to.id; S.me.class.current = to.id; renderMain(); window.scrollTo(0, 0); }
     }
     renderSide();
@@ -92,6 +98,10 @@ function listen() {
     }).catch(() => {});
   });
   es.addEventListener('fail', e => failEvent(JSON.parse(e.data))); // «🤡 Провал дня»: можно показать мой баг? (ritualy.js)
+  // цель класса (Д2), игра на проекторе для реакций (Д3), театр сцены (В5) — public/klass.js
+  es.addEventListener('goal', e => S.goalBar.update(JSON.parse(e.data), true));
+  es.addEventListener('live', e => S.reacts.update(JSON.parse(e.data)));
+  es.addEventListener('theater', e => LabKlass.teatr.update(JSON.parse(e.data), true));
   es.addEventListener('help', e => { if (JSON.parse(e.data).nick === S.me.nick) { S.me.help = null; drawHelp(); } });
   es.addEventListener('limits', e => {
     const d = JSON.parse(e.data);
@@ -216,6 +226,7 @@ function renderMain() {
   }
   const idx = S.lesson.checkpoints.indexOf(cp);
   if (S.board) main.append(S.board);
+  if (S.goalBar) main.append(S.goalBar.box);
   main.append(el('div', { class: 'stack', style: 'gap:6px' },
     el('div', { class: 'eyebrow' }, `Чекпоинт ${idx + 1} из ${S.lesson.checkpoints.length} · ${cp.minutes} минут`),
     el('h1', {}, cp.title)));

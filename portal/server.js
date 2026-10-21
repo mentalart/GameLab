@@ -45,6 +45,8 @@ function studentLesson(les, cls) {
   const step = s => {
     if (s.teacher) { s = Object.assign({}, s); delete s.teacher; } // сценарий учителя по шагам ученику не уходит
     if (s.hunt) return Object.assign({}, s, { hunt: publicHunt(s.hunt) });
+    // театр сцены (В5): ответ на «что изменится?» ученик увидит только после того, как учитель включит переключатель на проекторе
+    if (s.type === 'motion' && s.scenes.some(sc => (sc.toggles || []).some(x => x.vote))) return Object.assign({}, s, { scenes: s.scenes.map(sc => (sc.toggles ? Object.assign({}, sc, { toggles: sc.toggles.map(x => (x.vote ? Object.assign({}, x, { vote: { q: x.vote.q, options: x.vote.options } }) : x)) }) : sc)) });
     if (s.type === 'abtest' && s.questions) { const q = s.questions[secretEffect(les, les.wow && les.wow.classSecret)]; const o = Object.assign({}, s, { question: q || s.question }); delete o.questions; return o; }
     if (s.type === 'factory' && les.wow && s.fields.some(f => f.secrets)) return Object.assign({}, s, { fields: s.fields.map(f => (f.secrets ? Object.assign({}, f, { deck: diceSecrets(cls, les).map(x => x.title) }) : f)) });
     return s;
@@ -373,7 +375,8 @@ route('GET', '/api/me', (ctx) => {
   s.seen = store.now(); store.saveStudent(w.class, s);
   const g = st.gameId ? store.getGame(st.gameId) : null;
   const fp = failPublic(cls), failAsk = fp && fp.lesson === cls.lesson && fp.consent === 'ask' && failMembers(store.getGame(fp.game)).includes(w.nick) ? { game: fp.game, title: fp.title, version: fp.version } : null;
-  return { nick: w.nick, class: { code: cls.code, name: cls.name, opened: cls.opened, authorMode: cls.authorMode, current: (cls.timer || {}).cp || null }, lesson: studentLesson(les, cls), answers: st.answers, game: g, failAsk, wow: les.wow ? publicWow(cls, les) : null, feedback: st.feedback || null, demo: ai.demo(), chat: true, aiCalls: st.aiCalls, aiLimit: aiLimit(st), prevPlan: prevPlan(s, les), help: s.help || null };
+  return { nick: w.nick, class: { code: cls.code, name: cls.name, opened: cls.opened, authorMode: cls.authorMode, current: (cls.timer || {}).cp || null }, lesson: studentLesson(les, cls), answers: st.answers, game: g, failAsk, wow: les.wow ? publicWow(cls, les) : null, feedback: st.feedback || null, demo: ai.demo(), chat: true, aiCalls: st.aiCalls, aiLimit: aiLimit(st), prevPlan: prevPlan(s, les), help: s.help || null,
+    theater: K.theaterFor(cls, w.nick), goal: K.goal(cls), live: K.live(cls.code) }; // театр сцены, цель класса, реакции (аудит, сессия 2: lib/klass.js)
 });
 
 route('POST', '/api/answer', (ctx) => {
@@ -409,7 +412,7 @@ route('POST', '/api/score', (ctx) => {
   if (g) {
     out.authorBest = all[g.nick] ? all[g.nick].score : 0;
     store.addPlay(g.id, { type: 'over', nick: w.nick, version: Number(ctx.body.version) || g.current, score, seed: seedOf(ctx.body.seed), tele: cleanTele(ctx.body.tele) });
-    if (w.nick !== g.nick) broadcast(w.class, 'arcade', { game: g.id, author: g.nick });
+    if (w.nick !== g.nick) { broadcast(w.class, 'arcade', { game: g.id, author: g.nick }); K.countPlay(w.class, w.nick, g); } // цель класса (Д2): партии в чужие игры
   }
   const ch = ctx.body.challenge && store.getChallenge(w.class, ctx.body.challenge);
   if (ch) {
@@ -533,8 +536,19 @@ function discovery(g) {
     custom: Object.entries(custom).sort((a, b) => b[1] - a[1]).slice(0, 4).map(([k, v]) => ({ name: k, value: Math.round(v * 10) / 10 })),
     cards, emotions,
     heat: heatOf(overs),
+    laughs: laughsOf(plays), // живые реакции класса на проекторе (Д3): где смеялись
     heatMine: heatOf(store.plays(g.id).filter(p => p.nick === g.nick && p.type === 'over')), // свои партии автора: тепловая карта до первых соседей
   };
+}
+// «где смеялись» (Д3): реакции класса, пока игра шла в рамке на проекторе, — по 5 секунд партии, самые шумные места первыми
+function laughsOf(plays) {
+  const bins = new Map();
+  for (const p of plays) if (p.type === 'react') for (const x of p.items || []) {
+    const k = Math.floor((Number(x.sec) || 0) / 5) * 5, b = bins.get(k) || { sec: k, n: 0, emoji: {} };
+    b.n++; b.emoji[x.emoji] = (b.emoji[x.emoji] || 0) + 1; bins.set(k, b);
+  }
+  const list = [...bins.values()];
+  return { total: list.reduce((a, b) => a + b.n, 0), top: list.sort((a, b) => b.n - a.n || a.sec - b.sec).slice(0, 4).map(b => ({ sec: b.sec, n: b.n, emoji: Object.entries(b.emoji).sort((x, y) => y[1] - x[1]).map(([e, n]) => e + '×' + n).slice(0, 3) })) };
 }
 const cleanField = f => ({ text: String((f && typeof f === 'object' ? f.text : f) || '').trim().slice(0, 400), dice: !!(f && f.dice) });
 
@@ -1860,7 +1874,7 @@ route('GET', '/api/teacher/overview', (ctx) => {
   });
   const votes = Object.fromEntries(les.checkpoints.flatMap(c => c.steps).filter(x => x.type === 'vote').map(x => [x.id, voteTally(cls.code, les, x)])); // выставка джема
   const explain = Object.fromEntries(les.checkpoints.flatMap(c => c.steps).filter(x => x.type === 'obyasni').map(x => [x.id, explainTally(cls.code, les, x)]));
-  return { class: cls, lesson: les, glossary: glossaryOf(les), students, stepsDone, votes, explain, spend: spend(cls.code, les.id), limits: ai.limits(), stuckSec: STUCK_SEC, now: new Date().toISOString() };
+  return { class: cls, lesson: les, glossary: glossaryOf(les), students, stepsDone, votes, explain, goal: K.goal(cls), spend: spend(cls.code, les.id), limits: ai.limits(), stuckSec: STUCK_SEC, now: new Date().toISOString() };
 });
 // «Объясни соседу» (Б3): не проверка — учителю только доля «Понял» и пары, которые застряли (две попытки «Не понял»)
 function explainTally(code, les, x) {
@@ -2008,8 +2022,9 @@ function failEvent(cls) { const f = failPublic(cls); broadcast(cls.code, 'fail',
 function failRemember(cls) { // показанный провал — в историю класса (одна запись на игру и урок, последняя правка побеждает)
   const f = cls.fail; if (!f || f.consent !== 'yes') return;
   const g = store.getGame(f.game); if (!g) return;
-  cls.fails = (cls.fails || []).filter(x => !(x.game === f.game && x.lesson === f.lesson));
-  cls.fails.push({ lesson: f.lesson, game: f.game, version: f.version, title: g.title, nick: g.nick, note: f.note || '', why: f.why || [], moral: f.moral || '', at: f.at });
+  const old = (cls.fails || []).find(x => x.game === f.game && x.lesson === f.lesson);
+  cls.fails = (cls.fails || []).filter(x => x !== old);
+  cls.fails.push(Object.assign({ lesson: f.lesson, game: f.game, version: f.version, title: g.title, nick: g.nick, note: f.note || '', why: f.why || [], moral: f.moral || '', at: f.at }, old && old.hidden ? { hidden: true } : {})); // автор убрал из галереи (Д5) — так и остаётся
   if (cls.fails.length > 200) cls.fails = cls.fails.slice(-200);
 }
 // game: null — убрать; та же игра — правка версии, заметки и причин без нового согласия; другая игра — новый запрос согласия автору
@@ -2045,6 +2060,8 @@ route('POST', '/api/fail/consent', (ctx) => {
   store.saveClass(cls); failEvent(cls);
   return { consent: f.consent };
 });
+// проектор и класс (аудит, сессия 2): театр сцены (В5), цель класса (Д2), живые реакции (Д3), галерея провалов (Д5)
+const K = require('./lib/klass')({ route, needStudent, needTeacher, broadcast, store, lesson, stepOf, failMembers });
 // ответы класса по уроку: таблица «ученик × шаг», разбор квизов по карточкам; выгрузка CSV — на странице учителя
 route('GET', '/api/teacher/answers', (ctx) => {
   needTeacher(ctx);

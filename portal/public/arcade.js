@@ -1,4 +1,5 @@
-// Аркада класса (/arcade): игры одноклассников с рекордами, вызов «побей мой мир» по коду и личная аркада ученика.
+// Аркада класса (/arcade): игры одноклассников с рекордами, вызов «побей мой мир» по коду и личная аркада ученика;
+// сверху — цель класса (партии в игры друг друга), внизу — галерея провалов класса с голосом «самый смешной».
 'use strict';
 const { el, api, toast } = Lab;
 const $ = s => document.querySelector(s);
@@ -95,8 +96,15 @@ $('#logout').addEventListener('click', () => { Lab.token.clear(); location.href 
   const q = new URLSearchParams(location.search);
   if (q.get('ch')) openChallenge(q.get('ch'));
   else if (q.get('game')) { const c = A.data.games.concat(A.data.mine).find(g => g.id === q.get('game')); if (c) play(c); }
+  // цель класса (Д2) над аркадой и галерея провалов класса (Д5) внизу — public/klass.js
+  const goal = LabKlass.goalBar(); $('#goal').append(goal.box);
+  api('/api/goal').then(r => goal.update(r.goal)).catch(() => {});
+  const gal = LabKlass.fails($('#fails'));
   // соседи собрали игру или поставили рекорд — аркада обновляется сама (сцена с игрой не трогается)
   const es = new EventSource('/api/events?token=' + encodeURIComponent(Lab.token.get()));
+  es.addEventListener('goal', e => goal.update(JSON.parse(e.data), true));
+  let ft = null;
+  es.addEventListener('fails', () => { clearTimeout(ft); ft = setTimeout(gal.load, 500); });
   es.addEventListener('challenge', e => Games.challengeEvent(JSON.parse(e.data), A.data.nick, A.board));
   let t = null;
   es.addEventListener('arcade', () => { clearTimeout(t); t = setTimeout(load, 800); });

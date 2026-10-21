@@ -74,7 +74,7 @@ window.LabM8 = (() => {
   }
 
   // пульт: host — куда рисовать, code() — код класса, lesson() — открытый урок (какие разделы нужны), projector — крупно без кнопок
-  function pult(host, { code, lesson, projector }) {
+  function pult(host, { code, lesson, projector, reel }) {
     const S = { d: null, got: 0, les: null, seenAwards: 0 };
     const has = (...types) => { const l = lesson(); return !!l && l.checkpoints.some(c => c.steps.some(s => types.includes(s.type))); };
     const act = async (body) => { try { S.d = await api('/api/teacher/proekt', Object.assign({ code: code() }, body)); S.got = Date.now(); beep('tick'); draw(); } catch (e) { toast(e.message, 'err'); } };
@@ -152,6 +152,8 @@ window.LabM8 = (() => {
         el('button', { type: 'button', class: 'btn ghost small', onclick: async () => { if (await Lab.ask('Обнулить гостей, партии и жетоны Фестиваля?', { ok: 'Обнулить' })) act({ action: 'reset-fest' }); } }, 'Обнулить')));
       parts.push(el('div', { class: 'm8-phase' }, ...f.phases.map((x, i) => projector ? el('span', { class: 'opt' + (x.id === f.phase ? ' on' : '') }, `${i + 1}. ${x.label}`)
         : el('button', { type: 'button', class: 'opt' + (x.id === f.phase ? ' on' : ''), 'data-phase': x.id, onclick: () => act({ action: 'phase', phase: x.id }) }, `${i + 1}. ${x.label} · ${x.min} мин`))));
+      if (projector && reel) parts.push(el('div', { class: 'row' }, el('button', { type: 'button', class: 'btn ghost small', 'data-fest-reel': '', onclick: reel }, '🎬 Нарезка лучших провалов класса'),
+        el('span', { class: 'pj-sub' }, 'Перерыв между фазами: смешные баги курса, за которые проголосовал класс.'))); // Д5: галерея провалов к Фестивалю
       parts.push(el('div', { class: 'm8-fstats' }, ...[[f.totals.guests, 'гостей'], [f.totals.plays, 'партий'], [f.totals.again, '«ещё раз»'], [f.stands.length, 'стендов']].map(([n, l]) => el('div', {}, el('b', {}, String(n)), el('span', {}, l)))));
       if (f.awards || f.phase === 'awards') {
         // номинации открываются по очереди: на проекторе — с отскоком, у учителя — сразу списком

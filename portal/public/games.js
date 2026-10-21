@@ -18,7 +18,7 @@ const Games = (() => {
   function frame({ src, key, info, cfg, data, label, onReady, onOver, onScore, onAgain, onError, onPlaytest, onPlaytestStep, onPoster, onShow, onLevels, onLevel, onClear, onNet, autostart, score = true, challenge, ghost, reveal, pair }) {
     const box = el('div', { class: 'gamebox' });
     const veil = el('div', { class: 'veil' });
-    let iframe = null, timer = null, ready = false;
+    let iframe = null, timer = null, ready = false, roundAt = 0; // roundAt — начало партии: секунда партии для реакций класса на проекторе (Д3)
     const extra = () => (info ? info() || {} : {});
     const post = m => { try { iframe && iframe.contentWindow.postMessage(Object.assign({ target: 'lab-game' }, m), '*'); } catch (e) { /* рамка закрыта */ } };
     const postRecords = r => { const t = r.challenge || r; post({ type: 'records', record: t.record, best: t.mine }); };
@@ -30,6 +30,7 @@ const Games = (() => {
       if (!iframe || e.source !== iframe.contentWindow) return;
       const m = e.data || {};
       if (m.source !== 'lab-game') return;
+      if (['ready', 'start', 'again', 'over'].includes(m.type)) roundAt = performance.now();
       if (m.type === 'ready') { ready = true; clearTimeout(timer); h.meta = m.meta || {}; h.changed = {}; if (score) sendRecords(); if (data) post({ type: 'data', data }); if (cfg) post({ type: 'setCfg', cfg }); if (reveal) post({ type: 'reveal', title: reveal }); if (challenge) post({ type: 'challengeOn' }); if (ghost) post({ type: 'ghost', ghost }); if (onReady) onReady(m.meta || {}); if (h.onCfg) h.onCfg(h.changed); }
       if (m.type === 'over' && score) {
         api('/api/score', Object.assign({ game: key(), score: m.score, seed: m.seed, tele: m.tele }, extra()))
@@ -75,8 +76,11 @@ const Games = (() => {
       destroy() { removeEventListener('message', onMsg); h.stop(true); const i = frames.indexOf(h); if (i >= 0) frames.splice(i, 1); },
       fullscreen() { if (box.requestFullscreen) box.requestFullscreen().catch(() => {}); },
       post,
-      meta: null, changed: {}, onCfg: null, pair: pair || null, levels: null,
+      meta: null, changed: {}, onCfg: null, pair: pair || null, levels: null, label: label || '',
       get ready() { return ready; },
+      get src() { return iframe ? iframe.getAttribute('src') : null; },
+      get shown() { return !!(iframe && iframe.isConnected && iframe.offsetParent); }, // рамка с игрой видна на странице (не на скрытой вкладке)
+      sec() { return ready ? Math.max(0, Math.round((performance.now() - roundAt) / 1000)) : 0; },
     };
     box.append(veil);
     frames.push(h);
@@ -97,6 +101,8 @@ const Games = (() => {
       el('button', { class: 'btn ghost small', type: 'button', onclick: () => h.fullscreen() }, '⛶ На весь экран'));
   }
   function stopAll() { frames.slice().forEach(f => f.destroy()); }
+  // игра, которая сейчас видна на странице (проектор: какую игру смотрит класс — для живых реакций, Д3)
+  function shownFrame() { return frames.find(f => f.shown) || null; }
 
   /* ---------- рамка игры учителя: вау-старт на проекторе ---------- */
   // get() — игра { id, current, versions }, set(g) — новая версия после починки. Упала — программист чинит сам (до 2 попыток),
@@ -401,6 +407,8 @@ const Games = (() => {
     if (d.custom.length) extra.push(d.custom.map(c => `${c.name}: ${c.value}`).join(' · '));
     if (d.best) extra.push(`Лучший счёт чужого игрока: ${d.best}`);
     if (extra.length) box.append(el('div', { class: 'small muted' }, extra.join('. ')));
+    if (d.laughs && d.laughs.total) box.append(el('p', { class: 'concept' }, el('b', {}, 'Где смеялись. '), // реакции класса, пока игра шла на проекторе (Д3)
+      `Класс прислал ${d.laughs.total} реакций, пока игра шла на проекторе. Громче всего: `, d.laughs.top.map(x => `${Math.floor(x.sec / 60)}:${String(x.sec % 60).padStart(2, '0')} — ${x.emoji.join(' ')}`).join('; '), '. Что в эти секунды делала игра?'));
     const emo = Object.entries(d.emotions || {}).sort((a, b) => b[1] - a[1]);
     if (emo.length) box.append(el('div', { class: 'row', style: 'gap:6px' }, emo.map(([e, n]) => el('span', { class: 'chip' }, `${e} ×${n}`))));
     d.cards.forEach(c => box.append(el('div', { class: 'ptcard' },
@@ -445,5 +453,5 @@ const Games = (() => {
     return trait ? [el('span', { class: 'cn' }, name), el('span', { class: 'ct' }, trait)] : [text];
   }
 
-  return { cardParts, cardFace, frames, frame, teacherFrame, bar, withLevels, stopAll, card, scores, challenge, challengeStage, openChallenge, board, challengeEvent, linkBox, playtestBox, discovery, feedback };
+  return { cardParts, cardFace, frames, frame, teacherFrame, bar, withLevels, stopAll, shownFrame, card, scores, challenge, challengeStage, openChallenge, board, challengeEvent, linkBox, playtestBox, discovery, feedback };
 })();

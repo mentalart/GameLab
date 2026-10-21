@@ -627,7 +627,7 @@
     const loop = now => {
       if (!cv.isConnected && now - sceneT0 > 2000) { cancelAnimationFrame(raf); return; }
       // за экраном сцена не рисуется; в автопроверке (LAB_LOWRES) — 10 кадров в секунду, чтобы не отнимать процессор у игр
-      const box = cv.getBoundingClientRect(), off = box.bottom < 0 || box.top > innerHeight;
+      const box = cv.getBoundingClientRect(), off = !cv.offsetParent || box.bottom < 0 || box.top > innerHeight; // спрятана (театр сцены) — тоже не рисуем
       if ((window.LAB_LOWRES && now - last < 100) || (off && last)) { raf = requestAnimationFrame(loop); return; }
       last = now;
       const sc = st.scenes[i], f = MOTION[sc.anim];
@@ -640,7 +640,9 @@
     };
     raf = requestAnimationFrame(loop);
     paint();
-    return el('div', { class: 'stack m4-motionbox' }, el('div', { class: 'm4-stage' }, cv), tog, read, el('div', { class: 'row' }, back, dots, el('span', { class: 'grow' }), next), fin);
+    const box = el('div', { class: 'stack m4-motionbox' }, el('div', { class: 'm4-stage' }, cv), tog, read, el('div', { class: 'row' }, back, dots, el('span', { class: 'grow' }), next), fin);
+    if (window.LabKlass) LabKlass.teatr.mount(st.id, box); // театр сцены (В5): учитель ведёт эту сцену на проекторе — здесь только голосование
+    return box;
   }
 
   /* =================== order: «Разложи уровень» =================== */

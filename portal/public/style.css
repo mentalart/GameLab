@@ -1457,3 +1457,99 @@ button.m7-teamcard{cursor:pointer}button.m7-teamcard:hover{border-color:var(--ac
 .obyasni-res{display:grid;gap:4px;padding:12px 16px;border-radius:12px;border:1px solid var(--line2)}
 .obyasni-res.ok{border-color:var(--accent)}
 .obyasni-res.stuck{border-color:var(--warm)}
+
+/* ---------- проектор и класс (аудит 21.10.2026, сессия 2): заставка чекпоинта, цель класса, реакции, театр сцены, галерея провалов ---------- */
+.tag.warm{color:#2a1600;background:var(--warm);border-color:var(--warm)}
+/* Д7: заставка «Уровень N» — на секунду поверх всего, клики проходят насквозь */
+.lvl-splash{position:fixed;inset:0;z-index:90;display:grid;place-items:center;pointer-events:none;background:radial-gradient(circle at 50% 50%,#0b1020ee 0,#0b1020cc 45%,#0b102000 75%);animation:lvlBg 1.3s ease both}
+.lvl-in{display:grid;justify-items:center;gap:4px;text-align:center;padding:28px 48px;border-radius:24px;border:2px solid var(--accent);background:linear-gradient(160deg,#10243a,var(--panel));box-shadow:0 0 60px #7cf5a855,0 24px 60px #000c;animation:lvlIn .55s cubic-bezier(.3,1.6,.5,1) both}
+.lvl-n{font-size:clamp(14px,2vw,20px);font-weight:900;letter-spacing:.3em;text-transform:uppercase;color:var(--warm)}
+.lvl-t{font-size:clamp(34px,6vw,72px);font-weight:900;line-height:1.05;text-shadow:0 4px 0 #000a}
+.lvl-m{color:var(--muted);font-weight:700}
+.lvl-splash.out{opacity:0;transition:opacity .35s}
+.lvl-splash.calm,.lvl-splash.calm .lvl-in{animation:none}.lvl-splash.calm.out{transition:none}
+@keyframes lvlIn{0%{transform:scale(.4) rotate(-4deg);opacity:0}60%{transform:scale(1.08) rotate(1deg);opacity:1}100%{transform:none}}
+@keyframes lvlBg{from{opacity:0}12%{opacity:1}}
+/* Д2: цель класса */
+.goal-bar{position:relative;overflow:hidden;display:grid;gap:8px;padding:12px 16px;border-radius:var(--r);border:1px solid var(--line2);background:linear-gradient(120deg,#16214a,var(--panel))}
+.goal-row{display:flex;gap:14px;align-items:center;flex-wrap:wrap}
+.goal-ico{font-size:30px;line-height:1}
+.goal-main{flex:1 1 260px;display:grid;gap:4px}
+.goal-line b{font-size:22px;font-weight:900;color:var(--warm);display:inline-block}
+.goal-line b.bump{animation:goalBump .45s cubic-bezier(.3,1.8,.5,1)}
+.goal-track{height:10px;border-radius:99px;background:var(--bg);border:1px solid var(--line2);overflow:hidden}
+.goal-track i{display:block;height:100%;border-radius:99px;background:linear-gradient(90deg,var(--accent),var(--warm));transition:width .6s cubic-bezier(.3,1.3,.5,1)}
+.goal-track.big{height:22px}
+.goal-prize{display:grid;gap:2px;justify-items:start;max-width:320px}
+.goal-prize.open b{color:var(--accent)}
+.goal-bar .gamebox{margin-top:4px}
+.goal-conf{position:absolute;top:-8px;width:8px;height:12px;border-radius:2px;animation:goalConf 1.4s ease-in var(--d) both}
+@keyframes goalConf{to{transform:translate(var(--dx),160px) rotate(540deg);opacity:0}}
+@keyframes goalBump{50%{transform:scale(1.35)}}
+/* Д3: кнопки реакций у ученика */
+.react-dock{position:fixed;left:50%;bottom:14px;transform:translateX(-50%);z-index:55;display:flex;gap:10px;align-items:center;flex-wrap:wrap;justify-content:center;max-width:calc(100vw - 32px);padding:8px 14px;border-radius:99px;border:1px solid var(--line2);background:#0b1020ee;box-shadow:0 12px 40px #000a}
+.react-row{display:flex;gap:4px}
+.react-btn{font-size:24px;line-height:1;width:44px;height:44px;border-radius:50%;border:1px solid var(--line2);background:var(--panel);cursor:pointer}
+.react-btn:hover{border-color:var(--warm)}
+.react-btn.pop{animation:reactPop .4s cubic-bezier(.3,1.8,.5,1)}
+@keyframes reactPop{40%{transform:scale(1.4) translateY(-6px)}}
+/* В5: театр сцены — голосование у ученика */
+.teatr-dock{position:fixed;left:16px;bottom:16px;z-index:58;width:min(420px,calc(100vw - 32px))}
+.teatr-card{display:grid;gap:8px;padding:14px 16px;border-radius:16px;border:2px solid var(--violet);background:linear-gradient(160deg,#211a40,var(--panel));box-shadow:0 18px 50px #000a}
+.teatr-card.enter{animation:failIn .45s cubic-bezier(.3,1.5,.5,1)}
+.teatr-card.in-step{box-shadow:none}
+.teatr-card.small-card{border-width:1px}
+.teatr-card h3{font-size:19px}
+.teatr-opts{display:grid;gap:6px}
+.teatr-opt{position:relative;overflow:hidden;display:flex;align-items:center;gap:8px;text-align:left;padding:10px 12px;border-radius:12px;border:1px solid var(--line2);background:var(--bg2);color:var(--text);font:inherit;font-weight:700;cursor:pointer}
+.teatr-opt:hover:not(:disabled){border-color:var(--violet)}
+.teatr-opt.mine{border-color:var(--violet);background:#2a2150}
+.teatr-opt.right{border-color:var(--accent);background:#0c2418}
+.teatr-opt.wrong{opacity:.75}
+.teatr-opt:disabled{cursor:default}
+.teatr-opt>*{position:relative;z-index:1}
+.teatr-bar{position:absolute!important;z-index:0!important;left:0;top:0;bottom:0;background:#ffffff14;transition:width .7s cubic-bezier(.3,1.3,.5,1)}
+.teatr-opt.right .teatr-bar,.kp-opt.right .teatr-bar{background:#7cf5a833}
+.m4-motionbox.teatr-on>:not(.teatr-card){display:none}
+/* Д5: галерея провалов */
+.fails-wall{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:12px}
+.fail-card{display:grid;gap:8px;align-content:start;padding:14px;border-radius:var(--r);border:1px solid var(--line2);background:linear-gradient(160deg,#2a1f0c55,var(--panel))}
+.fail-card.voted{border-color:var(--warm)}
+.fail-card.off{opacity:.55;border-style:dashed}
+.fail-card.big h3{font-size:clamp(22px,2.4vw,32px)}
+.fail-votes{display:block;height:6px;border-radius:99px;background:var(--bg)}
+.fail-votes i{display:block;height:100%;border-radius:99px;background:var(--warm)}
+/* проектор: театр сцены, цель, реакции, нарезка */
+.kp-head{align-items:flex-start}
+.kp-stagebox{display:grid;grid-template-columns:minmax(0,2.2fr) minmax(0,1fr);gap:18px;align-items:start}
+.kp-cap{display:grid;gap:8px}.kp-cap p{font-size:clamp(16px,1.5vw,21px);line-height:1.45}
+.kp-togs{display:grid;gap:10px}
+.kp-tog{display:grid;gap:10px;padding:10px 14px;border-radius:14px;border:1px solid var(--line2);background:var(--panel)}
+.kp-tog.asking{border:2px solid var(--violet);background:linear-gradient(160deg,#211a40,var(--panel))}
+.kp-sw{display:inline-flex;align-items:center;gap:10px;font-weight:800;font-size:18px}
+.kp-sw.on .m6-sw{background:#1f5a3c}.kp-sw.on .m6-sw i{transform:translateX(14px);background:var(--accent)}
+.kp-ask{display:grid;gap:8px}.kp-ask h3{font-size:clamp(20px,2vw,28px)}
+.kp-opts{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:8px}
+.kp-opt{position:relative;overflow:hidden;display:flex;align-items:center;gap:8px;padding:12px 14px;border-radius:12px;border:1px solid var(--line2);background:var(--bg2);font-weight:800;font-size:clamp(16px,1.4vw,20px)}
+.kp-opt>*{position:relative;z-index:1}.kp-opt.right{border-color:var(--accent);background:#0c2418}.kp-opt.wrong{opacity:.7}
+.kp-log{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.pj-goalgrid{display:grid;grid-template-columns:minmax(0,1.4fr) minmax(0,1fr);gap:18px;align-items:start}
+.pj-goal{display:grid;gap:10px;padding:22px;border-radius:20px;border:1px solid var(--line2);background:linear-gradient(140deg,#16214a,var(--panel))}
+.pj-goal.done{border-color:var(--accent);box-shadow:0 0 50px #7cf5a833}
+.pj-goalnum b{font-size:clamp(64px,10vw,140px);font-weight:900;line-height:1;color:var(--warm)}
+.pj-goalnum span{font-size:clamp(26px,3vw,44px);font-weight:800;color:var(--muted)}
+.pj-goalprize{display:grid;gap:4px;margin-top:6px}
+.pj-goalform input[type=number]{width:120px}
+.pj-goalstrip{display:flex;gap:10px;align-items:center;margin-top:14px;padding:10px 12px;border-radius:12px;border:1px solid var(--line2);background:var(--panel);text-align:left}
+.pj-goalstrip.done{border-color:var(--accent)}
+.pj-goalstrip .goal-track{margin-top:4px}
+.pj-reacts{position:fixed;inset:0;pointer-events:none;z-index:70;overflow:hidden}
+.pj-react{position:fixed;font-size:44px;line-height:1;filter:drop-shadow(0 4px 6px #000a);animation:pjReact 2.5s ease-out forwards}
+.pj-react.calm{animation:pjReactCalm 2.5s linear forwards}
+@keyframes pjReact{0%{transform:translate(0,0) scale(.4);opacity:0}12%{transform:translate(calc(var(--dx)*.2),-20px) scale(1.25);opacity:1}100%{transform:translate(var(--dx),calc(-1*var(--h))) scale(1);opacity:0}}
+@keyframes pjReactCalm{0%,80%{opacity:1}100%{opacity:0}}
+.pj-reacttally{position:fixed;right:16px;bottom:16px;z-index:71;display:flex;gap:10px;padding:8px 14px;border-radius:99px;background:#0b1020dd;border:1px solid var(--line2);font-size:22px;font-weight:800}
+.pj-reel{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.6fr);gap:18px;align-items:start}
+.pj-reelgame{min-width:0}
+@media (max-width:900px){.kp-stagebox,.pj-goalgrid,.pj-reel{grid-template-columns:1fr}}
+@media (prefers-reduced-motion:reduce){.goal-line b.bump,.goal-conf,.react-btn.pop,.teatr-card,.goal-track i,.teatr-bar{animation:none;transition:none}}

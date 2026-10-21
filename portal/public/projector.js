@@ -11,6 +11,9 @@
 // Вкладка «Выставка и турнир» (урок с шагом vote): лидеры номинаций и кнопочный турнир в игре-победителе номинации step.tournament.
 // Вкладка «Вместе» (модуль 7, уроки с шагами arena, bracket, team): карта забега «Арены класса», итоги, голоса за правило, турнирная сетка, команды джема (public/m7-pult.js).
 // Вкладка «Проект» (модуль 8, уроки с teamGroup 'proekt'): дорога к Фестивалю, сцена питча с кольцом, стена питчей, диздоки, Фестиваль и номинации (public/m8-pult.js).
+// Проектор и класс (аудит, сессия 2; public/klass-pult.js): вкладка «🎭 Сцена» — театр сцены motion с голосованием класса «что изменится?» (В5),
+// вкладка «🎯 Цель» — цель класса и награда (Д2), реакции учеников всплывают поверх любой игры, которая видна на проекторе (Д3),
+// в «🤡 Провале дня» — галерея провалов класса и нарезка лучших к Фестивалю (Д5), заставка «Уровень N» при открытии чекпоинта (Д7).
 'use strict';
 const { el, api, toast, beep } = Lab;
 const $ = s => document.querySelector(s);
@@ -23,15 +26,54 @@ async function boot() {
   const q = new URLSearchParams(location.search);
   try { P.code = q.get('code') || localStorage.getItem('lab:teacher:class'); } catch (e) { P.code = q.get('code'); }
   if (!P.code) { $('#pj-lesson').append(el('div', { class: 'card' }, 'Сначала создайте класс в панели учителя.')); return; }
-  if (['demo', 'day', 'poll', 'final', 'fail', 'pair', 'm7', 'm8'].includes(q.get('tab'))) P.tab = q.get('tab');
+  if (['demo', 'day', 'poll', 'final', 'fail', 'pair', 'm7', 'm8', 'teatr', 'goal'].includes(q.get('tab'))) P.tab = q.get('tab');
+  P.reacts = LabKlassPult.reacts(); P.reactBuf = [];
   await refresh();
+  listenPj();
   setInterval(refresh, 2000);
   setInterval(tick, 250);
+  setInterval(flushReacts, 5000);
+}
+/* ---------- живые события класса на проекторе: реакции (Д3), театр сцены (В5), цель (Д2), галерея провалов (Д5) ---------- */
+function listenPj() {
+  const es = new EventSource('/api/events?token=' + encodeURIComponent(Lab.token.get()) + '&code=' + encodeURIComponent(P.code));
+  es.addEventListener('react', e => {
+    const d = JSON.parse(e.data), f = P.reacts.add(d.emoji), m = f && /^\/play\/([\w-]+)\/(\d+)/.exec(f.src || '');
+    if (m) P.reactBuf.push({ game: m[1], version: Number(m[2]), sec: f.sec(), emoji: d.emoji }); // «где смеялись»: секунда партии в рамке — в телеметрию игры
+  });
+  es.addEventListener('theater', e => { if (P.teatr) P.teatr.event(JSON.parse(e.data)); });
+  es.addEventListener('goal', e => { const d = JSON.parse(e.data); if (P.o) { P.o.goal = d.off ? null : d; if (P.tab === 'goal' && P.goalPult) P.goalPult.draw(); if (P.tab === 'lesson') drawLesson(); } });
+  es.addEventListener('fails', () => { if (P.failGal) P.failGal.load(); });
+}
+function flushReacts() {
+  const buf = P.reactBuf || []; if (!buf.length) return;
+  P.reactBuf = [];
+  const by = new Map();
+  buf.forEach(x => { const k = x.game + '/' + x.version; if (!by.has(k)) by.set(k, { game: x.game, version: x.version, items: [] }); by.get(k).items.push({ sec: x.sec, emoji: x.emoji }); });
+  by.forEach(b => api('/api/teacher/react/log', Object.assign({ code: P.code }, b)).catch(() => {}));
+}
+// какая игра сейчас видна на проекторе: ученики получают кнопки реакций, пока она на экране (раз в 15 секунд — «жива»)
+function reportLive() {
+  const f = Games.shownFrame(), src = (f && f.src) || '';
+  if (src === P.liveSrc && Date.now() - (P.liveAt || 0) < 15000) return;
+  if (src !== P.liveSrc) P.reacts.reset(src);
+  P.liveSrc = src; P.liveAt = Date.now();
+  api('/api/teacher/live', { code: P.code, src }).catch(() => {});
+}
+// заставка чекпоинта (Д7) и на проекторе: учитель открыл один новый чекпоинт — «Уровень N: название» на секунду
+function splashOpened(o) {
+  const opened = o.class.opened || [], key = o.lesson.id;
+  if (P.openedFor === key && opened.length === P.opened.length + 1) {
+    const cp = o.lesson.checkpoints.find(c => opened.includes(c.id) && !P.opened.includes(c.id));
+    if (cp) LabKlass.splash({ n: o.lesson.checkpoints.indexOf(cp) + 1, title: cp.title, minutes: cp.minutes });
+  }
+  P.opened = opened.slice(); P.openedFor = key;
 }
 async function refresh() {
   let o;
   try { o = await api('/api/teacher/overview?code=' + encodeURIComponent(P.code)); } catch (e) { if (e.status === 401) { location.href = '/'; return; } toast(e.message, 'err'); return; }
   P.o = o; P.skew = Date.parse(o.now) - Date.now();
+  splashOpened(o);
   $('#pjClass').textContent = `${o.class.name} · урок ${o.lesson.number}. ${o.lesson.title}`;
   P.mode = o.lesson.checkpoints.some(c => c.steps.some(s => s.type === 'teacher-demo')) ? 'demo' : o.lesson.wow ? 'wow' : null;
   $('#demoTab').hidden = !P.mode;
@@ -52,6 +94,10 @@ async function refresh() {
   const vs = voteStep();
   $('#cupTab').hidden = !vs;
   if (!vs && P.tab === 'cup') P.tab = 'lesson';
+  const motion = o.lesson.checkpoints.some(c => c.steps.some(s => s.type === 'motion'));
+  $('#teatrTab').hidden = !motion;
+  if (!motion && P.tab === 'teatr') P.tab = 'lesson';
+  if (P.teatr && P.teatrLesson !== o.lesson.id) { P.teatr.destroy(); P.teatr = null; } // другой урок — другие сцены
   showTab();
   if (P.tab === 'lesson') drawLesson();
   else if (P.tab === 'day') await refreshDay();
@@ -60,8 +106,11 @@ async function refresh() {
   else if (P.tab === 'fail') await refreshFail();
   else if (P.tab === 'cup') drawCup(vs);
   else if (P.tab === 'pair') await refreshPair();
+  else if (P.tab === 'teatr') P.teatr.refresh();
+  else if (P.tab === 'goal') P.goalPult.draw();
   else if (P.mode === 'wow') await refreshWow();
   else await refreshDemo();
+  reportLive();
 }
 function showTab() {
   document.querySelectorAll('.pj-tabs button').forEach(b => b.classList.toggle('on', b.dataset.tab === P.tab));
@@ -71,13 +120,20 @@ function showTab() {
   if (P.tab !== 'poll') P.pollKey = null;
   if (P.tab !== 'final') P.finalKey = null;
   $('#pj-fail').hidden = P.tab !== 'fail';
-  if (P.tab !== 'fail') { P.failKey = null; if (P.failFrame) { P.failFrame.destroy(); P.failFrame = null; } }
+  if (P.tab !== 'fail') { P.failKey = null; if (P.failFrame) { P.failFrame.destroy(); P.failFrame = null; } if (P.failGal) { P.failGal.destroy(); P.failGal = null; } }
+  // театр сцены (В5): ушли с вкладки — показ классу заканчивается, ученики возвращаются к своим шагам
+  $('#pj-teatr').hidden = P.tab !== 'teatr';
+  if (P.tab === 'teatr' && !P.teatr) { P.teatr = LabKlassPult.teatr($('#pj-teatr'), { code: () => P.code, lesson: () => P.o && P.o.lesson }); P.teatrLesson = P.o.lesson.id; }
+  if (P.tab !== 'teatr' && P.teatr) { P.teatr.destroy(); P.teatr = null; api('/api/teacher/theater', { code: P.code, action: 'end' }).catch(() => {}); }
+  $('#pj-goal').hidden = P.tab !== 'goal';
+  if (P.tab === 'goal' && !P.goalPult) P.goalPult = LabKlassPult.goal($('#pj-goal'), { code: () => P.code, get: () => P.o && P.o.goal });
+  if (P.tab !== 'goal' && P.goalPult) { P.goalPult = null; $('#pj-goal').innerHTML = ''; }
   $('#pj-cup').hidden = P.tab !== 'cup';
   $('#pj-m7').hidden = P.tab !== 'm7';
   if (P.tab === 'm7' && !P.m7) { P.m7 = LabM7.pult($('#pj-m7'), { code: () => P.code, lesson: () => P.o && P.o.lesson, projector: true }); P.m7.show(); }
   if (P.tab !== 'm7' && P.m7) { P.m7.hide(); P.m7 = null; $('#pj-m7').innerHTML = ''; }
   $('#pj-m8').hidden = P.tab !== 'm8';
-  if (P.tab === 'm8' && !P.m8) { P.m8 = LabM8.pult($('#pj-m8'), { code: () => P.code, lesson: () => P.o && P.o.lesson, projector: true }); P.m8.show(); }
+  if (P.tab === 'm8' && !P.m8) { P.m8 = LabM8.pult($('#pj-m8'), { code: () => P.code, lesson: () => P.o && P.o.lesson, projector: true, reel: openReel }); P.m8.show(); }
   if (P.tab !== 'm8' && P.m8) { P.m8.hide(); P.m8 = null; $('#pj-m8').innerHTML = ''; }
   $('#pj-pair').hidden = P.tab !== 'pair';
   if (P.tab !== 'pair' && P.pair) { P.pair.frames.forEach(f => f.h.destroy()); P.pair = null; $('#pj-pair').innerHTML = ''; }
@@ -181,7 +237,24 @@ async function nominateFail(c) {
 }
 
 /* ---------- «🤡 Провал дня» (А5): согласие автора, игра в рамке, «Почему так вышло?» ---------- */
+// «Сегодня» — провал этого урока; «Галерея» — все провалы класса с голосами учеников и нарезка лучших к Фестивалю (Д5, klass-pult.js)
+function failSwitch() {
+  return el('div', { class: 'row pj-pollchips' }, [['today', '🤡 Провал урока'], ['gallery', '🖼 Галерея и нарезка']].map(([id, label]) =>
+    el('button', { type: 'button', class: 'chipbtn' + ((P.failView || 'today') === id ? ' on' : ''), 'data-fail-view': id, onclick: () => setFailView(id) }, label)));
+}
+function setFailView(id) {
+  P.failView = id; P.failKey = null;
+  if (P.failFrame) { P.failFrame.destroy(); P.failFrame = null; }
+  if (P.failGal) { P.failGal.destroy(); P.failGal = null; }
+  $('#pj-fail').innerHTML = '';
+  return refreshFail();
+}
+async function openReel() { P.tab = 'fail'; await refresh(); await setFailView('gallery'); P.failGal.reel(); } // кнопка «Нарезка провалов» на Фестивале (m8-pult.js)
 async function refreshFail() {
+  if (P.failView === 'gallery') {
+    if (!P.failGal) { const host = $('#pj-fail'), box = el('div', { class: 'stack' }); host.innerHTML = ''; host.append(failSwitch(), box); P.failGal = LabKlassPult.fails(box, { code: () => P.code }); }
+    return;
+  }
   let r;
   try { r = await api('/api/teacher/final?code=' + encodeURIComponent(P.code)); } catch (e) { toast(e.message, 'err'); return; }
   const f = r.fail;
@@ -191,7 +264,7 @@ async function refreshFail() {
   if (P.failFrame) { P.failFrame.destroy(); P.failFrame = null; }
   const host = $('#pj-fail'); host.innerHTML = '';
   const setFail = async body => { try { await api('/api/teacher/fail', Object.assign({ code: P.code }, body)); beep('tick'); P.failKey = null; await refreshFail(); } catch (e) { toast(e.message, 'err'); } };
-  host.append(el('div', { class: 'stack', style: 'gap:6px' }, el('div', { class: 'eyebrow' }, `🤡 Провал дня · урок ${r.lesson.number}`),
+  host.append(failSwitch(), el('div', { class: 'stack', style: 'gap:6px' }, el('div', { class: 'eyebrow' }, `🤡 Провал дня · урок ${r.lesson.number}`),
     el('h1', {}, 'Баг — повод посмеяться и разобраться'),
     el('p', { class: 'pj-sub' }, 'Не оценка, а находка: самый смешной или поучительный баг урока. Показываем только с согласия автора.')));
   const pick = note => el('div', { class: 'stack' }, note ? el('p', { class: 'concept' }, note) : null,
@@ -259,7 +332,7 @@ function drawLesson() {
   host.append(el('div', { class: 'pj-codebox' },
     el('div', { class: 'eyebrow' }, 'Вход в урок'), el('div', { class: 'pj-url' }, location.host + '/'),
     el('div', { class: 'pj-code', id: 'pjCode' }, o.class.code),
-    el('div', { class: 'pj-sub' }, `учеников: ${total}` + (total ? ` · на связи: ${onl}` : ''))));
+    el('div', { class: 'pj-sub' }, `учеников: ${total}` + (total ? ` · на связи: ${onl}` : '')), LabKlassPult.goalStrip(o.goal)));
   const main = el('div', { class: 'pj-cp' });
   if (!cp) {
     main.append(el('div', { class: 'eyebrow' }, `Урок ${o.lesson.number} · донор ${o.lesson.donor}`), el('h1', {}, o.lesson.title),
