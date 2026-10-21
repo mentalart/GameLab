@@ -1128,7 +1128,7 @@ const GAME = {
   liveCamera(lab, dt) {
     const st = lab.state, v = lab.view, C = st.cam;
     if (!v || !C) return;
-    if (Math.abs(v.distance - C.last) > 0.01) C.d = v.distance / C.k;
+    if (Math.abs(v.distance - C.last) > 0.01) C.d = v.distance;
     C.punch = Math.max(0, C.punch - dt * 1.5);
     const grow = 1 + 0.22 * Math.min(1, st.wt / 200); // рой растёт — камера отъезжает, видно больше
     const want = (st.choice ? 0.9 : grow) * (1 - 0.06 * C.punch) * (1 + Math.sin(lab.t * 0.4) * 0.008);

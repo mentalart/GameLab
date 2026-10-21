@@ -1343,7 +1343,7 @@ const GAME = {
   liveCamera(lab, dt) {
     const st = lab.state, v = lab.view, C = st.cam;
     if (!v || !C) return;
-    if (Math.abs(v.distance - C.last) > 0.01) C.d = v.distance / C.k;
+    if (Math.abs(v.distance - C.last) > 0.01) C.d = v.distance;
     C.punch = Math.max(0, C.punch - dt * 1.5);
     const fight = st.units.filter(u => Math.abs(u.x) < 4).length > 3;
     C.k = lab.damp(C.k, (st.double ? 0.96 : 1) * (fight ? 0.985 : 1) * (1 - 0.05 * C.punch) * (1 + Math.sin(lab.t * 0.4) * 0.006), 2, dt);

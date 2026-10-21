@@ -102,7 +102,7 @@ async function checkOne(browser, base, item) {
     pass('Загрузка без ошибок', loaded && !res.errors.length, res.errors[0] || (loaded ? '' : await L("document.querySelector('#errBox').innerText")));
     if (item.kind === 'broken') return await brokenChecks(page, res, pass, state, key);
     if (!loaded) return res;
-    const meta = await L("({ title: document.querySelector('#gTitle').textContent, btn: document.querySelector('#startBtn').textContent, knobs: Object.keys(window.__lab.DEFAULTS).length, engine: window.__lab.engine })");
+    const meta = await L("({ title: document.querySelector('#gTitle').textContent, btn: document.querySelector('#startBtn').textContent, knobs: Object.keys(window.__lab.DEFAULTS).length - Object.values((typeof GAME !== 'undefined' && GAME.config) || {}).filter(c => c.hidden).length, engine: window.__lab.engine })");
     res.notes.title = meta.title; res.notes.engine = meta.engine;
     pass('Заголовок игры на стартовом экране', meta.title && meta.title !== 'Загрузка…', meta.title);
     await sleep(600);

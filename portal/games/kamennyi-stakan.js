@@ -272,7 +272,7 @@ const GAME = {
   liveCamera(lab, dt) {
     const st = lab.state, v = lab.view, C = st.cam;
     if (!v || !C) return;
-    if (Math.abs(v.distance - C.last) > 0.01) C.d = v.distance / C.k; // окно поменяло размер — оболочка подобрала новое расстояние
+    if (Math.abs(v.distance - C.last) > 0.01) C.d = v.distance; // окно поменяло размер — оболочка подобрала новое расстояние
     const danger = st.wells.some(w => w.danger && !w.dead);
     C.punch = Math.max(0, C.punch - dt * 1.6);
     C.k = lab.damp(C.k, (danger ? 0.95 : 1) * (1 - 0.05 * C.punch) * (1 + Math.sin(lab.t * 0.4) * 0.006), 2, dt);

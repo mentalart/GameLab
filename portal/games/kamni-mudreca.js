@@ -976,7 +976,7 @@ const GAME = {
   // живая камера: еле заметно дышит, чуть тянется к курсору, на победной линии наезжает
   updateCamera(lab, dt) {
     const st = lab.state, v = lab.view, k = st.zoomK;
-    if (Math.abs(v.distance - st.camLast) > 0.01) st.camBase = v.distance / (st.camK || 1); // окно поменялось — оболочка подобрала новое расстояние
+    if (Math.abs(v.distance - st.camLast) > 0.01) st.camBase = v.distance; // окно поменялось — оболочка подобрала новое расстояние
     st.camK = lab.damp(st.camK || 1, st.posterK || 1, 1.6, dt); st.posterK = 1;
     v.distance = st.camBase * st.camK * (1 - 0.2 * k) * (1 + Math.sin(lab.t * 0.4) * 0.006);
     st.camLast = v.distance;

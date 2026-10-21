@@ -234,6 +234,9 @@ const lab = {
   // ({ n, x, y, z, ry, a, c, f }), room — забег ({ round, phase, start, rules, results }), now() — часы сервера в мс; send(me) — своё место
   net: { on: false, others: [], room: {}, at: 0, clock: 0, now() { return lab.net.clock + (performance.now() - lab.net.at); }, send(me) { if (lab.net.on) post({ type: 'net', me }); } },
   get playing() { return state === 'play' && !paused; },
+  get cine() { return cine; }, // идёт катсцена: { t, i, k, total } (для проверок и игры)
+  // катсцена перед партией или посреди неё: lab.cutscene({ shots, begin, update, end, once, out, on }) — см. README, раздел «Катсцены»
+  cutscene(def) { return cutscene(def); },
 
   // очки, жизни, конец партии
   addScore(n, at, color) { lab.score += n; if (at) lab.popup(at, (n > 0 ? '+' : '') + n, color || accent()); },
@@ -522,6 +525,7 @@ function skyTexture(top, bottom) {
 function disposeScene() {
   popups.forEach(p => p.el.remove());
   popups = []; warns = []; pulses = []; whites = []; rings = []; trails = []; tweens = []; timers = []; follow = null; parts = null; sceneGen++;
+  if (cine || cineBack) { cine = null; cineBack = null; if (cineDom) cineBars(false); }
   if (scene) {
     scene.traverse(o => {
       if (o.geometry) o.geometry.dispose();
@@ -570,9 +574,14 @@ function fitDistance(v) {
   const f = v.fit, side = v.kind === 'side', c = [];
   for (const sx of [-1, 1]) for (const sz of [-1, 1]) c.push(side ? new V3(sx * f.w / 2, sz > 0 ? f.h : 0, 0) : new V3(sx * f.w / 2, 0, sz * f.h / 2));
   cam.aspect = Math.max(1, canvas.clientWidth) / Math.max(1, canvas.clientHeight); cam.updateProjectionMatrix();
-  const fits = d => { v.distance = d; placeCamera(0, true); cam.updateMatrixWorld(); return c.every(p => { const q = p.clone().project(cam); return q.z < 1 && Math.abs(q.x) <= 0.94 && Math.abs(q.y) <= 0.94; }); };
+  // подбор — от домашней точки камеры из GAME.camera: игра могла сдвинуть цель и наклон (наезд, афиша в меню), и смена размера окна
+  // в этот миг давала расстояние для сдвинутой камеры — на всю партию поле мелкое, по бокам пусто (найдено на уроке 1, 21.10.2026)
+  const keep = { target: v.target.clone(), tilt: v.tilt, turn: v.turn };
+  if (v.home) { v.target.copy(v.home.target); v.tilt = v.home.tilt; v.turn = v.home.turn; }
+  const fits = d => { v.distance = d; placeView(0, true); cam.updateMatrixWorld(); return c.every(p => { const q = p.clone().project(cam); return q.z < 1 && Math.abs(q.x) <= 0.94 && Math.abs(q.y) <= 0.94; }); };
   let lo = 1, hi = 600;
   for (let i = 0; i < 28; i++) { const mid = (lo + hi) / 2; if (fits(mid)) hi = mid; else lo = mid; }
+  v.target.copy(keep.target); v.tilt = keep.tilt; v.turn = keep.turn;
   return hi;
 }
 function setupCamera(kindOrObj, extra) {
@@ -595,6 +604,7 @@ function setupCamera(kindOrObj, extra) {
     target: o.target ? posOf(o.target).clone() : new V3().fromArray(P0.target),
     distance: o.distance || 30,
   };
+  view.home = { target: view.target.clone(), tilt: view.tilt, turn: view.turn };
   lab.camera = cam;
   if (kind === 'behind') { cam.position.set(0, 5, 10); cam.lookAt(0, 1, 0); }
   else if (view.fit) view.distance = fitDistance(view);
@@ -602,6 +612,11 @@ function setupCamera(kindOrObj, extra) {
 }
 function placeCamera(dt, snap) {
   if (!view || !cam) return;
+  if (cine && cine.on) return; // катсцена: камерой правит режиссёр (cineCamera)
+  placeView(dt, snap);
+  if (cineBack) cineReturn(dt);
+}
+function placeView(dt, snap) {
   if (view.kind === 'free') return;
   const fo = follow && follow.obj && follow.obj.parent ? follow : null;
   const k = snap || !fo || fo.lag <= 0 ? 1 : 1 - Math.exp(-dt / fo.lag);
@@ -627,6 +642,151 @@ function resize() {
   if (composer) { composer.setPixelRatio(pixelRatio()); composer.setSize(w, h); }
   if (cam) { cam.aspect = w / h; cam.updateProjectionMatrix(); }
   if (view && view.fit && view.kind !== 'behind' && view.kind !== 'free') { view.distance = fitDistance(view); placeCamera(0, true); }
+}
+
+/* ---------------- катсцены: режиссёр, кинокамера, полосы кино ---------------- */
+// Правило постановки — .claude/skills/lab3d-igra/katsceny.md. Игра описывает шоты, оболочка ведёт камеру по сплайну с плавностью,
+// рисует полосы кино и переходы, ставит часы партии на паузу (lab.t после катсцены возвращается, телеметрия её не видит)
+// и плавно отдаёт камеру игре. Бот-плейтестер и автопроверки (LAB_LOWRES) катсцены не смотрят: begin и end тогда не вызываются.
+let cine = null, cineBack = null, cineDom = null;
+const cineSeen = new Set();
+const cineSeenTab = (key, put) => { try { if (put) sessionStorage.setItem('lab-cine:' + key, '1'); return sessionStorage.getItem('lab-cine:' + key) === '1'; } catch (e) { return false; } };
+const CINE_SKIP_AFTER = 0.5; // столько секунд кнопка не пропускает катсцену: ею только что начали партию
+function cineEnv() { return !bot && !window.LAB_LOWRES; }
+function cutscene(def) {
+  if (!def || !Array.isArray(def.shots) || !def.shots.length || !cineEnv()) return null;
+  if (def.once && (cineSeen.has(def.once) || cineSeenTab(def.once))) return null; // once: один раз за вкладку (урок открывает игру много раз)
+  let at = 0;
+  const shots = def.shots.map((sh, i) => { const o = Object.assign({ dur: 1.5 }, sh, { i, start: at }); at += o.dur; return o; });
+  cine = {
+    def, shots, total: at, on: false, t: 0, i: -1, k: 0, t0: 0, gen: sceneGen,
+    look: new V3(), lookSet: false, fov: view ? view.fov : 0.8, punchV: 0, noise: new SimplexNoise(), from: null,
+    trauma(v = 0.4) { lab.shake(v); },
+    punch(v = 0.08) { cine.punchV += v; }, // FOV-punch: + — шире (удар), − — уже (наезд на реакцию)
+    emit(name, data) { const f = def.on && def.on[name]; if (f) safe(() => f(data, cine), 'катсцена'); }, // звуковые хуки: shot, impact, end…
+    skip() { cineFinish(true); },
+  };
+  return cine;
+}
+function cineEls() {
+  if (cineDom) return cineDom;
+  const st = $('#stage'), mk = (css, html) => { const d = document.createElement('div'); d.style.cssText = css; if (html) d.innerHTML = html; st.append(d); return d; };
+  const bar = 'position:absolute;left:0;right:0;height:0;background:#000;z-index:4;pointer-events:none;transition:height .55s cubic-bezier(.2,.8,.2,1);display:flex;align-items:center;justify-content:center;overflow:hidden;';
+  cineDom = {
+    top: mk(bar + 'top:0'),
+    bot: mk(bar + 'bottom:0', '<div style="font:700 clamp(15px,2.4vh,26px)/1.25 system-ui,sans-serif;color:#fff;text-align:center;padding:0 7%;text-shadow:0 2px 6px #000"><b style="color:#ffd23f"></b> <span></span></div><small style="position:absolute;right:14px;bottom:8px;font:600 12px system-ui,sans-serif;color:#ffffff88">A · пробел — пропустить</small>'),
+    cover: mk('position:absolute;inset:0;z-index:4;pointer-events:none;opacity:0'), // fade, iris и wipe
+    vign: mk('position:absolute;inset:0;z-index:3;pointer-events:none;opacity:0;transition:opacity .6s;background:radial-gradient(ellipse at center,transparent 55%,#000a 100%)'),
+  };
+  cineDom.who = cineDom.bot.querySelector('b'); cineDom.say = cineDom.bot.querySelector('span');
+  return cineDom;
+}
+function cineBars(on) {
+  const d = cineEls(), h = on ? 'min(11vh, 12%)' : '0';
+  d.top.style.height = d.bot.style.height = h; d.vign.style.opacity = on ? '1' : '0';
+  $('#hud').style.transition = 'opacity .4s'; $('#hud').style.opacity = on ? '0' : ''; $('#lupa').style.visibility = on ? 'hidden' : '';
+  if (!on) { d.cover.style.opacity = '0'; d.who.textContent = ''; d.say.textContent = ''; canvas.style.filter = ''; }
+}
+function cineStart() {
+  const c = cine;
+  if (!cineEnv()) { cine = null; return; }
+  c.on = true; c.t0 = lab.t; if (c.def.once) { cineSeen.add(c.def.once); cineSeenTab(c.def.once, true); } c.from = { pos: cam.position.clone(), q: cam.quaternion.clone(), fov: cam.fov };
+  cineBars(true);
+  if (c.def.begin) safe(() => c.def.begin(lab, c), 'катсцена');
+}
+// один шаг катсцены вместо G.update: шот по времени, его анимация персонажей, события, камера
+function cineStep(dt) {
+  const c = cine;
+  if (!c.on) cineStart();
+  if (!cine) return;
+  c.t += dt;
+  if (c.t > CINE_SKIP_AFTER && c.def.skip !== false && (P[0].pressed.a || P[0].pressed.b || P[1].pressed.a)) return cineFinish(true);
+  if (c.t >= c.total) return cineFinish(false);
+  let i = c.shots.findIndex(sh => c.t < sh.start + sh.dur);
+  const sh = c.shots[i];
+  if (i !== c.i) { // новый шот
+    const prev = c.shots[c.i];
+    c.i = i; c.shotFrom = { pos: cam.position.clone(), q: cam.quaternion.clone(), fov: cam.fov };
+    if (!sh.in || sh.in === 'cut' || sh.in === 'iris' || sh.in === 'fade' || sh.in === 'wipe' || sh.in === 'whip') c.lookSet = false;
+    const d = cineEls(); d.who.textContent = sh.who ? sh.who + ':' : ''; d.say.textContent = sh.say || '';
+    for (const e of sh.at || []) e.done = false;
+    c.emit('shot', { i, shot: sh, prev });
+  }
+  const local = c.t - sh.start, k = Math.min(1, local / sh.dur);
+  c.k = k;
+  for (const e of sh.at || []) if (!e.done && local >= e[0]) { e.done = true; safe(() => e[1](lab, c), 'катсцена'); }
+  if (c.def.update) safe(() => c.def.update(lab, dt, c), 'катсцена');
+  if (sh.update) safe(() => sh.update(lab, k, dt, c), 'катсцена');
+  if (cine !== c) return; // катсцену закончили изнутри шота
+  cineCamera(sh, k, local, dt);
+  cineCover(i, local);
+}
+const cinePos = p => (typeof p === 'function' ? posOf(p()) : posOf(p));
+function cineCamera(sh, k, local, dt) {
+  const c = cine, C = sh.cam || {}, e = (ease[C.ease || 'inOutCubic'] || ease.inOutCubic)(k);
+  // положение — по сплайну Catmull-Rom через точки пути, никакой линейной интерполяции по прямой
+  const pts = (C.path || [C.from || [0, 10, 10], C.to || C.from || [0, 10, 10]]).map(cinePos);
+  if (!sh._curve || sh._curvePts !== pts.length || typeof (C.path || [])[0] === 'function') { sh._curve = pts.length > 2 ? new THREE.CatmullRomCurve3(pts, false, 'centripetal') : null; sh._curvePts = pts.length; }
+  const pos = sh._curve ? sh._curve.getPoint(e) : pts[0].clone().lerp(pts[pts.length - 1], e);
+  // куда смотреть: точка, объект, две цели сразу (середина пары) или своя функция от k
+  const val = x => (typeof x === 'function' && !x.isObject3D ? posOf(x(e, k)) : posOf(x));
+  let target = val(C.look || [0, 0, 0]);
+  if (C.look2) target = target.clone().lerp(val(C.look2), 0.5);
+  if (!c.lookSet) { c.look.copy(target); c.lookSet = true; } else c.look.lerp(target, 1 - Math.exp(-(C.lookLag == null ? 9 : C.lookLag) * dt));
+  // оптика: fov по кривой, эффект Хичкока (dolly-zoom: предмет того же размера, фон «едет»), FOV-punch
+  const F = Array.isArray(C.fov) ? C.fov : [C.fov || (view ? view.fov : 0.8), C.fov || (view ? view.fov : 0.8)];
+  let fov = F[0] + (F[1] - F[0]) * e;
+  if (C.dollyZoom) { const subj = val(C.dollyZoom), d0 = pts[0].distanceTo(subj), d = pos.distanceTo(subj); fov = 2 * Math.atan(Math.tan(F[0] / 2) * d0 / Math.max(0.1, d)); }
+  c.punchV *= Math.exp(-dt * 6);
+  cam.position.copy(pos); cam.lookAt(c.look);
+  // живость: «ручная» камера на шуме, низкая амплитуда; тряска с затуханием — общая lab.shake (trauma²)
+  const hh = C.handheld == null ? 0.35 : C.handheld, n = c.noise, T = c.t;
+  if (hh > 0) { cam.rotateX(n.noise(T * 0.7, 1.3) * 0.012 * hh); cam.rotateY(n.noise(T * 0.6, 7.1) * 0.016 * hh); cam.rotateZ(n.noise(T * 0.5, 3.7) * 0.008 * hh); }
+  // whip pan: быстрый поворот на стыке шотов, кадр смазан
+  const W = 0.22, nx = c.shots[sh.i + 1];
+  let whip = 0;
+  if (nx && nx.in === 'whip' && local > sh.dur - W) whip = -ease.inCubic((local - (sh.dur - W)) / W);
+  if (sh.in === 'whip' && local < W) whip = 1 - ease.outCubic(local / W);
+  if (whip) cam.rotateY(whip * 0.9);
+  canvas.style.filter = whip ? `blur(${Math.abs(whip) * 6}px)` : '';
+  // вход в шот плавно из прошлой позиции (in: 'blend', и первый шот — из игровой камеры)
+  const B = sh.in === 'blend' || (sh.i === 0 && sh.in !== 'cut') ? (sh.blend || 0.6) : 0;
+  if (B && local < B) { const b = ease.inOutCubic(local / B), q = cam.quaternion.clone(); cam.position.lerpVectors(c.shotFrom.pos, cam.position, b); cam.quaternion.slerpQuaternions(c.shotFrom.q, q, b); fov = c.shotFrom.fov * Math.PI / 180 + (fov - c.shotFrom.fov * Math.PI / 180) * b; }
+  cam.fov = (fov + c.punchV) * 180 / Math.PI; cam.updateProjectionMatrix();
+}
+// переходы-шторки: fade через цвет, iris (круглая мультяшная шторка), wipe
+function cineCover(i, local) {
+  const c = cine, sh = c.shots[i], nx = c.shots[i + 1], d = cineEls(), D = 0.28;
+  let kind = null, a = 0;
+  if (nx && ['fade', 'iris', 'wipe'].includes(nx.in) && local > sh.dur - D) { kind = nx; a = ease.inCubic((local - (sh.dur - D)) / D); }
+  else if (['fade', 'iris', 'wipe'].includes(sh.in) && local < D) { kind = sh; a = 1 - ease.outCubic(local / D); }
+  if (!kind || a <= 0) { d.cover.style.opacity = '0'; return; }
+  const col = kind.color || '#000';
+  d.cover.style.opacity = '1';
+  if (kind.in === 'fade') { d.cover.style.background = col; d.cover.style.opacity = String(a); }
+  else if (kind.in === 'iris') { const r = (1 - a) * 75; d.cover.style.background = `radial-gradient(circle at ${kind.irisAt || '50% 50%'}, transparent ${r}%, ${col} ${r + 0.5}%)`; }
+  else { const x = a * 100; d.cover.style.background = `linear-gradient(90deg, ${col} ${x}%, transparent ${x + 0.5}%)`; }
+}
+function cineFinish(skipped) {
+  const c = cine;
+  if (!c) return;
+  cine = null;
+  const spent = lab.t - c.t0; // часы партии возвращаются: катсцена не съедает время игры, таймеры сдвигаются вместе
+  lab.t = c.t0; for (const h of timers) h.at -= spent;
+  cineBars(false);
+  if (c.def.end) safe(() => c.def.end(lab, c, skipped), 'катсцена');
+  c.emit('end', { skipped });
+  disarm(); // кнопка, которой пропустили, не стреляет в игре
+  if (view && c.on) { cineBack = { t: 0, dur: c.def.out == null ? 0.9 : c.def.out, pos: cam.position.clone(), q: cam.quaternion.clone(), fov: cam.fov }; placeCamera(0, true); }
+}
+// возврат в игру: камера плавно перетекает из последнего кадра катсцены в игровую
+function cineReturn(dt) {
+  const b = cineBack;
+  b.t += dt;
+  const k = ease.inOutCubic(Math.min(1, b.t / Math.max(0.01, b.dur))), q = cam.quaternion.clone(), f = view.fov * 180 / Math.PI;
+  cam.position.lerpVectors(b.pos, cam.position, k); cam.quaternion.slerpQuaternions(b.q, q, k);
+  cam.fov = b.fov + (f - b.fov) * k; cam.updateProjectionMatrix();
+  if (k >= 1) cineBack = null;
 }
 
 /* ---------------- частицы: одна пачка кубиков на сцену ---------------- */
@@ -922,7 +1082,7 @@ const fmt = (v, step) => { const d = String(step || 1).includes('.') ? String(st
 function buildPanel() {
   const host = $('#knobs'), sh = $('#shellKnobs'), jh = $('#juiceKnobs');
   host.innerHTML = ''; sh.innerHTML = ''; jh.innerHTML = '';
-  for (const [k, c] of Object.entries(G.config || {})) knobRow(k, c, host);
+  for (const [k, c] of Object.entries(G.config || {})) if (!c.hidden) knobRow(k, c, host); // hidden — число игры для пресетов, в панели и у портала его нет
   for (const [k, c] of Object.entries(SHELL_KNOBS)) knobRow(k, c, c.juice ? jh : sh);
   const pr = $('#presets'); pr.innerHTML = '';
   const mk = (name, values) => {
@@ -1128,6 +1288,7 @@ function gameStep(dt) {
   if (slowT > 0) { slowT -= dt; dt *= slowK; } // замедление: игра и эффекты идут медленнее, интерфейс — как обычно
   if (hitstopT > 0) { hitstopT -= dt; return dt; }
   lab.dt = dt; lab.t += dt;
+  if (cine && cine.gen === sceneGen) { cineStep(dt); tickTweens(dt); return dt; } // катсцена: игра стоит, телеметрия не пишет
   if (lab.invuln > 0) lab.invuln = Math.max(0, lab.invuln - dt);
   tickTele(dt);
   safe(() => G.update(lab, dt), 'update');
@@ -1420,7 +1581,7 @@ async function boot() {
     $('#startBtn').disabled = false;
     showRecord();
     window.__lab.ready = true;
-    post({ type: 'ready', shell: SHELL_VERSION, engine: 'three', three: THREE.REVISION, meta: { title: G.title, donor: G.donor || '', players: lab.players, controls: G.controls || [], config: G.config || {}, presets: G.presets || {}, decisions: G.decisions || [], notes: G.notes || [] } });
+    post({ type: 'ready', shell: SHELL_VERSION, engine: 'three', three: THREE.REVISION, meta: { title: G.title, donor: G.donor || '', players: lab.players, controls: G.controls || [], config: Object.fromEntries(Object.entries(G.config || {}).filter(([, c]) => !c.hidden)), presets: G.presets || {}, decisions: G.decisions || [], notes: G.notes || [] } });
   } catch (e) { fail(e, 'загрузка'); }
 }
 

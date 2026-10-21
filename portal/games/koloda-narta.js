@@ -1017,7 +1017,7 @@ const GAME = {
   updateCamera(lab, dt) {
     const st = lab.state, v = lab.view, C = st.cam;
     if (!v || !C) return;
-    if (Math.abs(v.distance - C.last) > 0.01) C.d = v.distance / C.k;
+    if (Math.abs(v.distance - C.last) > 0.01) C.d = v.distance;
     st.punch = Math.max(0, st.punch - dt * 0.8);
     const boss = st.fight >= Math.round(lab.cfg.fights);
     C.k = lab.damp(C.k, (st.posterK || 1) * (1 - 0.06 * st.punch) * (st.phase === 'reward' ? 0.94 : 1) * (1 + Math.sin(lab.t * 0.4) * 0.006), 2, dt);
