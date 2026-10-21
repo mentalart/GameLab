@@ -1,5 +1,5 @@
 // «Моя студия» (/studio): полка своих игр, значки за решения геймдизайнера, колоды доноров и линз,
-// журнал открытий и планов, банк идей класса и эмблема студии (она видна рядом с ником в аркаде).
+// журнал открытий и планов, банк идей класса, лесенка роста по самооценкам модулей (А4) и эмблема студии (она видна рядом с ником в аркаде).
 'use strict';
 const { el, api, toast } = Lab;
 const $ = s => document.querySelector(s);
@@ -12,7 +12,7 @@ async function load() {
   }
   $('#nick').textContent = (D.emblem ? D.emblem + ' ' : '') + D.nick + ' · класс ' + D.class.code;
   $('#className').textContent = D.class.name;
-  drawEmblems(); drawShelf(); drawPostcards(); drawBadges(); drawDeck(); drawJournal(); drawIdeas();
+  drawEmblems(); drawShelf(); drawPostcards(); drawRost(); drawBadges(); drawDeck(); drawJournal(); drawIdeas();
 }
 
 // полка открыток (И3): открытка первой игры каждого урока, тот же вид, что в шаге урока
@@ -25,6 +25,27 @@ function drawPostcards() {
     el('div', {}, el('span', { class: 'small muted' }, 'Соседи почувствовали: '), (c.emotions || []).length ? c.emotions.join(' ') : '—'),
     c.secret ? el('div', {}, el('span', { class: 'small muted' }, 'Спрятано: '), c.secret, c.voted ? el('span', { class: 'tag', style: 'margin-left:6px' }, `заметили ${c.felt} из ${c.voted}`) : null) : null,
     el('div', { class: 'pc-foot' }, c.record ? `🏆 Рекорд ${c.record.score} · ${c.record.nick}` : '🏆 Рекорда пока нет', el('span', { class: 'grow' }), c.at || ''))));
+}
+
+// лесенка роста (А4): ступень на модуль — средний балл самооценки; ниже — каждый вопрос: первый модуль → последний
+function drawRost() {
+  const host = $('#rost'); host.innerHTML = '';
+  const R = D.rost || { ladder: [], skills: [], scale: [] }, L = R.ladder;
+  if (!L.length) { host.append(el('p', { class: 'muted' }, 'Первая ступень появится в конце модуля 1: шаг «Что я умею как геймдизайнер».')); return; }
+  const comma = x => String(x).replace('.', ',');
+  const first = L[0], last = L[L.length - 1];
+  host.append(el('div', { class: 'rost-ladder', role: 'list', 'aria-label': 'Лесенка роста по модулям' }, L.map(r => {
+    const d = Math.round(10 * (r.avg - first.avg)) / 10;
+    return el('div', { class: 'rost-rung' + (r === last ? ' now' : ''), role: 'listitem', style: `--h:${Math.round(r.avg / 5 * 100)}%`, title: (r.concepts || []).join(' · ') },
+      el('span', { class: 'rr-bar', 'aria-hidden': 'true' }, el('i', {})), el('b', {}, comma(r.avg)), el('span', { class: 'eyebrow' }, `Модуль ${r.module}`),
+      r !== first && d ? el('span', { class: 'small ' + (d > 0 ? 'rr-up' : 'muted') }, (d > 0 ? '+' : '') + comma(d)) : null,
+      r.phrase ? el('span', { class: 'small muted rr-phrase' }, '«' + r.phrase + '»') : null);
+  })));
+  if (L.length > 1) host.append(el('div', { class: 'rost-skills' }, R.skills.map(k => {
+    const a = Number(first.scores[k.id]) || 0, b = Number(last.scores[k.id]) || 0;
+    return el('div', { class: 'row small' }, el('span', { 'aria-hidden': 'true' }, k.icon), el('span', { class: 'grow' }, k.label),
+      el('span', { class: 'muted' }, `${R.scale[a - 1] || '—'} → `), el('b', { class: b > a ? 'rr-up' : '' }, R.scale[b - 1] || '—'));
+  })));
 }
 
 function drawEmblems() {

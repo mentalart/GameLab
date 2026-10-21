@@ -57,6 +57,7 @@ module.exports = function m5(H) {
     check(`Урок ${les.number}: ИГРА — промпт с названием и ${want.label}`, preview.includes(title) && want.re.test(preview), preview.slice(0, 140));
     await student.click('#step-igra button:has-text("Всё верно")');
     await student.waitForSelector('#step-igra.done');
+    if (H.producer) await H.producer(student, les, mode);
     await student.click('#step-sborka >> text=⚙ Собрать игру');
     let own = await gameFrame(student, '/play/', 0);
     if (mode === 'mock') {
@@ -302,7 +303,7 @@ module.exports = function m5(H) {
     await student.waitForSelector('#step-reliz.done', { timeout: 10000 });
     if (shot) await shot(student, 'm5-22-release', true);
     await final(student, les, 'смысла');
-    await choice(student, 'tri-priema', 0);
+    await H.rost(student, 5, 4);
   }
 
   return { lesson19, lesson20, lesson21, lesson22 };

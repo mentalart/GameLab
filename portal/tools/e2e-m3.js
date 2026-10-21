@@ -400,7 +400,7 @@ module.exports = function m3(H) {
     await student.waitForSelector('#step-linza.done');
     check('Урок 13: линза баланса', (await student.textContent('#step-linza .lens-face')).includes('выгодно'));
     await choice(student, 'vopros-uroka-2', 1);
-    await choice(student, 'samootsenka', 5);
+    await H.rost(student, 3, 3);
   }
 
   return { lesson9, lesson10, lesson11, lesson12, lesson13 };

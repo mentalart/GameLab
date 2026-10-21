@@ -5,7 +5,9 @@
 // Вкладка «Спрятанная механика рядом» (урок 1, после «Найди спрятанную механику»): две копии игры класса рядом, в одном мире; бот-новичок играет обе одними нажатиями
 // в настоящем времени — слева без спрятанной механики, справа со спрятанной механикой и лупой. Копии расходятся только из-за спрятанной механики.
 // Вкладка «Мир дня»: учитель даёт всему классу один мир одной из игр урока, таблица мира растёт на проекторе.
-// Вкладка «Финал»: стена аркады урока — игры урока с рекордами, игра класса, лидер мира дня и провал дня (самый смешной баг урока).
+// Вкладка «Финал»: стена аркады урока — игры урока с рекордами, игра класса, лидер мира дня; «🤡» на карточке игры — в «Провал дня».
+// Вкладка «🤡 Провал дня» (А5): учитель одним нажатием выбирает баг игры урока, автор соглашается на своём экране, игра — в рамке на весь класс,
+// под ней «Почему так вышло?» — причины чипами и вывод класса.
 // Вкладка «Выставка и турнир» (урок с шагом vote): лидеры номинаций и кнопочный турнир в игре-победителе номинации step.tournament.
 // Вкладка «Вместе» (модуль 7, уроки с шагами arena, bracket, team): карта забега «Арены класса», итоги, голоса за правило, турнирная сетка, команды джема (public/m7-pult.js).
 // Вкладка «Проект» (модуль 8, уроки с teamGroup 'proekt'): дорога к Фестивалю, сцена питча с кольцом, стена питчей, диздоки, Фестиваль и номинации (public/m8-pult.js).
@@ -21,7 +23,7 @@ async function boot() {
   const q = new URLSearchParams(location.search);
   try { P.code = q.get('code') || localStorage.getItem('lab:teacher:class'); } catch (e) { P.code = q.get('code'); }
   if (!P.code) { $('#pj-lesson').append(el('div', { class: 'card' }, 'Сначала создайте класс в панели учителя.')); return; }
-  if (['demo', 'day', 'poll', 'final', 'pair', 'm7', 'm8'].includes(q.get('tab'))) P.tab = q.get('tab');
+  if (['demo', 'day', 'poll', 'final', 'fail', 'pair', 'm7', 'm8'].includes(q.get('tab'))) P.tab = q.get('tab');
   await refresh();
   setInterval(refresh, 2000);
   setInterval(tick, 250);
@@ -55,6 +57,7 @@ async function refresh() {
   else if (P.tab === 'day') await refreshDay();
   else if (P.tab === 'poll') await refreshPoll();
   else if (P.tab === 'final') await refreshFinal();
+  else if (P.tab === 'fail') await refreshFail();
   else if (P.tab === 'cup') drawCup(vs);
   else if (P.tab === 'pair') await refreshPair();
   else if (P.mode === 'wow') await refreshWow();
@@ -66,7 +69,9 @@ function showTab() {
   $('#pj-poll').hidden = P.tab !== 'poll'; $('#pj-final').hidden = P.tab !== 'final';
   if (P.tab !== 'day') P.dayKey = null;
   if (P.tab !== 'poll') P.pollKey = null;
-  if (P.tab !== 'final') { P.finalKey = null; if (P.failFrame) { P.failFrame.destroy(); P.failFrame = null; } }
+  if (P.tab !== 'final') P.finalKey = null;
+  $('#pj-fail').hidden = P.tab !== 'fail';
+  if (P.tab !== 'fail') { P.failKey = null; if (P.failFrame) { P.failFrame.destroy(); P.failFrame = null; } }
   $('#pj-cup').hidden = P.tab !== 'cup';
   $('#pj-m7').hidden = P.tab !== 'm7';
   if (P.tab === 'm7' && !P.m7) { P.m7 = LabM7.pult($('#pj-m7'), { code: () => P.code, lesson: () => P.o && P.o.lesson, projector: true }); P.m7.show(); }
@@ -141,45 +146,89 @@ async function refreshPoll() {
   })));
 }
 
-/* ---------- финал: стена аркады урока, рекорды, мир дня, провал дня ---------- */
+/* ---------- финал: стена аркады урока, рекорды, мир дня; «🤡» на карточке — в «Провал дня» ---------- */
 async function refreshFinal() {
   let r, w = { again: [], fails: [] };
   try { r = await api('/api/teacher/final?code=' + encodeURIComponent(P.code)); } catch (e) { toast(e.message, 'err'); return; }
   try { w = await api('/api/teacher/wall?code=' + encodeURIComponent(P.code)); } catch (e) { /* без рейтинга «ещё раз» */ }
   const key = JSON.stringify([r, w]);
-  if (key === P.finalKey) return; // без перерисовки: рамка провала дня и поле заметки живут
+  if (key === P.finalKey) return;
   P.finalKey = key;
-  if (P.failFrame) { P.failFrame.destroy(); P.failFrame = null; }
   const host = $('#pj-final'); host.innerHTML = '';
-  const setFail = async body => { try { await api('/api/teacher/fail', Object.assign({ code: P.code }, body)); beep('tick'); P.finalKey = null; await refreshFinal(); } catch (e) { toast(e.message, 'err'); } };
   const rec = c => (c.record ? `рекорд ${c.record.score} · ${c.record.nick}` : 'рекорда пока нет');
   // лидеры: мир дня и игра класса
   const day = r.day ? el('div', { class: 'card stack' }, el('div', { class: 'eyebrow' }, '🌍 Мир дня'), el('h3', {}, r.day.title || 'Мир дня'),
     r.day.top.length ? el('ol', { class: 'pj-cuptable' }, r.day.top.slice(0, 3).map((x, i) => el('li', { class: i ? '' : 'top' }, `${x.nick} — ${x.score}`))) : el('p', { class: 'muted' }, 'Партий не было.'))
     : el('div', { class: 'card stack' }, el('div', { class: 'eyebrow' }, '🌍 Мир дня'), el('p', { class: 'muted' }, 'Турнира мира дня ещё не было: вкладка «Мир дня».'));
   const cg = r.classGame ? el('div', { class: 'card stack' }, el('div', { class: 'eyebrow' }, '🃏 Игра класса'), el('h3', {}, r.classGame.title), el('p', {}, rec(r.classGame))) : null;
-  // провал дня: игра (и версия) с самым смешным багом — в рамке на весь класс
-  const failBox = el('div', { class: 'card stack pj-fail' });
-  if (r.fail) {
-    const f = r.fail;
-    const sel = el('select', { 'aria-label': 'Версия с багом' }, f.versions.map(v => el('option', { value: v.n, selected: v.n === f.version ? true : null }, `v${v.n} · ${v.kind}${v.error ? ' · ошибка' : ''}`)));
-    const note = el('input', { type: 'text', maxlength: '200', placeholder: 'Что пошло не так — одной фразой', value: f.note || '' });
-    P.failFrame = Games.frame({ src: () => `/play/${f.game}/${sel.value}`, key: () => 'fail:' + f.game, score: false, label: 'Показать баг',
-      onError: err => P.failFrame.message(el('b', {}, 'Игра упала: ' + (err.message || 'ошибка') + ' — это тоже провал дня!')) });
-    sel.addEventListener('change', () => { P.failFrame.start(); });
-    failBox.append(el('div', { class: 'eyebrow' }, '🤡 Провал дня'), el('h2', {}, `«${f.title}» · ${f.nick}`), f.note ? el('p', { class: 'pj-sub' }, f.note) : null,
-      P.failFrame.box, Games.bar(P.failFrame),
-      el('div', { class: 'row' }, sel, el('div', { class: 'grow' }, note),
-        el('button', { class: 'btn small', type: 'button', onclick: () => setFail({ game: f.game, version: sel.value, note: note.value }) }, 'Сохранить'),
-        el('button', { class: 'btn ghost small', type: 'button', onclick: () => setFail({ game: null }) }, '✕ Убрать')));
-  } else failBox.append(el('div', { class: 'eyebrow' }, '🤡 Провал дня'), el('p', { class: 'muted' }, 'Самый смешной баг урока: нажмите «🤡» на карточке игры ниже — она откроется здесь на весь класс.'));
+  // провал дня — своя вкладка; здесь короткая карточка и переход
+  const f = r.fail;
+  const failBox = el('div', { class: 'card stack pj-fail' }, el('div', { class: 'eyebrow' }, '🤡 Провал дня'),
+    f ? el('h3', {}, `«${f.title}» · ${f.nick}`) : el('p', { class: 'muted' }, 'Самый смешной баг урока: «🤡» на карточке игры ниже.'),
+    f && f.consent === 'ask' ? el('p', { class: 'pj-sub' }, 'Ждём согласия автора…') : f && f.why.length ? el('p', { class: 'pj-sub' }, f.why.join(' · ')) : null,
+    el('div', {}, el('button', { class: 'btn ghost small', type: 'button', onclick: () => { P.tab = 'fail'; refresh(); } }, 'Открыть вкладку «🤡 Провал дня» →')));
   host.append(el('div', { class: 'row' }, el('div', { class: 'grow stack', style: 'gap:4px' }, el('div', { class: 'eyebrow' }, `Финал урока ${r.lesson.number}`), el('h1', {}, 'Стена аркады урока')),
       el('span', { class: 'pj-sub' }, `игр урока: ${r.games.length}`)),
     el('div', { class: 'pj-finaltop' }, day, cg, failBox),
     wallRow(w),
     r.games.length ? el('div', { class: 'agrid' }, r.games.map(c => Games.card(c, { compact: true,
-      actions: [el('button', { class: 'btn ghost small', type: 'button', title: 'Провал дня: показать баг этой игры всему классу', onclick: () => setFail({ game: c.id, version: c.version }) }, '🤡 Провал дня')] })))
+      actions: [el('button', { class: 'btn ghost small', type: 'button', title: 'Провал дня: спросить автора и показать баг этой игры всему классу', onclick: () => nominateFail(c) }, '🤡 Провал дня')] })))
       : el('p', { class: 'pj-sub' }, 'Игр урока пока нет.'));
+}
+// одним нажатием: игра урока — в «Провал дня», автору уходит вопрос «можно показать?», проектор переходит на вкладку
+async function nominateFail(c) {
+  try { await api('/api/teacher/fail', { code: P.code, game: c.id, version: c.version }); beep('tick'); P.tab = 'fail'; P.failKey = null; await refresh(); } catch (e) { toast(e.message, 'err'); }
+}
+
+/* ---------- «🤡 Провал дня» (А5): согласие автора, игра в рамке, «Почему так вышло?» ---------- */
+async function refreshFail() {
+  let r;
+  try { r = await api('/api/teacher/final?code=' + encodeURIComponent(P.code)); } catch (e) { toast(e.message, 'err'); return; }
+  const f = r.fail;
+  const key = JSON.stringify([f && [f.game, f.consent, f.version, f.lesson], r.games.map(c => c.id)]);
+  if (key === P.failKey) return; // без перерисовки: рамка с багом, причины и поля живут
+  P.failKey = key;
+  if (P.failFrame) { P.failFrame.destroy(); P.failFrame = null; }
+  const host = $('#pj-fail'); host.innerHTML = '';
+  const setFail = async body => { try { await api('/api/teacher/fail', Object.assign({ code: P.code }, body)); beep('tick'); P.failKey = null; await refreshFail(); } catch (e) { toast(e.message, 'err'); } };
+  host.append(el('div', { class: 'stack', style: 'gap:6px' }, el('div', { class: 'eyebrow' }, `🤡 Провал дня · урок ${r.lesson.number}`),
+    el('h1', {}, 'Баг — повод посмеяться и разобраться'),
+    el('p', { class: 'pj-sub' }, 'Не оценка, а находка: самый смешной или поучительный баг урока. Показываем только с согласия автора.')));
+  const pick = note => el('div', { class: 'stack' }, note ? el('p', { class: 'concept' }, note) : null,
+    r.games.length ? el('div', { class: 'agrid' }, r.games.map(c => Games.card(c, { compact: true,
+      actions: [el('button', { class: 'btn small', type: 'button', 'data-fail-pick': c.id, onclick: () => setFail({ game: c.id, version: c.version }) }, '🤡 Показать этот баг')] })))
+      : el('p', { class: 'pj-sub' }, 'Игр урока пока нет: провал дня выбирают из игр этого урока.'));
+  if (!f) { host.append(pick('Нажмите «🤡» на игре, где случилось самое смешное. Автор увидит вопрос на своём экране.')); return; }
+  if (f.consent === 'ask') {
+    host.append(el('div', { class: 'card stack pj-fail pj-fail-wait' }, el('div', { class: 'eyebrow' }, 'Ждём согласия автора'),
+      el('h2', {}, `«${f.title}» · ${f.nick}`), el('p', { class: 'pj-sub' }, 'На экране автора — вопрос «Можно показать твой баг классу?». Игра откроется здесь, как только он нажмёт «Можно».'),
+      el('div', {}, el('button', { class: 'btn ghost small', type: 'button', onclick: () => setFail({ game: null }) }, '✕ Отменить'))));
+    return;
+  }
+  if (f.consent === 'no') { host.append(pick(`Автор «${f.title}» попросил не показывать — это его право. Выберите другой баг.`)); return; }
+  const sel = el('select', { 'aria-label': 'Версия с багом' }, f.versions.map(v => el('option', { value: v.n, selected: v.n === f.version ? true : null }, `v${v.n} · ${v.kind}${v.error ? ' · ошибка' : ''}`)));
+  const note = el('input', { type: 'text', maxlength: '200', placeholder: 'Что случилось — одной фразой', value: f.note || '', 'aria-label': 'Что случилось' });
+  const moral = el('input', { type: 'text', maxlength: '200', placeholder: 'Что поняли: как не повторить', value: f.moral || '', 'aria-label': 'Что поняли' });
+  const why = new Set(f.why);
+  const chips = el('div', { class: 'row pj-failwhy', role: 'group', 'aria-label': 'Почему так вышло' }, r.failWhy.map(t => {
+    const b = el('button', { type: 'button', class: 'chipbtn' + (why.has(t) ? ' on' : ''), 'aria-pressed': String(why.has(t)) }, t);
+    b.addEventListener('click', () => { if (why.has(t)) why.delete(t); else why.add(t); b.classList.toggle('on', why.has(t)); b.setAttribute('aria-pressed', String(why.has(t))); beep('tick'); });
+    return b;
+  }));
+  P.failFrame = Games.frame({ src: () => `/play/${f.game}/${sel.value}`, key: () => 'fail:' + f.game, score: false, label: 'Показать баг',
+    onError: err => P.failFrame.message(el('b', {}, 'Игра упала: ' + (err.message || 'ошибка') + ' — это тоже провал дня!')) });
+  sel.addEventListener('change', () => { P.failFrame.start(); });
+  const save = () => setFail({ game: f.game, version: sel.value, note: note.value, moral: moral.value, why: [...why] });
+  host.append(el('div', { class: 'pj-failgrid' },
+    el('div', { class: 'card stack pj-fail' }, el('div', { class: 'row' }, el('h2', { class: 'grow' }, `«${f.title}» · ${f.nick}`), sel),
+      P.failFrame.box, Games.bar(P.failFrame)),
+    el('div', { class: 'card stack pj-failtalk' }, el('div', { class: 'eyebrow' }, 'Разбираем всем классом'),
+      el('label', { class: 'lbl' }, 'Что случилось?'), note,
+      el('label', { class: 'lbl' }, 'Почему так вышло? Отметьте, что предложил класс'), chips,
+      el('label', { class: 'lbl' }, 'Что поняли?'), moral,
+      el('div', { class: 'row' }, el('button', { class: 'btn', type: 'button', onclick: save }, 'Сохранить разбор'), el('span', { class: 'grow' }),
+        el('button', { class: 'btn ghost small', type: 'button', onclick: () => setFail({ game: null }) }, '✕ Убрать'))),
+    f.note || f.why.length || f.moral ? el('p', { class: 'pj-sub pj-failsaved' }, '✓ ' + [f.note, f.why.join(', '), f.moral].filter(Boolean).join(' · ')) : null));
 }
 
 // финал: рейтинг «ещё раз» (чужие игроки сами захотели вернуться — главный тест курса)

@@ -198,6 +198,9 @@ function pultOf(o, cps, cp, passed, nextCp) {
     el('div', { class: 'row small' },
       el('span', { class: 'grow' }, total ? `${step ? 'Прошли шаг' : 'Прошли чекпоинт'}: ${n} из ${total}` : 'Пока никто не вошёл'),
       stuck.length ? el('span', { class: 'tag err', 'data-pult-stuck': '1' }, `застряли: ${stuck.join(', ')}`) : null),
+    ...cp.steps.filter(s => s.type === 'obyasni' && o.explain && o.explain[s.id] && o.explain[s.id].n).map(s => { const t = o.explain[s.id]; // Б3: доля «Понял» и застрявшие пары
+      return el('div', { class: 'row small', 'data-pult-explain': s.id }, el('span', { class: 'grow' }, `🗣 Объясни соседу: поняли ${t.share}% (${t.got} из ${t.n})`),
+        t.stuck.length ? el('span', { class: 'tag warn' }, 'подойдите: ' + t.stuck.map(p => p.partner ? `${p.nick} и ${p.partner}` : p.nick).join(', ')) : null); }),
     el('div', { class: 'row' },
       el('span', { class: 'muted small grow' }, 'Дальше → ' + nextLabel),
       nextCp ? el('button', { class: 'btn' + (ready ? ' warm' : ' ghost') + ' small', type: 'button', 'data-pult-next': nextCp.id,

@@ -4,8 +4,8 @@
 //   Питчи (урок 29): питч-карта команды, сцена питча на проекторе с таймером 60 секунд, «❤ хочу сыграть» (у каждого три сердца), утверждение диздока учителем.
 //   Дорога к Фестивалю: вехи команды по урокам (поле milestone сценария — шаг, который закрывает этап), на проекторе фишки команд едут по дороге.
 //   Фестиваль (урок 36): стенд игры на компьютере автора считает партии гостей, «ещё раз» и реакции; учитель ведёт программу и считает жетоны;
-//   номинации «Выбор зрителей» и «Ещё раз!» считаются сами.
-// Подключается из server.js: require('./lib/m8')({ route, needStudent, needDayClass, broadcast, store, saveStudentField, lessons, M7 }).
+//   номинации «Выбор зрителей», «Ещё раз!», «Самый живой стенд» и «Самый большой рост» (лесенка самооценки модулей, А4) считаются сами.
+// Подключается из server.js: require('./lib/m8')({ route, needStudent, needDayClass, broadcast, store, saveStudentField, lessons, M7, rostOf, rostGrowth }).
 'use strict';
 
 const bad = (msg, status = 400) => Object.assign(new Error(msg), { status });
@@ -21,7 +21,7 @@ const PHASES = [
   { id: 'awards', label: 'Награждение', min: 10 },
 ];
 
-module.exports = function m8({ route, needStudent, needDayClass, broadcast, store, saveStudentField, lessons, M7 }) {
+module.exports = function m8({ route, needStudent, needDayClass, broadcast, store, saveStudentField, lessons, M7, rostOf, rostGrowth }) {
   const P = cls => {
     if (!cls.proekt) cls.proekt = {};
     const p = cls.proekt;
@@ -180,8 +180,20 @@ module.exports = function m8({ route, needStudent, needDayClass, broadcast, stor
         { id: 'zriteli', label: 'Выбор зрителей', how: 'жетоны гостей и 🤩', win: lead(s => s.tokens * 2 + s.likes.wow) },
         { id: 'eshche', label: 'Ещё раз!', how: 'больше всего повторных партий', win: lead(s => s.again) },
         { id: 'gosti', label: 'Самый живой стенд', how: 'больше всего гостей', win: lead(s => s.guests) },
+        { id: 'rost', label: 'Самый большой рост', how: 'лесенка самооценки: последний модуль против первого', win: rostWin(cls, stands) },
       ],
     };
+  }
+  // «Самый большой рост» (А4): у каждого автора стенда — рост среднего балла самооценки от первого модуля к последнему; у команды — средний по тем, у кого две ступени и больше
+  function rostWin(cls, stands) {
+    let best = null;
+    for (const s of stands) {
+      const g = s.authors.map(n => store.getStudent(cls.code, n)).filter(Boolean).map(st => rostGrowth(rostOf(st))).filter(x => x != null);
+      if (!g.length) continue;
+      const v = Math.round(10 * g.reduce((a, b) => a + b, 0) / g.length) / 10;
+      if (v > 0 && (!best || v > best.v)) best = { v, s };
+    }
+    return best ? { game: best.s.game, title: best.s.title, authors: best.s.authors, value: '+' + String(best.v).replace('.', ',') } : null;
   }
   route('GET', '/api/fest', (ctx) => {
     const w = ctx.who;

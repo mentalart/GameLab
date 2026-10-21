@@ -27,7 +27,7 @@ const { el, api } = Lab;
     el('p', { class: 'meta' }, `Донор: ${les.donor} · ${at} мин · класс ${o.class.code}`),
     el('p', { style: 'margin:0 0 6px' }, les.goal),
     les.question ? el('div', { class: 'q' }, 'Вопрос урока, в начале и в конце: ', les.question) : null,
-    les.concepts ? [el('h2', {}, 'Три понятия урока'), el('div', { class: 'cols' }, les.concepts.map(c => el('div', { class: 'concept' }, el('b', {}, c.title), c.text)))] : null,
+    les.concepts ? [el('h2', {}, 'Три понятия урока'), el('div', { class: 'cols' }, les.concepts.map(c => el('div', { class: 'concept' }, el('b', {}, c.formula || c.title), c.term ? el('i', {}, c.term) : null, c.example || c.text)))] : null,
     el('h2', {}, 'Ход урока'),
     el('table', {}, el('thead', {}, el('tr', {}, el('th', {}, 'Время'), el('th', {}, 'Чекпоинт'), el('th', {}, 'Скажите · шаги · дальше'))), el('tbody', {}, rows)),
     o.glossary && o.glossary.length ? [el('h2', {}, 'Словарик: слово — одна фраза'), el('div', { class: 'gloss' }, o.glossary.map(g => el('div', {}, el('b', {}, g.term), ' — ', g.say)))] : null,

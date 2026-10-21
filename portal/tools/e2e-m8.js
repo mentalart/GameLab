@@ -179,6 +179,7 @@ module.exports = function m8(H) {
     await portrait(student);
     await student.click('#step-igra button:has-text("Всё верно")');
     await student.waitForSelector('#step-igra.done');
+    if (H.producer) await H.producer(student, les, mode);
     await student.click('#step-sborka >> text=⚙ Собрать игру');
     let own = await gameFrame(student, '/play/', 0);
     if (mode === 'mock') {
@@ -337,7 +338,7 @@ module.exports = function m8(H) {
     if (pj) {
       await pj.click('.pj-tabs >> text=Проект');
       await pj.waitForSelector('#pj-m8 .m8-nom', { timeout: 10000 });
-      check('Проектор: номинации Фестиваля крупно', await pj.locator('#pj-m8 .m8-nom').count() === 3);
+      check('Проектор: номинации Фестиваля крупно', await pj.locator('#pj-m8 .m8-nom').count() === 4 && /Самый большой рост/.test(await pj.textContent('#pj-m8 .m8-noms')));
       if (shot) await shot(pj, 'm8-36-projector');
       await pj.click('.pj-tabs >> text=Урок');
     }

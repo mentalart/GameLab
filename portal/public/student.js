@@ -26,6 +26,7 @@ async function boot() {
   S.board = Games.board(); // доска вызовов класса: над шагами любого чекпоинта
   render();
   listen();
+  failAsk(me.failAsk); // «🤡 Провал дня»: учитель ждёт согласия автора (ritualy.js)
 }
 // поднятая рука: видна учителю в очереди «Нужна помощь», опускается самим учеником или кнопкой учителя «Помог»
 function drawHelp() {
@@ -90,6 +91,7 @@ function listen() {
       if (card && !card.contains(document.activeElement)) renderMain();
     }).catch(() => {});
   });
+  es.addEventListener('fail', e => failEvent(JSON.parse(e.data))); // «🤡 Провал дня»: можно показать мой баг? (ritualy.js)
   es.addEventListener('help', e => { if (JSON.parse(e.data).nick === S.me.nick) { S.me.help = null; drawHelp(); } });
   es.addEventListener('limits', e => {
     const d = JSON.parse(e.data);
@@ -153,10 +155,28 @@ function renderSide() {
     const got = S.lesson.concepts.filter(c => ans(c.after).done).length;
     side.append(el('div', { class: 'eyebrow', style: 'margin:16px 0 6px 4px' }, `Понятия урока · ${got} из ${S.lesson.concepts.length}`),
       el('div', { class: 'concepts' }, S.lesson.concepts.map((c, k) => ans(c.after).done
-        ? el('div', { class: 'ccard open', title: c.text }, el('span', { class: 'no' }, String(k + 1)), el('b', {}, c.title), el('span', { class: 'small muted' }, c.text))
+        ? conceptCard(c, k)
         : el('div', { class: 'ccard' }, el('span', { class: 'no' }, String(k + 1)), el('span', { class: 'small muted' }, 'Откроется по ходу урока')))));
   }
   side.append(el('p', { class: 'muted small', style: 'margin:12px 4px 0' }, S.lesson.lens));
+}
+// карта понятия в три строки (Б1): бытовая формула крупно, термин мельче, пример. До сборки пример из донора, после — из своей игры:
+// шаблон own заполняется замыслом ученика (поля Фабрики и решений, {game} — название игры), без вызова ИИ. Пустое поле — снова донор
+function conceptExample(c) {
+  if (c.own && hasGame()) {
+    const vars = Object.assign(planVars(), { game: S.game.title || '' });
+    const keys = (c.own.match(/\{(\w+)\}/g) || []).map(x => x.slice(1, -1));
+    if (keys.every(k => String(vars[k] || '').trim())) return { own: true, text: fillTpl(c.own, vars) };
+  }
+  return { own: false, text: c.example || c.text };
+}
+function conceptCard(c, k, big, donorOnly) {
+  const ex = donorOnly ? { own: false, text: c.example || c.text } : conceptExample(c);
+  return el('div', { class: 'ccard open' + (big ? ' big' : ''), title: c.text },
+    k == null ? null : el('span', { class: 'no' }, String(k + 1)),
+    el('b', { class: 'cf' }, c.formula || c.title),
+    c.term ? el('span', { class: 'ct' }, c.term) : null,
+    el('span', { class: 'cx' + (ex.own ? ' own' : '') }, el('i', {}, ex.own ? 'В твоей игре: ' : 'У донора: '), ex.text));
 }
 // путь моей игры (П6): что ученик уже получил на каждом чекпоинте — loot в сценарии: { step, label, field }
 function lootOf(cp) {
@@ -1641,8 +1661,41 @@ STEPS.factory = ctx => {
       .concat(visible().filter(f => f.pillar).map(f => ({ pillar: f.pillar, q: f.q, text: Games.cardParts(valText(v.fields[f.id]))[0] || '' })))
       .forEach(c => pillarStrip.append(el('div', { class: 'pil' + (c.text ? ' up' : '') }, el('b', {}, c.pillar), el('span', { class: 'small muted' }, c.text ? short(c.text) : c.q))));
   };
+  // колода ограничений (А5): «🃏 Усложни мне» включает уровень «Босс» и тянет карту; карта уходит в задание Qwen, пока уровень — «Босс»
+  const REDRAWS = 2;
+  function drawLimit() {
+    limitHost.innerHTML = '';
+    const deck = S.lesson.limitDeck || [], boss = st.levels.find(l => l.id === 'boss');
+    if (!deck.length || !boss) return;
+    const take = () => {
+      const pool = deck.filter(c => !v.limit || c.id !== v.limit.id);
+      return pool[Math.floor(Math.random() * pool.length)];
+    };
+    if (!v.limit) {
+      const lock = locked(boss);
+      limitHost.append(el('div', { class: 'row limit-ask' },
+        el('button', { type: 'button', class: 'btn ghost', 'data-limit': 'draw', 'aria-disabled': lock ? 'true' : null, onclick: () => {
+          if (lock) { toast('Уровень «Босс» откроется после первой сборки'); return; }
+          v.limit = Object.assign({ redraws: REDRAWS }, take()); v.level = 'boss'; beep('dice'); ctx.save(v); draw();
+        } }, '🃏 Усложни мне'),
+        el('span', { class: 'small muted grow' }, 'Карта ограничения из колоды курса: «только два цвета», «без текста», «игра на 30 секунд»… Включает уровень «Босс».')));
+      return;
+    }
+    const on = v.level === 'boss';
+    limitHost.append(el('div', { class: 'limit-card' + (on ? ' on' : ''), 'data-limit-card': v.limit.id },
+      el('span', { class: 'lc-ico', 'aria-hidden': 'true' }, '🃏'),
+      el('div', { class: 'stack', style: 'gap:2px' }, el('div', { class: 'eyebrow' }, 'Карта ограничения · вызов принят'), el('b', {}, v.limit.text),
+        el('span', { class: 'small muted' }, on ? 'Qwen получит её в задании: игра должна выполнить это ограничение.' : 'Работает только на уровне «Босс» — сейчас уровень другой, Qwen её не получит.')),
+      el('div', { class: 'row', style: 'gap:6px' },
+        !on ? el('button', { type: 'button', class: 'btn small', onclick: () => { v.level = 'boss'; ctx.save(v); draw(); } }, 'Вернуть «Босс»') : null,
+        v.limit.redraws > 0 ? el('button', { type: 'button', class: 'btn ghost small', 'data-limit': 'redraw', onclick: () => {
+          v.limit = Object.assign({ redraws: v.limit.redraws - 1 }, take()); beep('dice'); ctx.save(v); draw();
+        } }, `↻ Другая · ${v.limit.redraws}`) : null,
+        el('button', { type: 'button', class: 'btn ghost small', 'data-limit': 'drop', onclick: () => { delete v.limit; ctx.save(v); draw(); } }, '✕ Без карты'))));
+  }
   function draw() {
     levelSeg.querySelectorAll('.opt').forEach((b, k) => { const on = st.levels[k].id === v.level; b.classList.toggle('on', on); b.setAttribute('aria-pressed', String(on)); });
+    drawLimit();
     fieldsHost.innerHTML = '';
     drawDonor();
     visible().map(withDeck).forEach(f => fieldsHost.append(fieldEditor(f, v.fields[f.id], nv => { v.fields[f.id] = nv; ctx.save(v); count(); }, { single: f.id === 'title', idPrefix: st.id })));
@@ -1654,6 +1707,8 @@ STEPS.factory = ctx => {
   wrap.append(el('div', { class: 'formula' }, el('span', {}, 'Донор'), '×', el('span', {}, 'Твист'), '×', el('span', {}, 'Мир')));
   if (st.fields.some(f => f.pillar)) wrap.append(pillarStrip); // П1: те же пять опор, что на вау-старте
   wrap.append(el('div', { class: 'eyebrow' }, 'Уровень'), levelSeg);
+  const limitHost = el('div', { class: 'limit-host' });
+  if (S.lesson.limitDeck && st.levels.some(l => l.id === 'boss')) wrap.append(limitHost);
   const hook = st.hookFrom ? choiceText(st.hookFrom) : '';
   if (hook) wrap.append(el('div', { class: 'hookbox' }, el('b', {}, 'Тебя зацепило в доноре: '), `«${hook}». Оставишь это в своей игре? Возьми в твист, мир или чувство.`));
   if (st.donorCard) wrap.append(el('div', { class: 'donor-card' }, el('div', { class: 'ico' }, st.donorCard.icon || '👾'), el('div', {}, el('div', { class: 'eyebrow' }, 'Донор урока · карта'), el('h3', {}, st.donorCard.title), el('p', { class: 'muted' }, st.donorCard.text))));
@@ -1721,7 +1776,7 @@ STEPS.decisions = ctx => {
 
 // значения полей Фабрики и решений для черновика ИГРА
 function planVars() {
-  const P = S.lesson.plan, out = {};
+  const P = S.lesson.plan || {}, out = {};
   for (const id of [P.factory, P.decisions]) for (const [k, f] of Object.entries((ans(id).value || {}).fields || {})) out[k] = valText(f);
   // донор на выбор: {donor} — название, {donorRules} и {donorKeys} — правила и кнопки классики для черновика ИГРА
   const fac = lessonSteps().find(x => x.id === P.factory), dv = (ans(P.factory).value || {}).donor;
@@ -1732,6 +1787,8 @@ function planVars() {
   return out;
 }
 const fillTpl = (tpl, vars) => tpl.replace(/\{(\w+)\}/g, (_, k) => vars[k] || '…');
+// карта ограничения Фабрики (А5): действует, только пока уровень — «Босс»
+const limitNow = () => { const f = ans(S.lesson.plan && S.lesson.plan.factory).value || {}; return f.level === 'boss' && f.limit ? f.limit.text : ''; };
 
 // igra: preview — готовый промпт «вот что получит программист», правка по желанию («✎ Поправить»); черновик из Фабрики обновляется сам,
 // пока ученик не правил поле своими словами
@@ -1767,7 +1824,8 @@ STEPS.igra = ctx => {
     if (!editing) {
       host.append(el('div', { class: 'card preview-igra' }, el('div', { class: 'eyebrow' }, 'Вот что получит программист'),
         ...st.fields.map(f => el('div', { class: 'pi-row' }, el('span', { class: 'letter' }, f.letter),
-          el('div', { class: 'stack', style: 'gap:2px' }, el('b', {}, f.label), el('div', {}, valText(v.fields[f.id]) || '—'))))),
+          el('div', { class: 'stack', style: 'gap:2px' }, el('b', {}, f.label), el('div', {}, valText(v.fields[f.id]) || '—')))),
+        limitNow() ? el('div', { class: 'pi-row' }, el('span', { class: 'letter' }, '🃏'), el('div', { class: 'stack', style: 'gap:2px' }, el('b', {}, 'Карта ограничения'), el('div', {}, limitNow()))) : null),
       el('div', { class: 'row' }, el('span', { class: 'grow' }),
         el('button', { class: 'btn ghost', type: 'button', onclick: () => { editing = true; draw(); } }, '✎ Поправить'),
         el('button', { class: 'btn', type: 'button', onclick: () => { if (ready()) ctx.save(v, true); } }, ctx.done ? 'Всё верно ✓' : 'Всё верно')));
@@ -3724,7 +3782,7 @@ function stepSummary(step) {
     case 'arcade': return v.game ? `игра «${v.title || ''}» (автор ${v.author || '—'}), партий ${v.rounds || 0}, лучший счёт ${v.best || 0}${v.beat ? ', рекорд автора побит' : ''}` : 'не играл';
     case 'playtest': return (v.sent ? `отзыв на «${v.title || ''}»: ${(v.emotions || []).join(' ')}; ${step.ask && valText(v.story) ? `${step.ask.label} ${f(v.story)}; ` : ''}нравится: ${f(v.like)}; хочется: ${f(v.want)}; а что если: ${f(v.whatif)}` : 'отзыв не отправлен') +
       (S.me.feedback ? `\nотзыв учителя: понятие — ${valText(S.me.feedback.concept)}; вопрос — ${valText(S.me.feedback.question)}` : '');
-    default: return (window.LabStepsM8Summary && window.LabStepsM8Summary(step, v, a)) || (window.LabStepsM7Summary && window.LabStepsM7Summary(step, v, a)) || (window.LabStepsM6Summary && window.LabStepsM6Summary(step, v, a)) || (window.LabStepsM4Summary && window.LabStepsM4Summary(step, v, a)) || (window.LabStepsM3Summary && window.LabStepsM3Summary(step, v, a)) || JSON.stringify(v);
+    default: return (window.LabRitualSummary && window.LabRitualSummary(step, v, a)) || (window.LabStepsM8Summary && window.LabStepsM8Summary(step, v, a)) || (window.LabStepsM7Summary && window.LabStepsM7Summary(step, v, a)) || (window.LabStepsM6Summary && window.LabStepsM6Summary(step, v, a)) || (window.LabStepsM4Summary && window.LabStepsM4Summary(step, v, a)) || (window.LabStepsM3Summary && window.LabStepsM3Summary(step, v, a)) || JSON.stringify(v);
   }
 }
 function cpSummary(cp) {

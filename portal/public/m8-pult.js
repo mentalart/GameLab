@@ -156,7 +156,7 @@ window.LabM8 = (() => {
       if (f.awards || f.phase === 'awards') {
         // номинации открываются по очереди: на проекторе — с отскоком, у учителя — сразу списком
         parts.push(el('div', { class: 'm8-noms' }, ...f.nominations.map((n, i) => el('div', { class: 'm8-nom', style: `--d:${i * 900}ms` },
-          el('span', { class: 'm8-ni' }, ['🏆', '🔁', '🎈'][i] || '🏅'), el('span', { class: 'eyebrow' }, n.label),
+          el('span', { class: 'm8-ni' }, ['🏆', '🔁', '🎈', '📈'][i] || '🏅'), el('span', { class: 'eyebrow' }, n.label),
           el('b', {}, n.win ? n.win.title : '—'), el('span', { class: 'small muted' }, n.win ? `${n.win.authors.join(', ')} · ${n.how}: ${n.win.value}` : n.how)))));
         if (S.seenAwards !== f.phaseAt) { S.seenAwards = f.phaseAt; beep('done'); }
       }

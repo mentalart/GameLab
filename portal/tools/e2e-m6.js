@@ -158,6 +158,7 @@ module.exports = function m6(H) {
     check(`Урок ${les.number}: ИГРА — готовый промпт с названием`, preview.includes(title), preview.slice(0, 90));
     await student.click('#step-igra button:has-text("Всё верно")');
     await student.waitForSelector('#step-igra.done');
+    if (H.producer) await H.producer(student, les, mode);
     await student.click('#step-sborka >> text=⚙ Собрать игру');
     let own = await gameFrame(student, '/play/', 0);
     if (mode === 'mock') {

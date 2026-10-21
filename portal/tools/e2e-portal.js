@@ -104,6 +104,43 @@ async function gameFrame(page, urlPart, n = 0) {
   throw new Error(`Рамка ${urlPart} №${n} не дождалась игры за 60 с. Рамки: ${all.join('; ') || 'нет'}`);
 }
 // партия: старт, по желанию — зажатая клавиша (телеметрия), конец с заданным счётом
+// продюсер до сборки (А3: с урока 2 везде, где есть Фабрика): развилки кнопками, шаг готов, когда выбраны все; в демо — развилки урока
+async function producer(student, les, mode) {
+  if (!(await student.locator('#step-prodyuser').count())) return;
+  await student.click('#step-prodyuser >> text=Отдать замысел продюсеру');
+  await student.waitForSelector('#step-prodyuser .fork .opt', { timeout: 30000 });
+  const forks = await student.locator('#step-prodyuser .fork').count();
+  for (let k = 0; k < forks; k++) await student.click(`#step-prodyuser .fork >> nth=${k} >> .opt >> nth=0`);
+  await student.waitForSelector('#step-prodyuser.done', { timeout: 10000 });
+  check(`Урок ${les.number}: продюсер читает замысел до сборки`, forks >= 1 && (mode !== 'demo' || !les.demoForks || (await student.textContent('#step-prodyuser')).includes(les.demoForks[0].question)));
+}
+// самооценка модуля (А4): шкала по всем вопросам, понятие модуля, фраза кубиком, «Сохранить в лесенку» — и ступень модуля в лесенке
+// «Объясни соседу за 30 секунд» (Б3): первая попытка «Не понял» даёт подсказку, вторая «Понял» — шаг готов, на экране — «меняйтесь»
+async function obyasni(student, shot) {
+  const id = '#step-obyasni';
+  await student.waitForSelector(`${id} [data-explain=start]`, { timeout: 10000 });
+  await student.click(`${id} [data-explain=start]`);
+  await student.click(`${id} [data-explain=not]`);
+  await student.waitForSelector(`${id} .obyasni-hint`);
+  if (shot) await shot(student, '21b-obyasni', true);
+  await student.click(`${id} [data-explain=got]`);
+  await student.waitForSelector(`${id}.done`, { timeout: 10000 });
+  const res = (await student.textContent(`${id} .obyasni-res`)).replace(/\s+/g, ' ');
+  check('Объясни соседу: подсказка после «Не понял», «Понял» со второй попытки, потом меняются', /со второй попытки/.test(res) && /меняйтесь/.test(res), res.slice(0, 120));
+}
+async function rost(student, module, score = 3) {
+  const id = '#step-samootsenka';
+  await student.waitForSelector(`${id} .rost-dot`, { timeout: 10000 });
+  const keys = await student.$$eval(`${id} .rost-scale`, gs => gs.length);
+  for (let k = 0; k < keys; k++) await student.click(`${id} .rost-scale >> nth=${k} >> .rost-dot >> nth=${score - 1}`);
+  if (await student.locator(`${id} .rost-concepts .chipbtn`).count()) await student.click(`${id} .rost-concepts .chipbtn >> nth=0`);
+  await student.fill(`${id} textarea, ${id} input[type=text]`, 'Понимаю, почему игру хочется переиграть');
+  await student.click(`${id} [data-rost-save]`);
+  await student.waitForSelector(`${id}.done`, { timeout: 10000 });
+  await student.waitForSelector(`${id} .rost-rung.now`, { timeout: 10000 });
+  const rung = (await student.textContent(`${id} .rost-rung.now`)).replace(/\s+/g, ' ');
+  check(`Самооценка модуля ${module}: ступень лесенки роста со средним баллом`, rung.includes('Модуль ' + module) && rung.includes(String(score)), rung);
+}
 async function playRound(frame, { score = 0, hold = null, page = null, restart = false } = {}) {
   await frame.evaluate(r => (r ? window.__lab.restart() : window.__lab.confirm()), restart);
   if (hold && page) {
@@ -431,7 +468,7 @@ async function run(browser, base, mode) {
   await student.click('#step-otkrytie-den >> text=Ответить');
   await student.waitForSelector('#step-otkrytie-den.done');
   check('Финал без «Плана следующей версии»: шагов шесть', await student.locator('#step-plan-v2').count() === 0 && lesson1.checkpoints.find(c => c.id === 'final').steps.length === 6);
-  await projectorFinal(pj, shot);
+  await projectorFinal(pj, shot, student);
   // «Моя студия»: полка, значки, журнал с планом версии 2, эмблема у ника в аркаде
   {
     const sp = await student.context().newPage(); watch(sp, errors);
@@ -516,28 +553,28 @@ async function run(browser, base, mode) {
   if (want(7)) await lessonSeven(mode, teacher, student, shot);
   if (want(8)) await lessonEight(mode, teacher, student, shot, { browser, base, code, errors, pj });
   { // модуль 3: уроки 9–13
-    const m3 = require('./e2e-m3')({ check, gameFrame, playRound, sleep, mock, lessons: Object.fromEntries(M3.map(n => [n, require(`../lessons/urok-${String(n).padStart(2, '0')}`)])) });
+    const m3 = require('./e2e-m3')({ check, gameFrame, playRound, sleep, mock, rost, producer, lessons: Object.fromEntries(M3.map(n => [n, require(`../lessons/urok-${String(n).padStart(2, '0')}`)])) });
     for (const n of M3) if (want(n) && m3['lesson' + n]) await m3['lesson' + n](mode, teacher, student, shot, { browser, base, code, errors, pj });
   }
   { // модуль 4: уроки 14–18
-    const m4 = require('./e2e-m4')({ check, gameFrame, playRound, sleep, mock, lessons: Object.fromEntries(M4.map(n => [n, require(`../lessons/urok-${n}`)])) });
+    const m4 = require('./e2e-m4')({ check, gameFrame, playRound, sleep, mock, rost, producer, lessons: Object.fromEntries(M4.map(n => [n, require(`../lessons/urok-${n}`)])) });
     for (const n of M4) if (want(n) && m4['lesson' + n]) await m4['lesson' + n](mode, teacher, student, shot, { browser, base, code, errors, pj });
   }
   { // модуль 5: уроки 19–22
-    const m5 = require('./e2e-m5')({ check, gameFrame, playRound, sleep, mock, lessons: Object.fromEntries(M5.map(n => [n, require(`../lessons/urok-${n}`)])) });
+    const m5 = require('./e2e-m5')({ check, gameFrame, playRound, sleep, mock, rost, producer, lessons: Object.fromEntries(M5.map(n => [n, require(`../lessons/urok-${n}`)])) });
     for (const n of M5) if (want(n) && m5['lesson' + n]) await m5['lesson' + n](mode, teacher, student, shot, { browser, base, code, errors, pj });
   }
   { // модуль 6: уроки 23–25
-    const m6 = require('./e2e-m6')({ check, gameFrame, playRound, sleep, mock, lessons: Object.fromEntries(M6.map(n => [n, require(`../lessons/urok-${n}`)])) });
+    const m6 = require('./e2e-m6')({ check, gameFrame, playRound, sleep, mock, rost, producer, lessons: Object.fromEntries(M6.map(n => [n, require(`../lessons/urok-${n}`)])) });
     for (const n of M6) if (want(n) && m6['lesson' + n]) await m6['lesson' + n](mode, teacher, student, shot, { browser, base, code, errors, pj });
   }
   { // модуль 7: уроки 26–28 (урок 28 продолжает команду и игру урока 27)
-    const m7 = require('./e2e-m7')({ check, gameFrame, playRound, sleep, mock, lessons: Object.fromEntries(M7.map(n => [n, require(`../lessons/urok-${n}`)])) });
+    const m7 = require('./e2e-m7')({ check, gameFrame, playRound, sleep, mock, rost, producer, lessons: Object.fromEntries(M7.map(n => [n, require(`../lessons/urok-${n}`)])) });
     let prev = null;
     for (const n of M7) if (want(n)) prev = (await m7['lesson' + n](mode, teacher, student, shot, { browser, base, code, errors, pj }, prev)) || prev;
   }
   { // модуль 8: уроки 29–36 (урок 30 и дальше продолжают команду и игру урока 29–30)
-    const m8 = require('./e2e-m8')({ check, gameFrame, playRound, sleep, mock, lessons: Object.fromEntries(M8.map(n => [n, require(`../lessons/urok-${n}`)])) });
+    const m8 = require('./e2e-m8')({ check, gameFrame, playRound, sleep, mock, rost, producer, lessons: Object.fromEntries(M8.map(n => [n, require(`../lessons/urok-${n}`)])) });
     let prev = null;
     for (const n of M8) if (want(n)) prev = (await m8['lesson' + n](mode, teacher, student, shot, { browser, base, code, errors, pj }, prev)) || prev;
   }
@@ -864,21 +901,34 @@ async function projectorPair(pj, mode, shot) {
   await sleep(500);
   check('Ушли с вкладки — копии остановлены', !(await pj.locator('#pj-pair iframe').count()));
 }
-/* ---------- проектор: «Финал» — стена аркады урока и провал дня ---------- */
-async function projectorFinal(pj, shot) {
+/* ---------- проектор: «Финал» — стена аркады урока; «🤡 Провал дня» — согласие автора и разбор (А5) ---------- */
+async function projectorFinal(pj, shot, student) {
   await pj.click('.pj-tabs >> text=Финал');
   await pj.waitForSelector('#pj-final .acard', { timeout: 10000 });
   const n = await pj.locator('#pj-final .acard').count();
   check('Финал на проекторе: стена игр урока с рекордами', n >= 1 && /Стена аркады урока/.test(await pj.textContent('#pj-final h1')), `игр: ${n}`);
-  await pj.click('#pj-final .acard button:has-text("Провал дня") >> nth=0');
-  await pj.waitForSelector('#pj-final .pj-fail h2', { timeout: 10000 });
-  await pj.fill('#pj-final .pj-fail input[type=text]', 'Пасечник улетел в небо');
-  await pj.click('#pj-final .pj-fail >> text=Сохранить');
-  await pj.waitForSelector('#pj-final .pj-fail >> text=Пасечник улетел в небо', { timeout: 10000 });
-  check('Провал дня: игра урока в рамке на весь класс, заметка учителя', await pj.locator('#pj-final .pj-fail .gamebox, #pj-final .pj-fail iframe, #pj-final .pj-fail .veil').count() >= 1);
-  await shot(pj, 'p4-final');
-  await pj.click('#pj-final .pj-fail >> text=✕ Убрать');
+  // одно нажатие «🤡» на карточке своей игры ученика: проектор уходит на вкладку «Провал дня» и ждёт согласия автора
+  await pj.click('#pj-final .acard:has-text("Пасека под огнём") button:has-text("Провал дня")');
+  await pj.waitForSelector('#pj-fail .pj-fail-wait', { timeout: 10000 });
+  check('Провал дня: без согласия автора игра не открывается', !(await pj.locator('#pj-fail iframe, #pj-fail .gamebox').count()));
+  await student.waitForSelector('#failAsk', { timeout: 10000 });
+  check('Автор видит вопрос «Можно показать твой баг классу?» на своём экране', /Пасека под огнём/.test(await student.textContent('#failAsk')));
+  await shot(student, '7b-fail-ask', true);
+  await student.click('#failAsk [data-fail=yes]');
+  await pj.waitForSelector('#pj-fail .pj-failtalk', { timeout: 15000 });
+  await pj.fill('#pj-fail input[aria-label="Что случилось"]', 'Пасечник улетел в небо');
+  await pj.click('#pj-fail .pj-failwhy .chipbtn >> nth=0');
+  await pj.fill('#pj-fail input[aria-label="Что поняли"]', 'Скажи Qwen, чего делать нельзя');
+  await pj.click('#pj-fail >> text=Сохранить разбор');
+  await pj.waitForSelector('#pj-fail .pj-failsaved >> text=Пасечник улетел в небо', { timeout: 10000 });
+  check('Провал дня: игра урока в рамке на весь класс, причины и вывод класса', await pj.locator('#pj-fail .pj-fail .gamebox, #pj-fail .pj-fail iframe, #pj-fail .pj-fail .veil').count() >= 1
+    && /ИИ понял просьбу/.test(await pj.textContent('#pj-fail .pj-failsaved')));
+  await shot(pj, 'p4-fail');
+  await pj.click('#pj-fail >> text=✕ Убрать');
+  await pj.waitForSelector('#pj-fail [data-fail-pick]', { timeout: 10000 });
+  await pj.click('.pj-tabs >> text=Финал');
   await pj.waitForSelector('#pj-final .pj-fail >> text=Самый смешной баг урока', { timeout: 10000 });
+  await shot(pj, 'p4-final');
   await pj.click('.pj-tabs >> text=Урок');
 }
 
@@ -1139,6 +1189,10 @@ async function lessonTwo(mode, teacher, student, shot) {
   check('Сравнение: классика и одно правило, счётчики телеметрии и спрятанная механика', /ничьи 3/.test(reveal) && /победы 1/.test(reveal) && /спрятанная механика сработала 4 раз/.test(reveal), (reveal.match(/С одним правилом.*?Классика[^О]*/) || [''])[0].slice(0, 160));
   await shot(student, '21-u2-secret', true);
   await storyDone(student);
+  // Б1: карта понятия в боковой колонке открылась в три строки, пример — у донора (игры ещё нет)
+  const ccard = (await student.textContent('#side .ccard.open')).replace(/\s+/g, ' ');
+  check('Карта понятия: формула, термин и пример донора', /Интересно, пока не знаешь/.test(ccard) && /Неизвестный исход/.test(ccard) && /У донора:/.test(ccard), ccard.slice(0, 160));
+  await obyasni(student, shot);
 
   // квиз-раунды «Игра или не игра?»: свайп, кнопка с ошибкой, клавиши
   const quiz = step2('igra-ili-net');
@@ -1632,10 +1686,7 @@ async function lessonFour(mode, teacher, student, shot) {
 
   // открытие: самооценка модуля
   await student.click('.cp >> text=Открытие');
-  await student.click('#step-samootsenka .opt >> nth=3');
-  await student.click('#step-samootsenka .opt >> nth=4');
-  await student.click('#step-samootsenka >> text=Ответить');
-  await student.waitForSelector('#step-samootsenka.done');
+  await rost(student, 1, 3);
   check('Самооценка модуля 1 сохранена', true);
 }
 
@@ -2233,9 +2284,8 @@ async function lessonEight(mode, teacher, student, shot, { browser, base, code, 
 
   // открытие и журнал модуля: три приёма ощущения игры
   await student.click('.cp >> text=Открытие');
-  for (let k = 0; k < 3; k++) await student.click(`#step-tri-priema .opt >> nth=${k}`);
-  await student.click('#step-tri-priema >> text=Ответить');
-  await student.waitForSelector('#step-tri-priema.done');
+  await rost(student, 2, 4);
+  check('Лесенка роста: модуль 2 выше модуля 1 на 1 балл', /\+1/.test(await student.textContent('#step-samootsenka .rost-ladder')));
 
   // выставка: без игр класса — ожидание; с подставным ИИ соседка собирает игру джема, голоса, итоги, турнир на проекторе
   await student.click('.cp >> text=Играем вместе');

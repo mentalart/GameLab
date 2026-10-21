@@ -21,6 +21,7 @@ const TYPES = {
 // LAB_LESSONS — дополнительная папка сценариев (e2e-portal.js кладёт туда урок-проверку новых типов шагов).
 const MODULES = require('./lessons/moduli');
 const SLOVAR = require('./lessons/slovar'); // словарик по месту (С2)
+const OGRANICHENIYA = require('./lessons/ogranicheniya'); // колода ограничений «Усложни мне» (А5)
 const answers = require('./lib/answers');
 const lessonEdit = require('./lib/lesson-edit');
 const LESSON_DIRS = [path.join(PORTAL, 'lessons')].concat(process.env.LAB_LESSONS ? [path.resolve(process.env.LAB_LESSONS)] : []);
@@ -51,6 +52,8 @@ function studentLesson(les, cls) {
   const out = Object.assign({}, les, { checkpoints: les.checkpoints.map(cp => { const c = Object.assign({}, cp, { steps: cp.steps.map(step) }); delete c.teacher; return c; }) });
   if (les.wow) out.wow = { formula: les.wow.formula, ask: les.wow.ask || null, look: les.wow.look || null, cards: les.wow.cards.map(cardMeta) };
   if (les.glossary) out.glossary = glossaryOf(les);
+  if (les.checkpoints.some(cp => cp.steps.some(s => s.type === 'samootsenka'))) out.rost = { skills: ROST_SKILLS, scale: ROST_SCALE }; // самооценка модуля (А4)
+  if (les.checkpoints.some(cp => cp.steps.some(s => s.type === 'factory'))) out.limitDeck = OGRANICHENIYA.map(c => ({ id: c.id, text: c.text })); // «🃏 Усложни мне» в Фабрике
   return out;
 }
 // urok-01-v2 — прежняя версия 2 урока 1 (Qwen в чате, 18.10.2026): теперь это и есть урок 1, классы с ней открывают его
@@ -105,6 +108,9 @@ function buildPlan(les, st) {
   const chosen = facStep.donors ? (facStep.donors.find(d => d.id === fac.donor) || facStep.donors[0]) : null;
   const details = facStep.fields.filter(f => !['title', 'twist', 'world', 'secret'].includes(f.id) && fieldText(facFields[f.id]))
     .map(f => `${f.label}: ${fieldText(facFields[f.id])}`);
+  // карта колоды ограничений («🃏 Усложни мне», А5): действует только на уровне «Босс» — вызов, который автор принял сам
+  const limit = fac.level === 'boss' && fac.limit ? OGRANICHENIYA.find(c => c.id === fac.limit.id) : null;
+  if (limit) details.push(`Карта ограничения (уровень «Босс», автор принял вызов): «${limit.text}». ${limit.qwen} Соблюдай строго, но механику донора не ломай.`);
   const dec = (A(P.decisions).fields) || {}, igra = (A(P.igra).fields) || {};
   const prod = A(P.producer);
   const forks = ((prod.result && prod.result.forks) || []).map((f, i) => ({ question: f.question, answer: (prod.choices || {})[i] })).filter(f => f.answer);
@@ -117,7 +123,7 @@ function buildPlan(les, st) {
     donorTitle: chosen ? chosen.title : les.donor,
     twist: fieldText(facFields.twist), world: fieldText(facFields.world),
     secret: secText ? { title: secText, prompt: secDef ? secDef.prompt : secText, base: secDef ? secDef.base || null : null, howto: secDef ? secDef.howto || null : null } : null,
-    level: `${level.label} (${level.hint})`, details,
+    level: `${level.label} (${level.hint})`, details, limit: limit ? limit.text : '',
     levels: les.levels || null, // модуль 4: уровни как данные — раздел levels задания Qwen
     proekt: les.proekt || null, // модуль 8: этап итогового проекта — раздел proekt задания Qwen (серый прототип, вертикальный срез)
     player: les.player || null, // модуль 6: игрок в центре — раздел player задания Qwen (загадка дня, обучение и доступность, пресеты «Злая» и «Честная»)
@@ -366,7 +372,8 @@ route('GET', '/api/me', (ctx) => {
   M8.carry(s, les, st); // модуль 8: диздок урока 29 — в уроке 30 и дальше
   s.seen = store.now(); store.saveStudent(w.class, s);
   const g = st.gameId ? store.getGame(st.gameId) : null;
-  return { nick: w.nick, class: { code: cls.code, name: cls.name, opened: cls.opened, authorMode: cls.authorMode, current: (cls.timer || {}).cp || null }, lesson: studentLesson(les, cls), answers: st.answers, game: g, wow: les.wow ? publicWow(cls, les) : null, feedback: st.feedback || null, demo: ai.demo(), chat: true, aiCalls: st.aiCalls, aiLimit: aiLimit(st), prevPlan: prevPlan(s, les), help: s.help || null };
+  const fp = failPublic(cls), failAsk = fp && fp.lesson === cls.lesson && fp.consent === 'ask' && failMembers(store.getGame(fp.game)).includes(w.nick) ? { game: fp.game, title: fp.title, version: fp.version } : null;
+  return { nick: w.nick, class: { code: cls.code, name: cls.name, opened: cls.opened, authorMode: cls.authorMode, current: (cls.timer || {}).cp || null }, lesson: studentLesson(les, cls), answers: st.answers, game: g, failAsk, wow: les.wow ? publicWow(cls, les) : null, feedback: st.feedback || null, demo: ai.demo(), chat: true, aiCalls: st.aiCalls, aiLimit: aiLimit(st), prevPlan: prevPlan(s, les), help: s.help || null };
 });
 
 route('POST', '/api/answer', (ctx) => {
@@ -542,6 +549,38 @@ route('GET', '/api/arcade', (ctx) => {
     neighbour: neighbour(cards, w.nick, ctx.url.searchParams.get('after'), les.id),
   };
 });
+/* ---------- лесенка роста (А4): самооценка в конце каждого модуля — шаг samootsenka ---------- */
+// Общие вопросы одинаковы для всех модулей: что я умею как геймдизайнер, по шкале 1–5. Плюс понятия модуля и одна фраза — в ответе шага.
+const ROST_SKILLS = [
+  { id: 'zamysel', icon: '💡', label: 'Придумать игру, в которую хочется сыграть ещё раз' },
+  { id: 'pochemu', icon: '🔍', label: 'Объяснить, почему игра работает или не работает' },
+  { id: 'qwen', icon: '🤖', label: 'Точно попросить ИИ и починить игру' },
+  { id: 'pleytest', icon: '👥', label: 'Проверить игру на других и услышать отзыв' },
+  { id: 'reliz', icon: '🏁', label: 'Довести игру до версии 1.0' },
+];
+const ROST_SCALE = ['пока не умею', 'с подсказкой', 'сам, но не всегда', 'уверенно', 'научу другого'];
+// ступени лесенки ученика по модулям: средний балл, баллы по вопросам, понятия модуля и фраза (по одной ступени на модуль — последний ответ)
+function rostOf(s) {
+  const by = {};
+  for (const l of lessons()) {
+    const st = (s.lessons || {})[l.id]; if (!st) continue;
+    for (const x of l.checkpoints.flatMap(cp => cp.steps).filter(x => x.type === 'samootsenka')) {
+      const a = answerOf(st, x.id); if (!a || !a.done || !a.value || !a.value.scores) continue;
+      const nums = ROST_SKILLS.map(k => Number(a.value.scores[k.id])).filter(n => n >= 1 && n <= 5);
+      if (!nums.length) continue;
+      const m = x.module || l.module || 0, prev = by[m];
+      if (prev && prev.at > a.at) continue;
+      by[m] = { module: m, lesson: l.number, title: x.moduleTitle || l.title, scores: a.value.scores, avg: Math.round(10 * nums.reduce((p, q) => p + q, 0) / nums.length) / 10,
+        concepts: a.value.concepts || [], phrase: fieldText(a.value.phrase), at: a.at };
+    }
+  }
+  return Object.values(by).sort((a, b) => a.module - b.module);
+}
+const rostGrowth = ladder => (ladder.length >= 2 ? Math.round(10 * (ladder[ladder.length - 1].avg - ladder[0].avg)) / 10 : null);
+// одноклассники в сети — чипы «Кому объясняешь?» в шаге obyasni (Б3)
+route('GET', '/api/class/peers', (ctx) => { const { w, cls } = needStudent(ctx); return { nicks: [...online(cls.code)].filter(n => n !== w.nick).sort((a, b) => a.localeCompare(b, 'ru')) }; });
+route('GET', '/api/rost', (ctx) => { const { s } = needStudent(ctx); return { skills: ROST_SKILLS, scale: ROST_SCALE, ladder: rostOf(s) }; });
+
 /* ---------- «Моя студия»: всё, что ученик сделал как геймдизайнер, на одной странице ---------- */
 // эмблема автора видна рядом с ником в аркаде; только из этого набора — без свободного ввода
 const EMBLEMS = ['🐉', '🦊', '🐺', '🦉', '🐝', '🌻', '🏔', '🌊', '🔥', '⚡', '🎲', '🚀', '🛡', '🗝', '🎯', '🍯'];
@@ -590,6 +629,7 @@ function studio(w, cls, s) {
   return {
     nick: w.nick, class: { code: cls.code, name: cls.name }, emblem: s.emblem || '', emblems: EMBLEMS,
     games: mine, deck, journal, badges, ideas: ideas.slice(-40).reverse(),
+    rost: { skills: ROST_SKILLS, scale: ROST_SCALE, ladder: rostOf(s) }, // лесенка роста по модулям (А4)
     // полка открыток (И3): снимки шагов postcard по пройденным урокам
     postcards: worked.flatMap(l => l.checkpoints.flatMap(cp => cp.steps).filter(x => x.type === 'postcard').map(x => ((answerOf(s.lessons[l.id], x.id) || {}).value || {}).card)).filter(Boolean),
   };
@@ -1508,7 +1548,7 @@ route('POST', '/api/ai/producer-fix', (ctx) => {
 // модуль 7: арена класса, турнирная сетка, команды джема (lib/m7.js)
 const M7 = require('./lib/m7')({ route, needStudent, needTeacher, needDayClass, broadcast, store, saveStudentField, lesson });
 // модуль 8: команды проекта через уроки 29–36, перенос диздока, питчи, дорога к Фестивалю, стенды Фестиваля (lib/m8.js)
-const M8 = require('./lib/m8')({ route, needStudent, needDayClass, broadcast, store, saveStudentField, lessons, M7 });
+const M8 = require('./lib/m8')({ route, needStudent, needDayClass, broadcast, store, saveStudentField, lessons, M7, rostOf, rostGrowth });
 function ensureGame(c) {
   const teamId = M7.teamGameId(c.w.class, c.w.nick, c.les.id); // джем: игра одна на команду
   if (teamId && teamId !== c.st.gameId && store.getGame(teamId)) { c.st.gameId = teamId; saveStudentField(c.w.class, c.w.nick, c.les.id, st => { st.gameId = teamId; }); }
@@ -1819,8 +1859,16 @@ route('GET', '/api/teacher/overview', (ctx) => {
     };
   });
   const votes = Object.fromEntries(les.checkpoints.flatMap(c => c.steps).filter(x => x.type === 'vote').map(x => [x.id, voteTally(cls.code, les, x)])); // выставка джема
-  return { class: cls, lesson: les, glossary: glossaryOf(les), students, stepsDone, votes, spend: spend(cls.code, les.id), limits: ai.limits(), stuckSec: STUCK_SEC, now: new Date().toISOString() };
+  const explain = Object.fromEntries(les.checkpoints.flatMap(c => c.steps).filter(x => x.type === 'obyasni').map(x => [x.id, explainTally(cls.code, les, x)]));
+  return { class: cls, lesson: les, glossary: glossaryOf(les), students, stepsDone, votes, explain, spend: spend(cls.code, les.id), limits: ai.limits(), stuckSec: STUCK_SEC, now: new Date().toISOString() };
 });
+// «Объясни соседу» (Б3): не проверка — учителю только доля «Понял» и пары, которые застряли (две попытки «Не понял»)
+function explainTally(code, les, x) {
+  const list = store.students(code).map(s => ({ nick: s.nick, v: ((((s.lessons || {})[les.id] || {}).answers || {})[x.id] || {}).value || {} })).filter(r => (r.v.tries || []).length);
+  const got = list.filter(r => r.v.tries.includes('got'));
+  return { n: list.length, got: got.length, first: got.filter(r => r.v.tries[0] === 'got').length, share: list.length ? Math.round(100 * got.length / list.length) : 0,
+    stuck: list.filter(r => !r.v.tries.includes('got') && r.v.tries.length >= 2).map(r => ({ nick: r.nick, partner: r.v.partner || '' })) };
+}
 // живые ответы класса для проектора (вкладка «Ответы класса»): шаги выбора полосками без имён, слепой тест А/Б и слепая пара со спрятанной механикой —
 // сколько почувствовали спрятанную механику. Считаются только отправленные ответы (шаг готов).
 const valOf = v => (v && typeof v === 'object' ? v.text || '' : v || '');
@@ -1915,6 +1963,10 @@ route('GET', '/api/teacher/poll', (ctx) => {
       const main = list.map(v => v.findings.find(f => f.id === v.main)).filter(Boolean).map(f => (f.kind === 'knob' ? '🎛 ' : '') + f.text);
       steps.push({ cp: cp.id, id: x.id, title: x.title + ': находки', kind: 'choice', n: list.length,
         bars: Object.entries(count).sort((p, q) => q[1] - p[1]).slice(0, 8).map(([label, n]) => ({ label, n })), own: main.slice(-6) });
+    } else if (x.type === 'obyasni') { // Б3: без имён — сколько объяснений сосед понял
+      const t = explainTally(cls.code, les, x);
+      steps.push({ cp: cp.id, id: x.id, title: x.title, kind: 'choice', n: t.n,
+        bars: [{ label: '👍 Понял с первого раза', n: t.first }, { label: '👍 Понял со второй попытки', n: t.got - t.first }, { label: '🤔 Пока не понял', n: t.stuck.length }] });
     } else if (x.type === 'verify') {
       const list = all.map(a => ((a[x.id] || {}).value || {}).log || []).filter(l => l.length).map(l => l[l.length - 1].verdict);
       steps.push({ cp: cp.id, id: x.id, title: 'Ближе к задуманному чувству?', kind: 'choice', n: list.length,
@@ -1937,22 +1989,61 @@ route('GET', '/api/teacher/final', (ctx) => {
     lesson: { id: les.id, number: les.number, title: les.title },
     games, classGame: wg && wg.current ? gameCard(cls.code, wg, null) : null,
     day: dayPublic(cls) || (cls.lastDay && cls.lastDay.lesson === les.id ? cls.lastDay : null),
-    fail: fg ? Object.assign({}, fail, { title: fg.title, nick: fg.nick, versions: fg.versions.map(v => ({ n: v.n, kind: v.kind || '', error: v.error ? v.error.message : null })) }) : null,
+    fail: fg ? failPublic(cls) : null, failWhy: FAIL_WHY,
+    fails: (cls.fails || []).filter(x => x.lesson === les.id).length, // показано провалов в этом уроке
   };
 });
-// провал дня: учитель выбирает игру урока (и версию) с самым смешным багом; game: null — убрать
+// «Провал дня» (А5): постоянная вкладка проектора. Учитель одним нажатием выбирает игру урока с самым смешным или поучительным багом,
+// автор на своём экране соглашается (consent: ask → yes | no) — только тогда игра открывается на проекторе. Класс разбирает «почему так вышло»:
+// учитель отмечает причины (why) и вывод (moral). Показанные провалы копятся в cls.fails — из них галерея провалов (Д5) и нарезка к Фестивалю.
+const FAIL_WHY = ['🤖 ИИ понял просьбу по-своему', '🔢 Число на ручке не то', '🧩 Два правила мешают друг другу', '🚫 Не сказали, чего делать нельзя',
+  '🧱 Герой ушёл за край мира', '⏱ Ломается не сразу, а со временем', '🎨 Красиво, но главного не видно', '💥 Игра упала: ошибка в коде'];
+const failMembers = g => [g.nick, ...(g.members || [])];
+function failPublic(cls) {
+  const f = cls.fail, g = f && store.getGame(f.game);
+  if (!g) return null;
+  return Object.assign({}, f, { title: g.title, nick: g.nick, consent: f.consent || 'yes', why: f.why || [], versions: g.versions.map(v => ({ n: v.n, kind: v.kind || '', error: v.error ? v.error.message : null })) });
+}
+function failEvent(cls) { const f = failPublic(cls); broadcast(cls.code, 'fail', f ? { game: f.game, title: f.title, version: f.version, nicks: failMembers(store.getGame(f.game)), consent: f.consent } : { game: null }); }
+function failRemember(cls) { // показанный провал — в историю класса (одна запись на игру и урок, последняя правка побеждает)
+  const f = cls.fail; if (!f || f.consent !== 'yes') return;
+  const g = store.getGame(f.game); if (!g) return;
+  cls.fails = (cls.fails || []).filter(x => !(x.game === f.game && x.lesson === f.lesson));
+  cls.fails.push({ lesson: f.lesson, game: f.game, version: f.version, title: g.title, nick: g.nick, note: f.note || '', why: f.why || [], moral: f.moral || '', at: f.at });
+  if (cls.fails.length > 200) cls.fails = cls.fails.slice(-200);
+}
+// game: null — убрать; та же игра — правка версии, заметки и причин без нового согласия; другая игра — новый запрос согласия автору
 route('POST', '/api/teacher/fail', (ctx) => {
   needTeacher(ctx);
   const cls = store.getClass(ctx.body.code);
   if (!cls) throw Object.assign(new Error('Нет класса'), { status: 404 });
-  if (!ctx.body.game) { cls.fail = null; store.saveClass(cls); return { fail: null }; }
+  if (!ctx.body.game) { cls.fail = null; store.saveClass(cls); failEvent(cls); return { fail: null }; }
   const g = store.getGame(ctx.body.game);
   if (!g || g.class !== cls.code) throw Object.assign(new Error('Нет такой игры'), { status: 404 });
   const n = Number(ctx.body.version) || g.current;
   if (!g.versions[n - 1]) throw Object.assign(new Error('Нет такой версии'), { status: 400 });
-  cls.fail = { lesson: cls.lesson, game: g.id, version: n, note: String(ctx.body.note || '').replace(/\s+/g, ' ').trim().slice(0, 200), at: store.now() };
+  const same = cls.fail && cls.fail.game === g.id && cls.fail.lesson === cls.lesson ? cls.fail : null;
+  const line = v => String(v || '').replace(/\s+/g, ' ').trim().slice(0, 200);
+  cls.fail = {
+    lesson: cls.lesson, game: g.id, version: n, at: store.now(),
+    note: line(ctx.body.note != null ? ctx.body.note : same && same.note), moral: line(ctx.body.moral != null ? ctx.body.moral : same && same.moral),
+    why: (Array.isArray(ctx.body.why) ? ctx.body.why : (same && same.why) || []).filter(x => FAIL_WHY.includes(x)),
+    consent: same ? same.consent : 'ask',
+  };
+  failRemember(cls);
   store.saveClass(cls);
-  return { fail: cls.fail };
+  if (!same || same.consent !== cls.fail.consent) failEvent(cls);
+  return { fail: failPublic(cls) };
+});
+// автор отвечает на «можно показать твой баг классу?»: да — игра открывается на проекторе, нет — учитель выбирает другую
+route('POST', '/api/fail/consent', (ctx) => {
+  const { w, cls } = needStudent(ctx);
+  const f = cls.fail, g = f && store.getGame(f.game);
+  if (!g || !failMembers(g).includes(w.nick)) throw Object.assign(new Error('Сейчас учитель не спрашивает про твою игру'), { status: 400 });
+  f.consent = ctx.body.yes ? 'yes' : 'no';
+  failRemember(cls);
+  store.saveClass(cls); failEvent(cls);
+  return { consent: f.consent };
 });
 // ответы класса по уроку: таблица «ученик × шаг», разбор квизов по карточкам; выгрузка CSV — на странице учителя
 route('GET', '/api/teacher/answers', (ctx) => {
