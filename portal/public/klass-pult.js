@@ -3,6 +3,7 @@
 //            (vote у переключателя в сценарии), «▶ Включить» — сцена меняется, у всех ответ и итог голосования.
 //   goal   — вкладка «🎯 Цель» (Д2): счётчик партий в игры друг друга, цель и награда учителя; goalStrip — та же цель строкой на вкладке «Урок».
 //   reacts — живые реакции (Д3): эмодзи с ноутбуков всплывают поверх игры, которая видна на проекторе.
+//   sabotazh — вкладка «🕵 Саботаж» (Г2, сессия 4): учитель тайно поворачивает ручку донора, класс угадывает с ноутбуков, «Раскрыть» — ответ всем.
 //   fails  — галерея провалов класса и нарезка лучших к Фестивалю (Д5) на вкладке «🤡 Провал дня».
 'use strict';
 window.STEPS = window.STEPS || {}; // сцены steps-m8.js и steps-m6.js рядом с ними объявляют шаги ученика — на проекторе они просто не используются
@@ -123,6 +124,58 @@ window.STEPS = window.STEPS || {}; // сцены steps-m8.js и steps-m6.js ря
     };
   }
 
+  /* =================== саботаж (Г2, сессия 4) =================== */
+  // Вкладка «🕵 Саботаж»: учитель тайно поворачивает одну ручку донора (шаг secret с hunt.format 'sabotazh'), играет на проекторе,
+  // класс угадывает с ноутбуков. Название ручки на экране — только после «Раскрыть»: проектор видит весь класс.
+  function sabotazh(host, { code, lesson }) {
+    const S = { st: null, x: null, h: null, key: '' };
+    const steps = () => (lesson() ? lesson().checkpoints.flatMap(cp => cp.steps.filter(s => s.type === 'secret' && s.hunt && s.hunt.format === 'sabotazh')) : []);
+    const stage = el('div', { class: 'stack' }), side = el('div', { class: 'stack kp-sab-side' });
+    host.append(el('div', { class: 'kp-stagebox' }, stage, side));
+    async function act(body) {
+      try { S.x = (await api('/api/teacher/sabotage', Object.assign({ code: code(), step: S.st && S.st.id }, body))).sabotage; beep('tick'); draw(); } catch (e) { toast(e.message, 'err'); }
+    }
+    async function load() { try { S.x = (await api('/api/teacher/sabotage?code=' + encodeURIComponent(code()))).sabotage; } catch (e) { toast(e.message, 'err'); } draw(); }
+    function mount() {
+      const x = S.x, key = x && x.phase ? `${x.round}` : 'none';
+      if (key === S.key) return;
+      S.key = key;
+      if (S.h) { S.h.destroy(); S.h = null; }
+      if (!x) { stage.replaceChildren(el('div', { class: 'card stack' }, el('h2', {}, '🕵 Саботаж'), el('p', { class: 'pj-sub' }, S.st.hunt.lead || 'Вы тайно выключите одну ручку донора. Класс смотрит игру на проекторе и угадывает с ноутбуков, что изменилось.'))); return; }
+      S.h = Games.frame({ src: () => '/engine/game.html?game=../' + (x.game || S.st.game), key: () => 'sabotazh:' + x.round, cfg: x.cfg, score: false, label: `▶ Играть раунд ${x.round}` });
+      stage.replaceChildren(S.h.box);
+    }
+    function draw() {
+      const list = steps();
+      if (!list.length) { host.replaceChildren(el('div', { class: 'card' }, el('h2', {}, 'В этом уроке нет саботажа'))); return; }
+      S.st = list.find(s => S.x && s.id === S.x.step) || list[0];
+      mount();
+      const x = S.x, H = S.st.hunt, reveal = x && x.phase === 'reveal';
+      const parts = [el('div', { class: 'eyebrow' }, '🕵 Саботаж' + (x ? ` · раунд ${x.round}` : '')), el('h2', {}, H.question)];
+      if (!x) parts.push(el('p', { class: 'pj-sub' }, 'Сначала все сыграли донора как задумано. Нажмите — портал тайно выберет одну ручку из списка урока. Вы её не увидите до раскрытия.'),
+        el('button', { class: 'btn warm', type: 'button', 'data-sab': 'start', onclick: () => act({ action: 'start' }) }, '🎲 Тайно повернуть одну ручку'));
+      else if (!reveal) parts.push(el('p', { class: 'pj-sub' }, 'Играйте на проекторе или дайте сыграть ученику. Класс отвечает с ноутбуков.'),
+        el('div', { class: 'kp-sab-n', 'data-sab-n': '' }, el('b', {}, String(x.n)), el('span', { class: 'pj-sub' }, ' ответили')),
+        el('button', { class: 'btn warm', type: 'button', 'data-sab': 'reveal', onclick: () => act({ action: 'reveal' }) }, '🔓 Раскрыть'));
+      else {
+        const total = Math.max(1, x.counts.reduce((a, c) => a + c.n, 0)), right = x.counts.find(c => c.right) || { n: 0 };
+        parts.push(el('div', { class: 'secret-reveal' }, el('div', { class: 'eyebrow' }, 'Выключено'), el('h3', { 'data-sab-label': '' }, x.label), el('p', {}, x.why)),
+          el('div', { class: 'kp-opts' }, x.counts.map(c => el('div', { class: 'kp-opt' + (c.right ? ' right' : ' wrong') }, el('span', { class: 'grow' }, c.label), el('b', {}, String(c.n)),
+            el('i', { class: 'teatr-bar', style: `width:${Math.round(100 * c.n / total)}%` })))),
+          el('p', { class: 'pj-sub' }, `Раскусили ${right.n} из ${x.n}`),
+          el('div', { class: 'row' }, el('button', { class: 'btn', type: 'button', 'data-sab': 'again', onclick: () => act({ action: 'start' }) }, '🎲 Ещё раунд'),
+            el('button', { class: 'btn ghost small', type: 'button', 'data-sab': 'end', onclick: () => act({ action: 'end' }) }, '■ Закончить')));
+      }
+      side.replaceChildren(...parts);
+    }
+    load();
+    return {
+      event() { load(); },
+      refresh() { load(); },
+      destroy() { if (S.h) S.h.destroy(); host.replaceChildren(); },
+    };
+  }
+
   /* =================== цель класса (Д2) =================== */
   const REWARD_UI = [['zvezdopad', '🌠 Секретный донор «Звездопад над Фиштом»'], ['arena', '🏟 Режим арены «Арена класса»'], ['text', '🎁 Свой приз']];
   function goalStrip(goal) {
@@ -239,5 +292,5 @@ window.STEPS = window.STEPS || {}; // сцены steps-m8.js и steps-m6.js ря
     return { load, reel() { S.view = 'reel'; S.i = 0; load(); }, destroy: stopFrame };
   }
 
-  window.LabKlassPult = { teatr, goal, goalStrip, reacts, fails };
+  window.LabKlassPult = { teatr, goal, goalStrip, reacts, fails, sabotazh };
 })();

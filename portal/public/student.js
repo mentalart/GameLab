@@ -86,7 +86,7 @@ function listen() {
   // уровни класса (модуль 4): новый уровень, партия, оценка — галерея и редактор обновляются сами
   es.addEventListener('levels', e => { const d = JSON.parse(e.data); S.hooks.forEach(h => h('levels', d)); });
   // модуль 7: забег арены, турнирная сетка, команда джема — шаги arena, bracket, team и другие обновляются сами; модуль 8: питчи и Фестиваль (proekt)
-  ['arena', 'bracket', 'team', 'proekt'].forEach(ev => es.addEventListener(ev, e => { const d = JSON.parse(e.data); S.hooks.forEach(h => h(ev, d)); }));
+  ['arena', 'bracket', 'team', 'proekt', 'sabotage'].forEach(ev => es.addEventListener(ev, e => { const d = JSON.parse(e.data); S.hooks.forEach(h => h(ev, d)); }));
   // джем: товарищ по команде заполнил общий шаг (team: true) — ответ и игра команды приходят сюда; шаг перерисуется, если в нём не печатают
   es.addEventListener('team', e => {
     const d = JSON.parse(e.data);
@@ -1102,9 +1102,11 @@ function huntGraphs(list, open) {
   return box;
 }
 STEPS.secret = ctx => {
-  const host = el('div', { class: 'stack' });
   const H = ctx.step.hunt || null;
-  let data = null, pick = null;
+  // саботаж (Г2, сессия 4): ведёт учитель на проекторе — свой вид шага в steps-m2.js
+  if (H && H.format === 'sabotazh' && window.LabStepsM2) return window.LabStepsM2.sabotazh(ctx);
+  const host = el('div', { class: 'stack' });
+  let data = null, pick = null, loopBox = null;
   async function load() {
     try { data = await api('/api/wow/hunt?step=' + encodeURIComponent(ctx.step.id)); } catch (e) { host.innerHTML = ''; host.append(el('p', { class: 'err' }, e.message)); return; }
     if (data.answer && !(ctx.value && ctx.value.secret)) S.answers[ctx.step.id] = { value: data.answer, done: true };
@@ -1118,6 +1120,8 @@ STEPS.secret = ctx => {
     const recept = H && H.format === 'recept';
     if (H && H.lead) host.append(el('p', { class: 'concept m1-lead' }, H.lead));
     if (H && H.format === 'detektiv' && H.graphs) host.append(huntGraphs(H.graphs, !!a));
+    // видео-петля (Г2, сессия 4): запись партии донора сценой — смотри медленно; после ответа сцена подписывает дорожки
+    if (H && H.format === 'petlya' && H.anim && window.LabStepsM2) { loopBox = loopBox || window.LabStepsM2.loop(H.anim, ctx.step.title); loopBox.reveal(!!a); host.append(loopBox.el); }
     if (!a) {
       const grid = el('div', { class: 'opts' + (recept ? ' m1-recipe' : ''), role: 'radiogroup' });
       data.options.forEach((o, k) => grid.append(el('button', { type: 'button', class: 'opt' + (pick === o ? ' on' : ''), 'aria-pressed': String(pick === o), onclick: () => { pick = o; beep('tick'); draw(); } },
@@ -3869,7 +3873,7 @@ function stepSummary(step) {
     case 'arcade': return v.game ? `игра «${v.title || ''}» (автор ${v.author || '—'}), партий ${v.rounds || 0}, лучший счёт ${v.best || 0}${v.beat ? ', рекорд автора побит' : ''}` : 'не играл';
     case 'playtest': return (v.sent ? `отзыв на «${v.title || ''}»: ${(v.emotions || []).join(' ')}; ${step.ask && valText(v.story) ? `${step.ask.label} ${f(v.story)}; ` : ''}нравится: ${f(v.like)}; хочется: ${f(v.want)}; а что если: ${f(v.whatif)}` : 'отзыв не отправлен') +
       (S.me.feedback ? `\nотзыв учителя: понятие — ${valText(S.me.feedback.concept)}; вопрос — ${valText(S.me.feedback.question)}` : '');
-    default: return (window.LabRitualSummary && window.LabRitualSummary(step, v, a)) || (window.LabStepsM1Summary && window.LabStepsM1Summary(step, v, a)) || (window.LabStepsM8Summary && window.LabStepsM8Summary(step, v, a)) || (window.LabStepsM7Summary && window.LabStepsM7Summary(step, v, a)) || (window.LabStepsM6Summary && window.LabStepsM6Summary(step, v, a)) || (window.LabStepsM4Summary && window.LabStepsM4Summary(step, v, a)) || (window.LabStepsM3Summary && window.LabStepsM3Summary(step, v, a)) || JSON.stringify(v);
+    default: return (window.LabRitualSummary && window.LabRitualSummary(step, v, a)) || (window.LabStepsM1Summary && window.LabStepsM1Summary(step, v, a)) || (window.LabStepsM2Summary && window.LabStepsM2Summary(step, v, a)) || (window.LabStepsM8Summary && window.LabStepsM8Summary(step, v, a)) || (window.LabStepsM7Summary && window.LabStepsM7Summary(step, v, a)) || (window.LabStepsM6Summary && window.LabStepsM6Summary(step, v, a)) || (window.LabStepsM4Summary && window.LabStepsM4Summary(step, v, a)) || (window.LabStepsM3Summary && window.LabStepsM3Summary(step, v, a)) || JSON.stringify(v);
   }
 }
 function cpSummary(cp) {

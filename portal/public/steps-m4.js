@@ -585,13 +585,16 @@
     const next = el('button', { type: 'button', class: 'btn', 'data-motion': 'next', onclick: () => go(1) });
     const fin = el('div', { class: 'concept m4-sum', hidden: true });
     // интерактивная сцена (модуль 6): у сцены переключатели toggles [{ id, label, on }] — ученик сам включает и выключает приём,
-    // сцена получает пятым аргументом ctl { id: true/false, _t: секунды с последнего нажатия, _id: что нажали }. Клавиши 1–4 на холсте
-    const ctls = st.scenes.map(sc => Object.assign({ _t: 99, _id: null }, Object.fromEntries((sc.toggles || []).map(x => [x.id, !!x.on]))));
+    // сцена получает пятым аргументом ctl { id: true/false, _t: секунды с последнего нажатия, _id: что нажали }. Клавиши 1–9 на холсте
+    // ручка-ползунок (модуль 2, сессия 4): у переключателя values [0, 0.1, 0.25] и unit — нажатие ведёт по значениям по кругу, сцена получает число
+    const ctls = st.scenes.map(sc => Object.assign({ _t: 99, _id: null }, Object.fromEntries((sc.toggles || []).map(x => [x.id, x.values ? (x.value != null ? x.value : x.values[0]) : !!x.on]))));
+    const isOn = (x, val) => (x.values ? val !== x.values[0] : !!val);
     let ctlT0 = performance.now();
     const tog = el('div', { class: 'm6-toggles', hidden: true });
     function flip(k) {
       const sc = st.scenes[i], x = (sc.toggles || [])[k]; if (!x) return;
-      ctls[i][x.id] = !ctls[i][x.id]; ctls[i]._id = x.id; ctlT0 = performance.now(); beep(ctls[i][x.id] ? 'good' : 'tick');
+      ctls[i][x.id] = x.values ? x.values[(x.values.indexOf(ctls[i][x.id]) + 1) % x.values.length] : !ctls[i][x.id];
+      ctls[i]._id = x.id; ctlT0 = performance.now(); beep(isOn(x, ctls[i][x.id]) ? 'good' : 'tick');
       const v = Object.assign({}, ctx.value || {}); v.tried = Object.assign({}, v.tried); v.tried[sc.anim] = (v.tried[sc.anim] || 0) + 1; ctx.save(v);
       drawToggles();
     }
@@ -599,8 +602,8 @@
       const sc = st.scenes[i], list = sc.toggles || [];
       tog.hidden = !list.length;
       tog.replaceChildren(...(list.length ? [el('span', { class: 'eyebrow' }, sc.try || 'Попробуй сам')] : []),
-        ...list.map((x, k) => el('button', { type: 'button', class: 'm6-tog' + (ctls[i][x.id] ? ' on' : ''), 'aria-pressed': String(!!ctls[i][x.id]), 'data-toggle': x.id, onclick: () => flip(k) },
-          el('span', { class: 'm4-key' }, String(k + 1)), el('span', { class: 'm6-sw' }, el('i')), x.label)));
+        ...list.map((x, k) => el('button', { type: 'button', class: 'm6-tog' + (isOn(x, ctls[i][x.id]) ? ' on' : ''), 'aria-pressed': String(isOn(x, ctls[i][x.id])), 'data-toggle': x.id, onclick: () => flip(k) },
+          el('span', { class: 'm4-key' }, String(k + 1)), el('span', { class: 'm6-sw' }, el('i')), x.label, x.values ? el('b', { class: 'm2-val' }, String(ctls[i][x.id]).replace('.', ',') + (x.unit || '')) : null)));
     }
     function paint() {
       const sc = st.scenes[i];
@@ -620,7 +623,7 @@
     }
     cv.addEventListener('keydown', e => {
       if (['ArrowRight', 'Space', 'Enter'].includes(e.code)) { e.preventDefault(); go(1); } if (e.code === 'ArrowLeft') { e.preventDefault(); go(-1); }
-      const d = /^(Digit|Numpad)([1-4])$/.exec(e.code); if (d) { e.preventDefault(); flip(Number(d[2]) - 1); }
+      const d = /^(Digit|Numpad)([1-9])$/.exec(e.code); if (d) { e.preventDefault(); flip(Number(d[2]) - 1); }
     });
     cv.addEventListener('click', () => go(1));
     let raf = 0, last = 0;

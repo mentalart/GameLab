@@ -26,7 +26,7 @@ async function boot() {
   const q = new URLSearchParams(location.search);
   try { P.code = q.get('code') || localStorage.getItem('lab:teacher:class'); } catch (e) { P.code = q.get('code'); }
   if (!P.code) { $('#pj-lesson').append(el('div', { class: 'card' }, 'Сначала создайте класс в панели учителя.')); return; }
-  if (['demo', 'day', 'poll', 'final', 'fail', 'pair', 'm7', 'm8', 'teatr', 'goal'].includes(q.get('tab'))) P.tab = q.get('tab');
+  if (['demo', 'day', 'poll', 'final', 'fail', 'pair', 'm7', 'm8', 'teatr', 'goal', 'sab'].includes(q.get('tab'))) P.tab = q.get('tab');
   P.reacts = LabKlassPult.reacts(); P.reactBuf = [];
   await refresh();
   listenPj();
@@ -42,6 +42,7 @@ function listenPj() {
     if (m) P.reactBuf.push({ game: m[1], version: Number(m[2]), sec: f.sec(), emoji: d.emoji }); // «где смеялись»: секунда партии в рамке — в телеметрию игры
   });
   es.addEventListener('theater', e => { if (P.teatr) P.teatr.event(JSON.parse(e.data)); });
+  es.addEventListener('sabotage', () => { if (P.sab) P.sab.event(); });
   es.addEventListener('goal', e => { const d = JSON.parse(e.data); if (P.o) { P.o.goal = d.off ? null : d; if (P.tab === 'goal' && P.goalPult) P.goalPult.draw(); if (P.tab === 'lesson') drawLesson(); } });
   es.addEventListener('fails', () => { if (P.failGal) P.failGal.load(); });
 }
@@ -98,6 +99,11 @@ async function refresh() {
   $('#teatrTab').hidden = !motion;
   if (!motion && P.tab === 'teatr') P.tab = 'lesson';
   if (P.teatr && P.teatrLesson !== o.lesson.id) { P.teatr.destroy(); P.teatr = null; } // другой урок — другие сцены
+  // саботаж (Г2, сессия 4): вкладка есть, если в уроке шаг secret с форматом «саботаж»
+  const sab = o.lesson.checkpoints.some(c => c.steps.some(s => s.type === 'secret' && s.hunt && s.hunt.format === 'sabotazh'));
+  $('#sabTab').hidden = !sab;
+  if (!sab && P.tab === 'sab') P.tab = 'lesson';
+  if (P.sab && P.sabLesson !== o.lesson.id) { P.sab.destroy(); P.sab = null; }
   showTab();
   if (P.tab === 'lesson') drawLesson();
   else if (P.tab === 'day') await refreshDay();
@@ -107,6 +113,7 @@ async function refresh() {
   else if (P.tab === 'cup') drawCup(vs);
   else if (P.tab === 'pair') await refreshPair();
   else if (P.tab === 'teatr') P.teatr.refresh();
+  else if (P.tab === 'sab') P.sab.refresh();
   else if (P.tab === 'goal') P.goalPult.draw();
   else if (P.mode === 'wow') await refreshWow();
   else await refreshDemo();
@@ -125,6 +132,9 @@ function showTab() {
   $('#pj-teatr').hidden = P.tab !== 'teatr';
   if (P.tab === 'teatr' && !P.teatr) { P.teatr = LabKlassPult.teatr($('#pj-teatr'), { code: () => P.code, lesson: () => P.o && P.o.lesson }); P.teatrLesson = P.o.lesson.id; }
   if (P.tab !== 'teatr' && P.teatr) { P.teatr.destroy(); P.teatr = null; api('/api/teacher/theater', { code: P.code, action: 'end' }).catch(() => {}); }
+  $('#pj-sab').hidden = P.tab !== 'sab';
+  if (P.tab === 'sab' && !P.sab) { P.sab = LabKlassPult.sabotazh($('#pj-sab'), { code: () => P.code, lesson: () => P.o && P.o.lesson }); P.sabLesson = P.o.lesson.id; }
+  if (P.tab !== 'sab' && P.sab) { P.sab.destroy(); P.sab = null; }
   $('#pj-goal').hidden = P.tab !== 'goal';
   if (P.tab === 'goal' && !P.goalPult) P.goalPult = LabKlassPult.goal($('#pj-goal'), { code: () => P.code, get: () => P.o && P.o.goal });
   if (P.tab !== 'goal' && P.goalPult) { P.goalPult = null; $('#pj-goal').innerHTML = ''; }

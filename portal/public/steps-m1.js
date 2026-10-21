@@ -647,7 +647,16 @@
       const status = el('b', {}, fixed ? 'Починенная игра' : 'Что-то здесь не так. Найди что');
       h = Games.frame({
         src: () => '/engine/game.html?game=../' + st.game, key: () => 'remake:' + st.id + (fixed ? ':fixed' : ''), cfg: Object.assign({}, fixed ? st.fixed : st.cfg), label: fixed ? '▶ Сыграй починенную' : 'Играть: сломанная игра',
-        onOver: () => { if (fixed) v.fixedRounds++; else v.rounds++; ctx.save(v); },
+        // партии сломанной игры копят лучший счёт и счётчики телеметрии: шаг secret сравнивает с ними донора (compare.off — id этого шага)
+        onOver: m => {
+          if (fixed) v.fixedRounds++;
+          else {
+            const custom = Object.assign({}, v.custom);
+            for (const [k, n] of Object.entries((m.tele || {}).custom || {})) custom[k] = (custom[k] || 0) + (Number(n) || 0);
+            v = Object.assign({}, v, { rounds: v.rounds + 1, best: Math.max(v.best || 0, m.score || 0), custom });
+          }
+          ctx.save(v);
+        },
       });
       playBox.replaceChildren(h.box, Games.bar(h, status));
     }

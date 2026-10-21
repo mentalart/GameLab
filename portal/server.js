@@ -33,8 +33,9 @@ function lessons() {
 }
 // ученику — урок без колоды спрятанных механик: какая спрятанная механика в игре класса, он узнаёт только после своей догадки
 // и без ответа шага «Найди спрятанную механику» с hunt в сценарии: правильный вариант, ловушка и раскрытие приходят после догадки
-// format (Г2 аудита): 'detektiv' — два графика партий (graphs), найди разницу; 'recept' — приёмы рецепта, один лишний; lead — строка над вопросом
-const publicHunt = h => ({ question: h.question, options: h.options, compare: h.compare, after: h.after, format: h.format, graphs: h.graphs, lead: h.lead });
+// format (Г2 аудита): 'detektiv' — два графика партий (graphs), найди разницу; 'recept' — приёмы рецепта, один лишний; lead — строка над вопросом;
+// 'petlya' — видео-петля: сцена anim крутит запись партии; 'sabotazh' — учитель тайно поворачивает ручку на проекторе (lib/klass.js), wait — строка до начала
+const publicHunt = h => ({ question: h.question, options: h.options, compare: h.compare, after: h.after, format: h.format, graphs: h.graphs, lead: h.lead, anim: h.anim, wait: h.wait });
 // Поле Фабрики с secrets: true — карта спрятанной механики своей игры: колода — названия спрятанных механик урока (со звуком — только при наушниках).
 // Сценарий учителя у чекпоинта (teacher) ученику не нужен.
 // Вопрос слепого теста по эффекту спрятанной механики (questions: { эффект: вопрос }, К4 19.10.2026): у abtest — эффект спрятанной механики игры класса;
@@ -882,14 +883,14 @@ function m6Tally(code, les, step, me) {
     voted.forEach(r => { if (r.v.pick in pick) pick[r.v.pick]++; (r.v.why || []).slice(0, 2).filter(t => (step.reasons || []).includes(t)).forEach(t => { count[t] = (count[t] || 0) + 1; }); });
     return { hidden: me != null && !mine.voted, n: voted.length, pick, top: Object.entries(count).sort((a, b) => b[1] - a[1]).slice(0, 6).map(([text, n]) => ({ text, n })) };
   }
-  if (step.type === 'zagadka' || step.type === 'slomano' || step.type === 'koloda') {
+  if (step.type === 'zagadka' || step.type === 'slomano' || step.type === 'koloda' || step.type === 'bumaga') {
     const labels = step.type === 'koloda' ? step.cards.map(c => [c.id, c.name]) : step.options.map(o => [o, o]);
     const voted = rows.filter(r => r.v.pick);
     return { hidden: me != null && !mine.pick, n: voted.length, rows: labels.map(([id, label]) => ({ label, n: voted.filter(r => r.v.pick === id).length })) };
   }
   return { hidden: true };
 }
-const M6_TALLY = ['setka', 'debate', 'kodeks', 'spor', 'zagadka', 'slomano', 'koloda'];
+const M6_TALLY = ['setka', 'debate', 'kodeks', 'spor', 'zagadka', 'slomano', 'koloda', 'bumaga'];
 route('GET', '/api/m6/tally', (ctx) => {
   const { w, les } = needStudent(ctx);
   const step = les.checkpoints.flatMap(c => c.steps).find(x => x.id === ctx.url.searchParams.get('step') && M6_TALLY.includes(x.type));
@@ -1215,8 +1216,9 @@ route('POST', '/api/wow/vote', (ctx) => { // голос «перетянуть �
 // шаг «Найди спрятанную механику» с hunt в сценарии: варианты и ответ — из шага, игры класса не нужно
 const huntStep = (les, id) => { const f = id && stepOf(les, id); return f && f.step.type === 'secret' && f.step.hunt ? f.step : null; };
 route('GET', '/api/wow/hunt', (ctx) => {
-  const { cls, les, st } = needStudent(ctx);
+  const me = needStudent(ctx), { cls, les, st } = me;
   const hs = huntStep(les, ctx.url.searchParams.get('step'));
+  if (hs && hs.hunt.format === 'sabotazh') return K.sabotageHunt(me, hs);
   if (hs) return { options: hs.hunt.options, answer: (st.answers[hs.id] && st.answers[hs.id].value) || null };
   const w = wowState(cls, les);
   if (!w || !w.gameId) return { options: [] };
@@ -1225,8 +1227,9 @@ route('GET', '/api/wow/hunt', (ctx) => {
   return { options: huntOptions(cls, les, w).options, answer: (S.hunt && st.answers[S.hunt.id] && st.answers[S.hunt.id].value) || null, felt: { felt: sum.felt, voted: sum.voted } };
 });
 route('POST', '/api/wow/guess', (ctx) => {
-  const { w: who, cls, les, s, st } = needStudent(ctx);
+  const me = needStudent(ctx), { w: who, cls, les, s, st } = me;
   const hs = huntStep(les, ctx.body.step);
+  if (hs && hs.hunt.format === 'sabotazh') return K.sabotageGuess(me, hs, String(ctx.body.guess || ''));
   if (hs) {
     const prev = st.answers[hs.id];
     if (prev && prev.value && prev.value.secret) return prev.value;
@@ -1985,7 +1988,7 @@ route('GET', '/api/teacher/poll', (ctx) => {
       const t = m6Tally(cls.code, les, x, null);
       steps.push({ cp: cp.id, id: x.id, title: x.question, kind: 'choice', n: t.n,
         bars: x.sides.map(sd => ({ label: sd.label, n: t.pick[sd.id] || 0 })).concat([{ label: x.sameLabel || 'Одинаково', n: t.pick.same || 0 }]), own: t.top.map(a => `${a.text} · ${a.n}`) });
-    } else if (x.type === 'zagadka' || x.type === 'slomano' || x.type === 'koloda') { // загадка-сцена, сломанная игра, колода удовольствий
+    } else if (x.type === 'zagadka' || x.type === 'slomano' || x.type === 'koloda' || x.type === 'bumaga') { // загадка-сцена, сломанная игра, колода удовольствий, бумажная игра
       const t = m6Tally(cls.code, les, x, null);
       steps.push({ cp: cp.id, id: x.id, title: x.question || x.title, kind: 'choice', n: t.n, bars: t.rows });
     } else if (x.type === 'ownplay' && x.match) {

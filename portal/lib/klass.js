@@ -5,6 +5,7 @@
 //     секретный донор «Звездопад над Фиштом», режим арены или свой приз словами. Состояние — cls.goal.
 //   Живые реакции (Д3) — эмодзи с ноутбуков всплывают поверх игры на проекторе. Проектор сам говорит, какая игра у него в рамке (live),
 //     и пишет реакции в телеметрию игры (тип партии react: секунда партии и эмодзи) — у автора «где смеялись». Частота ограничена.
+//   Саботаж (Г2, сессия 4) — учитель на проекторе тайно поворачивает ручку донора, класс угадывает с ноутбуков какую. Состояние — cls.sabotage.
 //   Галерея провалов (Д5) — показанные «Провалы дня» класса (cls.fails, А5) стеной: голос «самый смешной» (один на ученика),
 //     автор может убрать свой провал; на проекторе — галерея и нарезка лучших к Фестивалю.
 // Подключается из server.js: require('./lib/klass')({ route, needStudent, needTeacher, broadcast, store, lesson, stepOf, failMembers }).
@@ -95,6 +96,71 @@ module.exports = function klass({ route, needStudent, needTeacher, broadcast, st
     store.saveClass(cls); theaterEvent(cls);
     return { theater: theaterView(cls, w.nick) };
   });
+
+  /* ================= саботаж (Г2 аудита, сессия 4) ================= */
+  // Учитель на проекторе тайно поворачивает одну ручку донора: hunt.sabotage шага secret с format 'sabotazh' — список { label, cfg, why },
+  // hunt.base — общие ручки партии. Класс смотрит игру на проекторе и угадывает с ноутбуков, что повернули; верно или нет — после
+  // «Раскрыть», у всех сразу. «Ещё раунд» тайно берёт другую ручку. Состояние — cls.sabotage { lesson, step, pick, round, phase: play | reveal }.
+  const sabStep = (les, id) => { const f = les && id && stepOf(les, id); return f && f.step.type === 'secret' && f.step.hunt && f.step.hunt.format === 'sabotazh' ? f.step : null; };
+  const sabNow = (cls, stepId) => { const x = cls.sabotage; return x && x.lesson === cls.lesson && (!stepId || x.step === stepId) ? x : null; };
+  const sabAnswers = (cls, les, x) => store.students(cls.code).map(s => ((((s.lessons || {})[les.id] || {}).answers || {})[x.step] || {}).value).filter(v => v && v.round === x.round && v.guess);
+  // ответ ученика после раскрытия: верно ли, ловушка, что повернули
+  function sabResolve(h, x, v) {
+    const p = h.sabotage[x.pick];
+    return Object.assign({}, v, { pending: false, correct: v.guess === p.label, trap: v.guess === h.trap, trapText: h.trapText || null,
+      secret: { title: (h.title || 'Саботаж: «{label}»').replace('{label}', p.label), reveal: [p.why, h.reveal].filter(Boolean).join(' '), effect: h.effect || null } });
+  }
+  // viewer 'teacher' — вместе с ответом (проектор прячет его до «Раскрыть»); иначе — ученику: что повернули, только после раскрытия
+  function sabView(cls, viewer) {
+    const x = sabNow(cls), les = x && lesson(cls.lesson), st = x && sabStep(les, x.step);
+    if (!st) return null;
+    const h = st.hunt, p = h.sabotage[x.pick], votes = sabAnswers(cls, les, x);
+    const out = { step: x.step, round: x.round, phase: x.phase, n: votes.length, at: x.at };
+    if (viewer === 'teacher') Object.assign(out, { cfg: Object.assign({}, h.base || {}, p.cfg), game: st.game, label: p.label, why: p.why });
+    if (x.phase === 'reveal') Object.assign(out, { label: p.label, why: p.why, counts: h.options.map(o => ({ label: o, n: votes.filter(v => v.guess === o).length, right: o === p.label })) });
+    return out;
+  }
+  const sabEvent = cls => broadcast(cls.code, 'sabotage', sabView(cls, null) || { phase: null });
+  route('GET', '/api/teacher/sabotage', (ctx) => { needTeacher(ctx); return { sabotage: sabView(classOf(ctx.url.searchParams.get('code')), 'teacher') }; });
+  route('POST', '/api/teacher/sabotage', (ctx) => {
+    needTeacher(ctx);
+    const cls = classOf(ctx.body.code), les = lesson(cls.lesson), b = ctx.body;
+    if (b.action === 'end') cls.sabotage = null;
+    else if (b.action === 'start') {
+      const st = sabStep(les, b.step);
+      if (!st) throw bad('Это не саботаж урока');
+      const old = sabNow(cls, st.id), list = st.hunt.sabotage;
+      let pick = crypto.randomInt(list.length);
+      if (old && list.length > 1 && pick === old.pick) pick = (pick + 1 + crypto.randomInt(list.length - 1)) % list.length; // другая ручка, чем в прошлом раунде
+      cls.sabotage = { lesson: les.id, step: st.id, pick, round: old ? old.round + 1 : 1, phase: 'play', at: store.now() };
+    } else if (b.action === 'reveal') {
+      const x = sabNow(cls);
+      if (!x) throw bad('Саботаж ещё не начался');
+      Object.assign(x, { phase: 'reveal', at: store.now() });
+    } else throw bad('Нет такого действия');
+    store.saveClass(cls); sabEvent(cls);
+    return { sabotage: sabView(cls, 'teacher') };
+  });
+  // для server.js (GET /api/wow/hunt и POST /api/wow/guess): варианты, свой ответ и состояние саботажа; догадка ждёт раскрытия
+  function sabotageHunt({ cls, s, st }, hs) {
+    const h = hs.hunt, x = sabNow(cls, hs.id), prev = st.answers[hs.id], v = prev && prev.value;
+    let answer = v || null;
+    if (v && v.pending && x && x.phase === 'reveal' && v.round === x.round) { answer = sabResolve(h, x, v); st.answers[hs.id] = Object.assign({}, prev, { value: answer }); store.saveStudent(cls.code, s); }
+    return { options: h.options, answer, sabotage: x ? sabView(cls, null) : null };
+  }
+  function sabotageGuess({ cls, s, st }, hs, guess) {
+    const x = sabNow(cls, hs.id);
+    if (!x) throw bad('Ждём учителя: саботаж ещё не начался', 409);
+    if (x.phase !== 'play') throw bad('Учитель уже раскрыл саботаж', 409);
+    const prev = st.answers[hs.id];
+    if (prev && prev.value && prev.value.round === x.round) return prev.value;
+    if (!hs.hunt.options.includes(guess)) throw bad('Выбери один из вариантов');
+    const value = { guess, round: x.round, pending: true };
+    st.answers[hs.id] = { value, done: true, at: store.now() };
+    s.where = hs.id; store.saveStudent(cls.code, s);
+    sabEvent(cls);
+    return value;
+  }
 
   /* ================= цель класса (Д2) ================= */
   function goalView(cls) {
@@ -220,5 +286,6 @@ module.exports = function klass({ route, needStudent, needTeacher, broadcast, st
     theaterFor: (cls, nick) => theaterView(cls, nick),
     goal: goalView, countPlay,
     live: liveView,
+    sabotageHunt, sabotageGuess,
   };
 };

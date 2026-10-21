@@ -20,7 +20,7 @@ function answerText(step, a, game) {
       return played.map(x => `${x.label}: ${v.played[x.id].feel}` + (x.base ? '' : v.played[x.id].ok ? ', деталь угадал' : v.played[x.id].dial ? ', деталь не угадал' : '')).join('; ') + (fav ? `\nсамая интересная: ${fav.label}` : '');
     }
     case 'abtest': return v.A ? `спрятанная механика в игре ${v.side === 'A' ? 'А' : 'Б'}; голос: ${v.vote ? (v.vote === 'same' ? 'разницы нет' : 'игра ' + (v.vote === 'A' ? 'А' : 'Б')) : 'нет'}${v.vote && v.vote === v.side ? ' — почувствовал' : ''}; партий А ${v.A.rounds}, Б ${v.B.rounds}` : '';
-    case 'secret': return v.guess ? `догадка: ${v.guess} — ${v.correct ? 'угадал' : v.trap ? 'ловушка: это было на картах' : 'не угадал'}` : '';
+    case 'secret': return v.guess ? `догадка: ${v.guess} — ${v.pending ? 'ждёт раскрытия' : v.correct ? 'угадал' : v.trap ? 'ловушка: это было на картах' : 'не угадал'}` : '';
     case 'rounds': case 'sort': return v.total ? quizLine(v) : '';
     case 'blindpair': return v.vote ? (step.mode === 'secret' ? `«${v.title}» (автор ${v.author}): выбрал — ${v.vote === 'same' ? 'разницы нет' : v.felt ? 'со спрятанной механикой, почувствовал' : 'без спрятанной механики'}`
       : `«${v.title}» (автор ${v.author}): хочется вернуться — ${v.vote === 'same' ? 'разницы нет' : v.juicy ? 'в сочную' : 'в сухую'}`) : '';
@@ -35,6 +35,7 @@ function answerText(step, a, game) {
     case 'spor': return v.voted ? `голос: ${v.pick === 'same' ? (step.sameLabel || 'одинаково') : ((step.sides || []).find(x => x.id === v.pick) || {}).label || v.pick}; почему: ${(v.why || []).concat(val(v.own) ? [val(v.own)] : []).join('; ') || '—'}` : Object.keys(v.sides || {}).length ? `сыграно: ${Object.entries(v.sides).map(([k, x]) => `${k} — ${x.rounds}`).join(', ')}` : '';
     case 'zagadka': return v.pick ? `ответ: ${v.pick}${v.correct ? ' — верно' : ''}` : '';
     case 'slomano': return v.pick ? `сломано: ${v.pick}${v.correct ? ` — нашёл за ${v.t} с` : v.trap ? ' — ловушка' : ' — не то'}` : v.rounds ? `партий ${v.rounds}, ищет` : '';
+    case 'bumaga': return v.voted ? `ответ: ${v.pick || val(v.own)}` : v.played ? 'сыграли' : v.t0 ? 'играют' : '';
     case 'koloda': return v.line ? `главное: ${v.line}` : (v.seen || []).length ? `перевернул ${v.seen.length} из ${(step.cards || []).length}` : '';
     case 'obyasni': return (v.tries || []).length ? `объяснил${v.partner ? ' соседу ' + v.partner : ''}: ${v.tries.map(t => (t === 'got' ? 'понял' : 'не понял')).join(' → ')}` : '';
     case 'factory': return [v.level ? `уровень: ${(step.levels.find(l => l.id === v.level) || {}).label || v.level}` : '', v.limit && v.level === 'boss' ? `карта ограничения: ${v.limit.text}` : '']
