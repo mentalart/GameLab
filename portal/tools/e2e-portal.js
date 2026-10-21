@@ -22,6 +22,7 @@
 // Урок 8 в обоих прогонах: «Башня до неба» с окном «идеально» и без спрятанной механики, мастерская вариаций на одну кнопку (маятник, ритм, инерция, блиц — доска со спасёнными плитами и конструктор), квиз «Какой это приём?», джем с донором Stack из колоды «одна кнопка»,
 // образец урока, две башни вдвоём, релиз модуля 2; с подставным ИИ — выставка: соседка собирает игру джема, голоса в номинациях,
 // итоги класса и кнопочный турнир на проекторе.
+// Модуль 5 (уроки 19–22) — tools/e2e-m5.js: Reigns и последствия, квиз «Что здесь случилось?», «Найди лишнее» и фоторежим, игра о чувстве и релиз модуля 5.
 // Модуль 3 (уроки 9–13) — tools/e2e-m3.js: кривая сложности, «Свинья», вызов класса на одном зерне, шкала случая, таблица баланса, живые схемы, релиз модуля 3.
 // Модуль 4 (уроки 14–18) — tools/e2e-m4.js: объяснялки motion, квизы по картам, уровни как данные, тепловая карта, редактор и галерея уровней.
 // Модуль 6 (уроки 23–25) — tools/e2e-m6.js: интерактивные сцены с переключателями, квиз-бросок, «Первая минута», загадка дня класса,
@@ -61,6 +62,8 @@ const lesson8 = require('../lessons/urok-08');
 const M3 = [9, 10, 11, 12, 13].filter(n => fs.existsSync(path.join(__dirname, '..', 'lessons', `urok-${String(n).padStart(2, '0')}.js`)));
 // модуль 4 «Пространство и уровни»: уроки 14–18 проверяет tools/e2e-m4.js теми же помощниками
 const M4 = [14, 15, 16, 17, 18].filter(n => fs.existsSync(path.join(__dirname, '..', 'lessons', `urok-${n}.js`)));
+// модуль 5 «Истории, миры, смыслы»: уроки 19–22 проверяет tools/e2e-m5.js помощниками модуля 4
+const M5 = [19, 20, 21, 22].filter(n => fs.existsSync(path.join(__dirname, '..', 'lessons', `urok-${n}.js`)));
 const M6 = [23, 24, 25].filter(n => fs.existsSync(path.join(__dirname, '..', 'lessons', `urok-${n}.js`)));
 // модуль 7 «Играть вместе»: уроки 26–28 проверяет tools/e2e-m7.js (арена класса, турнирная сетка, команды джема)
 const M7 = [26, 27, 28].filter(n => fs.existsSync(path.join(__dirname, '..', 'lessons', `urok-${n}.js`)));
@@ -516,6 +519,10 @@ async function run(browser, base, mode) {
   { // модуль 4: уроки 14–18
     const m4 = require('./e2e-m4')({ check, gameFrame, playRound, sleep, mock, lessons: Object.fromEntries(M4.map(n => [n, require(`../lessons/urok-${n}`)])) });
     for (const n of M4) if (want(n) && m4['lesson' + n]) await m4['lesson' + n](mode, teacher, student, shot, { browser, base, code, errors, pj });
+  }
+  { // модуль 5: уроки 19–22
+    const m5 = require('./e2e-m5')({ check, gameFrame, playRound, sleep, mock, lessons: Object.fromEntries(M5.map(n => [n, require(`../lessons/urok-${n}`)])) });
+    for (const n of M5) if (want(n) && m5['lesson' + n]) await m5['lesson' + n](mode, teacher, student, shot, { browser, base, code, errors, pj });
   }
   { // модуль 6: уроки 23–25
     const m6 = require('./e2e-m6')({ check, gameFrame, playRound, sleep, mock, lessons: Object.fromEntries(M6.map(n => [n, require(`../lessons/urok-${n}`)])) });
