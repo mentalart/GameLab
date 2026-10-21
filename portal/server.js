@@ -2085,6 +2085,8 @@ route('POST', '/api/fail/consent', (ctx) => {
 });
 // проектор и класс (аудит, сессия 2): театр сцены (В5), цель класса (Д2), живые реакции (Д3), галерея провалов (Д5)
 const K = require('./lib/klass')({ route, needStudent, needTeacher, broadcast, store, lesson, stepOf, failMembers });
+// карусель (Г5 аудита, сессия 5): обмен игр по кругу, каждые 4 минуты игра уходит следующему, автор видит, где отзывы совпали
+require('./lib/karusel')({ route, needStudent, needTeacher, broadcast, store, lesson, stepOf, classGames });
 // ответы класса по уроку: таблица «ученик × шаг», разбор квизов по карточкам; выгрузка CSV — на странице учителя
 route('GET', '/api/teacher/answers', (ctx) => {
   needTeacher(ctx);

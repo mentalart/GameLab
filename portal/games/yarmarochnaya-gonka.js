@@ -1187,7 +1187,7 @@ const GAME = {
       out.push(`Автопрогон: ${a.n} заездов. Разрыв первого и последнего на финише — в среднем ${a.gap.toFixed(1)} с, наибольший ${a.maxGap.toFixed(1)} с`);
       out.push(`Лидер менялся в среднем ${a.changes.toFixed(1)} раза за заезд; всё решилось уже на первом круге в ${a.early} заездах из ${a.n}`);
       if (st.S.wins) out.push('Победы: ' + st.S.wins.map(([n, k]) => `${n} — ${k}`).join(', '));
-      out.push(`Петли: снежный ком ${lab.cfg.snowball}, помощь отстающему ${lab.cfg.rubber}, гостинцы по месту — ${lab.cfg.secret >= 1 ? 'да' : 'нет'}`);
+      // какие петли включены, не пишем: в саботаже урока 11 учитель тайно поворачивает их, а класс угадывает по столбикам
       return out;
     }
     const h = st.humans[0], r = st.result || { gap: 0, changes: st.changes, decided: st.decided };

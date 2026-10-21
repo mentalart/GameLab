@@ -23,7 +23,8 @@
 // образец урока, две башни вдвоём, релиз модуля 2; с подставным ИИ — выставка: соседка собирает игру джема, голоса в номинациях,
 // итоги класса и кнопочный турнир на проекторе.
 // Модуль 5 (уроки 19–22) — tools/e2e-m5.js: Reigns и последствия, квиз «Что здесь случилось?», «Найди лишнее» и фоторежим, игра о чувстве и релиз модуля 5.
-// Модуль 3 (уроки 9–13) — tools/e2e-m3.js: кривая сложности, «Свинья», вызов класса на одном зерне, шкала случая, таблица баланса, живые схемы, релиз модуля 3.
+// Модуль 3 (уроки 9–13) — tools/e2e-m3.js: кривая сложности, «Свинья», вызов класса на одном зерне, шкала случая, таблица баланса, сцены с переключателями,
+// детектив, рецепт, саботаж, видео-петля, карусель, турнирный день, бумажные игры, релиз модуля 3.
 // Модуль 4 (уроки 14–18) — tools/e2e-m4.js: объяснялки motion, квизы по картам, уровни как данные, тепловая карта, редактор и галерея уровней.
 // Модуль 6 (уроки 23–25) — tools/e2e-m6.js: интерактивные сцены с переключателями, квиз-бросок, «Первая минута», загадка дня класса,
 //   UX-аудит и «новичок с улицы», охота за тёмными паттернами, своя игра прошлого урока, дебаты, кодекс, релиз модуля 6.
@@ -562,7 +563,7 @@ async function run(browser, base, mode) {
   if (want(7)) await lessonSeven(mode, teacher, student, shot);
   if (want(8)) await lessonEight(mode, teacher, student, shot, { browser, base, code, errors, pj });
   { // модуль 3: уроки 9–13
-    const m3 = require('./e2e-m3')({ check, gameFrame, playRound, sleep, mock, rost, producer, lessons: Object.fromEntries(M3.map(n => [n, require(`../lessons/urok-${String(n).padStart(2, '0')}`)])) });
+    const m3 = require('./e2e-m3')({ check, gameFrame, playRound, sleep, mock, rost, producer, scenes: scenesM1, huntM2, watch, lessons: Object.fromEntries(M3.map(n => [n, require(`../lessons/urok-${String(n).padStart(2, '0')}`)])) });
     for (const n of M3) if (want(n) && m3['lesson' + n]) await m3['lesson' + n](mode, teacher, student, shot, { browser, base, code, errors, pj });
   }
   { // модуль 4: уроки 14–18

@@ -32,7 +32,16 @@
   .check{list-style:none;padding:0;margin:0;columns:2}
   .check li::before{content:"☐ ";font-size:13px}
   .muted{color:var(--soft)}
-  @media print{body{background:#fff;font-size:9.5px;line-height:1.28}.bar{display:none}.page{box-shadow:none;margin:0;width:auto;padding:0}h1{font-size:15px}h2{margin:6px 0 3px}.q{font-size:11px;padding:4px 8px}td,th{padding:2px 5px}.steps,.next{font-size:9px}@page{size:A4;margin:8mm}}
+  /* бумажная игра (Г3): своя страница, карты под ножницы пунктиром, таблица для карандаша */
+  .paper{border-top:2px dashed var(--line);margin-top:14px;padding-top:10px}
+  .paper .rules{margin:4px 0 6px;padding-left:18px}
+  .set{margin-top:8px;break-inside:avoid}
+  .cut{display:grid;grid-template-columns:repeat(4,1fr);gap:0}
+  .pcard{border:1px dashed var(--soft);min-height:30mm;padding:6px;display:grid;align-content:start;gap:2px;position:relative}
+  .pcard .ic{font-size:20px}.pcard b{font-size:13px}.pcard small{color:var(--soft);font-size:10.5px}
+  .pcard .cost{position:absolute;top:5px;right:7px;font-weight:800;border:1.5px solid var(--ink);border-radius:50%;min-width:20px;height:20px;display:grid;place-items:center;font-size:12px}
+  .ptable td,.ptable th{border:1px solid var(--line);text-align:center;height:22px}
+  @media print{.paper{break-before:page;border:0;margin:0;padding:0}body{background:#fff;font-size:9.5px;line-height:1.28}.bar{display:none}.page{box-shadow:none;margin:0;width:auto;padding:0}h1{font-size:15px}h2{margin:6px 0 3px}.q{font-size:11px;padding:4px 8px}td,th{padding:2px 5px}.steps,.next{font-size:9px}@page{size:A4;margin:8mm}}
   @media (max-width:640px){.cols{grid-template-columns:1fr}.gloss,.check{columns:1}.page{padding:16px}}
 </style>
 </head>

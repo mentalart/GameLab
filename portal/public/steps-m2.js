@@ -627,8 +627,12 @@
         tallyBox.replaceChildren(el('div', { class: 'eyebrow' }, `Класс ответил · ${r.n}`), bars(r.rows.map(x => ({ label: x.label, k: x.n / r.n, show: x.n, me: x.label === v.pick }))));
       });
     }
+    // print (Г3, сессия 5): карты и таблица для печати на листе урока; у ученика — те же карты списком: нет распечатки — перепиши на бумажки
+    const P = st.print, kit = P && (P.cards || []).length ? el('div', { class: 'm2-kit' }, el('span', { class: 'eyebrow' }, 'Карты набора'),
+      ...P.cards.map(c => el('span', { class: 'chip' }, `${c.icon || ''} ${c.name}` + (c.cost != null ? ` · ${c.cost}` : '') + ((c.n || 1) > 1 ? ` ×${c.n}` : '')))) : null;
     host.append(el('div', { class: 'card m2-paper' }, el('div', { class: 'eyebrow' }, '📄 Без компьютера'), rules,
-      st.roles ? el('p', { class: 'small' }, el('b', {}, 'Кто что делает: '), st.roles) : null, st.need ? el('p', { class: 'small muted' }, 'Нужно: ' + st.need) : null),
+      st.roles ? el('p', { class: 'small' }, el('b', {}, 'Кто что делает: '), st.roles) : null, st.need ? el('p', { class: 'small muted' }, 'Нужно: ' + st.need) : null, kit,
+      P ? el('p', { class: 'small muted' }, P.hint || 'Карты для печати — на листе урока у учителя. Нет распечатки — перепиши карты на бумажки.') : null),
     st.rounds ? roundsBox : null, clockBox, ask, tallyBox);
     paintRounds(); paintClock(); drawAsk();
     if (v.t0 && !v.played) run();

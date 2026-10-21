@@ -368,6 +368,7 @@
 
   /* =================== bracket: турнирная сетка дуэлей =================== */
   // Пары садятся вдвоём за один компьютер. Победителя отмечает любой из двоих; сетка анимируется у всех и на проекторе (рисует m7-pult.js).
+  // rule — как играет пара (урок 11: один заезд, выше финишировал — прошёл), wait — строка до сетки; без них — «до wins побед» дуэли урока 26
   function stepBracket(ctx) {
     const st = ctx.step;
     let v = Object.assign({ played: 0, reported: [], out: false }, ctx.value);
@@ -382,7 +383,7 @@
     }
     function paint() {
       box.innerHTML = ''; mine.innerHTML = '';
-      if (!b) { box.append(el('div', { class: 'card muted' }, 'Учитель ещё не собрал сетку. Пока сыграйте вдвоём с соседом: так вы разомнётесь перед турниром.')); return; }
+      if (!b) { box.append(el('div', { class: 'card muted' }, st.wait || 'Учитель ещё не собрал сетку. Пока сыграйте вдвоём с соседом: так вы разомнётесь перед турниром.')); return; }
       box.append(window.LabM7.bracketSvg(b, S.me.nick));
       if (b.champion) box.append(el('div', { class: 'm7-champline' }, `👑 Чемпион класса: ${b.champion}`));
       const mm = myMatch();
@@ -390,7 +391,7 @@
       if (lost && !v.out) { v.out = true; ctx.save(v, true); }
       if (mm) {
         const other = mm.m.a === S.me.nick ? mm.m.b : mm.m.a;
-        mine.append(el('b', {}, `Твоя пара: ${mm.m.a} — ${mm.m.b}`), el('span', { class: 'muted small' }, `Садитесь за один компьютер: ${S.me.nick} — WASD и F, ${other} — стрелки и K (или два геймпада). Играйте до ${st.wins || 3} побед.`),
+        mine.append(el('b', {}, `Твоя пара: ${mm.m.a} — ${mm.m.b}`), el('span', { class: 'muted small' }, `Садитесь за один компьютер: ${S.me.nick} — WASD и F, ${other} — стрелки и K (или два геймпада). ${st.rule || `Играйте до ${st.wins || 3} побед.`}`),
           el('div', { class: 'row' }, ...[mm.m.a, mm.m.b].map(n => el('button', { type: 'button', class: 'btn small' + (n === S.me.nick ? '' : ' ghost'), onclick: () => report(mm, n) }, `🏆 Победил(а) ${n}`))));
       } else if (lost) mine.append(el('span', {}, 'Ты выбыл(а) — смотри сетку и болей за соседей. Месть духа в реальной жизни не работает 😉'));
       else if (b.champion === S.me.nick) mine.append(el('b', {}, '👑 Ты чемпион класса!'));
