@@ -454,6 +454,21 @@ function postcardView(c) {
 }
 
 // seen: шаг-памятка без действия (перемена) засчитывается, как только ученик его увидел (прохождение 20.10.2026)
+// мультфильм урока (тип film, 22.10.2026): страница из public/multfilm в рамке. Шаг засчитывается, когда фильм досмотрен
+// (фильм присылает {type: 'film-end'}), или кнопкой «Посмотрел». Во весь экран — в новой вкладке, для проектора.
+STEPS.film = ctx => {
+  const { step } = ctx;
+  const fr = el('iframe', { class: 'film-frame', src: step.src, title: step.title, allow: 'fullscreen; autoplay', allowfullscreen: true });
+  const onMsg = e => {
+    if (!fr.isConnected) return removeEventListener('message', onMsg);
+    if (e.source === fr.contentWindow && e.data && e.data.type === 'film-end' && !ctx.done) ctx.save({ watched: true }, true);
+  };
+  addEventListener('message', onMsg);
+  return el('div', { class: 'stack' }, fr,
+    el('div', { class: 'row' },
+      el('a', { class: 'btn ghost', href: step.src, target: '_blank', rel: 'noopener' }, '⛶ Во весь экран'),
+      el('button', { class: 'btn ghost', type: 'button', onclick: () => ctx.save({ watched: true }, true) }, 'Посмотрел ✓')));
+};
 STEPS.text = ctx => { if (ctx.step.seen && !ctx.done) setTimeout(() => ctx.save({ read: true }, true), 0); return textBody(ctx); };
 const textBody = ctx => el('div', { class: 'stack' },
   el('div', { class: 'text-html', html: ctx.step.html }),
@@ -3857,6 +3872,7 @@ function stepSummary(step) {
     case 'predict': return (v.picked || []).length ? `предсказание: ${step.options.filter(o => v.picked.includes(o.counter)).map(o => o.text).join('; ')}` + (v.result ? ` — ${v.result.hit ? 'сбылось' : 'не сбылось'}; телеметрия за партию: ` + step.options.map(o => `${o.text} ${v.result.values[o.counter]}`).join(', ') : '') : 'не предсказывал';
     case 'sort': return v.total ? `верно ${v.correct} из ${v.total}, очки ${v.score}, серия ${v.bestStreak}` + ((v.mistakes || []).length ? '; ошибки: ' + v.mistakes.join('; ') : '') : 'не пройден';
     case 'text': return a.done ? 'прочитано' : 'не прочитано';
+    case 'film': return a.done ? 'посмотрел' : 'не посмотрел';
     case 'factory': return [`уровень: ${(step.levels.find(l => l.id === v.level) || {}).label || '—'}`].concat(step.fields.filter(x => valText((v.fields || {})[x.id])).map(x => `${x.label}: ${f(v.fields[x.id])}`)).join('\n');
     case 'decisions': case 'igra': return step.fields.map(x => `${x.letter ? x.letter + ' — ' : ''}${x.label}: ${f((v.fields || {})[x.id]) || '—'}`).join('\n');
     case 'producer': return v.result ? [v.result.praise, ...v.result.findings.map(x => `[${x.kind}] ${x.text}`), ...v.result.forks.map((x, i) => `${x.question} → ${(v.choices || {})[i] || 'не выбрано'}`)].filter(Boolean).join('\n') : 'не вызывался';

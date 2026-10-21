@@ -469,6 +469,9 @@ async function run(browser, base, mode) {
   await student.click('#step-vopros-uroka-2 .opt >> text=Геймдизайнер');
   await student.click('#step-vopros-uroka-2 >> text=Ответить');
   await student.waitForSelector('#step-vopros-uroka-2.done');
+  check('Мультфильм урока в финале: рамка со страницей фильма', (await student.getAttribute('#step-multfilm iframe.film-frame', 'src')) === '/multfilm/urok-01.html');
+  await student.click('#step-multfilm >> text=Посмотрел ✓');
+  await student.waitForSelector('#step-multfilm.done');
   await student.waitForSelector('#step-otkrytka [data-postcard=save]', { timeout: 10000 });
   await student.click('#step-otkrytka [data-postcard=save]');
   await student.waitForSelector('#step-otkrytka.done');
@@ -477,7 +480,7 @@ async function run(browser, base, mode) {
   await student.click('#step-otkrytie-den .opt >> nth=0');
   await student.click('#step-otkrytie-den >> text=Ответить');
   await student.waitForSelector('#step-otkrytie-den.done');
-  check('Финал без «Плана следующей версии»: шагов шесть', await student.locator('#step-plan-v2').count() === 0 && lesson1.checkpoints.find(c => c.id === 'final').steps.length === 6);
+  check('Финал без «Плана следующей версии», с мультфильмом: шагов семь', await student.locator('#step-plan-v2').count() === 0 && lesson1.checkpoints.find(c => c.id === 'final').steps.length === 7);
   await projectorFinal(pj, shot, student);
   // «Моя студия»: полка, значки, журнал с планом версии 2, эмблема у ника в аркаде
   {

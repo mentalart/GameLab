@@ -1,0 +1,861 @@
+<title>Мультфильм урока 1</title>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Russo+One&family=Nunito:wght@600;800&display=swap">
+<style>
+/* Кинозал: тёмный зал, кадр на весь экран, полосы кино с субтитрами, пульт снизу. Один тёмный облик. */
+:root {
+  --night: #0b0f24;      /* фон зала */
+  --ink: #f4ecd8;        /* текст, тёплый лунный */
+  --moon: #ffd877;       /* акцент: луна и золото */
+  --neon: #6ff0ff;       /* неон НЛО */
+  --muted: #9aa0c3;      /* подписи */
+  --bar: #05060f;        /* полосы кино */
+  --display: "Russo One", "Arial Black", system-ui, sans-serif;
+  --body: "Nunito", "Segoe UI", system-ui, sans-serif;
+  color-scheme: dark;
+}
+[hidden] { display: none !important; }
+html, body { height: 100%; margin: 0; background: var(--night); color: var(--ink); font-family: var(--body); overflow: hidden; }
+#stage { position: fixed; inset: 0; }
+#stage canvas { display: block; width: 100%; height: 100%; }
+.bar { position: fixed; left: 0; right: 0; height: 11vh; background: var(--bar); z-index: 3; transition: transform .8s cubic-bezier(.65,0,.35,1); pointer-events: none; }
+#barTop { top: 0; transform: translateY(-100%); }
+#barBot { bottom: 0; transform: translateY(100%); display: flex; align-items: center; justify-content: center; padding-inline: max(16px, env(safe-area-inset-left, 0px)) max(16px, env(safe-area-inset-right, 0px)); box-sizing: border-box; }
+body.film #barTop, body.film #barBot { transform: none; }
+#sub { font-weight: 800; font-size: clamp(14px, 2.6vh + .6vw, 30px); line-height: 1.25; text-align: center; max-width: 60ch; text-wrap: balance; opacity: 0; transition: opacity .25s; text-shadow: 0 2px 0 #000; }
+#sub b { color: var(--moon); font-weight: 800; }
+#fade { position: fixed; inset: 0; background: #000; opacity: 0; z-index: 2; pointer-events: none; }
+#iris { position: fixed; inset: 0; background: #000; z-index: 2; pointer-events: none; opacity: 0; }
+#title { position: fixed; inset: 0; z-index: 2; display: grid; place-content: center; text-align: center; pointer-events: none; opacity: 0; gap: 1.2vh; padding-inline: max(16px, env(safe-area-inset-left, 0px)) max(16px, env(safe-area-inset-right, 0px)); }
+#title .eyebrow { font-family: var(--body); font-weight: 800; letter-spacing: .32em; text-transform: uppercase; color: var(--neon); font-size: clamp(11px, 1.8vh, 18px); }
+#title h1 { margin: 0; font-family: var(--display); font-weight: 400; font-size: clamp(30px, 8vh, 92px); line-height: 1; color: var(--moon); text-shadow: 0 0 28px rgba(255,216,119,.45), 0 4px 0 #3a2400; text-wrap: balance; }
+#title p { margin: 0; font-weight: 800; font-size: clamp(14px, 2.6vh, 28px); color: var(--ink); text-shadow: 0 2px 0 #000; }
+/* стартовый экран */
+#poster { position: fixed; inset: 0; z-index: 5; display: grid; place-content: center; gap: 22px; text-align: center; background: radial-gradient(ellipse at 50% 30%, rgba(255,216,119,.18), transparent 60%), rgba(5,6,15,.62); padding-inline: max(16px, env(safe-area-inset-left, 0px)) max(16px, env(safe-area-inset-right, 0px)); }
+#poster .eyebrow { letter-spacing: .32em; text-transform: uppercase; font-weight: 800; color: var(--neon); font-size: 13px; }
+#poster h1 { margin: 0; font-family: var(--display); font-weight: 400; font-size: clamp(34px, 7vw, 76px); line-height: 1.02; color: var(--moon); text-wrap: balance; text-shadow: 0 0 30px rgba(255,216,119,.35), 0 4px 0 #3a2400; }
+#poster p { margin: 0 auto; max-width: 44ch; color: var(--ink); font-size: clamp(15px, 2vw, 19px); line-height: 1.45; }
+#poster .meta { color: var(--muted); font-size: 14px; }
+#play { justify-self: center; font: 400 22px/1 var(--display); color: #1a1000; background: var(--moon); border: 0; border-radius: 999px; padding: 18px 34px 18px 28px; cursor: pointer; box-shadow: 0 6px 0 #9b6b10, 0 0 40px rgba(255,216,119,.4); transition: transform .12s; }
+#play:hover { transform: translateY(-2px) scale(1.03); }
+#play:active { transform: translateY(4px); box-shadow: 0 2px 0 #9b6b10; }
+#play:focus-visible, .ctl button:focus-visible, #seek:focus-visible { outline: 3px solid var(--neon); outline-offset: 3px; }
+/* пульт */
+.ctl { position: fixed; left: 0; right: 0; bottom: 0; z-index: 4; display: flex; align-items: center; gap: 12px; padding: 10px max(16px, env(safe-area-inset-right, 0px)) calc(10px + env(safe-area-inset-bottom, 0px)) max(16px, env(safe-area-inset-left, 0px)); background: linear-gradient(transparent, rgba(0,0,0,.85)); opacity: 0; transition: opacity .3s; }
+body.film .ctl { bottom: 11vh; background: linear-gradient(transparent, rgba(0,0,0,.6)); }
+body.idle .ctl { opacity: 0; } body:not(.idle) .ctl, .ctl:focus-within { opacity: 1; }
+.ctl button { flex: none; width: 40px; height: 40px; border-radius: 50%; border: 1px solid rgba(244,236,216,.35); background: rgba(11,15,36,.7); color: var(--ink); font-size: 16px; cursor: pointer; display: grid; place-items: center; }
+.ctl button:hover { border-color: var(--moon); color: var(--moon); }
+#seek { flex: 1; min-width: 0; accent-color: var(--moon); height: 6px; cursor: pointer; }
+#time { flex: none; font-variant-numeric: tabular-nums; font-size: 14px; color: var(--muted); min-width: 92px; text-align: right; }
+#err { position: fixed; inset: auto 16px 16px; z-index: 6; color: #ffb3a8; font-size: 15px; }
+@media (max-width: 520px) { #time { min-width: 0; font-size: 12px; } .ctl { gap: 8px; } .ctl button { width: 36px; height: 36px; } }
+@media (prefers-reduced-motion: reduce) { .bar, #sub, .ctl { transition: none; } }
+</style>
+
+<div id="stage"></div>
+<div class="bar" id="barTop"></div>
+<div class="bar" id="barBot"><div id="sub"></div></div>
+<div id="fade"></div>
+<div id="iris"></div>
+<div id="title"><div class="eyebrow" id="tEye"></div><h1 id="tH"></h1><p id="tP"></p></div>
+
+<div id="poster">
+  <div class="eyebrow">Лаборатория игр · урок 1</div>
+  <h1>Кто решает, что почувствует игрок?</h1>
+  <p>Мультфильм о том, как ошибка слабого компьютера 1978 года стала решением геймдизайнера, и о том, кем ты станешь на этом курсе.</p>
+  <button id="play" type="button">▶&nbsp; Смотреть</button>
+  <div class="meta">1 минута · лучше со звуком · пробел — пауза</div>
+</div>
+
+<div class="ctl" id="ctl">
+  <button id="bPlay" type="button" aria-label="Пауза">❚❚</button>
+  <button id="bAgain" type="button" aria-label="Сначала">↺</button>
+  <input id="seek" type="range" min="0" max="64" step="0.05" value="0" aria-label="Время фильма">
+  <span id="time">0:00 / 1:04</span>
+  <button id="bSound" type="button" aria-label="Звук">🔊</button>
+  <button id="bFull" type="button" aria-label="Во весь экран">⛶</button>
+</div>
+<div id="err" hidden></div>
+
+<script type="module">
+// «Лаборатория игр», урок 1 — мультфильм на three.js 0.170 (та же версия, что в портале).
+// В портале three.js берётся из /engine/vendor, без интернета; вне портала — с jsDelivr.
+// Всё в кадре — функция времени фильма t, поэтому перемотка показывает ровно тот же кадр.
+let THREE;
+try { THREE = await import('/engine/vendor/three/three.module.min.js'); }
+catch (e) { THREE = await import('https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.min.js'); }
+
+const T_END = 64;
+const $ = id => document.getElementById(id);
+const clamp = (x, a = 0, b = 1) => Math.min(b, Math.max(a, x));
+const lerp = (a, b, k) => a + (b - a) * k;
+const E = {
+  io: k => k < .5 ? 4 * k * k * k : 1 - Math.pow(-2 * k + 2, 3) / 2,
+  out: k => 1 - Math.pow(1 - k, 3),
+  in: k => k * k * k,
+  back: k => { const c1 = 1.70158, c3 = c1 + 1; return 1 + c3 * Math.pow(k - 1, 3) + c1 * Math.pow(k - 1, 2); },
+  el: k => k <= 0 ? 0 : k >= 1 ? 1 : Math.pow(2, -10 * k) * Math.sin((k * 10 - .75) * 2 * Math.PI / 3) + 1,
+};
+const seg = (t, a, b, e = E.io) => e(clamp((t - a) / (b - a)));
+const hash = n => { const s = Math.sin(n * 127.1 + 311.7) * 43758.5453; return s - Math.floor(s); };
+// пружина с затуханием: отклик на толчок в момент t0
+const spring = (t, t0, amp = 1, f = 9, d = 5) => t < t0 ? 0 : amp * Math.exp(-d * (t - t0)) * Math.sin(f * (t - t0));
+const pulse = (t, a, b) => (t >= a && t <= b) ? Math.sin(Math.PI * (t - a) / (b - a)) : 0;
+
+// ---------- рендер ----------
+const renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+$('stage').appendChild(renderer.domElement);
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(45, 1, .1, 400);
+function resize() { const w = innerWidth, h = innerHeight; renderer.setSize(w, h, false); camera.aspect = w / h; camera.updateProjectionMatrix(); }
+addEventListener('resize', resize); resize();
+
+const grad = new THREE.DataTexture(new Uint8Array([90, 90, 90, 255, 175, 175, 175, 255, 255, 255, 255, 255]), 3, 1);
+grad.magFilter = grad.minFilter = THREE.NearestFilter; grad.needsUpdate = true;
+const M = (c, o = {}) => new THREE.MeshToonMaterial({ color: c, gradientMap: grad, ...o });
+const GL = (c, o = {}) => new THREE.MeshBasicMaterial({ color: c, ...o });
+function mesh(geo, mat, x = 0, y = 0, z = 0, parent) { const m = new THREE.Mesh(geo, mat); m.position.set(x, y, z); m.castShadow = m.receiveShadow = true; if (parent) parent.add(m); return m; }
+const box = (w, h, d, mat, x, y, z, p) => mesh(new THREE.BoxGeometry(w, h, d), mat, x, y, z, p);
+const sph = (r, mat, x, y, z, p, ws = 18, hs = 12) => mesh(new THREE.SphereGeometry(r, ws, hs), mat, x, y, z, p);
+const cyl = (rt, rb, h, mat, x, y, z, p, s = 14) => mesh(new THREE.CylinderGeometry(rt, rb, h, s), mat, x, y, z, p);
+const grp = (p, x = 0, y = 0, z = 0) => { const g = new THREE.Group(); g.position.set(x, y, z); if (p) p.add(g); return g; };
+
+const C = { white: M(0xffffff), black: M(0x17151f), skin: M(0xf3c39e), pupil: GL(0x111118) };
+function eye(p, x, y, z, r) { const g = grp(p, x, y, z); sph(r, C.white, 0, 0, 0, g, 12, 10); sph(r * .55, C.pupil, 0, 0, r * .62, g, 10, 8); return g; }
+
+const FONT = '"Nunito", "Segoe UI", system-ui, sans-serif', DFONT = '"Russo One", "Arial Black", sans-serif';
+function canvasTex(w, h, draw) { const c = document.createElement('canvas'); c.width = w; c.height = h; const x = c.getContext('2d'); const tex = new THREE.CanvasTexture(c); tex.colorSpace = THREE.SRGBColorSpace; tex.anisotropy = 4; const api = { c, x, tex, draw: (...a) => { draw(x, w, h, ...a); tex.needsUpdate = true; } }; api.draw(); return api; }
+function rr(x, X, Y, W, H, R) { x.beginPath(); x.moveTo(X + R, Y); x.arcTo(X + W, Y, X + W, Y + H, R); x.arcTo(X + W, Y + H, X, Y + H, R); x.arcTo(X, Y + H, X, Y, R); x.arcTo(X, Y, X + W, Y, R); x.closePath(); }
+// табличка-спрайт с текстом
+const labels = [];
+function label(text, { fg = '#1a1000', bg = '#ffd877', h = .55, font = DFONT, pad = 34 } = {}) {
+  const make = () => {
+    const m = document.createElement('canvas').getContext('2d'); m.font = `64px ${font}`;
+    const W = Math.ceil(m.measureText(text).width + pad * 2), H = 104;
+    return canvasTex(W, H, (x, w, hh) => { x.clearRect(0, 0, w, hh); rr(x, 4, 4, w - 8, hh - 8, 40); x.fillStyle = bg; x.fill(); x.lineWidth = 6; x.strokeStyle = 'rgba(0,0,0,.35)'; x.stroke(); x.fillStyle = fg; x.font = `64px ${font}`; x.textAlign = 'center'; x.textBaseline = 'middle'; x.fillText(text, w / 2, hh / 2 + 4); });
+  };
+  let ct = make();
+  const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: ct.tex, transparent: true, depthWrite: false }));
+  const fit = () => sp.scale.set(h * ct.c.width / ct.c.height, h, 1);
+  fit();
+  labels.push(() => { ct = make(); sp.material.map = ct.tex; sp.material.needsUpdate = true; fit(); });
+  return sp;
+}
+function glowTex(inner = 'rgba(255,240,190,1)', outer = 'rgba(255,200,90,0)') {
+  return canvasTex(128, 128, (x, w, h) => { const g = x.createRadialGradient(64, 64, 0, 64, 64, 64); g.addColorStop(0, inner); g.addColorStop(.35, inner.replace(/[\d.]+\)$/, '.35)')); g.addColorStop(1, outer); x.fillStyle = g; x.fillRect(0, 0, w, h); }).tex;
+}
+const glowSprite = (tex, s) => { const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending })); sp.scale.set(s, s, 1); return sp; };
+
+// ---------- свет (один комплект, переезжает за декорацией) ----------
+const hemi = new THREE.HemisphereLight(0x8fa6ff, 0x1a2a20, .9); scene.add(hemi);
+const sun = new THREE.DirectionalLight(0xdfe6ff, 1.6); sun.castShadow = true; sun.shadow.mapSize.set(2048, 2048);
+Object.assign(sun.shadow.camera, { left: -22, right: 22, top: 22, bottom: -22, near: 1, far: 120 }); sun.shadow.bias = -.0006; sun.shadow.normalBias = .02;
+scene.add(sun, sun.target);
+
+// ================= ПЕРСОНАЖИ =================
+function makeCossack() {
+  const g = grp(), body = grp(g), coat = M(0x8a2b36), dark = M(0x2a2230), gold = M(0xe4b448);
+  box(.26, .7, .3, dark, -.22, .35, 0, g); box(.26, .7, .3, dark, .22, .35, 0, g);
+  box(.3, .14, .44, C.black, -.22, .05, .07, g); box(.3, .14, .44, C.black, .22, .05, .07, g);
+  cyl(.5, .62, 1.15, coat, 0, 1.25, 0, body);
+  cyl(.64, .7, .35, coat, 0, .82, 0, body);
+  cyl(.56, .56, .1, dark, 0, 1.0, 0, body);
+  for (const s of [-1, 1]) for (let i = 0; i < 4; i++) cyl(.04, .04, .22, gold, s * .33, 1.55 - i * .1, .4, body, 6).rotation.z = Math.PI / 2;
+  const head = grp(body, 0, 2.15, 0);
+  sph(.43, C.skin, 0, 0, 0, head);
+  const eyes = [eye(head, -.16, .07, .35, .1), eye(head, .16, .07, .35, .1)];
+  sph(.1, M(0xe9a07f), 0, -.03, .43, head, 10, 8);
+  const mus = grp(head, 0, -.15, .38); box(.52, .09, .12, C.black, 0, 0, 0, mus); box(.14, .09, .12, C.black, -.29, -.05, 0, mus).rotation.z = .5; box(.14, .09, .12, C.black, .29, -.05, 0, mus).rotation.z = -.5;
+  const brows = [box(.18, .05, .05, C.black, -.16, .22, .38, head), box(.18, .05, .05, C.black, .16, .22, .38, head)];
+  const hat = grp(head, 0, .38, 0); cyl(.42, .46, .5, M(0x241e26), 0, .1, 0, hat); cyl(.36, .36, .06, M(0xc23a3a), 0, .37, 0, hat); box(.06, .06, .5, gold, 0, .4, 0, hat); box(.5, .06, .06, gold, 0, .4, 0, hat);
+  const arms = [-1, 1].map(s => { const a = grp(body, s * .6, 1.68, 0); box(.24, .8, .26, coat, 0, -.38, 0, a); sph(.13, C.skin, 0, -.82, 0, a, 10, 8); return a; });
+  const zz = [0, 1, 2].map(i => { const s = label('z', { bg: 'rgba(0,0,0,0)', fg: '#cfe0ff', h: .5 }); head.add(s); return s; });
+  return { g, body, head, hat, eyes, brows, arms, zz, mus };
+}
+function makeCow() {
+  const g = grp(), body = grp(g), wh = M(0xf2efe6), sp = M(0x2b2630), pink = M(0xf2a3a8);
+  box(1.5, .85, .8, wh, 0, 1.0, 0, body);
+  box(.5, .4, .82, sp, -.25, 1.2, 0, body); box(.35, .3, .82, sp, .45, .9, 0, body);
+  for (const [x, z] of [[-.55, -.28], [-.55, .28], [.55, -.28], [.55, .28]]) { box(.2, .65, .2, wh, x, .33, z, g); box(.22, .12, .22, sp, x, .05, z, g); }
+  const head = grp(body, .95, 1.3, 0);
+  box(.55, .5, .55, wh, 0, 0, 0, head); box(.3, .3, .58, pink, .3, -.12, 0, head);
+  const eyes = [eye(head, .2, .1, -.22, .09), eye(head, .2, .1, .22, .09)];
+  eyes.forEach(e => e.rotation.y = Math.PI / 2);
+  for (const s of [-1, 1]) { const h = cyl(.04, .07, .32, M(0xe8d9a8), -.05, .32, s * .2, head, 6); h.rotation.x = s * .5; box(.08, .18, .26, wh, -.05, .12, s * .38, head).rotation.x = s * .4; }
+  const bell = sph(.1, M(0xe4b448), .55, .62, 0, body, 10, 8);
+  const tail = grp(body, -.76, 1.2, 0); box(.06, .55, .06, wh, 0, -.27, 0, tail); box(.12, .15, .12, sp, 0, -.55, 0, tail);
+  return { g, body, head, eyes, tail, bell };
+}
+const ufoGeo = { disk: new THREE.CylinderGeometry(1.1, .55, .32, 22), top: new THREE.CylinderGeometry(.62, 1.1, .16, 22), dome: new THREE.SphereGeometry(.5, 18, 10, 0, Math.PI * 2, 0, Math.PI / 2), ring: new THREE.TorusGeometry(1.1, .07, 8, 30), lamp: new THREE.SphereGeometry(.11, 8, 6) };
+const ufoBody = M(0x3d4260), ufoGlass = new THREE.MeshToonMaterial({ color: 0x9ef7ff, gradientMap: grad, transparent: true, opacity: .8, emissive: 0x135a66 });
+function makeUFO(color) {
+  const g = grp(), ring = GL(color);
+  mesh(ufoGeo.disk, ufoBody, 0, 0, 0, g); mesh(ufoGeo.top, ufoBody, 0, .24, 0, g); mesh(ufoGeo.dome, ufoGlass, 0, .3, 0, g);
+  const r = mesh(ufoGeo.ring, ring, 0, .02, 0, g); r.rotation.x = Math.PI / 2; r.castShadow = false;
+  for (let i = 0; i < 6; i++) { const a = i / 6 * Math.PI * 2; const l = mesh(ufoGeo.lamp, ring, Math.cos(a) * .82, -.14, Math.sin(a) * .82, g); l.castShadow = false; }
+  const eyes = [eye(g, -.16, .5, .36, .09), eye(g, .16, .5, .36, .09)];
+  const beam = new THREE.Mesh(new THREE.ConeGeometry(1.1, 6, 18, 1, true), new THREE.MeshBasicMaterial({ color, transparent: true, opacity: .12, depthWrite: false, side: THREE.DoubleSide, blending: THREE.AdditiveBlending }));
+  beam.position.y = -3.1; g.add(beam);
+  return { g, eyes, beam };
+}
+function makeDesigner(shirt = 0x3c7bd6) {
+  const g = grp(), body = grp(g), pants = M(0x2e3550), sh = M(shirt), hair = M(0x1c1a22);
+  box(.28, .9, .3, pants, -.18, .45, 0, g); box(.28, .9, .3, pants, .18, .45, 0, g);
+  box(.3, .14, .42, C.black, -.18, .05, .06, g); box(.3, .14, .42, C.black, .18, .05, .06, g);
+  box(.8, 1.0, .46, sh, 0, 1.4, 0, body);
+  const tie = box(.12, .55, .04, M(0xd94848), 0, 1.55, .25, body);
+  const head = grp(body, 0, 2.2, 0);
+  box(.62, .66, .58, C.skin, 0, 0, 0, head);
+  box(.68, .22, .64, hair, 0, .32, -.02, head); box(.68, .4, .14, hair, 0, .1, -.27, head);
+  const eyes = [eye(head, -.15, .04, .3, .085), eye(head, .15, .04, .3, .085)];
+  const glasses = new THREE.Mesh(new THREE.TorusGeometry(.12, .025, 6, 18), C.black); glasses.position.set(-.15, .04, .33); head.add(glasses);
+  const g2 = glasses.clone(); g2.position.x = .15; head.add(g2); box(.08, .025, .02, C.black, 0, .06, .33, head);
+  const brows = [box(.16, .045, .04, hair, -.15, .2, .31, head), box(.16, .045, .04, hair, .15, .2, .31, head)];
+  const mouth = box(.18, .05, .04, M(0x7a2a2a), 0, -.18, .3, head);
+  const arms = [-1, 1].map(s => { const a = grp(body, s * .5, 1.82, 0); box(.2, .78, .24, sh, 0, -.36, 0, a); box(.17, .17, .17, C.skin, 0, -.82, 0, a); return a; });
+  return { g, body, head, eyes, brows, mouth, arms, tie };
+}
+function makeRobot() {
+  const g = grp(), body = grp(g), shell = M(0xd8dde8), blue = M(0x3f6fd8), scr = GL(0x0b1a2e);
+  cyl(.25, .32, .5, M(0x6b7387), 0, .25, 0, g);
+  box(1.0, .95, .7, shell, 0, 1.0, 0, body); box(.6, .3, .05, blue, 0, 1.08, .36, body);
+  const head = grp(body, 0, 1.95, 0);
+  box(.95, .7, .7, shell, 0, 0, 0, head); box(.78, .5, .05, scr, 0, 0, .36, head);
+  const eyes = [grp(head, -.18, .04, .4), grp(head, .18, .04, .4)];
+  eyes.forEach(e => { const m = new THREE.Mesh(new THREE.BoxGeometry(.14, .16, .02), GL(0x6ff0ff)); e.add(m); });
+  const mouth = new THREE.Mesh(new THREE.BoxGeometry(.24, .04, .02), GL(0x6ff0ff)); mouth.position.set(0, -.14, .4); head.add(mouth);
+  const ant = grp(head, 0, .35, 0); cyl(.025, .025, .45, M(0x6b7387), 0, .22, 0, ant, 6); sph(.09, GL(0xff6b8a), 0, .48, 0, ant, 10, 8);
+  const arms = [-1, 1].map(s => { const a = grp(body, s * .62, 1.35, 0); cyl(.09, .09, .6, M(0x6b7387), 0, -.3, 0, a, 8); sph(.13, blue, 0, -.62, 0, a, 10, 8); return a; });
+  return { g, body, head, eyes, mouth, ant, arms };
+}
+function makeArtist() {
+  const d = makeDesigner(0xe2a33a);
+  d.head.children.filter(c => c.geometry && c.geometry.type === 'TorusGeometry').forEach(c => c.visible = false);
+  const beret = cyl(.42, .38, .14, M(0xc23a5a), 0, .4, 0, d.head); beret.rotation.z = .25; sph(.05, M(0xc23a5a), .05, .5, 0, d.head);
+  d.tie.material = M(0x2f9e8f);
+  return d;
+}
+function makeTeen() {
+  const d = makeDesigner(0xf07f3c);
+  d.head.children.filter(c => c.geometry && c.geometry.type === 'TorusGeometry').forEach(c => c.visible = false);
+  d.tie.visible = false;
+  box(.82, .3, .5, M(0xf07f3c), 0, 1.92, -.04, d.body); // капюшон
+  const cap = grp(d.head, 0, .38, 0); box(.7, .16, .66, M(0x2fa66b), 0, 0, 0, cap); box(.6, .05, .4, M(0x2fa66b), 0, -.06, .45, cap);
+  d.cap = cap; return d;
+}
+
+// ================= ДЕКОРАЦИЯ A: СТАНИЦА =================
+const A = grp(scene, 0, 0, 0);
+const SET_A = { bg: 0x0d1433, fog: [0x0d1433, 30, 110], sun: [-12, 26, 18], hemi: .75, sunI: 1.3 };
+mesh(new THREE.PlaneGeometry(220, 220), M(0x1d3a33), 0, 0, 0, A).rotation.x = -Math.PI / 2;
+const street = mesh(new THREE.PlaneGeometry(5, 34), M(0x5a5048), 0, .01, 0, A); street.rotation.x = -Math.PI / 2;
+const moon = sph(6, GL(0xfff1c2), 0, 24, -80, A, 32, 20); moon.castShadow = false;
+const moonGlow = glowSprite(glowTex('rgba(255,236,170,.9)', 'rgba(255,220,140,0)'), 40); moonGlow.position.copy(moon.position); A.add(moonGlow);
+{ const n = 500, pos = new Float32Array(n * 3); for (let i = 0; i < n; i++) { const a = hash(i) * Math.PI - Math.PI / 2, e = hash(i + 99) * .9 + .08; pos[i * 3] = Math.sin(a) * 140 * Math.cos(e); pos[i * 3 + 1] = Math.sin(e) * 110 + 4; pos[i * 3 + 2] = -Math.cos(a) * 140 * Math.cos(e); }
+  const geo = new THREE.BufferGeometry(); geo.setAttribute('position', new THREE.BufferAttribute(pos, 3)); A.add(new THREE.Points(geo, new THREE.PointsMaterial({ color: 0xfff7e0, size: .55, sizeAttenuation: true, fog: false }))); }
+// горы и тополя
+for (let i = 0; i < 9; i++) { const m = mesh(new THREE.ConeGeometry(14 + hash(i) * 10, 16 + hash(i + 3) * 14, 5), M(0x1b2547), -70 + i * 18, 6, -75 - hash(i + 7) * 10, A); m.castShadow = false; }
+for (let i = 0; i < 14; i++) { const x = (i - 6.5) * 4.2 + hash(i) * 2; const z = -40 - hash(i + 4) * 6; cyl(.15, .2, 2, M(0x2b2420), x, 1, z, A, 6); mesh(new THREE.ConeGeometry(1.1, 7 + hash(i) * 3, 7), M(0x16302c), x, 5.5, z, A); }
+// хаты
+const winMat = GL(0xffb54d), winMats = [];
+function hut(x, z, ry) {
+  const h = grp(A, x, 0, z); h.rotation.y = ry;
+  box(4.2, 2.4, 3.2, M(0xeee6d4), 0, 1.2, 0, h);
+  const roof = mesh(new THREE.ConeGeometry(3.4, 2.2, 4), M(0xa77b34), 0, 3.5, 0, h); roof.rotation.y = Math.PI / 4; roof.scale.z = .8;
+  box(.5, 1.2, .5, M(0xd9cfbd), 1, 4.2, .3, h);
+  const wm = winMat.clone(); winMats.push(wm);
+  for (const wx of [-1.1, 1.1]) { box(.8, .8, .05, wm, wx, 1.4, 1.62, h); box(.95, .1, .1, M(0x6e4a2a), wx, .95, 1.64, h); }
+  box(.8, 1.6, .06, M(0x6e4a2a), 0, .8, 1.62, h);
+  const glow = glowSprite(glowTex('rgba(255,190,90,.7)', 'rgba(255,170,60,0)'), 3.2); glow.position.set(0, 1.4, 2.2); h.add(glow);
+  return h;
+}
+[[-7.4, 2, Math.PI / 2], [-7.4, -4.6, Math.PI / 2], [7.4, 2, -Math.PI / 2], [7.4, -4.6, -Math.PI / 2], [-7.4, 8.6, Math.PI / 2], [7.4, 8.6, -Math.PI / 2]].forEach(a => hut(...a));
+const smoke = []; for (let i = 0; i < 18; i++) { const s = sph(.35, M(0x8f93a8, { transparent: true, opacity: .55 }), 0, 0, 0, A, 8, 6); s.castShadow = false; smoke.push(s); }
+const chimneys = [[-7.1, -1], [-7.1, -5.6], [7.1, 1], [7.1, -3.6], [-7.1, 7.6], [7.1, 9.6]];
+// плетень и подсолнухи
+for (let i = 0; i < 26; i++) { const x = -13 + i; box(.12, 1.3, .12, M(0x6b4a2c), x, .65, -11, A); if (i % 2) { cyl(.04, .04, 1.9, M(0x3f7a3a), x + .5, .95, -10.6, A, 5); const f = cyl(.32, .32, .08, M(0xf2c12e), x + .5, 1.95, -10.5, A, 10); f.rotation.x = Math.PI / 2 - .3; cyl(.17, .17, .1, M(0x5b3a1c), x + .5, 1.95, -10.44, A, 10).rotation.x = Math.PI / 2 - .3; } }
+for (const z of [-10.85, -11.2]) box(26, .12, .08, M(0x7b5733), 0, .5 + (z + 11) * -2, z, A);
+// огород, кочки
+for (let i = 0; i < 40; i++) { const x = (hash(i) - .5) * 30, z = -14 - hash(i + 5) * 22; mesh(new THREE.IcosahedronGeometry(.3 + hash(i + 2) * .4, 0), M(0x2a5240), x, .1, z, A); }
+for (let i = 0; i < 6; i++) sph(.45, M(0xe8892e), -3 + i * 1.4, .35, -8, A, 10, 8);
+// колодец и фонарь
+cyl(.8, .8, .9, M(0x8a8f9e), 4.2, .45, 4.4, A); box(.1, 1.6, .1, M(0x6b4a2c), 3.5, 1.3, 4.4, A); box(.1, 1.6, .1, M(0x6b4a2c), 4.9, 1.3, 4.4, A); const wroof = mesh(new THREE.ConeGeometry(1.1, .7, 4), M(0xa77b34), 4.2, 2.4, 4.4, A); wroof.rotation.y = Math.PI / 4;
+const lampGlow = glowSprite(glowTex('rgba(255,200,110,.9)', 'rgba(255,170,60,0)'), 4); lampGlow.position.set(4.2, 2.1, 5.2); A.add(lampGlow);
+const lampLight = new THREE.PointLight(0xffb060, 8, 14, 2); lampLight.position.set(2, 3, 7); A.add(lampLight);
+// пушка
+const cannon = grp(A, 0, 0, 6.2);
+const brass = M(0xd9a13a), wood = M(0x7a4b26);
+box(1.6, .5, 1.8, wood, 0, .65, 0, cannon);
+for (const s of [-1, 1]) { const w = cyl(.62, .62, .18, wood, s * .9, .62, 0, cannon, 14); w.rotation.z = Math.PI / 2; cyl(.2, .2, .22, brass, s * .92, .62, 0, cannon, 10).rotation.z = Math.PI / 2; }
+const barrel = grp(cannon, 0, 1.05, 0);
+const tube = cyl(.32, .42, 2.4, brass, 0, 0, -1.0, barrel, 16); tube.rotation.x = Math.PI / 2;
+cyl(.45, .45, .2, brass, 0, 0, .2, barrel).rotation.x = Math.PI / 2;
+const muzzleRing = cyl(.38, .38, .14, M(0xffd36a), 0, 0, -2.2, barrel); muzzleRing.rotation.x = Math.PI / 2;
+const muzzleFlash = glowSprite(glowTex('rgba(255,240,180,1)', 'rgba(255,140,40,0)'), 3); barrel.add(muzzleFlash); muzzleFlash.position.set(0, 0, -2.6);
+const cannonPool = new THREE.PointLight(0xffc070, 14, 10, 2); cannonPool.position.set(0, 4, 7.5); A.add(cannonPool);
+const kaz = makeCossack(); A.add(kaz.g);
+const cow = makeCow(); A.add(cow.g);
+// НЛО: строй 6 × 3
+const ROW_COL = [0xff5fb0, 0x6ff0ff, 0xb4ff5a];
+const ufos = []; for (let r = 0; r < 3; r++) for (let c = 0; c < 6; c++) { const u = makeUFO(ROW_COL[r]); u.r = r; u.c = c; A.add(u.g); ufos.push(u); }
+const glint = makeUFO(0xff5fb0); A.add(glint.g); glint.g.scale.setScalar(.5);
+// обломки и вспышки: по комплекту на каждую тарелку
+const debrisGeo = new THREE.BoxGeometry(.28, .12, .28);
+ufos.forEach(u => { u.debris = []; for (let i = 0; i < 9; i++) { const m = new THREE.Mesh(debrisGeo, i % 3 ? ufoBody : GL(ROW_COL[u.r])); A.add(m); u.debris.push(m); } u.flash = glowSprite(glowTex('rgba(255,255,230,1)', 'rgba(255,190,90,0)'), 1); A.add(u.flash); });
+const balls = []; for (let i = 0; i < 4; i++) { const b = sph(.32, GL(0xffe08a), 0, 0, 0, A, 12, 8); const tr = glowSprite(glowTex('rgba(255,200,90,1)', 'rgba(255,90,20,0)'), 1.8); b.add(tr); balls.push(b); }
+
+// ================= ДЕКОРАЦИЯ B: 1978, КОМНАТА =================
+const B = grp(scene, 300, 0, 0);
+const SET_B = { bg: 0x120d1e, fog: [0x120d1e, 14, 40], sun: [6, 12, 9], hemi: .55, sunI: .8 };
+box(16, .2, 12, M(0x6b4a3a), 0, -.1, 0, B);
+for (let i = 0; i < 8; i++) box(16, .01, .05, M(0x553829), 0, .005, -5.5 + i * 1.6, B);
+box(16, 7, .2, M(0x41506e), 0, 3.5, -4.2, B); box(.2, 7, 12, M(0x384560), -6.5, 3.5, 0, B);
+box(16, 1, .25, M(0x2d3850), 0, .5, -4.05, B);
+const cityTex = canvasTex(512, 256, (x, w, h) => { const g = x.createLinearGradient(0, 0, 0, h); g.addColorStop(0, '#0b0f2e'); g.addColorStop(1, '#3a2560'); x.fillStyle = g; x.fillRect(0, 0, w, h); for (let i = 0; i < 26; i++) { const bw = 18 + hash(i) * 40, bh = 60 + hash(i + 9) * 150, bx = i * 20 - 10; x.fillStyle = '#141433'; x.fillRect(bx, h - bh, bw, bh); for (let k = 0; k < 30; k++) if (hash(i * 31 + k) > .55) { x.fillStyle = hash(k + i) > .5 ? '#ffd877' : '#7fe3ff'; x.fillRect(bx + 3 + (k % 4) * 9, h - bh + 6 + Math.floor(k / 4) * 14, 4, 6); } } });
+const win = mesh(new THREE.PlaneGeometry(5, 2.6), GL(0xffffff, { map: cityTex.tex }), 2.6, 4.2, -4.08, B);
+box(5.3, .15, .3, M(0xe9e0cc), 2.6, 2.85, -4, B); box(5.3, .15, .3, M(0xe9e0cc), 2.6, 5.55, -4, B); box(.12, 2.8, .2, M(0xe9e0cc), 2.6, 4.2, -4, B);
+const cal = label('1978', { bg: '#f4ecd8', fg: '#c23a3a', h: .9 }); cal.position.set(-2.6, 4.6, -4.0); B.add(cal);
+// стол со старым компьютером
+box(2.6, .1, 1.2, M(0x8a5a3a), -3.8, 1.5, -3.2, B); for (const [x, z] of [[-4.9, -3.6], [-2.7, -3.6], [-4.9, -2.8], [-2.7, -2.8]]) box(.1, 1.5, .1, M(0x5a3a26), x, .75, z, B);
+box(1.0, .8, .8, M(0xd8d0bc), -3.9, 1.95, -3.3, B); mesh(new THREE.PlaneGeometry(.7, .5), GL(0x2ad16b), -3.9, 2.0, -2.89, B);
+box(1.2, .12, .45, M(0xd8d0bc), -3.9, 1.62, -2.75, B);
+// игровой автомат: экран смотрит на +x
+const cab = grp(B, -1.7, 0, 0); cab.rotation.y = Math.PI / 2;
+const cabMat = M(0x23273a);
+box(1.5, 2.1, 1.1, cabMat, 0, 1.05, -.1, cab); box(1.5, 1.0, .8, cabMat, 0, 2.6, -.25, cab); box(1.5, .5, .9, cabMat, 0, 3.35, -.1, cab);
+box(1.6, .1, .7, M(0x111320), 0, 2.15, .25, cab);
+const stick = grp(cab, -.3, 2.25, .3); cyl(.03, .03, .25, C.black, 0, .12, 0, stick, 6); sph(.07, GL(0xd94848), 0, .27, 0, stick, 10, 8);
+sph(.07, GL(0xffd877), .25, 2.24, .3, cab, 10, 8); sph(.07, GL(0x6ff0ff), .45, 2.24, .22, cab, 10, 8);
+for (const s of [-1, 1]) box(.06, 3.6, 1.15, M(0xff5fb0), s * .78, 1.8, -.1, cab);
+const marquee = canvasTex(512, 128, (x, w, h) => { x.fillStyle = '#16122a'; x.fillRect(0, 0, w, h); x.font = `64px ${DFONT}`; x.textAlign = 'center'; x.textBaseline = 'middle'; x.fillStyle = '#ffd877'; x.shadowColor = '#ff8a3a'; x.shadowBlur = 18; x.fillText('ПРИШЕЛЬЦЫ', w / 2, h / 2 + 4); });
+mesh(new THREE.PlaneGeometry(1.42, .36), GL(0xffffff, { map: marquee.tex }), 0, 3.38, .36, cab);
+// экран автомата — своя пиксельная игра на canvas
+const INV = ['..x.....x..', '...x...x...', '..xxxxxxx..', '.xx.xxx.xx.', 'xxxxxxxxxxx', 'x.xxxxxxx.x', 'x.x.....x.x', '...xx.xx...'];
+const INV2 = ['..x.....x..', 'x..x...x..x', 'x.xxxxxxx.x', 'xxx.xxx.xxx', 'xxxxxxxxxxx', '.xxxxxxxxx.', '..x.....x..', '.x.......x.'];
+const SCREEN_KILLS = [14.4, 15.9, 17.1, 18.2, 19.2, 20.5, 21.2, 21.9, 22.5, 23.0, 23.5, 23.9, 24.3, 24.6, 24.9, 25.2, 25.5, 28.5];
+const KILL_ORDER = [0, 5, 12, 17, 2, 9, 14, 7, 3, 16, 1, 11, 6, 15, 4, 13, 10, 8];
+function screenAlive(t) { const dead = new Set(); SCREEN_KILLS.forEach((k, i) => { if (t >= k) dead.add(KILL_ORDER[i]); }); return dead; }
+function screenStep(n) { return n <= 1 ? 22 : 1.3 + (18 - n) * .62; } // шагов в секунду: меньше врагов — быстрее
+function screenSteps(t) { let s = 0; for (let tt = 12; tt < t; tt += 1 / 120) { s += screenStep(18 - SCREEN_KILLS.filter(k => k <= tt).length) / 120; } return s; }
+function screenGeom(i, steps, t) { const W = 14, c = i % 6, r = Math.floor(i / 6); const sNorm = steps % (2 * W); const ox = sNorm < W ? sNorm : 2 * W - sNorm; let x = 18 + c * 44 + ox * 4, y = 34 + r * 36 + Math.min(4, Math.floor(steps / W)) * 8; if (t > 25.5 && i === 8) { x = 160 + Math.sin(t * 9) * 120; y = 120 + Math.sin(t * 5.3) * 25; } return [x, y]; }
+const screen = canvasTex(320, 256, (x, w, h, t = 12) => {
+  x.fillStyle = '#05140c'; x.fillRect(0, 0, w, h);
+  if (t < 12) return;
+  const steps = screenSteps(t), dead = screenAlive(t), alive = 18 - dead.size, frame = Math.floor(steps) % 2;
+  const pal = ['#ff5fb0', '#6ff0ff', '#b4ff5a'];
+  for (let i = 0; i < 18; i++) {
+    const [px, py] = screenGeom(i, steps, t), ki = KILL_ORDER.indexOf(i), kt = SCREEN_KILLS[ki];
+    if (dead.has(i)) { if (t - kt < .25) { x.fillStyle = '#fff6c0'; for (let a = 0; a < 8; a++) { const an = a * Math.PI / 4; x.fillRect(px + 16 + Math.cos(an) * 18, py + 12 + Math.sin(an) * 16, 5, 5); } } continue; }
+    const spr = frame ? INV2 : INV; x.fillStyle = (alive === 1) ? (Math.floor(t * 10) % 2 ? '#ff4040' : '#ffd877') : pal[Math.floor(i / 6)];
+    for (let yy = 0; yy < 8; yy++) for (let xx = 0; xx < 11; xx++) if (spr[yy][xx] === 'x') x.fillRect(px + xx * 3, py + yy * 3, 3, 3);
+  }
+  // пушка игрока внизу едет к следующей цели и стреляет
+  const nk = SCREEN_KILLS.findIndex(k => k > t); let gx = 160;
+  if (nk >= 0) { const [tx] = screenGeom(KILL_ORDER[nk], screenSteps(SCREEN_KILLS[nk]), SCREEN_KILLS[nk]); gx = lerp(160, tx + 16, clamp(1 - (SCREEN_KILLS[nk] - t) / 1.2)); if (SCREEN_KILLS[nk] - t < .3) { x.fillStyle = '#ffffff'; x.fillRect(gx, 228 - (1 - (SCREEN_KILLS[nk] - t) / .3) * 150, 2, 10); } }
+  x.fillStyle = '#6ff0ff'; x.fillRect(gx - 12, 232, 26, 8); x.fillRect(gx - 2, 225, 6, 8);
+  x.fillStyle = '#2ad16b'; x.fillRect(0, 246, w, 2);
+  x.font = `16px ${DFONT}`; x.fillStyle = '#f4ecd8'; x.fillText('ПРИШЕЛЬЦЕВ: ' + alive, 10, 20);
+  // строки развёртки
+  x.fillStyle = 'rgba(0,0,0,.22)'; for (let yy = 0; yy < h; yy += 3) x.fillRect(0, yy, w, 1);
+});
+const scr = mesh(new THREE.PlaneGeometry(1.3, 1.04), GL(0xffffff, { map: screen.tex }), 0, 2.62, .17, cab); scr.rotation.x = -.18; scr.castShadow = false;
+const screenLight = new THREE.PointLight(0x9cffd0, 3, 6, 2); screenLight.position.set(-.9, 2.6, 0); B.add(screenLight);
+const desk = new THREE.PointLight(0xffc27a, 14, 12, 2); desk.position.set(2, 5, 3); B.add(desk);
+const des = makeDesigner(); B.add(des.g); des.g.rotation.y = -Math.PI / 2; des.g.position.set(0, 0, 0);
+const bulb = grp(B, 0, 3.6, 0); sph(.28, GL(0xfff2a8), 0, 0, 0, bulb, 16, 12); cyl(.12, .14, .18, M(0x9aa0b4), 0, -.3, 0, bulb, 10); const bulbGlow = glowSprite(glowTex(), 2.4); bulb.add(bulbGlow);
+function btn3d(text, color, y) { const g = grp(B, 1.45, y, .7); g.rotation.y = -.2; box(1.2, .36, .4, M(0x2a2e40), 0, -.1, 0, g); const top = box(1.0, .22, .32, M(color), 0, .1, 0, g); const l = label(text, { bg: color === 0x3f6fd8 ? '#3f6fd8' : '#f08a2e', fg: '#ffffff', h: .26 }); l.material.depthTest = false; l.renderOrder = 5; l.position.set(0, .05, .3); g.add(l); g.baseY = y; return { g, top }; }
+const bFix = btn3d('ПОЧИНИТЬ', 0x3f6fd8, 2.85), bKeep = btn3d('ОСТАВИТЬ', 0xf08a2e, 2.05);
+const CONF = []; const confCols = [0xffd877, 0xff5fb0, 0x6ff0ff, 0xb4ff5a, 0xf08a2e];
+for (let i = 0; i < 70; i++) { const m = new THREE.Mesh(new THREE.PlaneGeometry(.12, .2), new THREE.MeshBasicMaterial({ color: confCols[i % 5], side: THREE.DoubleSide })); B.add(m); CONF.push(m); }
+
+// ================= ДЕКОРАЦИЯ C: СТУДИЯ, ТРИ РОЛИ =================
+const Cset = grp(scene, 600, 0, 0);
+const SET_C = { bg: 0x17122c, fog: [0x17122c, 16, 45], sun: [2, 14, 10], hemi: .6, sunI: 1.0 };
+cyl(13, 13, .3, M(0x2b2550), 0, -.15, -2, Cset, 40);
+box(30, 10, .3, M(0x221c40), 0, 5, -7, Cset);
+for (let i = 0; i < 12; i++) { const s = glowSprite(glowTex('rgba(150,170,255,.8)', 'rgba(110,130,255,0)'), 1.2); s.position.set(-11 + i * 2, 7.5, -6.8); Cset.add(s); }
+const podCols = [0xe2a33a, 0x3f6fd8, 0xf07f3c];
+const pods = [-5, 0, 5].map((x, i) => { cyl(1.5, 1.6, .5, M(0x3a3366), x, .25, 0, Cset, 24); const ring = mesh(new THREE.TorusGeometry(1.55, .06, 6, 40), GL(podCols[i]), x, .5, 0, Cset); ring.rotation.x = Math.PI / 2; const spot = new THREE.SpotLight(0xfff0d0, 0, 14, .38, .5, 1.2); spot.position.set(x, 9, 4); spot.target.position.set(x, 0, 0); Cset.add(spot, spot.target); return { x, ring, spot }; });
+const artist = makeArtist(); Cset.add(artist.g); artist.g.position.set(-5.4, .5, 0); artist.g.rotation.y = .5;
+const easel = grp(Cset, -4.0, .5, .2); easel.rotation.y = -.55;
+for (const s of [-1, 1]) { const l = box(.08, 2.6, .08, M(0x8a5a3a), s * .55, 1.3, 0, easel); l.rotation.z = s * -.12; }
+box(.08, 2.4, .08, M(0x8a5a3a), 0, 1.2, -.4, easel).rotation.x = .2;
+const paint = canvasTex(320, 240, (x, w, h, p = 0) => {
+  x.fillStyle = '#f7f1e3'; x.fillRect(0, 0, w, h);
+  const st = (a, b) => clamp((p - a) / (b - a));
+  let k = st(0, .25); x.fillStyle = '#18204a'; x.fillRect(0, 0, w, h * .62 * k + (k > 0 ? 0 : 0));
+  k = st(.2, .4); if (k > 0) { x.fillStyle = '#ffe9a8'; x.beginPath(); x.arc(230, 60, 32 * k, 0, Math.PI * 2); x.fill(); }
+  k = st(.35, .55); if (k > 0) { x.fillStyle = '#2b5a44'; x.fillRect(0, h * .62, w * k, h * .38); }
+  k = st(.5, .75); if (k > 0) { x.fillStyle = '#efe7d6'; x.fillRect(40, 130, 90 * k, 60); x.fillStyle = '#a77b34'; x.beginPath(); x.moveTo(30, 132); x.lineTo(85, 132 - 40 * k); x.lineTo(140, 132); x.fill(); x.fillStyle = '#ffb54d'; if (k > .8) x.fillRect(60, 150, 20, 18); }
+  k = st(.7, .95); if (k > 0) { x.save(); x.translate(180, 95); x.scale(k, k); x.fillStyle = '#3d4260'; x.beginPath(); x.ellipse(0, 0, 44, 12, 0, 0, Math.PI * 2); x.fill(); x.fillStyle = '#9ef7ff'; x.beginPath(); x.ellipse(0, -8, 18, 14, 0, Math.PI, 0); x.fill(); x.fillStyle = '#ff5fb0'; x.fillRect(-44, -1, 88, 3); x.restore(); }
+});
+const canvasBoard = mesh(new THREE.PlaneGeometry(1.6, 1.2), M(0xffffff, { map: paint.tex }), 0, 2.0, .06, easel);
+box(1.7, 1.3, .06, M(0x8a5a3a), 0, 2.0, 0, easel);
+const brush = grp(artist.arms[1], 0, -.85, .1); cyl(.03, .03, .55, M(0x8a5a3a), 0, 0, .2, brush, 6).rotation.x = Math.PI / 2; sph(.06, M(0xff5fb0), 0, 0, .48, brush, 8, 6);
+const robot = makeRobot(); Cset.add(robot.g); robot.g.position.set(0, .5, -.3);
+const laptop = grp(Cset, 0, .5, .9); box(1.2, .9, .6, M(0x3a3366), 0, .45, 0, laptop); box(1.1, .05, .7, M(0x9aa0b4), 0, .93, 0, laptop);
+const lid = grp(laptop, 0, .95, -.33); lid.rotation.x = -1.2; box(1.1, .05, .7, M(0x9aa0b4), 0, 0, .33, lid).rotation.x = 0;
+const CODE = ['если (врагов < 5)', '  скорость += 1', 'рисовать(строй)', 'если (попал)', '  очки += 10', '  вспышка()', 'пока (игра) {', '  шаг_строя()', '}', 'звук("бум")', 'жизни -= 1', 'рекорд = очки'];
+const code = canvasTex(320, 200, (x, w, h, s = 0) => { x.fillStyle = '#0b1a2e'; x.fillRect(0, 0, w, h); x.font = '20px ui-monospace, Menlo, Consolas, monospace'; const off = (s * 26) % 26, base = Math.floor(s); for (let i = 0; i < 9; i++) { const line = CODE[(base + i) % CODE.length]; x.fillStyle = i % 3 === 0 ? '#ff8ab4' : i % 3 === 1 ? '#6ff0ff' : '#b4ff5a'; x.fillText(line, 14, 26 + i * 26 - off); } });
+const lscr = mesh(new THREE.PlaneGeometry(1.0, .6), GL(0xffffff, { map: code.tex }), 0, 0, .33 + .04, lid); lscr.rotation.x = 0; lscr.position.set(0, .03, .33); lscr.rotation.x = -Math.PI / 2;
+const teen = makeTeen(); Cset.add(teen.g); teen.g.position.set(5, .5, 0); teen.g.rotation.y = -.25;
+const feelCard = canvasTex(256, 320, (x, w, h) => { rr(x, 6, 6, w - 12, h - 12, 26); x.fillStyle = '#fff7e0'; x.fill(); x.lineWidth = 10; x.strokeStyle = '#ffd877'; x.stroke(); x.fillStyle = '#f08a2e'; x.beginPath(); x.arc(128, 120, 70, 0, Math.PI * 2); x.fill(); x.fillStyle = '#2a1600'; x.beginPath(); x.arc(102, 104, 11, 0, Math.PI * 2); x.arc(154, 104, 11, 0, Math.PI * 2); x.fill(); x.lineWidth = 10; x.beginPath(); x.arc(128, 128, 38, .15 * Math.PI, .85 * Math.PI); x.strokeStyle = '#2a1600'; x.stroke(); x.fillStyle = '#2a1600'; x.font = `30px ${DFONT}`; x.textAlign = 'center'; x.fillText('ЧУВСТВО', 128, 248); x.font = `18px ${FONT}`; x.fillText('что почувствует игрок?', 128, 282); });
+const card = grp(teen.arms[1], 0, -.95, .3); mesh(new THREE.PlaneGeometry(.75, .94), GL(0xffffff, { map: feelCard.tex, side: THREE.DoubleSide }), 0, .3, 0, card);
+const cardGlow = glowSprite(glowTex('rgba(255,220,120,.9)', 'rgba(255,180,60,0)'), 2.6); cardGlow.position.set(0, .3, -.05); card.add(cardGlow);
+const roleLabels = [['ХУДОЖНИК', '#e2a33a'], ['ПРОГРАММИСТ · ИИ', '#3f6fd8'], ['ГЕЙМДИЗАЙНЕР', '#f07f3c']].map(([t, c], i) => { const l = label(t, { bg: c, fg: '#ffffff', h: .5 }); l.position.set([-5, 0, 5][i], .95, 1.8); Cset.add(l); return l; });
+
+// ================= ДЕКОРАЦИЯ D: ПЯТЬ ОПОР =================
+const D = grp(scene, 900, 0, 0);
+const SET_D = { bg: 0x0f1c38, fog: [0x0f1c38, 18, 50], sun: [-6, 14, 10], hemi: .7, sunI: 1.2 };
+cyl(12, 12, .3, M(0x223761), 0, -.15, 0, D, 40);
+for (let i = 0; i < 30; i++) { const s = glowSprite(glowTex('rgba(255,255,255,.9)', 'rgba(255,255,255,0)'), .4 + hash(i) * .5); s.position.set((hash(i) - .5) * 30, 4 + hash(i + 8) * 9, -8 - hash(i + 3) * 6); D.add(s); }
+const PIL = [['ДОНОР', '#e8b04a', 'Space Invaders'], ['МИР', '#4fb3a9', 'станица'], ['ГЕРОЙ', '#e86a5c', 'казак'], ['УГРОЗА', '#8f6ad8', 'армада НЛО'], ['ТВИСТ', '#f08bc0', 'ловит бурёнок']];
+const PX = [-5, -2.5, 0, 2.5, 5];
+const pillars = PIL.map(([name, col, sub], i) => {
+  const g = grp(D, PX[i], 0, 0);
+  const col3 = new THREE.Color(col);
+  const p = cyl(.45, .55, 1, M(col3), 0, .5, 0, g, 10); p.scale.y = .001;
+  const ct = canvasTex(256, 320, (x, w, h) => { rr(x, 6, 6, w - 12, h - 12, 24); x.fillStyle = '#fff7e8'; x.fill(); x.lineWidth = 12; x.strokeStyle = col; x.stroke(); x.fillStyle = col; rr(x, 22, 22, w - 44, 150, 16); x.fill(); x.fillStyle = '#ffffff'; x.font = `34px ${DFONT}`; x.textAlign = 'center'; x.fillText(name, 128, 112); x.fillStyle = '#2a2140'; x.font = `22px ${FONT}`; x.fillText(sub, 128, 228); x.font = `16px ${FONT}`; x.fillStyle = '#7a7090'; x.fillText('карта урока 1', 128, 274); });
+  const cd = grp(D); mesh(new THREE.PlaneGeometry(1.25, 1.56), GL(0xffffff, { map: ct.tex, side: THREE.DoubleSide }), 0, 0, 0, cd);
+  return { g, p, cd };
+});
+const docTex = canvasTex(1024, 256, (x, w, h) => { x.fillStyle = '#fbf6ea'; x.fillRect(0, 0, w, h); x.fillStyle = '#2a2140'; x.font = `44px ${DFONT}`; x.fillText('ГЕЙМ ДИЗАЙН ДОКУМЕНТ', 40, 70); x.fillStyle = '#c9bfd8'; for (let i = 0; i < 4; i++) x.fillRect(40, 110 + i * 34, 600 + hash(i) * 300, 12); });
+const doc = grp(D, 0, 0, 0); box(12, .26, 2.2, M(0xf4ecd8), 0, 0, 0, doc); const docTop = mesh(new THREE.PlaneGeometry(11.8, 2.1), GL(0xffffff, { map: docTex.tex }), 0, .14, 0, doc); docTop.rotation.x = -Math.PI / 2;
+const mini = grp(doc, 3.2, .14, 0); const miniC = cyl(.18, .24, .5, M(0xd9a13a), 0, .25, .5, mini, 10); const miniU = [];
+for (let i = 0; i < 6; i++) { const u = makeUFO(ROW_COL[i % 3]); u.beam.visible = false; u.g.scale.setScalar(.22); u.g.position.set(-1 + (i % 3) * .5 - .1, .9 + Math.floor(i / 3) * .35, -.3); mini.add(u.g); miniU.push(u); }
+const gear = grp(D, 1.25, 1.35, .2);
+const gearMat = new THREE.MeshBasicMaterial({ color: 0xffd877, transparent: true, opacity: 0 });
+const gRing = new THREE.Mesh(new THREE.TorusGeometry(.42, .14, 8, 24), gearMat); gear.add(gRing);
+for (let i = 0; i < 8; i++) { const t = new THREE.Mesh(new THREE.BoxGeometry(.18, .26, .16), gearMat); const a = i / 8 * Math.PI * 2; t.position.set(Math.cos(a) * .6, Math.sin(a) * .6, 0); t.rotation.z = a; gear.add(t); }
+const gearGlow = glowSprite(glowTex('rgba(255,220,120,1)', 'rgba(255,170,60,0)'), 3); gear.add(gearGlow);
+const gearLabel = label('СПРЯТАННАЯ МЕХАНИКА', { h: .42 }); gearLabel.position.set(1.25, .35, 1.2); D.add(gearLabel);
+const lupa = grp(D, 0, 0, 0); const lr = new THREE.Mesh(new THREE.TorusGeometry(.75, .1, 10, 36), M(0xd9a13a)); lupa.add(lr); const lg = new THREE.Mesh(new THREE.CircleGeometry(.72, 30), new THREE.MeshBasicMaterial({ color: 0xbff6ff, transparent: true, opacity: .18 })); lupa.add(lg); const lh = cyl(.09, .11, 1.3, M(0x6e4a2a), .9, -.9, 0, lupa, 8); lh.rotation.z = Math.PI / 4;
+const robot2 = makeRobot(); D.add(robot2.g); robot2.g.position.set(7.2, 0, .6); robot2.g.rotation.y = -.6;
+const teen2 = makeTeen(); D.add(teen2.g); teen2.g.position.set(-7.2, 0, .8); teen2.g.rotation.y = .6;
+const dLight = new THREE.PointLight(0xffd8a0, 20, 16, 2); dLight.position.set(0, 6, 4); D.add(dLight);
+
+const SETS = { A: [A, SET_A, 0], B: [B, SET_B, 300], C: [Cset, SET_C, 600], D: [D, SET_D, 900] };
+
+// ================= АНИМАЦИЯ ДЕКОРАЦИЙ (функции времени фильма) =================
+function blink(eyes, t, seed = 0, base = 1) { const ph = (t + seed) % 3.7; const b = ph > 3.55 ? .15 : 1; eyes.forEach(e => e.scale.y = b * base); }
+const UFO_C = new THREE.Vector3(0, 12, -24);
+const S8_HITS = (() => { const order = [12, 3, 7, 0, 16, 9, 5, 14, 1, 10, 17, 4, 13, 6, 2, 11, 8]; const times = []; let tt = 55.7; for (let i = 0; i < 17; i++) { times.push(tt); tt += Math.max(.16, .34 - i * .012); } return order.map((u, i) => [u, times[i]]).concat([[15, 60.55]]); })();
+const hitOf = new Map(S8_HITS.map(([u, t]) => [u, t]));
+function aliveAt(t) { let n = 18; for (const [, h] of S8_HITS) if (t >= h) n--; return n; }
+let marchCache = { t: -1, ph: 0 };
+function marchPhase(t) { // строй шагает, темп растёт, когда тарелок меньше
+  if (t < 55) return (t - 6) * 1.1;
+  if (marchCache.t >= 55 && marchCache.t <= t && t - marchCache.t < 2) { let ph = marchCache.ph; for (let tt = marchCache.t; tt < t; tt += 1 / 120) ph += (1.1 + (18 - aliveAt(tt)) * .55) / 120; marchCache = { t, ph }; return ph; }
+  let ph = 0; for (let tt = 55; tt < t; tt += 1 / 120) ph += (1.1 + (18 - aliveAt(tt)) * .55) / 120; marchCache = { t, ph }; return ph;
+}
+function ufoPos(i, t, out = new THREE.Vector3()) {
+  const u = ufos[i], ph = marchPhase(t);
+  const step = Math.floor(ph * 2) / 2; // марш шагами
+  const sx = Math.sin(step * .9) * 4.5;
+  out.set(UFO_C.x + (u.c - 2.5) * 3.2 + sx, UFO_C.y + (2 - u.r) * 2.3, UFO_C.z + u.r * .5);
+  if (t < 55) { const k = seg(t, 6.4 + (u.c * .07 + u.r * .18), 8.4 + (u.c * .07 + u.r * .18), E.back); out.y += (1 - k) * 26; out.z -= (1 - k) * 30; }
+  else out.y -= Math.min(3, (t - 55) * .35);
+  if (i === 15 && t > 58.8 && t < 60.55) { const k = t - 58.8; out.x = Math.sin(k * 6.5) * 8; out.y = 8 + Math.sin(k * 11) * 1.2; out.z = -18 + Math.sin(k * 4) * 2; }
+  return out;
+}
+const _v = new THREE.Vector3(), _w = new THREE.Vector3();
+function animA(t) {
+  const inS8 = t >= 55;
+  // смена ночи: под конец луна теплее
+  winMats.forEach((m, i) => m.color.setHSL(.09, 1, .62 + .08 * Math.sin(t * 3 + i)));
+  smoke.forEach((s, i) => { const ch = chimneys[i % 6]; const ph = ((t * .35 + i * .37) % 1); s.position.set(ch[0] + Math.sin(ph * 6 + i) * .3, 4.6 + ph * 3.2, ch[1]); s.scale.setScalar(.6 + ph * 1.4); s.material.opacity = .5 * (1 - ph); });
+  // казак
+  kaz.g.position.set(1.7, 0, 7.2); kaz.g.rotation.y = -.35;
+  const asleep = t < 8.65;
+  kaz.body.scale.set(1, 1 + .025 * Math.sin(t * (asleep ? 1.6 : 3)), 1);
+  kaz.head.rotation.set(asleep ? .45 + .05 * Math.sin(t * 1.6) : 0, 0, asleep ? .2 : 0);
+  kaz.eyes.forEach(e => e.scale.set(1, asleep ? .08 : 1, 1));
+  kaz.zz.forEach((z, i) => { const ph = (t * .5 + i / 3) % 1; z.visible = asleep; z.position.set(.4 + ph * .8, .6 + ph * 1.4, .2); z.material.opacity = Math.sin(ph * Math.PI); z.scale.setScalar(.3 + ph * .35); });
+  kaz.g.position.y = 0; kaz.hat.position.y = .38; kaz.hat.rotation.set(0, 0, 0);
+  kaz.arms[0].rotation.set(0, 0, asleep ? .1 : -.2); kaz.arms[1].rotation.set(0, 0, asleep ? -.1 : .2);
+  kaz.brows.forEach((b, i) => { b.position.y = .22; b.rotation.z = 0; });
+  if (!asleep && t < 12) { // проснулся: замах, прыжок, папаха отстаёт
+    const ant = pulse(t, 8.65, 8.9); kaz.body.scale.set(1 + ant * .15, 1 - ant * .25, 1 + ant * .15);
+    const j = seg(t, 8.9, 9.6, k => Math.sin(k * Math.PI)); kaz.g.position.y = j * 1.3;
+    const st = clamp((t - 8.9) * 3); kaz.body.scale.y *= 1 + pulse(t, 8.9, 9.25) * .2;
+    kaz.hat.position.y = .38 + seg(t, 8.9, 9.5, k => Math.sin(k * Math.PI)) * 1.8 + spring(t, 9.75, .08);
+    kaz.hat.rotation.z = seg(t, 8.9, 9.7) * Math.PI * 2;
+    const big = 1 + .5 * clamp(1 - (t - 9.6) / 2.5); kaz.eyes.forEach(e => e.scale.set(big, big, big));
+    kaz.brows.forEach(b => b.position.y = .26 + pulse(t, 8.9, 10) * .1);
+    kaz.arms[0].rotation.z = -1.2 * pulse(t, 8.9, 10); kaz.arms[1].rotation.z = 1.2 * pulse(t, 8.9, 10);
+    kaz.head.rotation.x = -.35 * seg(t, 9.6, 10.2);
+  }
+  if (inS8) { // прицел, отдача, ликование
+    kaz.head.rotation.x = -.3; blink(kaz.eyes, t, 1);
+    kaz.arms[1].rotation.set(-1.1, 0, .2); kaz.arms[0].rotation.set(-.6, 0, -.2);
+    if (t > 60.8) { const j = Math.abs(Math.sin((t - 60.8) * 5)) * seg(t, 60.8, 61.1); kaz.g.position.y = j * .9; kaz.arms[0].rotation.set(0, 0, -2.6); kaz.arms[1].rotation.set(0, 0, 2.6); kaz.hat.position.y = .38 + j * .5 + spring(t, 61.3, .05); kaz.g.rotation.y = -.35 + seg(t, 60.9, 61.6) * Math.PI * 2; kaz.head.rotation.x = 0; }
+  }
+  // бурёнка
+  if (!inS8) { cow.g.position.set(-2.8, 0, -2.6); cow.g.rotation.y = .5; } else { cow.g.position.set(-2.6, 0, 7.6); cow.g.rotation.y = 1.2; }
+  cow.head.rotation.z = (t < 8.8 && !inS8) ? -.55 + .1 * Math.sin(t * 2.4) : 0;
+  cow.tail.rotation.x = .4 * Math.sin(t * 3); blink(cow.eyes, t, 2);
+  const cj = pulse(t, 9.0, 9.55) + (t > 60.9 ? Math.abs(Math.sin((t - 60.9) * 5.5)) * .8 : 0);
+  cow.g.position.y = cj * 1.1; const csq = pulse(t, 8.8, 9.0) * .25 + pulse(t, 9.5, 9.7) * .2;
+  cow.body.scale.set(1 + csq * .6, 1 - csq, 1 + csq * .3);
+  if (t > 9.0 && t < 12) { const b = 1 + .5 * clamp(1 - (t - 9) / 3); cow.eyes.forEach(e => e.scale.set(b, b, b)); }
+  cow.bell.position.x = .55 + spring(t, 9.0, .12, 14, 4);
+  // блик НЛО над луной
+  glint.g.visible = t > 2.2 && t < 3.8; if (glint.g.visible) { const k = seg(t, 2.2, 3.8, E.in); glint.g.position.set(-18 + k * 36, 22 + Math.sin(k * 6) * 1.5, -60); glint.g.rotation.z = Math.sin(t * 8) * .2; }
+  // строй
+  ufos.forEach((u, i) => {
+    const ht = hitOf.get(i);
+    const showWave = t >= 6.2 && t < 12.3;
+    const alive = inS8 ? t < ht : showWave;
+    u.g.visible = alive;
+    if (alive) { ufoPos(i, t, u.g.position); u.g.rotation.set(Math.sin(t * 3 + i) * .08, t * 1.2 + i, Math.sin(t * 2.3 + i) * .08); const sq = 1 + .08 * Math.sin(marchPhase(t) * Math.PI * 2); u.g.scale.set(sq, 2 - sq, sq); blink(u.eyes, t, i * .7); u.beam.material.opacity = .1 + .05 * Math.sin(t * 4 + i); if (aliveAt(t) === 1) { u.g.scale.setScalar(1.25); u.beam.material.color.setHex(0xff4040); } }
+    // обломки после попадания
+    const dt = inS8 && ht !== undefined ? t - ht : -1;
+    const showD = dt >= 0 && dt < 1.0;
+    if (showD) ufoPos(i, ht - .001, _w);
+    u.debris.forEach((d, k) => { d.visible = showD; if (showD) { const a = k / 9 * Math.PI * 2 + i, v = 5 + hash(k + i * 9) * 4; d.position.set(_w.x + Math.cos(a) * v * dt, _w.y + (3 + hash(k) * 3) * dt - 9 * dt * dt, _w.z + Math.sin(a) * v * dt * .6); d.rotation.set(dt * 9 + k, dt * 7, 0); } });
+    u.flash.visible = showD && dt < .25; if (u.flash.visible) { u.flash.position.copy(_w); u.flash.scale.setScalar(2 + dt * 18); u.flash.material.opacity = 1 - dt * 4; }
+  });
+  // ядра пушки
+  let next = null; balls.forEach(b => b.visible = false); let bi = 0;
+  for (const [ui, ht] of S8_HITS) {
+    if (t >= ht - .38 && t < ht && bi < balls.length) { const k = (t - (ht - .38)) / .38; ufoPos(ui, ht, _w); _v.set(0, 1.6, 4.0); balls[bi].position.lerpVectors(_v, _w, k); balls[bi].visible = true; bi++; }
+    if (!next && ht > t) next = [ui, ht];
+  }
+  // наводка и отдача ствола
+  cannon.rotation.y = 0; barrel.rotation.set(.65, 0, 0); barrel.position.z = 0; muzzleFlash.visible = false;
+  if (inS8 && next) { ufoPos(next[0], next[1], _w); const dx = _w.x, dz = _w.z - 6.2, dy = _w.y - 1.05; cannon.rotation.y = Math.atan2(-dx, -dz) * .9; barrel.rotation.x = Math.atan2(dy, Math.hypot(dx, dz)); }
+  for (const [, ht] of S8_HITS) { const f = t - (ht - .38); if (f >= 0 && f < .3) { barrel.position.z = .35 * Math.exp(-f * 12) * (f < .05 ? f / .05 : 1); muzzleFlash.visible = f < .12; muzzleFlash.material.opacity = 1 - f * 8; } }
+  cannonPool.intensity = 14 + (muzzleFlash.visible ? 60 : 0);
+}
+function animB(t) {
+  screen.draw(t);
+  const steps = t >= 12 ? screenSteps(t) : 0;
+  screenLight.intensity = 2.5 + 1 * (Math.floor(steps) % 2) + (screenAlive(t).size >= 17 && t < 29 ? 4 * Math.abs(Math.sin(t * 12)) : 0);
+  des.g.position.set(0, 0, 0); des.g.rotation.y = -Math.PI / 2;
+  des.body.scale.set(1, 1 + .02 * Math.sin(t * 2.2), 1); des.body.rotation.set(0, 0, 0); des.body.position.y = 0;
+  des.head.rotation.set(0, 0, 0); blink(des.eyes, t, .3); des.mouth.scale.set(1, 1, 1);
+  des.brows.forEach(b => { b.position.y = .2; b.rotation.z = 0; });
+  // играет: руки на кнопках и джойстике
+  des.arms[0].rotation.set(-1.1 + .08 * Math.sin(t * 9), 0, .15); des.arms[1].rotation.set(-1.15 + .1 * Math.sin(t * 13), 0, -.15);
+  stick.rotation.z = .3 * Math.sin(t * 4);
+  if (t >= 21.2 && t < 29.2) { // удивление: глаза растут, брови вверх, рот «о»
+    const k = seg(t, 21.2, 21.6, E.back); des.eyes.forEach(e => e.scale.setScalar(1 + .55 * k)); des.brows.forEach((b, i) => { b.position.y = .2 + .08 * k; b.rotation.z = (i ? -1 : 1) * .25 * k; }); des.mouth.scale.set(1 - .3 * k, 1 + 3 * k, 1);
+    des.body.rotation.z = .06 * Math.sin(t * 30) * seg(t, 25.4, 25.6) * (t < 28.8 ? 1 : 0); // дрожь на сумасшедшем
+    if (t > 24.5) des.body.scale.y = 1 + .04 * Math.max(0, Math.sin(t * 9));
+  }
+  // выбор: поворот к нам, думает, лампочка, жмёт «оставить», празднует
+  const turn = seg(t, 29.3, 30.0, E.back); des.g.rotation.y = -Math.PI / 2 + turn * (Math.PI / 2 - .25);
+  bulb.visible = t > 31.3 && t < 36.2; if (bulb.visible) { const k = seg(t, 31.3, 31.8, E.el); bulb.scale.setScalar(.01 + k); bulb.position.set(0, 3.55 + .08 * Math.sin(t * 4), 0); bulbGlow.material.opacity = .6 + .4 * Math.sin(t * 8); }
+  [bFix, bKeep].forEach((b, i) => { const k = seg(t, 29.8 + i * .2, 30.4 + i * .2, E.back); b.g.visible = t > 29.8 && t < 36.2; b.g.scale.setScalar(Math.max(.01, k)); b.g.position.y = b.g.baseY + .05 * Math.sin(t * 2 + i); b.top.position.y = .12; });
+  if (t > 29.6 && t < 31.3) { des.arms[0].rotation.set(-2.1, 0, .4); des.head.rotation.set(.1, .25 * Math.sin(t * 2), .15); des.brows.forEach((b, i) => b.rotation.z = (i ? .2 : -.1)); des.eyes.forEach(e => e.scale.setScalar(1)); des.mouth.scale.set(.7, 1, 1); des.arms[1].rotation.set(-.3, 0, -.2); }
+  if (t >= 31.3 && t < 33.6) { // замах к кнопке и нажатие
+    des.eyes.forEach(e => e.scale.setScalar(1.3)); des.mouth.scale.set(1.4, 1.6, 1);
+    const ant = seg(t, 32.2, 32.7), hit = seg(t, 32.7, 32.9, E.in);
+    des.arms[1].rotation.set(-.3 - ant * .3 + hit * .1, 0, .7 - ant * .5 + hit * .95); des.arms[0].rotation.set(-.3, 0, .2);
+    des.body.rotation.z = ant * -.12 + hit * .12; des.body.scale.y = 1 - ant * .08 + hit * .1;
+    if (t > 32.9) { bKeep.top.position.y = .12 - .14 * pulse(t, 32.9, 33.3); bKeep.g.scale.set(1 + .2 * pulse(t, 32.9, 33.3), 1 - .15 * pulse(t, 32.9, 33.3), 1); bFix.g.scale.setScalar(Math.max(.01, 1 - seg(t, 33.0, 33.4, E.in))); }
+  }
+  if (t >= 33.6) { bFix.g.visible = false; bKeep.g.scale.setScalar(Math.max(.01, 1 - seg(t, 33.9, 34.3, E.in))); const j = Math.abs(Math.sin((t - 33.6) * 5.2)); des.g.position.y = j * .7; des.body.scale.set(1 + (1 - j) * .1, 1 - (1 - j) * .1 + j * .08, 1); des.g.rotation.y = -.25 + seg(t, 33.7, 34.5) * Math.PI * 2; des.arms[0].rotation.set(0, 0, 2.7); des.arms[1].rotation.set(0, 0, -2.7); des.eyes.forEach(e => e.scale.set(1.2, .35, 1)); des.mouth.scale.set(2.2, 2.2, 1); }
+  CONF.forEach((m, i) => { const dt = t - 33.0; m.visible = dt > 0 && dt < 3.2; if (!m.visible) return; const a = hash(i) * Math.PI * 2, v = 2 + hash(i + 3) * 3; m.position.set(-.75 + Math.cos(a) * v * dt * .6, 3 + (5 + hash(i + 7) * 3) * dt - 4.5 * dt * dt, 1.5 + Math.sin(a) * v * dt * .5); m.position.y = Math.max(.05, m.position.y); m.rotation.set(dt * 7 + i, dt * 5, dt * 3); });
+}
+function animC(t) {
+  const lt = t;
+  pods.forEach((p, i) => { const on = [[36.1, 46.2], [39.4, 46.2], [42.5, 46.2]][i]; p.spot.intensity = (t > on[0] && t < on[1]) ? 140 * seg(t, on[0], on[0] + .4) : 0; p.ring.material.color.setHSL([.11, .62, .06][i], .8, .55 + .1 * Math.sin(t * 3 + i)); });
+  // художник рисует
+  const pp = clamp((t - 36.3) / 3.0); paint.draw(pp);
+  artist.arms[1].rotation.set(-1.3 + .25 * Math.sin(t * 7), .2 * Math.sin(t * 3.5), -.3); artist.arms[0].rotation.set(-.5, 0, .2);
+  artist.body.rotation.z = .05 * Math.sin(t * 3.5); blink(artist.eyes, t, .9); artist.head.rotation.y = .4 + .1 * Math.sin(t * 1.7);
+  // ИИ печатает
+  code.draw(Math.max(0, t - 38) * 3.2);
+  robot.arms.forEach((a, i) => a.rotation.set(-1.0 + .15 * Math.sin(t * 22 + i * 2), 0, (i ? -1 : 1) * .15));
+  robot.ant.rotation.z = .25 * Math.sin(t * 5) + spring(t, 40.0, .4); robot.head.rotation.y = .12 * Math.sin(t * 1.4);
+  const rb = ((t + .4) % 3.1) > 2.95 ? .1 : 1; robot.eyes.forEach(e => e.scale.y = rb); robot.mouth.scale.x = 1 + .4 * Math.sin(t * 9);
+  // геймдизайнер поднимает карту чувства
+  const up = seg(t, 42.9, 43.6, E.back);
+  teen.arms[1].rotation.set(-.15, 0, .15 + up * 2.0); teen.arms[0].rotation.set(-.2, 0, .15 + up * .2);
+  teen.body.scale.set(1, 1 + .02 * Math.sin(t * 2.5) + .05 * pulse(t, 42.9, 43.4), 1); blink(teen.eyes, t, 1.4);
+  teen.mouth.scale.set(1 + up, 1 + up, 1); cardGlow.material.opacity = .3 + .7 * up * (.8 + .2 * Math.sin(t * 6));
+  card.rotation.set(.15, Math.PI * 2 * seg(t, 43.0, 43.7), -(.15 + up * 2.0));
+  // все поворачиваются к геймдизайнеру
+  const look = seg(t, 44.8, 45.3, E.back);
+  artist.g.rotation.y = .5 + look * .9; robot.g.rotation.y = look * .9;
+  roleLabels.forEach((l, i) => { const on = [36.4, 39.7, 42.8][i]; const k = seg(t, on, on + .45, E.back); l.visible = t > on; l.scale.y = .5 * Math.max(.01, k); l.scale.x = l.scale.y * l.material.map.image.width / l.material.map.image.height; l.position.y = .95 + .03 * Math.sin(t * 2 + i); });
+}
+function animD(t) {
+  pillars.forEach((P, i) => {
+    const t0 = 46.4 + i * .5, land = t0 + .9;
+    const h = 2.4 * seg(t, land - .1, land + .5, E.back);
+    P.p.scale.y = Math.max(.001, h); P.p.position.y = h / 2;
+    // карта летит по дуге, кружится, встаёт к опоре
+    const k = seg(t, t0, land, E.out);
+    const from = new THREE.Vector3(PX[i] * 2.2, 6.5, 7), to = new THREE.Vector3(0, h + 1.05, .6);
+    const pos = new THREE.Vector3().lerpVectors(from, to, k); pos.y += Math.sin(k * Math.PI) * 2; pos.x += P.g.position.x * (1 - k) * 0 ;
+    if (k < 1) pos.x = lerp(PX[i] * 2.2, PX[i], k) ; else pos.x = PX[i];
+    P.cd.position.set(pos.x, Math.max(pos.y, h + 1.05 * (k >= 1 ? 1 : 0)), pos.z);
+    P.cd.rotation.set(0, (1 - k) * Math.PI * 3, (1 - k) * .8);
+    P.cd.visible = t > t0;
+    const sq = pulse(t, land, land + .25); P.cd.scale.set(1 + sq * .2, 1 - sq * .2, 1);
+  });
+  // документ ложится на опоры
+  const dk = seg(t, 49.4, 50.0, E.in);
+  doc.visible = t > 49.3; doc.position.set(0, lerp(9, 2.4 + .13 + 1.9, dk), 0);
+  doc.position.y = t < 50 ? lerp(9, 4.43, dk) : 4.43;
+  const dsq = pulse(t, 50.0, 50.35); doc.scale.set(1 + dsq * .04, 1 - dsq * .5, 1 + dsq * .04);
+  if (t >= 50.0) pillars.forEach(P => { P.cd.position.y = 2.4 + 1.05 - dsq * .1; });
+  // ИИ собирает игру на документе
+  mini.visible = t > 50.4; miniC.scale.setScalar(Math.max(.01, seg(t, 50.4, 50.8, E.el)));
+  miniU.forEach((u, i) => { const k = seg(t, 50.6 + i * .12, 51.0 + i * .12, E.el); u.g.scale.setScalar(.22 * Math.max(.01, k)); u.g.position.x = -1.1 + (i % 3) * .5 + Math.sin(t * 2) * .25; u.g.rotation.y = t * 2; });
+  robot2.arms.forEach((a, i) => a.rotation.set(-1.4 + .5 * Math.sin(t * 14 + i * 3) * pulse(t, 50.2, 51.9), 0, (i ? -1 : 1) * .2));
+  robot2.ant.rotation.z = .25 * Math.sin(t * 5) + spring(t, 50.0, .6); blink(robot2.eyes, t, .2);
+  // лупа находит спрятанную механику
+  const lk = seg(t, 51.9, 52.8, E.out);
+  lupa.visible = t > 51.9; lupa.position.set(lerp(6, 1.25, lk), 1.35 + .05 * Math.sin(t * 3), lerp(2.6, 1.15, lk)); lupa.rotation.z = (1 - lk) * .6;
+  const gk = seg(t, 52.6, 53.1, E.back);
+  gearMat.opacity = gk; gear.rotation.z = t * 1.8; gear.scale.setScalar(Math.max(.01, gk)); gearGlow.material.opacity = gk * (.6 + .4 * Math.sin(t * 6));
+  gearLabel.visible = t > 53.0; gearLabel.scale.y = .42 * Math.max(.01, seg(t, 53.0, 53.4, E.back)); gearLabel.scale.x = gearLabel.scale.y * gearLabel.material.map.image.width / gearLabel.material.map.image.height;
+  // ученик-геймдизайнер радуется
+  const th = seg(t, 53.4, 53.8, E.back); teen2.arms[1].rotation.set(0, 0, -2.6 * th); teen2.arms[0].rotation.set(-.2, 0, .2);
+  teen2.g.position.y = Math.abs(Math.sin((t - 53.4) * 5)) * .5 * th; blink(teen2.eyes, t, 3); teen2.mouth.scale.set(1 + th, 1 + th, 1);
+  teen2.head.rotation.y = .3;
+}
+const ANIM = { A: animA, B: animB, C: animC, D: animD };
+
+// ================= ШОТЫ =================
+// cam/look — опорные точки сплайна (локально в декорации), fov — [было, стало], tr — переход на входе.
+const V = (x, y, z) => new THREE.Vector3(x, y, z);
+const SHOTS = [
+  { set: 'A', t0: 0, t1: 3.7, cam: [V(0, 30, 34), V(0, 12, 27), V(0, 5.5, 20)], look: [V(0, 22, -60), V(0, 14, -40), V(0, 6, -10)], fov: [40, 46], tr: 'fade', hand: .3 },
+  { set: 'A', t0: 3.7, t1: 6.2, cam: [V(5.2, 3.2, 13.2), V(3.6, 2.6, 10.6)], look: [V(1.7, 2.2, 7.2), V(1.7, 2.0, 7.2)], fov: [44, 38], tr: 'cut', hand: .4 },
+  { set: 'A', t0: 6.2, t1: 8.5, cam: [V(-4.6, .9, 2.6), V(-3.8, 1.1, .8)], look: [V(-1.5, 9, -22), V(0, 12, -24)], fov: [52, 48], tr: 'cut', hand: .5, punch: 6.5 },
+  { set: 'A', t0: 8.5, t1: 10.3, cam: [V(2.9, 2.5, 9.3), V(4.9, 2.9, 13.4)], look: [V(1.7, 2.3, 7.2), V(1.7, 2.6, 7.2)], fov: [50, 20], tr: 'cut', hand: .3, lookFollow: 'kaz' },
+  { set: 'A', t0: 10.3, t1: 12.3, cam: [V(.6, 3.4, 12.8), V(-1.3, 3.9, 12.2)], look: [V(0, 9, -22), V(0, 10.5, -22)], fov: [46, 42], tr: 'whip', hand: .5 },
+  { set: 'B', t0: 12.3, t1: 15.6, cam: [V(5.5, 6.5, 9.5), V(3.8, 3.6, 6.4), V(1.6, 2.9, 5.0)], look: [V(-.5, 2, -1), V(-.6, 2.2, 0), V(-.8, 2.3, 0)], fov: [44, 40], tr: 'iris', hand: .3 },
+  { set: 'B', t0: 15.6, t1: 20.2, cam: [V(-.3, 2.85, .08), V(-.65, 2.78, .03)], look: [V(-1.53, 2.64, 0), V(-1.53, 2.64, 0)], fov: [42, 36], tr: 'cut', hand: .25 },
+  { set: 'B', t0: 20.2, t1: 23.0, cam: [V(-1.7, 2.45, 1.5), V(-1.45, 2.4, 1.15)], look: [V(0, 2.3, 0), V(0, 2.35, 0)], fov: [40, 36], tr: 'cut', hand: .3 },
+  { set: 'B', t0: 23.0, t1: 25.3, cam: [V(-.85, 2.36, .7), V(-2.3, 2.45, 1.9)], look: [V(0, 2.32, 0), V(0, 2.32, 0)], fov: [50, 17], tr: 'cut', hand: .15 },
+  { set: 'B', t0: 25.3, t1: 29.1, cam: [V(-.65, 2.8, .25), V(-.85, 2.75, .1)], look: [V(-1.53, 2.64, 0), V(-1.53, 2.64, 0)], fov: [40, 30], tr: 'cut', hand: .6, shake: [25.5, 28.6] },
+  { set: 'B', t0: 29.1, t1: 33.6, cam: [V(1.4, 2.6, 5.6), V(.9, 2.7, 4.9)], look: [V(.05, 2.5, .6), V(-.2, 2.6, .8)], fov: [44, 42], tr: 'cut', hand: .3, punch: 32.9 },
+  { set: 'B', t0: 33.6, t1: 36.1, orbit: { c: V(-.2, 1.9, .3), r: 4.3, y: 2.8, a0: .25, a1: 1.5 }, fov: [46, 50], tr: 'cut', hand: .3 },
+  { set: 'C', t0: 36.1, t1: 39.4, cam: [V(-7.4, 3.4, 7.4), V(-5.8, 2.9, 5.6)], look: [V(-4.8, 2.3, 0), V(-4.6, 2.5, .2)], fov: [42, 40], tr: 'fade', hand: .3 },
+  { set: 'C', t0: 39.4, t1: 42.5, cam: [V(1.4, 3.2, 6.2), V(.2, 2.9, 5.0)], look: [V(0, 2.6, 0), V(0, 2.7, .2)], fov: [42, 40], tr: 'whip', hand: .3 },
+  { set: 'C', t0: 42.5, t1: 44.7, cam: [V(6.6, 2.4, 5.4), V(5.4, 2.6, 4.0)], look: [V(5, 2.8, 0), V(5, 3.1, .3)], fov: [42, 40], tr: 'whip', hand: .3, punch: 43.3 },
+  { set: 'C', t0: 44.7, t1: 46.2, cam: [V(2.5, 4.0, 9.5), V(.4, 5.0, 13)], look: [V(1.5, 2.4, 0), V(0, 2.2, 0)], fov: [42, 46], tr: 'cut', hand: .3 },
+  { set: 'D', t0: 46.2, t1: 49.4, cam: [V(0, 5.2, 12.5), V(0, 5.8, 10.2)], look: [V(0, 2.4, 0), V(0, 2.8, 0)], fov: [46, 46], tr: 'iris', hand: .3 },
+  { set: 'D', t0: 49.4, t1: 51.8, cam: [V(4.8, 8.4, 9.2), V(3.6, 7.8, 7.4)], look: [V(1.2, 4.3, 0), V(2.6, 4.6, 0)], fov: [44, 40], tr: 'cut', hand: .3, shake: [50.0, 50.4] },
+  { set: 'D', t0: 51.8, t1: 55.1, cam: [V(-1.6, 1.9, 6.4), V(-.4, 1.6, 4.6)], look: [V(1.25, 1.5, .4), V(1.25, 1.3, .4)], fov: [44, 38], tr: 'cut', hand: .3, punch: 52.8 },
+  { set: 'A', t0: 55.1, t1: 58.5, cam: [V(-1.4, 3.2, 11.6), V(-2.4, 3.5, 12.2)], look: [V(0, 8.5, -22), V(0, 9, -22)], fov: [50, 46], tr: 'fade', hand: .4 },
+  { set: 'A', t0: 58.5, t1: 61.0, cam: [V(0, 3.6, 6.5), V(0, 3.4, 7.4)], lookUfo: 15, fov: [40, 34], tr: 'cut', hand: .6, shake: [60.55, 60.9] },
+  { set: 'A', t0: 61.0, t1: 64, cam: [V(.6, 2.3, 12.4), V(.4, 6, 18), V(0, 13, 30)], look: [V(-.2, 1.7, 7.3), V(0, 8, -20), V(0, 20, -78)], fov: [42, 44], tr: 'cut', hand: .3 },
+];
+const SUBS = [ // по репликам озвучки: [начало, конец, текст]
+  [1.6, 5.8, 'Ночь над станицей. Тихо… слишком тихо.'],
+  [6.3, 11.95, 'Армада НЛО! Чем меньше их остаётся, тем <b>быстрее</b> они летят. Почему?'],
+  [12.6, 19.85, 'Япония, <b>1978 год</b>. Томохиро Нисикадо делает игру про пришельцев. А компьютер у него — слабенький.'],
+  [20.3, 24.5, 'Чем меньше пришельцев на экране, тем быстрее компьютер их рисует…'],
+  [25.4, 28.2, '…и последний несётся как сумасшедший!'],
+  [29.4, 31.35, 'Это ошибка. Починить?'],
+  [32.6, 36.05, 'Нет! Игроку <b>страшно и весело</b>. Оставить!'],
+  [36.5, 38.87, '<b>Художник</b> решает, как игра выглядит.'],
+  [39.6, 42.63, '<b>Программист</b> пишет код. У нас это ИИ.'],
+  [42.7, 46.12, 'А <b>геймдизайнер</b> решает, что почувствует игрок!'],
+  [46.4, 51.35, 'Пять карт — пять опор: донор, мир, герой, угроза, твист.'],
+  [50.6, 52.4, 'ИИ собирает игру.'],
+  [52.2, 56.58, 'А внутри — <b>спрятанная механика</b>. Её чувствуют, но не видят.'],
+  [57.0, 59.91, 'Твоя очередь. Что почувствует твой игрок?'],
+];
+const TITLES = [
+  [.6, 3.6, 'Лаборатория игр · урок 1', 'Кто решает, что почувствует игрок?', ''],
+  [61.6, 64.1, 'Лаборатория игр · урок 1', 'Ты — геймдизайнер', 'Игрок почувствует то, что решишь ты'],
+];
+// камера: сплайны Catmull-Rom, плавность, «ручная» камера, тряска trauma², FOV-punch
+const curves = new Map();
+SHOTS.forEach(s => { if (s.cam) { curves.set(s, [new THREE.CatmullRomCurve3(s.cam.length > 1 ? s.cam : [s.cam[0], s.cam[0]]), s.look ? new THREE.CatmullRomCurve3(s.look) : null]); } });
+const camPos = new THREE.Vector3(), camLook = new THREE.Vector3();
+function shotAt(t) { for (const s of SHOTS) if (t >= s.t0 && t < s.t1) return s; return SHOTS[SHOTS.length - 1]; }
+function noise(t, s) { return Math.sin(t * 1.3 + s) * .5 + Math.sin(t * 2.7 + s * 2.1) * .3 + Math.sin(t * 5.1 + s * 3.7) * .2; }
+let curSet = null;
+function applySet(name) {
+  if (curSet === name) return; curSet = name;
+  for (const [k, [g]] of Object.entries(SETS)) g.visible = k === name;
+  const [, cfg, ox] = SETS[name];
+  scene.background = new THREE.Color(cfg.bg); scene.fog = new THREE.Fog(...cfg.fog);
+  sun.position.set(ox + cfg.sun[0], cfg.sun[1], cfg.sun[2]); sun.target.position.set(ox, 0, 0); sun.intensity = cfg.sunI; hemi.intensity = cfg.hemi;
+}
+function frame(t) {
+  const s = shotAt(t);
+  applySet(s.set);
+  ANIM[s.set](t);
+  const ox = SETS[s.set][2];
+  const k = E.io(clamp((t - s.t0) / (s.t1 - s.t0)));
+  if (s.orbit) { const o = s.orbit, a = lerp(o.a0, o.a1, k); camPos.set(o.c.x + Math.sin(a) * o.r, o.y, o.c.z + Math.cos(a) * o.r); camLook.copy(o.c); }
+  else { const [cc, lc] = curves.get(s); cc.getPoint(k, camPos); if (lc) lc.getPoint(k, camLook); }
+  if (s.lookUfo !== undefined) { const ht = hitOf.get(s.lookUfo); ufoPos(s.lookUfo, Math.min(t, ht - .01), camLook); }
+  if (s.lookFollow === 'kaz') camLook.y += kaz.g.position.y * .6;
+  camPos.x += ox; camLook.x += ox;
+  // ручная камера + тряска
+  const h = (s.hand || .3) * .06; camPos.x += noise(t, 1) * h; camPos.y += noise(t, 2) * h; camLook.x += noise(t, 3) * h * .6; camLook.y += noise(t, 4) * h * .6;
+  let trauma = 0; if (s.shake) trauma = clamp(1 - (t - s.shake[0]) / (s.shake[1] - s.shake[0] + .4)) * (t >= s.shake[0] ? 1 : 0);
+  for (const [, ht] of S8_HITS) if (s.set === 'A' && t >= ht && t < ht + .3) trauma = Math.max(trauma, .45 * (1 - (t - ht) / .3));
+  if (trauma > 0) { const tr2 = trauma * trauma * .35; camPos.x += noise(t * 9, 7) * tr2; camPos.y += noise(t * 9, 8) * tr2; camLook.x += noise(t * 9, 9) * tr2; }
+  // whip pan на входе шота
+  if (s.tr === 'whip' && t - s.t0 < .22) camLook.x += (1 - (t - s.t0) / .22) * -6;
+  camera.position.copy(camPos); camera.lookAt(camLook);
+  let fov = lerp(s.fov[0], s.fov[1], k);
+  if (s.punch && t > s.punch) fov -= 6 * Math.exp(-(t - s.punch) * 6) * (t - s.punch < .05 ? (t - s.punch) / .05 : 1);
+  if (Math.abs(camera.fov - fov) > .01) { camera.fov = fov; camera.updateProjectionMatrix(); }
+  // переходы
+  let fadeA = 0, irisR = -1, blur = 0;
+  for (const sh of SHOTS) {
+    const d = t - sh.t0;
+    if (sh.tr === 'fade' && d > -.4 && d < .45) fadeA = Math.max(fadeA, sh.t0 === 0 ? clamp(1 - d / .8) : 1 - Math.abs(d) / .45);
+    if (sh.tr === 'iris' && d > -.45 && d < .45) irisR = Math.abs(d) / .45;
+    if (sh.tr === 'whip' && Math.abs(d) < .2) blur = Math.max(blur, 1 - Math.abs(d) / .2);
+  }
+  if (t > 63.4) fadeA = Math.max(fadeA, (t - 63.4) / .6);
+  $('fade').style.opacity = clamp(fadeA).toFixed(3);
+  const iris = $('iris');
+  if (irisR >= 0) { const r = (irisR * 75).toFixed(1); iris.style.opacity = 1; iris.style.webkitMaskImage = iris.style.maskImage = `radial-gradient(circle at 50% 48%, transparent ${r}vmax, #000 calc(${r}vmax + 1px))`; } else iris.style.opacity = 0;
+  renderer.domElement.style.filter = blur > 0 ? `blur(${(blur * 5).toFixed(1)}px)` : '';
+  // субтитры и титры
+  const sub = SUBS.find(([a, b]) => t >= a && t < b);
+  const subEl = $('sub'); const html = sub ? sub[2] : '';
+  if (subEl.dataset.html !== html) { if (html) subEl.innerHTML = html; subEl.dataset.html = html; }
+  subEl.style.opacity = sub ? Math.min(1, (t - sub[0]) / .2, (sub[1] - t) / .2).toFixed(3) : 0;
+  const tt = TITLES.find(([a, b]) => t >= a && t < b), tEl = $('title');
+  if (tt) { $('tEye').textContent = tt[2]; $('tH').textContent = tt[3]; $('tP').textContent = tt[4]; const o = Math.min(1, (t - tt[0]) / .5, (tt[1] - t) / .5); tEl.style.opacity = o; tEl.style.transform = `scale(${(1.06 - .06 * E.out(clamp((t - tt[0]) / 1.2))).toFixed(4)})`; } else tEl.style.opacity = 0;
+  renderer.render(scene, camera);
+}
+
+// ================= ЗВУК (WebAudio, синтез) =================
+let AC = null, master = null, muted = false;
+function audioInit() { if (AC) return; try { AC = new (window.AudioContext || window.webkitAudioContext)(); master = AC.createGain(); master.gain.value = .7; master.connect(AC.destination); } catch (e) { AC = null; } }
+function tone(f, d = .15, type = 'square', v = .12, slide = 0, delay = 0) {
+  if (!AC || muted) return; const t0 = AC.currentTime + delay, o = AC.createOscillator(), g = AC.createGain();
+  o.type = type; o.frequency.setValueAtTime(f, t0); if (slide) o.frequency.exponentialRampToValueAtTime(Math.max(20, f * slide), t0 + d);
+  g.gain.setValueAtTime(0, t0); g.gain.linearRampToValueAtTime(v, t0 + .01); g.gain.exponentialRampToValueAtTime(.0008, t0 + d);
+  o.connect(g); g.connect(master); o.start(t0); o.stop(t0 + d + .05);
+}
+function noiseBurst(d = .3, v = .3, hp = 400, lp = 6000, delay = 0) {
+  if (!AC || muted) return; const t0 = AC.currentTime + delay, n = Math.floor(AC.sampleRate * d), buf = AC.createBuffer(1, n, AC.sampleRate), ch = buf.getChannelData(0);
+  for (let i = 0; i < n; i++) ch[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / n, 2);
+  const src = AC.createBufferSource(); src.buffer = buf; const f1 = AC.createBiquadFilter(); f1.type = 'highpass'; f1.frequency.value = hp; const f2 = AC.createBiquadFilter(); f2.type = 'lowpass'; f2.frequency.value = lp; const g = AC.createGain(); g.gain.value = v;
+  src.connect(f1); f1.connect(f2); f2.connect(g); g.connect(master); src.start(t0);
+}
+const SFX = {
+  march: i => tone([110, 98, 92, 82][i % 4], .12, 'triangle', .28),
+  zap: () => tone(1400, .12, 'square', .06, .25),
+  boom: () => { noiseBurst(.4, .35, 80, 1800); tone(120, .3, 'sine', .25, .4); },
+  pop: () => { tone(660, .12, 'square', .07, 2); noiseBurst(.1, .12, 1500, 9000); },
+  whoosh: () => noiseBurst(.35, .18, 600, 4000),
+  heart: () => { tone(62, .16, 'sine', .55, .7); tone(58, .16, 'sine', .45, .7, .16); },
+  ding: () => { tone(1320, .5, 'sine', .14); tone(1980, .6, 'sine', .08, 1, .06); },
+  bulb: () => { tone(880, .12, 'sine', .12); tone(1320, .25, 'sine', .12, 1, .1); },
+  fanfare: () => [523, 659, 784, 1047].forEach((f, i) => tone(f, .35 + i * .08, 'triangle', .14, 1, i * .11)),
+  card: () => { noiseBurst(.18, .1, 1200, 8000); tone(520, .1, 'triangle', .05, 1.6); },
+  thud: () => { tone(90, .25, 'sine', .35, .5); noiseBurst(.15, .12, 100, 900); },
+  snore: () => tone(140, .7, 'sawtooth', .025, .7),
+  type: () => tone(1800 + Math.random() * 500, .03, 'square', .025),
+  gear: () => [392, 494, 587, 784].forEach((f, i) => tone(f, .3, 'sine', .1, 1, i * .07)),
+  boing: () => tone(220, .35, 'sine', .25, 2.6),
+  moo: () => { tone(160, .55, 'sawtooth', .05, .75); tone(165, .55, 'sawtooth', .04, .7); },
+  drone: () => { tone(55, 3.4, 'sine', .07); tone(82.4, 3.4, 'sine', .05); },
+};
+const EVENTS = [];
+const ev = (t, f) => EVENTS.push([t, f]);
+ev(.05, 'drone'); ev(3.5, 'drone'); ev(4.0, 'snore'); ev(5.3, 'snore'); ev(2.3, 'whoosh');
+ev(6.2, 'whoosh'); ev(8.75, 'boing'); ev(9.05, 'moo');
+ev(10.3, 'whoosh'); ev(12.2, 'whoosh'); ev(36.05, 'whoosh'); ev(39.4, 'whoosh'); ev(42.5, 'whoosh'); ev(46.1, 'whoosh'); ev(55.0, 'whoosh');
+// марш строя над станицей
+{ let i = 0; for (let tt = 6.4; tt < 12.3; tt += 1 / .8 / 1.1 / 2 * 1.4) ev(tt, 'm' + (i++)); }
+// марш на экране автомата: каждый шаг строя — нота
+{ let s = 0, prev = 0, i = 0; for (let tt = 12; tt < 29; tt += 1 / 240) { s += screenStep(18 - SCREEN_KILLS.filter(k => k <= tt).length) / 240; if (Math.floor(s) > prev && (tt < 25.5 || i % 2 === 0)) { ev(tt, 'm' + i); } if (Math.floor(s) > prev) { prev = Math.floor(s); i++; } } }
+SCREEN_KILLS.forEach(k => { ev(k - .3, 'zap'); ev(k, 'pop'); });
+{ let tt = 24.8, g = .75; while (tt < 29) { ev(tt, 'heart'); tt += g; g = Math.max(.42, g * .93); } }
+ev(31.3, 'bulb'); ev(32.9, 'ding'); ev(33.0, 'fanfare');
+for (let i = 0; i < 10; i++) ev(39.6 + i * .27, 'type');
+for (let i = 0; i < 5; i++) { ev(46.4 + i * .5, 'card'); ev(47.3 + i * .5, 'thud'); }
+ev(50.0, 'thud'); for (let i = 0; i < 6; i++) ev(50.6 + i * .12, 'pop'); ev(52.8, 'gear');
+// финальный бой
+{ let ph = 0, prev = 0, i = 0; for (let tt = 55; tt < 60.6; tt += 1 / 240) { ph += (1.1 + (18 - aliveAt(tt)) * .55) / 240; if (Math.floor(ph * 2) > prev) { prev = Math.floor(ph * 2); ev(tt, 'm' + (i++)); } } }
+S8_HITS.forEach(([, ht]) => { ev(ht - .38, 'zap'); ev(ht, 'boom'); });
+ev(60.9, 'moo'); ev(61.1, 'fanfare'); ev(61.6, 'drone');
+EVENTS.sort((a, b) => a[0] - b[0]);
+// ---------- озвучка ElevenLabs: golos/urok-01.mp3 одной дорожкой ----------
+// VOICE: [время в фильме, начало реплики в файле, конец реплики в файле]. Пока реплика звучит, остальной звук тише.
+const VOICE = [
+  [1.6, 0.2, 4.1],
+  [6.3, 5.0, 10.35],
+  [12.6, 10.95, 17.9],
+  [20.3, 18.4, 22.3],
+  [25.4, 22.8, 25.3],
+  [29.4, 25.8, 27.45],
+  [32.6, 27.95, 31.1],
+  [36.5, 31.55, 33.62],
+  [39.6, 33.95, 36.68],
+  [42.7, 37.0, 40.12],
+  [46.4, 40.6, 45.25],
+  [50.6, 45.62, 47.12],
+  [52.2, 47.5, 51.58],
+  [57.0, 52.15, 54.76],
+  [61.5, 55.2, 57.0],
+];
+let voiceBuf = null, vSrc = null, vGain = null;
+async function loadVoice() {
+  if (!AC || voiceBuf || !VOICE.length) return;
+  try { const r = await fetch(new URL('golos/urok-01.mp3', location.href)); if (!r.ok) return; voiceBuf = await AC.decodeAudioData(await r.arrayBuffer()); if (playing) voiceAt(t); } catch (e) { voiceBuf = null; }
+}
+function voiceStop() { if (vSrc) { try { vSrc.stop(); } catch (e) {} vSrc = null; } }
+const voiceLine = t => VOICE.find(([ft, a, b]) => t >= ft && t < ft + (b - a));
+function voiceAt(tt) {
+  voiceStop(); if (!voiceBuf || !AC || muted) return;
+  const v = voiceLine(tt); if (!v) return;
+  const [ft, a, b] = v, off = tt - ft;
+  if (!vGain) { vGain = AC.createGain(); vGain.gain.value = 1; vGain.connect(AC.destination); }
+  const s = AC.createBufferSource(); s.buffer = voiceBuf; s.connect(vGain); s.start(0, a + off, b - a - off); vSrc = s;
+}
+function voiceTick(a, b) { for (const [ft] of VOICE) if (ft > a && ft <= b) voiceAt(ft); if (master) master.gain.value = (voiceBuf && voiceLine(b)) ? .35 : .7; }
+function fireEvents(a, b) { for (const [t, f] of EVENTS) if (t > a && t <= b) { if (f[0] === 'm' && f !== 'moo') SFX.march(+f.slice(1)); else SFX[f] && SFX[f](); } }
+
+// ================= ПЛЕЕР =================
+let t = 0, playing = false, last = 0, started = false;
+const q = new URLSearchParams(location.search); if (q.has('t')) t = clamp(+q.get('t') || 0, 0, T_END);
+const seek = $('seek'), timeEl = $('time');
+const fmt = s => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
+function setPlaying(p) { playing = p; if (!p) voiceStop(); $('bPlay').textContent = p ? '❚❚' : '▶'; $('bPlay').setAttribute('aria-label', p ? 'Пауза' : 'Смотреть'); last = performance.now(); if (AC && p) { AC.resume(); voiceAt(t); } }
+function start() { audioInit(); loadVoice(); started = true; $('poster').hidden = true; document.body.classList.add('film'); if (t >= T_END - .05) t = 0; setPlaying(true); poke(); }
+$('play').onclick = start;
+$('bPlay').onclick = () => { if (!started) return start(); if (t >= T_END - .05) t = 0; setPlaying(!playing); };
+$('bAgain').onclick = () => { t = 0; marchCache = { t: -1, ph: 0 }; if (!started) start(); else setPlaying(true); };
+$('bSound').onclick = () => { muted = !muted; $('bSound').textContent = muted ? '🔇' : '🔊'; if (muted) voiceStop(); else if (playing) voiceAt(t); };
+$('bFull').onclick = () => { try { if (document.fullscreenElement) document.exitFullscreen(); else document.documentElement.requestFullscreen().catch(() => {}); } catch (e) {} };
+seek.oninput = () => { t = +seek.value; marchCache = { t: -1, ph: 0 }; if (playing) voiceAt(t); };
+addEventListener('keydown', e => {
+  if (e.code === 'Space' || e.key === 'k') { e.preventDefault(); if (!started) start(); else $('bPlay').click(); }
+  if (e.key === 'ArrowRight') { t = Math.min(T_END, t + 5); marchCache = { t: -1, ph: 0 }; if (playing) voiceAt(t); }
+  if (e.key === 'ArrowLeft') { t = Math.max(0, t - 5); marchCache = { t: -1, ph: 0 }; if (playing) voiceAt(t); }
+});
+let idleTimer = 0; function poke() { document.body.classList.remove('idle'); clearTimeout(idleTimer); idleTimer = setTimeout(() => { if (playing) document.body.classList.add('idle'); }, 2200); }
+addEventListener('pointermove', poke); addEventListener('pointerdown', poke); addEventListener('keydown', poke);
+function loop(now) {
+  const dt = Math.min(.1, (now - last) / 1000); last = now;
+  if (playing) { const t0 = t; t = Math.min(T_END, t + dt); fireEvents(t0, t); voiceTick(t0, t); if (t >= T_END) { setPlaying(false); document.body.classList.remove('idle'); try { if (parent !== window) parent.postMessage({ type: 'film-end' }, '*'); } catch (e) {} } }
+  seek.value = t; timeEl.textContent = `${fmt(t)} / ${fmt(T_END)}`;
+  frame(t);
+  requestAnimationFrame(loop);
+}
+// для проверок: window.__film.seek(t) рисует кадр
+window.__film = { voice: () => !!voiceBuf, seek: s => { t = s; marchCache = { t: -1, ph: 0 }; frame(t); return true; }, shots: SHOTS.length, T_END };
+document.fonts && document.fonts.ready.then(() => labels.forEach(f => f()));
+frame(t); last = performance.now(); requestAnimationFrame(loop);
+</script>
+<script>
+// если модуль не загрузился (нет three.js) — сказать об этом
+setTimeout(() => { if (!window.__film) { const e = document.getElementById('err'); e.hidden = false; e.textContent = 'Не загрузился three.js. Откройте мультфильм через портал или с доступом в интернет.'; } }, 8000);
+</script>
