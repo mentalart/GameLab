@@ -127,7 +127,7 @@ const patch = (find, repl) => `<<<<<<< НАЙТИ\n${find}\n=======\n${repl}\n>>
     // правка в чате Qwen (урок 1, чекпоинт 5): договор, перенос в новый чат, конструктор просьбы, «Вставить новую версию из чата»
     await call(s, '/api/game/current', { version: vHtml + 3 });
     const pact = (await call(s, '/api/chat/pact')).text;
-    check('Договор с Qwen: целиком или куски, ручки, спрятанная механика, portal.notes', /Договорились/.test(pact) && /НАЙТИ/.test(pact) && /portal\.knobs/.test(pact) && /_secret/.test(pact) && /portal\.notes/.test(pact) && /картинку не упрощай/.test(pact) && !/<title>/.test(pact));
+    check('Договор с Qwen: игра целиком, без кусков, ручки, спрятанная механика, portal.notes', /Договорились/.test(pact) && /целиком/.test(pact) && !/НАЙТИ/.test(pact) && /portal\.knobs/.test(pact) && /_secret/.test(pact) && /portal\.notes/.test(pact) && /картинку не упрощай/.test(pact) && !/<title>/.test(pact));
     const move = (await call(s, '/api/chat/move')).text;
     check('Перенос в новый чат: картинка, правила портала, код текущей версии и договор', /# Картинка/.test(move) && /Что нужно порталу/.test(move) && /<title>Правка 2<\/title>/.test(move) && /Договорились/.test(move), `${move.length} знаков`);
     const askText = (await call(s, '/api/chat/ask', { what: 'Враги  быстрее к концу', why: 'Чтобы игрок почувствовал: страшно', keep: 'Управление' })).text;
