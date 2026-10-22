@@ -1282,6 +1282,11 @@ async function lessonTwo(mode, teacher, student, shot) {
   await shot(student, '21-u2-variacii', true);
   await student.click('#step-variacii [data-fav=connect]');
   await student.waitForSelector('#step-variacii.done', { timeout: 10000 });
+  await student.click('#step-variacii [data-why="Каждый ход что-то решает"]');
+  await student.waitForSelector('#step-variacii [data-why="Каждый ход что-то решает"].on');
+  check('Мастерская вариаций: самая интересная и причина кнопками, своя кнопка «Скопировать результат», внизу чекпоинта её нет',
+    await student.locator('#step-variacii [data-copy=variety]').count() === (await student.evaluate(() => S.me.class.authorMode ? 1 : 0)) && /самая интересная: Четыре в ряд\nпочему: Каждый ход что-то решает/.test(await student.evaluate(() => stepSummary(S.lesson.checkpoints[0].steps.find(s => s.id === 'variacii'))))
+    && !(await student.locator('#main > .row button', { hasText: 'Скопировать результат' }).count()));
   await student.click('#step-variacii [data-mix="Падают вниз"]');
   check('Конструктор вариации: выбранная плитка становится своей вариацией', /Твоя вариация: Падают вниз/.test(await student.textContent('#step-variacii .pickline')));
 

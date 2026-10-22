@@ -246,7 +246,7 @@ function renderMain() {
   cp.steps.forEach((step, i) => main.append(stepCard(step, i, cp)));
   const next = S.lesson.checkpoints[idx + 1];
   main.append(el('div', { class: 'row' },
-    S.me.class.authorMode ? el('button', { class: 'btn ghost', type: 'button', title: 'Для чата «Прохождение» с Claude', onclick: () => copy(cpSummary(cp)) }, '⧉ Скопировать результат') : null,
+    S.me.class.authorMode && cp.copy !== false ? el('button', { class: 'btn ghost', type: 'button', title: 'Для чата «Прохождение» с Claude', onclick: () => copy(cpSummary(cp)) }, '⧉ Скопировать результат') : null,
     next && isOpen(next) ? el('button', { class: 'btn', type: 'button', onclick: () => { S.cpId = next.id; render(); scrollTo(0, 0); } }, `Дальше: ${next.title} →`) :
       next ? el('span', { class: 'muted small' }, 'Следующий чекпоинт откроет учитель') : el('span', { class: 'muted small' }, 'Это последний чекпоинт урока')));
 }
@@ -733,6 +733,28 @@ STEPS.variety = ctx => {
       return { id: x.id, icon: x.icon, label: x.label + (p.feel ? ' ' + emo(p.feel) : ''), sub: p.feel ? (x.base ? 'сыграно' : p.ok ? '✓ угадал деталь' : '✓ сыграно') : `как в ${x.like}` };
     }), null, it => { cur = V.find(x => x.id === it.id); stage = 'play'; draw(); }, { attr: 'data-var', wide: true, label: 'Вариации' }));
     if (n >= need) board();
+    else if (n >= 2) favBox(); // выбор самой интересной и причины — уже после двух вариаций, шаг закрывается после need
+  }
+  // выбор самой интересной вариации и причины (до двух карточек), итог шага — кнопкой «Скопировать результат» в режиме автора
+  function favBox() {
+    const rows = V.filter(x => v.played[x.id] && v.played[x.id].feel), n = rows.length, why = v.why || [];
+    if (v.fav && !rows.some(x => x.id === v.fav)) v.fav = null;
+    const box = el('div', { class: 'stack var-fav' });
+    box.append(el('p', { class: 'bigq' }, st.question || 'Какая из этих игр самая интересная?'),
+      tiles(rows.map(x => ({ id: x.id, icon: x.icon, label: x.label })), v.fav, it => { v.fav = it.id; save(n >= need); draw(); }, { attr: 'data-fav', label: 'Самая интересная' }));
+    if (v.fav) {
+      const cards = el('div', { class: 'cardopts', 'aria-label': 'Почему' });
+      reasons().forEach(r => cards.append(el('button', { type: 'button', class: 'cardopt' + (why.includes(r) ? ' on' : ''), 'aria-pressed': String(why.includes(r)), 'data-why': r, onclick: () => {
+        v.why = why.includes(r) ? why.filter(x => x !== r) : why.concat(r).slice(-2); save(); beep('tick'); draw();
+      } }, r)));
+      box.append(el('div', { class: 'eyebrow' }, st.whyQ || 'Почему? До двух карточек'), cards);
+      if (n < need) box.append(el('p', { class: 'muted small' }, `Сыграй ещё ${need - n} — и шаг будет готов. Выбор можно поменять.`));
+      if (S.me.class.authorMode) box.append(el('div', { class: 'row' }, el('button', { class: 'btn ghost', type: 'button', 'data-copy': 'variety', onclick: () => copy(varietyLine(st, v)) }, '⧉ Скопировать результат')));
+    }
+    host.append(box);
+  }
+  function reasons() {
+    return st.reasons || ['Не знаешь, кто победит', 'Каждый ход что-то решает', 'Можно обыграть мудреца', 'Смешно и неожиданно', 'Приходится думать по-новому', 'Красиво и необычно'];
   }
   // динамика вариации (урок 3): две самые частые динамики за партию — что рождается из повёрнутой механики
   function dynChips(p) {
@@ -752,8 +774,7 @@ STEPS.variety = ctx => {
     if (st.dyn) tbl.prepend(el('div', { class: 'var-row var-head' }, el('span'), el('small', {}, 'Вариация'), el('small', {}, 'Э'), el('small', {}, 'М: что повернули'), el('small', {}, 'Д: что происходило (телеметрия)')));
     host.append(el('h3', {}, `Одна механика — ${rows.length} ${rows.length < 5 ? 'игры' : 'игр'}`), tbl,
       el('p', { class: 'concept' }, st.reveal));
-    host.append(el('p', { class: 'bigq' }, st.question || 'Какая из этих игр самая интересная?'),
-      tiles(rows.map(x => ({ id: x.id, icon: x.icon, label: x.label })), v.fav, it => { v.fav = it.id; save(true); draw(); }, { attr: 'data-fav', label: 'Самая интересная' }));
+    favBox();
     if (v.fav) host.append(mixer());
   }
   // конструктор: по одной плитке на каждую деталь — своя вариация того же ядра
@@ -3861,11 +3882,19 @@ STEPS.release = ctx => {
   return host;
 };
 
+// итог мастерской вариаций одной записью: сыгранные вариации, самая интересная и почему
+function varietyLine(st, v) {
+  const V = st.variants || [], played = V.filter(x => (v.played || {})[x.id] && v.played[x.id].feel), fav = V.find(x => x.id === v.fav);
+  return `${st.title}\n` + (played.map(x => `${x.label}: ${v.played[x.id].feel}` + (x.base ? '' : v.played[x.id].ok ? ', деталь угадал' : v.played[x.id].dial ? ', деталь не угадал' : '')).join('\n') || 'вариаций не сыграно')
+    + `\nсамая интересная: ${fav ? fav.label : '—'}` + (fav ? `\nпочему: ${(v.why || []).join('; ') || '—'}` : '');
+}
+
 /* =================== итог чекпоинта для чата =================== */
 function stepSummary(step) {
   const a = ans(step.id), v = a.value || {};
   const f = x => valText(x) + (x && x.dice ? ' [кубик]' : '');
   switch (step.type) {
+    case 'variety': return varietyLine(step, v);
     case 'play': return `партий ${v.rounds || 0}, лучший счёт ${v.best || 0}` + (step.shared && S.wow && S.wow.game ? ` (игра класса «${S.wow.game.title}»${step.secretOff ? ', спрятанная механика выключена' : step.lupa ? ', с лупой' : ''})` : '');
     case 'cards': return S.wow ? S.wow.cards.map(c => `${c.label}: ${c.text || '—'}`).join('; ') : '—';
     case 'abtest': return v.A ? `спрятанная механика в игре ${v.side === 'A' ? 'А' : 'Б'}; голос: ${v.vote ? (v.vote === 'same' ? 'разницы нет' : 'игра ' + (v.vote === 'A' ? 'А' : 'Б')) : 'нет'}; партий А ${v.A.rounds}, Б ${v.B.rounds}; спрятанная механика сработала ${v[v.side].secret} раз` : 'не играл';

@@ -1935,6 +1935,9 @@ route('GET', '/api/teacher/poll', (ctx) => {
       const list = done(x.id).filter(v => v.fav);
       steps.push({ cp: cp.id, id: x.id, title: x.question || 'Самая интересная вариация', kind: 'choice', n: list.length,
         bars: x.variants.map(o => ({ label: `${o.icon} ${o.label}`, n: list.filter(v => v.fav === o.id).length })).filter(b => b.n) });
+      const why = list.filter(v => (v.why || []).length), labels = [...new Set(why.map(v => v.why).flat())];
+      if (why.length) steps.push({ cp: cp.id, id: x.id + ':why', title: 'Почему эта вариация интереснее', kind: 'choice', n: why.length,
+        bars: labels.map(label => ({ label, n: why.filter(v => v.why.includes(label)).length })).sort((a, b) => b.n - a.n) });
     } else if (x.type === 'curve') { // урок 9: какие кривые сложности нарисовал класс
       const list = all.map(a => (a[x.id] || {}).value || {}).filter(v => v.shape);
       const names = { pila: '🪚 Пила с передышками', rovnaya: '📈 Ровная горка', stena: '🧱 Стена', skuka: '😴 Скука' };

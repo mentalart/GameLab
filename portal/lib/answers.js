@@ -17,7 +17,7 @@ function answerText(step, a, game) {
       const played = (step.variants || []).filter(x => (v.played || {})[x.id] && v.played[x.id].feel);
       if (!played.length) return '';
       const fav = (step.variants || []).find(x => x.id === v.fav);
-      return played.map(x => `${x.label}: ${v.played[x.id].feel}` + (x.base ? '' : v.played[x.id].ok ? ', деталь угадал' : v.played[x.id].dial ? ', деталь не угадал' : '')).join('; ') + (fav ? `\nсамая интересная: ${fav.label}` : '');
+      return played.map(x => `${x.label}: ${v.played[x.id].feel}` + (x.base ? '' : v.played[x.id].ok ? ', деталь угадал' : v.played[x.id].dial ? ', деталь не угадал' : '')).join('; ') + (fav ? `\nсамая интересная: ${fav.label}` + ((v.why || []).length ? `; почему: ${v.why.join('; ')}` : '') : '');
     }
     case 'abtest': return v.A ? `спрятанная механика в игре ${v.side === 'A' ? 'А' : 'Б'}; голос: ${v.vote ? (v.vote === 'same' ? 'разницы нет' : 'игра ' + (v.vote === 'A' ? 'А' : 'Б')) : 'нет'}${v.vote && v.vote === v.side ? ' — почувствовал' : ''}; партий А ${v.A.rounds}, Б ${v.B.rounds}` : '';
     case 'secret': return v.guess ? `догадка: ${v.guess} — ${v.pending ? 'ждёт раскрытия' : v.correct ? 'угадал' : v.trap ? 'ловушка: это было на картах' : 'не угадал'}` : '';
