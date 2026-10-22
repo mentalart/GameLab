@@ -103,7 +103,7 @@
     var lines = (Object.prototype.toString.call(x.map) === '[object Array]' ? x.map.join('\n') : String(x.map || '')).replace(/\r/g, '').split('\n');
     while (lines.length && !lines[0].replace(/\s/g, '')) lines.shift();
     while (lines.length && !lines[lines.length - 1].replace(/\s/g, '')) lines.pop();
-    lines = lines.slice(0, 60).map(function (l) { return l.slice(0, 80); });
+    lines = lines.slice(0, 60).map(function (l) { return l.slice(0, 120); }); // 120 — большая карта урока-квеста (три плато, 108 клеток)
     return lines.length ? { name: String(x.name || 'Уровень').slice(0, 40), map: lines.join('\n') } : null;
   }
   function guest() {

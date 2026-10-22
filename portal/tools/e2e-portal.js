@@ -570,19 +570,19 @@ async function run(browser, base, mode) {
     for (const n of M3) if (want(n) && m3['lesson' + n]) await m3['lesson' + n](mode, teacher, student, shot, { browser, base, code, errors, pj });
   }
   { // модуль 4: уроки 14–18
-    const m4 = require('./e2e-m4')({ check, gameFrame, playRound, sleep, mock, rost, producer, lessons: Object.fromEntries(M4.map(n => [n, require(`../lessons/urok-${n}`)])) });
+    const m4 = require('./e2e-m4')({ check, gameFrame, playRound, sleep, mock, rost, producer, huntM2, lessons: Object.fromEntries(M4.map(n => [n, require(`../lessons/urok-${n}`)])) });
     for (const n of M4) if (want(n) && m4['lesson' + n]) await m4['lesson' + n](mode, teacher, student, shot, { browser, base, code, errors, pj });
   }
   { // модуль 5: уроки 19–22
-    const m5 = require('./e2e-m5')({ check, gameFrame, playRound, sleep, mock, rost, producer, lessons: Object.fromEntries(M5.map(n => [n, require(`../lessons/urok-${n}`)])) });
+    const m5 = require('./e2e-m5')({ check, gameFrame, playRound, sleep, mock, rost, producer, huntM2, watch, lessons: Object.fromEntries(M5.map(n => [n, require(`../lessons/urok-${n}`)])) });
     for (const n of M5) if (want(n) && m5['lesson' + n]) await m5['lesson' + n](mode, teacher, student, shot, { browser, base, code, errors, pj });
   }
   { // модуль 6: уроки 23–25
-    const m6 = require('./e2e-m6')({ check, gameFrame, playRound, sleep, mock, rost, producer, lessons: Object.fromEntries(M6.map(n => [n, require(`../lessons/urok-${n}`)])) });
+    const m6 = require('./e2e-m6')({ check, gameFrame, playRound, sleep, mock, rost, producer, huntM2, watch, lessons: Object.fromEntries(M6.map(n => [n, require(`../lessons/urok-${n}`)])) });
     for (const n of M6) if (want(n) && m6['lesson' + n]) await m6['lesson' + n](mode, teacher, student, shot, { browser, base, code, errors, pj });
   }
   { // модуль 7: уроки 26–28 (урок 28 продолжает команду и игру урока 27)
-    const m7 = require('./e2e-m7')({ check, gameFrame, playRound, sleep, mock, rost, producer, lessons: Object.fromEntries(M7.map(n => [n, require(`../lessons/urok-${n}`)])) });
+    const m7 = require('./e2e-m7')({ check, gameFrame, playRound, sleep, mock, rost, producer, huntM2, watch, lessons: Object.fromEntries(M7.map(n => [n, require(`../lessons/urok-${n}`)])) });
     let prev = null;
     for (const n of M7) if (want(n)) prev = (await m7['lesson' + n](mode, teacher, student, shot, { browser, base, code, errors, pj }, prev)) || prev;
   }

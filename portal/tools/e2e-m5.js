@@ -7,7 +7,7 @@ const m4 = require('./e2e-m4');
 
 module.exports = function m5(H) {
   const { check, gameFrame, playRound, sleep, mock, lessons } = H;
-  const { open, choice, donor, hunt, motion, variety } = m4(Object.assign({}, H, { lessons: {} })).helpers;
+  const { open, choice, donor, hunt, huntFmt, paper, sabotage, zagadka, gost, tapi, motion, variety } = m4(Object.assign({}, H, { lessons: {} })).helpers;
   const stepOf = (les, id) => les.checkpoints.flatMap(c => c.steps).find(s => s.id === id);
   // финал: линза и вопрос урока ещё раз; чекпоинт ищем по точному названию — «финалы» встречаются и в замысле, и в «Играем вместе» урока 19
   async function final(student, les, lensWord) {
@@ -97,6 +97,32 @@ module.exports = function m5(H) {
     check(`Урок ${les.number}: плейтест с первым вопросом «${st.ask.label}» и колодой ответов`, !!st.ask && st.decks.story.length >= 4 && st.predict.length >= 1);
   }
 
+  // второй ученик в своём окне собирает игру урока одной кнопкой «⚙ Собрать сейчас» (с подставным Qwen) — зал музея, игра для карусели
+  async function neighbour({ browser, base, code, errors }, nick, title) {
+    const ctx = await browser.newContext({ viewport: { width: 1280, height: 900 } });
+    await ctx.addInitScript(() => { window.LAB_ASK_AUTO = true; window.LAB_FAST = true; window.LAB_LOWRES = true; });
+    const nb = await ctx.newPage();
+    if (H.watch) H.watch(nb, errors);
+    await nb.goto(base + '/?code=' + code);
+    await nb.fill('#nick', nick);
+    await nb.click('#studentForm button[type=submit]');
+    await nb.waitForURL('**/student');
+    await nb.click('.cp >> text=Фабрика');
+    await nb.fill('#f-fabrikatitle', title);
+    await nb.click('#step-fabrika >> text=⚙ Собрать сейчас');
+    const f = await gameFrame(nb, '/play/', 0);
+    await f.evaluate(() => window.__lab.confirm());
+    await nb.waitForFunction(() => document.querySelectorAll('#step-sborka .ver').length >= 2, null, { timeout: 30000 });
+    return { nb, ctx };
+  }
+  // Г5 карусель: до запуска учителем — ожидание; с одной игрой урока в классе не запускается
+  async function karuselWait(student, teacher, les) {
+    await student.waitForSelector('#step-karusel .m2-wait', { timeout: 10000 });
+    check(`Урок ${les.number}: карусель ждёт учителя`, /Карусель запустит учитель/.test(await student.textContent('#step-karusel')));
+    const err = await tapi(teacher, '/api/teacher/karusel', { code: await teacher.evaluate('T.code'), action: 'start' }).then(() => '', e => e.message);
+    check(`Урок ${les.number}: карусель с одной игрой урока не запускается`, /хотя бы две/.test(err), err);
+  }
+
   /* ---------------- урок 19 ---------------- */
   async function lesson19(mode, teacher, student, shot) {
     const les = lessons[19];
@@ -126,6 +152,31 @@ module.exports = function m5(H) {
       check('Решение с клавиатуры: ← склоняет, пробел решает — пришла новая карта', info.card && info.next && info.next !== info.card, `${info.card} → ${info.next}`);
       check('Карты помнят решения: последствие вернулось через несколько карт', info.back >= 1, `карт до последствия: ${info.back}`);
     });
+    // Г1 совет аула: учитель ведёт карты на проекторе, класс голосует с ноутбуков, решение возвращается картой-последствием
+    const sv = stepOf(les, 'sovet'), code = await teacher.evaluate('T.code');
+    await student.waitForSelector('#step-sovet .m2-wait', { timeout: 10000 });
+    check('Совет аула: до начала — ожидание учителя и шкалы', /Совет откроет учитель/.test(await student.textContent('#step-sovet')) && await student.locator('#step-sovet .m47-scale').count() === sv.scales.length);
+    await tapi(teacher, '/api/teacher/sovet', { code, step: 'sovet', action: 'start' });
+    const votes = [['kuz', 'left'], ['past', 'right'], ['kupec', 'left']];
+    for (const [card, side] of votes) {
+      await student.waitForSelector(`#step-sovet [data-sovet=${side}]`, { timeout: 15000 });
+      check(`Совет аула: на столе карта «${sv.cards.find(c => c.id === card).who}»`, (await student.textContent('#step-sovet .m47-card')).includes(sv.cards.find(c => c.id === card).text.slice(0, 20)));
+      await student.click(`#step-sovet [data-sovet=${side}]`);
+      await student.waitForSelector(`#step-sovet [data-sovet=${side}][aria-pressed=true]`, { timeout: 10000 });
+      if (card === 'kuz') check('Совет: голос учтён, ученик видит голоса класса', /класс: ← 1 · 0 →/.test(await student.textContent('#step-sovet')));
+      await tapi(teacher, '/api/teacher/sovet', { code, action: 'decide' });
+    }
+    await student.waitForSelector('#step-sovet .m47-card.echo', { timeout: 15000 });
+    const sx = await student.evaluate(() => Lab.api('/api/sovet').then(r => r.sovet));
+    check('Совет: отказ кузнецу вернулся картой-последствием, шкалы сдвинулись', sx.card.id === 'kuz-ushel' && sx.card.echo && sx.log.length === 3 && sx.scales.join() === '50,50,70,30', JSON.stringify({ card: sx.card.id, scales: sx.scales }));
+    if (shot) await shot(student, 'm5-19-sovet', true);
+    await student.click(`#step-sovet .opt >> text=${sv.options[0]}`);
+    await student.click('#step-sovet >> text=Ответить');
+    await student.waitForSelector('#step-sovet.done', { timeout: 10000 });
+    check('Совет: после трёх голосов — вопрос и разбор', (await student.textContent('#step-sovet')).includes(sv.after.slice(0, 30)));
+    const end = (await tapi(teacher, '/api/teacher/sovet', { code, action: 'decide' })).sovet;
+    check('Совет: «Решить» у учителя — следующий сезон', end.season === 5 && end.log[3].card === 'kuz-ushel', JSON.stringify({ season: end.season, phase: end.phase }));
+    await tapi(teacher, '/api/teacher/sovet', { code, action: 'reset' });
     await hunt(student, les, mode, 'stareyshina', async gf => {
       const r = await gf.evaluate(async () => {
         window.__lab.confirm(); const L = window.__lab.lab; let back = 0;
@@ -137,6 +188,9 @@ module.exports = function m5(H) {
     }, { 'решения': 6 });
     await compare(student, les, 'последствия');
     await motion(student, les, 'secret-story', shot);
+    // Г3 бумажная игра: ветвящаяся история на стикерах, лист урока для печати
+    await paper(student, les, 'stikery', teacher);
+    if (shot) await shot(student, 'm5-19-stikery', true);
     await variety(student, les, 'stareyshina', [['vslepuyu', 'hints', 0], ['vremya', 'timer', 6], ['zima', 'winter', 1], ['dinastiya', 'lives', 3]], 'последствия', 5, 'dinastiya', 'Вслепую', shot);
     await sort(student, les, mode);
     await build(student, les, mode, 'Капитан Луны', { label: 'карты-последствия', re: /карту-последствие/ }, t => GAME.title === t && !!GAME.DECK);
@@ -164,7 +218,7 @@ module.exports = function m5(H) {
   }
 
   /* ---------------- урок 20 ---------------- */
-  async function lesson20(mode, teacher, student, shot) {
+  async function lesson20(mode, teacher, student, shot, env) {
     const les = lessons[20];
     await open(teacher, student, les);
     await donor(student, les, 'cherdak', async gf => {
@@ -179,12 +233,11 @@ module.exports = function m5(H) {
       check('Донор урока 20: вещь из коробки — в руку, не туда — осталась в руке, на своё место — легла', r.secret === 1 && r.item && r.missed === false && r.ok === true && r.placed === 1 && !r.hand, JSON.stringify(r));
       check('Первая вещь первой коробки — вещь с историей', r.story);
     });
-    await hunt(student, les, mode, 'cherdak', async gf => {
-      const r = await gf.evaluate(() => { window.__lab.confirm(); const L = window.__lab.lab, item = GAME.take(L); GAME.drop(L, GAME.rightSlot(L)); return { story: !!(item && item.story) }; });
-      check('Без спрятанной механики вещи без истории', !r.story, JSON.stringify(r));
-      await gf.evaluate(() => window.__lab.restart());
-    }, { 'вещи': 6 });
-    await compare(student, les, 'истории');
+    // Г1 загадка: три кадра одной комнаты — что здесь случилось?
+    await zagadka(student, les);
+    if (shot) await shot(student, 'm5-20-zagadka', true);
+    // Г2 рецепт: три приёма истории без слов, один лишний
+    await huntFmt(student, les, mode, async () => check('Рецепт урока 20: три приёма на выбор', await student.locator('#step-secret-hunt .opt').count() === 3));
     await motion(student, les, 'secret-story', shot);
     await variety(student, les, 'cherdak', [['osmotr', 'inspect', 1], ['fonarik', 'dark', 1], ['kot', 'cat', 1], ['dvavremeni', 'past', 1]], 'истории', 5, 'kot', 'Осмотреть', shot);
     // квиз «Что здесь случилось?»: открыт один кадр из трёх, пробел — ещё кадр, ошибка — все кадры и разбор
@@ -208,7 +261,30 @@ module.exports = function m5(H) {
     }
     await build(student, les, mode, 'Комната деда', { label: 'правило «текста нет»', re: /Текста о событии в игре нет/ }, t => GAME.title === t && !!GAME.take);
     await ownplay(student, les);
-    await askCard(student, les);
+    // Г4 музей класса: комнаты класса — залы, гость оставляет записку, она приходит автору в книгу отзывов
+    const mz = stepOf(les, 'muzei');
+    const nbr = mode === 'mock' && env ? await neighbour(env, 'Хранительница', 'Комната бабушки') : null;
+    await student.click('.cp >> text=Играем вместе');
+    await student.waitForSelector('#step-muzei .m47-halls, #step-muzei .m2-wait', { timeout: 15000 });
+    if (!nbr) check('Музей: без чужих комнат — «Залы ещё готовятся»', /Залы ещё готовятся|План музея/.test(await student.textContent('#step-muzei')));
+    else {
+      await student.waitForSelector('#step-muzei [data-hall]', { timeout: 15000 });
+      check('Музей: план с залом соседки, свой зал — внизу', (await student.textContent('#step-muzei .m47-halls')).includes('Комната бабушки') && /Твой зал «Комната деда»/.test(await student.textContent('#step-muzei')));
+      const hallId = await student.getAttribute('#step-muzei [data-hall]', 'data-hall');
+      await student.click('#step-muzei [data-hall]');
+      await student.click('#step-muzei .veil button');
+      const hall = await gameFrame(student, `/play/${hallId}/`, 0);
+      await playRound(hall, { score: 30 });
+      await student.click(`#step-muzei .cardopt >> text=${mz.deck[0]}`);
+      await student.click('#step-muzei .emo >> nth=0');
+      await student.click('#step-muzei [data-muzei=send]');
+      await student.waitForSelector('#step-muzei.done', { timeout: 10000 });
+      check('Музей: записка оставлена, зал отмечен — шаг готов', /записка оставлена/.test(await student.textContent('#step-muzei .m47-halls')));
+      const note = await nbr.nb.evaluate(() => Lab.api('/api/arcade').then(r => (r.mine.find(c => c.lesson && c.lesson.id === 'urok-20') || {}).discovery));
+      check('Музей: записка гостя пришла автору зала', note && (note.cards || []).some(c => c.story && c.story.text === mz.deck[0]), JSON.stringify(note).slice(0, 160));
+      if (shot) await shot(student, 'm5-20-muzei', true);
+      await nbr.ctx.close();
+    }
     await final(student, les, 'окружения');
   }
 
@@ -226,8 +302,28 @@ module.exports = function m5(H) {
       const r = await gf.evaluate(() => ({ secret: window.__lab.cfg.secret, air: !!window.__lab.lab.state.hero.air, dist: window.__lab.lab.state.dist, moods: GAME.MOODS.length, colors: GAME.MOODS[0].colors.length }));
       check('Донор урока 21: спуск, прыжок с клавиатуры, настроения мира по пять цветов', r.secret === 1 && r.air && r.dist > 0 && r.moods >= 4 && r.colors === 5, JSON.stringify(r));
     });
-    await hunt(student, les, mode, 'spusk-s-fishta', null, { 'трюки': 2, 'смены настроения': 0 });
-    await compare(student, les, 'смены настроения');
+    // Г1 спор: два мира одного спуска — какой лучше
+    const spor = stepOf(les, 'spor');
+    for (const side of spor.sides) {
+      if (side.id === 'B') await student.waitForSelector('#step-spor [data-side=B].on', { timeout: 10000 });
+      await student.click('#step-spor .veil button');
+      await student.waitForFunction(() => [...document.querySelectorAll('iframe')].some(f => /spusk-s-fishta/.test(f.src)), null, { timeout: 10000 });
+      const sf = await gameFrame(student, 'spusk-s-fishta', 0);
+      await sf.waitForFunction(s => window.__lab.cfg.secret === s, side.cfg.secret === 0 ? 0 : 1, { timeout: 5000 }).catch(() => {});
+      check(`Спор урока 21: ${side.label} — ${side.cfg.secret === 0 ? 'мир вразнобой' : 'цельный мир'}`, await sf.evaluate(s => window.__lab.cfg.secret === s, side.cfg.secret === 0 ? 0 : 1));
+      await sf.evaluate(() => window.__lab.confirm());
+      await sleep(300);
+      await sf.evaluate(() => { window.__lab.lab.score = 90; window.__lab.end('lose', 'Проверка'); });
+    }
+    await student.waitForSelector('#step-spor [data-pick=B]', { timeout: 10000 });
+    await student.click('#step-spor [data-pick=B]');
+    await student.click(`#step-spor [data-why="${spor.reasons[0]}"]`);
+    await student.click('#step-spor [data-vote=go]');
+    await student.waitForSelector('#step-spor.done', { timeout: 10000 });
+    check('Спор урока 21: голос и разбор', (await student.textContent('#step-spor')).includes(spor.after.slice(0, 30)));
+    // Г2 детектив: графики падений двух спусков
+    const h21 = stepOf(les, 'secret-hunt').hunt;
+    await huntFmt(student, les, mode, async () => check('Детектив урока 21: графики двух спусков', await student.locator('#step-secret-hunt .m1-graphs svg').count() === h21.graphs.length));
     await motion(student, les, 'secret-story', shot);
     await variety(student, les, 'spusk-s-fishta', [['noch', 'mood', 1], ['buran', 'mood', 3], ['noir', 'mood', 5], ['dzen', 'zen', 1]], 'смены', 5, 'noir', 'Ночь', shot);
     // квиз «Найди лишнее»: в загадке ручка odd, ответ — после нескольких секунд спуска
@@ -266,6 +362,7 @@ module.exports = function m5(H) {
       if (shot) await shot(student, 'm5-21-foto');
     });
     await student.waitForSelector('#step-foto.done', { timeout: 10000 });
+    await karuselWait(student, teacher, les);
     await final(student, les, 'целостности');
   }
 
@@ -284,8 +381,10 @@ module.exports = function m5(H) {
       });
       check('Донор урока 22: росток сохнет, полив наполняет', r.secret === 1 && r.w1 > r.w0 && r.dry && r.day === 1, JSON.stringify(r));
     });
-    await hunt(student, les, mode, 'rostok', null, { 'полив': 2, 'дела': 3 });
-    await compare(student, les, 'отклик');
+    // Г1 гость урока: Кен Вонг, Florence
+    await gost(student, les, mode, shot);
+    // Г2 саботаж: учитель тайно меняет одно правило ростка
+    await sabotage(student, teacher, les, mode);
     await motion(student, les, 'secret-story', shot);
     await variety(student, les, 'rostok', [['vina', 'greed', 1], ['tamagochi', 'wilt', 1], ['nadezhda', 'gray', 1], ['proshchanie', 'farewell', 1]], 'отклик', 5, 'nadezhda', 'Спешка', shot);
     await sort(student, les, mode);

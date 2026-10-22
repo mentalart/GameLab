@@ -378,7 +378,7 @@ function normLevel(x) {
   let lines = (Array.isArray(x.map) ? x.map.join('\n') : String(x.map || '')).replace(/\r/g, '').split('\n');
   while (lines.length && !lines[0].trim()) lines.shift();
   while (lines.length && !lines[lines.length - 1].trim()) lines.pop();
-  lines = lines.slice(0, 60).map(l => l.slice(0, 80));
+  lines = lines.slice(0, 60).map(l => l.slice(0, 120)); // 120 — большая карта урока-квеста (три плато, 108 клеток)
   return lines.length ? { name: String(x.name || 'Уровень').slice(0, 40), map: lines.join('\n') } : null;
 }
 const b64json = s => { try { return JSON.parse(decodeURIComponent(escape(atob(String(s).replace(/-/g, '+').replace(/_/g, '/'))))); } catch (e) { return null; } };

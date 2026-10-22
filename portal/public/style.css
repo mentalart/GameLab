@@ -1621,3 +1621,26 @@ button.m7-teamcard{cursor:pointer}button.m7-teamcard:hover{border-color:var(--ac
 
 /* мультфильм урока (шаг film) */
 .film-frame { width: 100%; max-width: 100%; aspect-ratio: 16 / 9; border: 0; border-radius: 12px; background: #0b0f24; display: block; }
+/* модули 4–7 (аудит, сессия 6): гость, урок-квест, совет аула, музей */
+.m47-guest{display:flex;gap:12px;align-items:center}.m47-ava{font-size:30px;width:52px;height:52px;display:grid;place-items:center;border-radius:50%;background:var(--panel2);border:1px solid var(--line2)}
+.m47-quote{margin:0;padding:14px 18px;border-left:4px solid var(--warm);background:var(--bg2);border-radius:0 12px 12px 0;font-size:18px;line-height:1.45}
+.m47-quote cite{display:block;margin-top:6px;font-size:12.5px;font-style:normal;color:var(--muted)}
+.m47-ring{--p:0;width:74px;height:74px;border-radius:50%;display:grid;place-content:center;text-align:center;background:conic-gradient(var(--warm) calc(var(--p)*1%),var(--line) 0);position:relative;flex:none}
+.m47-ring::before{content:'';position:absolute;inset:6px;border-radius:50%;background:var(--panel)}.m47-ring b,.m47-ring small{position:relative}.m47-ring b{font-size:17px;font-variant-numeric:tabular-nums}.m47-ring small{font-size:9.5px;color:var(--muted);line-height:1.1;max-width:60px}
+.m47-kmap{width:100%;height:auto;border-radius:12px;border:1px solid var(--line2);background:#0b1020;image-rendering:pixelated}
+.m47-kcount{font-size:18px;color:var(--violet)}.m47-finds{margin:0;padding-left:22px;columns:2;font-size:clamp(14px,1.4vw,19px)}
+.m47-scales{display:flex;gap:10px;justify-content:center;flex-wrap:wrap}
+.m47-scale{display:grid;justify-items:center;gap:4px;width:84px}.m47-scale .ic{font-size:24px}.m47-scale small{font-size:12px;color:var(--muted);text-align:center}
+.m47-bar{width:22px;height:84px;border-radius:11px;background:var(--line);display:flex;align-items:flex-end;overflow:hidden}.m47-bar i{display:block;width:100%;background:var(--warm);transition:height .6s ease}
+.m47-scale.edge .m47-bar i{background:var(--danger)}.m47-scale.up small{color:var(--accent)}.m47-scale.down small{color:var(--danger)}
+.m47-card{display:grid;justify-items:center;gap:6px;text-align:center;padding:18px;border-radius:18px;background:#2a2018;border:2px solid #c9965f;max-width:440px;margin:0 auto}
+.m47-card .ic{font-size:44px}.m47-card b{font-size:18px}.m47-card p{margin:0;font-size:17px}.m47-card.echo{border-color:var(--violet);box-shadow:0 0 0 4px rgba(180,155,255,.2)}
+.m47-vote{justify-content:center}.m47-table{display:grid;gap:14px}.m47-sides{display:grid;gap:8px}
+.m47-side{display:grid;grid-template-columns:minmax(120px,1fr) 2fr 40px;gap:10px;align-items:center;font-size:clamp(15px,1.5vw,20px)}
+.m47-side .track{height:14px;border-radius:7px;background:var(--line);overflow:hidden}.m47-side .track i{display:block;height:100%;background:var(--warm);transition:width .4s}
+.m47-log{margin:0;padding-left:22px;display:grid;gap:3px}.m47-log li.echo{color:var(--violet)}
+.m47-halls{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:10px}
+.m47-hall{display:grid;gap:4px;text-align:left;padding:14px;border-radius:14px;background:linear-gradient(180deg,#2b1d16,#1a120c);border:1px solid #6a4632;color:var(--text);cursor:pointer}
+.m47-hall:hover{border-color:var(--warm)}.m47-hall.seen{border-color:var(--accent)}.m47-hall small{color:var(--muted)}.m47-no{font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--warm)}
+.m47-notes{margin:0;padding-left:20px;display:grid;gap:4px}
+@media (prefers-reduced-motion:reduce){.m47-bar i,.m47-side .track i{transition:none}}

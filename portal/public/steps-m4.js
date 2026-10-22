@@ -276,25 +276,35 @@
     if (t > 4.2) { const k = seg(t, 4.2, 5); glow(g, 150, 220, 60 * k, '#ffd23f'); text(g, 'Гриб сам пришёл: значит, он хороший', 320, 90, '#ffd23f', 16); }
     if (t < 4.2) { rr(g, 20, 16, 470, 40, 10, 'rgba(11,16,32,.75)'); text(g, 'Труба развернула гриб к тебе. Ошибиться почти нельзя.', 255, 36, '#f2efe6', 14); }
   };
-  MOTION['safe-risk-test'] = (g, t, W, H) => {
+  // В3 аудита: переключатель proba (по умолчанию включён) — без безопасной пробы новое встречаешь сразу всерьёз и падаешь в пропасть
+  MOTION['safe-risk-test'] = (g, t, W, H, c = {}) => {
     t %= 7.5; sky(g, W, H, '#162244', '#2e4a7a');
+    const proba = c.proba !== false;
     const P = [{ x: 20, name: 'Безопасная проба', pit: 0, col: '#7cf5a8' }, { x: 230, name: 'Небольшой риск', pit: 1, col: '#ffd23f' }, { x: 440, name: 'Проверка', pit: 2, col: '#ff5d6e' }];
     const cur = Math.min(2, Math.floor(t / 2.5));
     P.forEach((p, i) => {
+      const gone = !proba && i < 2; // без пробы и риска: первая встреча с пружиной — сразу над пропастью
       const on = i === cur, k = on ? (t % 2.5) / 2.5 : i < cur ? 1 : 0;
-      rr(g, p.x, 40, 180, 220, 12, on ? 'rgba(124,245,168,.08)' : 'rgba(255,255,255,.03)', on ? p.col : '#2a3560');
-      text(g, p.name, p.x + 90, 64, p.col, 14);
+      rr(g, p.x, 40, 180, 220, 12, gone ? 'rgba(0,0,0,.25)' : on ? 'rgba(124,245,168,.08)' : 'rgba(255,255,255,.03)', gone ? '#3a2030' : on ? p.col : '#2a3560');
+      text(g, p.name, p.x + 90, 64, gone ? '#6f6080' : p.col, 14);
+      if (gone) { text(g, '— убрали —', p.x + 90, 150, '#ff8a8a', 15); return; }
       // земля: в пробе под пружиной есть пол, в риске — неглубокая яма, в проверке — пропасть
       g.fillStyle = '#6b5137'; g.fillRect(p.x + 10, 220, 50, 30); g.fillRect(p.x + 130, 220, 40, 30);
       if (p.pit === 0) g.fillRect(p.x + 60, 235, 70, 15);
       if (p.pit === 1) { g.fillRect(p.x + 60, 248, 70, 4); text(g, 'вернёт на флажок', p.x + 95, 240, '#9aa3c7', 10, 'center', 600); }
       if (p.pit === 2) { g.fillStyle = '#05070f'; g.fillRect(p.x + 60, 220, 70, 40); }
       drawTile(g, '^', ['#ff5d6e', 'spring'], p.x + 30, 196, 24, t);
+      if (!proba && i === 2) { // не знал, что пружина бросает так далеко: перелетел и упал в пропасть
+        const kk = clamp(t / 7.5, 0, 1), hx = lerp(p.x + 20, p.x + 100, Math.min(1, kk * 2)), hy = kk < 0.5 ? 212 - Math.sin(kk * 2 * Math.PI) * 60 : lerp(212, 300, (kk - 0.5) * 2);
+        hero(g, hx, hy, 10, '#5fe0ff', 1, 0);
+        if (kk > 0.55) text(g, '😵 Упал: не знал, как бросает пружина', p.x + 90, 100, '#ff8a8a', 12, 'center', 700);
+        return;
+      }
       const hx = lerp(p.x + 20, p.x + 150, k), hy = 212 - Math.sin(k * Math.PI) * (90 + p.pit * 10);
       if (i <= cur) hero(g, hx, hy, 10, '#5fe0ff', 1, k < 0.15 ? 0.6 : 0);
       if (i < cur) text(g, '✓', p.x + 160, 64, p.col, 16);
     });
-    text(g, 'Одна идея — три раза: сначала без цены ошибки, потом с маленькой, потом всерьёз', 320, 284, '#9aa3c7', 13, 'center', 600);
+    text(g, proba ? 'Одна идея — три раза: сначала без цены ошибки, потом с маленькой, потом всерьёз' : 'Без пробы новое встречаешь сразу всерьёз — и падаешь, не успев понять', 320, 284, proba ? '#9aa3c7' : '#ff8a8a', 13, 'center', 600);
   };
   MOTION.kishoten = (g, t, W, H) => {
     t %= 10; sky(g, W, H, '#10172d', '#1a2445');
@@ -349,18 +359,21 @@
   };
   // --- урок 15: уровень — это данные ---
   const SOKO = ['#########', '#@  $  .#', '#  ###  #', '# $   . #', '#########'].join('\n');
-  MOTION['map-to-level'] = (g, t, W, H) => {
+  // В3: переключатель simvol — одна буква в тексте карты меняется («$» → «#»): овца стала плетнём, уровень другой
+  MOTION['map-to-level'] = (g, t, W, H, c = {}) => {
     t %= 6; g.fillStyle = '#0b1020'; g.fillRect(0, 0, W, H);
-    const r = rows(SOKO), k = io(seg(t, 1.2, 3.2)), back = io(seg(t, 4.6, 5.8)), m = k * (1 - back);
-    const s0 = 26, ox0 = 30, oy0 = 80, s1 = 32, ox1 = 330, oy1 = 70;
+    const sw = !!c.simvol, r = rows(SOKO).map((line, j) => (sw && j === 3 ? line.replace('$', '#') : line)), k = io(seg(t, 1.2, 3.2)), back = io(seg(t, 4.6, 5.8)), m = k * (1 - back);
+    const s0 = 26, ox0 = 30, oy0 = 80, s1 = 32, ox1 = 330, oy1 = 70, sx = rows(SOKO)[3].indexOf('$');
     text(g, 'Текст', 30 + 9 * s0 / 2, 52, '#9aa3c7', 14); text(g, 'Уровень', ox1 + 9 * s1 / 2, 52, '#9aa3c7', 14);
     r.forEach((line, j) => [...line].forEach((ch, i) => {
       const x = lerp(ox0 + i * s0, ox1 + i * s1, m), y = lerp(oy0 + j * s0, oy1 + j * s1, m), s = lerp(s0, s1, m);
       if (m > 0.5) drawTile(g, ch, PALETTES.zagon[ch], x, y, s, t);
       g.globalAlpha = 1 - clamp(m * 2 - 0.6, 0, 1); text(g, ch === ' ' ? '·' : ch, x + s / 2, y + s / 2, ch === ' ' ? '#3a4880' : (PALETTES.zagon[ch] || ['#fff'])[0], s * 0.7, 'center', 700); g.globalAlpha = 1;
+      if (sw && j === 3 && i === sx) { g.strokeStyle = '#ffd23f'; g.lineWidth = 3; g.strokeRect(x - 2, y - 2, s + 4, s + 4); }
     }));
+    if (sw) text(g, 'Одна буква: «$» → «#». Овцы нет — загон ждёт пустым, уровень не решить', 320, 232, '#ffd23f', 13, 'center', 700);
     const legend = [['#', 'плетень'], ['@', 'пастух'], ['$', 'овца'], ['.', 'загон']];
-    legend.forEach(([c, n], i) => { text(g, c, 60 + i * 150, 262, (PALETTES.zagon[c] || ['#fff'])[0], 20, 'center', 800); text(g, '— ' + n, 104 + i * 150, 262, '#f2efe6', 13, 'center', 600); });
+    legend.forEach(([c2, n], i) => { text(g, c2, 60 + i * 150, 262, (PALETTES.zagon[c2] || ['#fff'])[0], 20, 'center', 800); text(g, '— ' + n, 104 + i * 150, 262, '#f2efe6', 13, 'center', 600); });
   };
   MOTION['edit-char'] = (g, t, W, H) => {
     t %= 7; g.fillStyle = '#0b1020'; g.fillRect(0, 0, W, H);
@@ -428,15 +441,21 @@
     g.fillStyle = dark ? '#241b34' : '#6a6f9a'; g.beginPath(); g.moveTo(0, 210); g.lineTo(150, 150); g.lineTo(300, 190); g.lineTo(420, 90); g.lineTo(520, 160); g.lineTo(W, 130); g.lineTo(W, H); g.lineTo(0, H); g.fill();
     g.fillStyle = dark ? '#2e2440' : '#c99a6a'; g.fillRect(0, 230, W, 70);
   }
-  MOTION['journey-light'] = (g, t, W, H) => {
+  // В3: переключатель svet (по умолчанию включён) — без света-цели путница кружит в тумане
+  MOTION['journey-light'] = (g, t, W, H, c = {}) => {
     t %= 6; plateau(g, W, H, true, t);
-    const pulse = 0.7 + 0.3 * Math.sin(t * 3);
-    g.save(); g.globalCompositeOperation = 'lighter'; g.fillStyle = `rgba(255,240,180,${0.25 * pulse})`; g.beginPath(); g.moveTo(410, 90); g.lineTo(430, 90); g.lineTo(470, -10); g.lineTo(370, -10); g.fill(); g.restore();
-    glow(g, 420, 90, 60 * pulse, '#fff3b0'); disc(g, 420, 90, 6, '#fffbe0');
+    const svet = c.svet !== false, pulse = 0.7 + 0.3 * Math.sin(t * 3);
+    if (svet) {
+      g.save(); g.globalCompositeOperation = 'lighter'; g.fillStyle = `rgba(255,240,180,${0.25 * pulse})`; g.beginPath(); g.moveTo(410, 90); g.lineTo(430, 90); g.lineTo(470, -10); g.lineTo(370, -10); g.fill(); g.restore();
+      glow(g, 420, 90, 60 * pulse, '#fff3b0'); disc(g, 420, 90, 6, '#fffbe0');
+    }
     hero(g, 120, 250, 10, '#ff8a4c', 1);
     const k = io(seg(t, 1, 3));
-    g.setLineDash([6, 8]); g.strokeStyle = '#ffd23f'; g.lineWidth = 2; g.beginPath(); g.moveTo(120, 240); g.lineTo(lerp(120, 420, k), lerp(240, 100, k)); g.stroke(); g.setLineDash([]);
-    if (t > 3) { rr(g, 120, 20, 400, 40, 10, 'rgba(11,16,32,.75)'); text(g, 'Свет на вершине — цель без единой стрелки', 320, 40, '#ffe08a', 15); }
+    g.setLineDash([6, 8]); g.strokeStyle = svet ? '#ffd23f' : '#9aa3c7'; g.lineWidth = 2; g.beginPath(); g.moveTo(120, 240);
+    if (svet) g.lineTo(lerp(120, 420, k), lerp(240, 100, k));
+    else for (let i = 1; i <= 40 * k; i++) { const a = i * 0.45; g.lineTo(150 + Math.cos(a) * (20 + i * 2.2), 210 + Math.sin(a * 1.3) * (14 + i)); } // без цели — петли наугад
+    g.stroke(); g.setLineDash([]);
+    if (t > 3) { rr(g, 120, 20, 400, 40, 10, 'rgba(11,16,32,.75)'); text(g, svet ? 'Свет на вершине — цель без единой стрелки' : 'Без света: куда идти? Путница кружит в тумане', 320, 40, svet ? '#ffe08a' : '#ff8a8a', 15); }
   };
   MOTION.contrast = (g, t, W, H) => {
     t %= 5; g.fillStyle = '#20263d'; g.fillRect(0, 0, W, H);
@@ -494,17 +513,20 @@
     });
     text(g, t < 4.6 ? `Копатель шагает куда попало: шагов ${n}` : 'Выход ставим в самую дальнюю клетку', 320, 270, '#f2efe6', 15);
   };
-  MOTION['same-seed'] = (g, t, W, H) => {
+  // В3: переключатель drug — друг сменил зерно: у вас уже разные миры
+  MOTION['same-seed'] = (g, t, W, H, c = {}) => {
     t %= 7; g.fillStyle = '#0b1020'; g.fillRect(0, 0, W, H);
-    const A = GEN.cells(4242, 24, 14), C = GEN.cells(777, 24, 14), k = seg(t, 0.3, 2.5);
-    [[A, 4242, 20], [A, 4242, 225], [C, 777, 430]].forEach(([G0, seed, x], i) => {
+    const drug = !!c.drug, A = GEN.cells(4242, 24, 14), B = drug ? GEN.cells(1313, 24, 14) : A, C = GEN.cells(777, 24, 14), k = seg(t, 0.3, 2.5);
+    [[A, 4242, 20, 'ты'], [B, drug ? 1313 : 4242, 225, 'друг'], [C, 777, 430, '']].forEach(([G0, seed, x, who], i) => {
       const n = Math.floor(G0.order.length * (i === 2 ? seg(t, 2.8, 4.8) : k));
       drawGen(g, G0.m, { x, y: 50, w: 190, h: 150 }, G0.order.slice(0, n), t);
-      rr(g, x + 30, 210, 130, 30, 8, i === 2 ? '#2a1f0c' : '#0c2418'); text(g, 'зерно ' + seed, x + 95, 225, i === 2 ? '#ffb547' : '#7cf5a8', 14);
+      const odd = i === 2 || (i === 1 && drug);
+      rr(g, x + 30, 210, 130, 30, 8, odd ? '#2a1f0c' : '#0c2418'); text(g, 'зерно ' + seed, x + 95, 225, odd ? '#ffb547' : '#7cf5a8', 14);
+      if (who) text(g, who, x + 95, 36, '#9aa3c7', 12);
     });
-    if (t > 2.5) text(g, '=', 215, 125, '#7cf5a8', 30);
+    if (t > 2.5) text(g, drug ? '≠' : '=', 215, 125, drug ? '#ffb547' : '#7cf5a8', 30);
     if (t > 4.8) text(g, '≠', 420, 125, '#ffb547', 30);
-    text(g, t < 2.5 ? 'Одно зерно — у тебя и у друга…' : t < 4.8 ? '…один и тот же мир, клетка в клетку' : 'Другое зерно — другой мир', 320, 270, '#f2efe6', 15);
+    text(g, drug ? (t < 2.5 ? 'Друг поменял зерно…' : '…и у вас разные пещеры: сравнить уже нечего') : t < 2.5 ? 'Одно зерно — у тебя и у друга…' : t < 4.8 ? '…один и тот же мир, клетка в клетку' : 'Другое зерно — другой мир', 320, 270, '#f2efe6', 15);
   };
   MOTION.rooms = (g, t, W, H) => {
     t %= 6; g.fillStyle = '#0b1020'; g.fillRect(0, 0, W, H);
@@ -554,13 +576,16 @@
     const a = -Math.PI / 2 + (t / 1.6) * TAU / st.length; disc(g, cx + Math.cos(a) * R * 1.25, cy + Math.sin(a) * R * 0.75, 7, '#ffd23f');
     text(g, 'Super Mario Maker: уровень не выложить, пока сам его не прошёл', 320, 285, '#9aa3c7', 13, 'center', 600);
   };
-  MOTION['guest-eyes'] = (g, t, W, H) => {
+  // В3: переключатель obuchenie (по умолчанию включён) — уровень гостя без обучающего участка: пружины сразу над ямой
+  MOTION['guest-eyes'] = (g, t, W, H, c = {}) => {
     t %= 7; g.fillStyle = '#0b1020'; g.fillRect(0, 0, W, H);
-    const a = ['        F', '      ===', '   ^     ', '@  ^  ###', '#########'].join('\n'), b = ['   ^    F', '  ^ ^  ==', ' ^   ^   ', '@^     ##', '##   ####'].join('\n');
-    text(g, 'Уровень автора', 160, 30, '#9aa3c7', 13); text(g, 'Уровень гостя', 480, 30, '#ffb547', 13);
+    const ob2 = c.obuchenie !== false;
+    const a = ['        F', '      ===', '   ^     ', '@  ^  ###', '#########'].join('\n');
+    const b = ob2 ? ['   ^    F', '  ^ ^  ==', ' ^   ^   ', '@^     ##', '##   ####'].join('\n') : ['   ^    F', '  ^ ^  ==', '     ^   ', '@ ^     #', '#   #####'].join('\n');
+    text(g, 'Уровень автора', 160, 30, '#9aa3c7', 13); text(g, ob2 ? 'Уровень гостя' : 'Уровень гостя без обучающего участка', 480, 30, ob2 ? '#ffb547' : '#ff8a8a', 13);
     drawMap(g, a, PALETTES.tropa, { x: 20, y: 44, w: 280, h: 160 }, { t }); drawMap(g, b, PALETTES.tropa, { x: 340, y: 44, w: 280, h: 160 }, { t });
-    if (t > 2) { const k = ob(seg(t, 2, 2.6)); g.save(); g.translate(160, 240); g.scale(k, k); text(g, '😮 «Я и не знал, что пружины так можно!»', 0, 0, '#ffd23f', 15); g.restore(); }
-    if (t > 4) text(g, 'Гость показал автору его же игру глазами другого дизайнера', 320, 280, '#f2efe6', 14);
+    if (t > 2) { const k = ob(seg(t, 2, 2.6)); g.save(); g.translate(ob2 ? 160 : 480, 240); g.scale(k, k); text(g, ob2 ? '😮 «Я и не знал, что пружины так можно!»' : '😵 «Упал на первом шаге — что тут делать?»', 0, 0, ob2 ? '#ffd23f' : '#ff8a8a', 15); g.restore(); }
+    if (t > 4) text(g, ob2 ? 'Гость показал автору его же игру глазами другого дизайнера' : 'Без участка, где упасть не страшно, гость не понял пружину — и ушёл', 320, 280, '#f2efe6', 14);
   };
   MOTION['three-questions'] = (g, t, W, H) => {
     t %= 6; g.fillStyle = '#0b1020'; g.fillRect(0, 0, W, H);

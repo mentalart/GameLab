@@ -7,6 +7,14 @@
 module.exports = function m6(H) {
   const { check, gameFrame, playRound, sleep, mock, lessons } = H;
   const stepOf = (les, id) => les.checkpoints.flatMap(c => c.steps).find(s => s.id === id);
+  // форматы охоты аудита (Г2): рецепт, сломанная игра, детектив, саботаж — общие помощники модуля 4
+  const { huntFmt, slomano, sabotage, tapi } = require('./e2e-m4')(Object.assign({}, H, { lessons: {} })).helpers;
+  async function karuselWait(student, teacher, les) {
+    await student.waitForSelector('#step-karusel .m2-wait', { timeout: 10000 });
+    check(`Урок ${les.number}: карусель ждёт учителя`, /Карусель запустит учитель/.test(await student.textContent('#step-karusel')));
+    const err = await tapi(teacher, '/api/teacher/karusel', { code: await teacher.evaluate('T.code'), action: 'start' }).then(() => '', e => e.message);
+    check(`Урок ${les.number}: карусель с одной игрой урока не запускается`, /хотя бы две/.test(err), err);
+  }
 
   async function open(teacher, student, les) {
     await teacher.click('.tabs >> text=Урок');
@@ -42,25 +50,6 @@ module.exports = function m6(H) {
     await playRound(gf, { score: 500 });
     await student.waitForSelector('#step-donor-play.done', { timeout: 10000 });
     await choice(student, 'donor-hook', 0);
-  }
-  async function hunt(student, les, mode, file, offCheck, counters) {
-    await student.click('.cp >> nth=1');
-    await student.click('#step-secret-play .veil button');
-    const gf = await gameFrame(student, file, 0);
-    await gf.waitForFunction(() => window.__lab.cfg.secret === 0, null, { timeout: 5000 }).catch(() => {});
-    check(`Урок ${les.number}: без спрятанной механики — ручка шага`, await gf.evaluate(() => window.__lab.cfg.secret === 0));
-    if (offCheck) await offCheck(gf);
-    await gf.evaluate(c => { window.__lab.confirm(); for (const [k, n] of Object.entries(c)) window.__lab.lab.count(k, n); window.__lab.lab.score = 100; window.__lab.end('lose', 'Проверка'); }, counters || {});
-    await student.waitForSelector('#step-secret-play.done', { timeout: 10000 });
-    const h = stepOf(les, 'secret-hunt').hunt;
-    const me = await student.evaluate(() => Lab.api('/api/me').then(r => JSON.stringify(r)));
-    check(`Урок ${les.number}: ответ «Найди спрятанную механику» не уходит заранее`, me.includes(h.question) && !me.includes(h.reveal.slice(0, 30)));
-    await student.waitForSelector('#step-secret-hunt .opt');
-    await student.click(`#step-secret-hunt .opt >> text=${mode === 'mock' ? h.trap : h.right}`);
-    await student.click('#step-secret-hunt >> text=Ответить');
-    await student.waitForSelector('#step-secret-hunt.done');
-    const rv = (await student.textContent('#step-secret-hunt')).replace(/\s+/g, ' ');
-    check(`Урок ${les.number}: ${mode === 'mock' ? 'ловушка распознана' : 'спрятанная механика угадана'} — «${h.title}»`, (mode === 'mock' ? /Ловушка!/.test(rv) : /Точно!/.test(rv)) && rv.includes(h.title), rv.slice(0, 100));
   }
   // объяснялка: сцены листаются, переключатели сцены включают приём (интерактивный моушн-дизайн), холст рисует картинку
   async function motion(student, les, shot) {
@@ -203,10 +192,7 @@ module.exports = function m6(H) {
       });
       check('Донор урока 23: узор дня из пяти знаков за шесть попыток, цвет у каждой плитки, узор из даты — один на всех', r.len === 5 && r.tries === 6 && r.daily && r.same && JSON.stringify(r.marks) === JSON.stringify([1, 0, 2, 0, 2]), JSON.stringify(r));
     }, ['stikery']);
-    await hunt(student, les, mode, 'uzor-dnya', async gf => {
-      const r = await gf.evaluate(() => { const st = window.__lab.lab.state; return { color: st.color, daily: st.daily, share: st.share }; });
-      check('Без спрятанной механики: только числа, новый узор, без сетки', !r.color && !r.daily && !r.share, JSON.stringify(r));
-    }, { 'попытки': 6 });
+    await huntFmt(student, les, mode, async () => check('Рецепт урока 23: три приёма на выбор', await student.locator('#step-secret-hunt .opt').count() === 3));
     await motion(student, les, shot);
     await variety(student, les, 'uzor-dnya', [['chisla', 'color', 0], ['beskonechnaya', 'daily', 0], ['tajmer', 'timer', 20], ['gonka', 'race', 1]],
       '(L, st, v) => { st.rows = Array.from({ length: v }, () => ({ guess: [], marks: [] })); }', 4, 'chisla', 'Только числа', shot);
@@ -265,10 +251,13 @@ module.exports = function m6(H) {
       });
       check('Донор урока 24: день 1 — одна грядка и одна карта, враг ждёт посадки, подсказка ведёт к орехомёту', r.lanes.length === 1 && r.cards.length === 1 && r.wait && r.hint === 'shoot' && r.planted === 1 && r.learned, JSON.stringify(r));
     });
-    await hunt(student, les, mode, 'ogorod-pod-zashchitoy', async gf => {
-      const r = await gf.evaluate(() => { const st = window.__lab.lab.state; return { lanes: st.lanes.length, cards: GAME.unlocked(st).length, wall: st.wall }; });
-      check('Без спрятанной механики: пять грядок, пять карт и стена текста', r.lanes === 5 && r.cards === 5 && r.wall, JSON.stringify(r));
+    await slomano(student, les, mode, 'ogorod-pod-zashchitoy', async gf => {
+      const r = await gf.evaluate(() => { const st = window.__lab.lab.state; return { lanes: st.lanes.length, cards: GAME.unlocked(st).length }; });
+      check('Сломанный огород: пять грядок и пять карт сразу', r.lanes === 5 && r.cards === 5, JSON.stringify(r));
     }, { 'грядки потеряны': 2 });
+    const h24 = stepOf(les, 'secret-hunt').hunt;
+    const r24 = await huntFmt(student, les, mode, async () => check('Детектив урока 24: графики двух партий', await student.locator('#step-secret-hunt .m1-graphs svg').count() === h24.graphs.length));
+    check('Детектив урока 24: сравнение донора со сломанным огородом', r24.includes(h24.compare.offLabel) && /грядки потеряны 2/.test(r24), r24.slice(-200));
     await motion(student, les, shot);
     await variety(student, les, 'ogorod-pod-zashchitoy', [['vse-srazu', 'allAtOnce', 1], ['stena', 'textWall', 1], ['shum', 'clutter', 1], ['kontrast', 'contrast', 1]],
       '(L, st, v) => { st.firstPlant = v; }', 7, 'vse-srazu', 'Всё сразу', shot);
@@ -290,6 +279,7 @@ module.exports = function m6(H) {
     await ownPlay(student);
     // UX-аудит: игра соседа или донор, «думай вслух», 10 пунктов, главная находка; «новичок с улицы» — два замера
     await student.click('.cp >> text=Играем вместе');
+    await karuselWait(student, teacher, les);
     await student.waitForSelector('#step-audit [data-audit=goal]', { timeout: 30000 });
     const au = stepOf(les, 'audit');
     for (const it of au.items) { await student.click(`#step-audit [data-audit=${it.id}]`); if (it.id === 'pause') await student.click(`#step-audit [data-audit=${it.id}]`); }
@@ -321,10 +311,7 @@ module.exports = function m6(H) {
       });
       check('Донор урока 25: кликер с семью тёмными паттернами, таймер «×3» ловит нажатие', r.evil && r.patterns === 7 && r.taps === 6 && r.pulls === 1, JSON.stringify(r));
     });
-    await hunt(student, les, mode, 'eshchyo-razok', async gf => {
-      const r = await gf.evaluate(() => { const st = window.__lab.lab.state; return { evil: st.evil, gems: st.gems }; });
-      check('Без спрятанной механики: честная версия — без кристаллов и паттернов', !r.evil && r.gems === 0, JSON.stringify(r));
-    }, { 'ещё разок': 0 });
+    await sabotage(student, teacher, les, mode, cfg => Object.keys(cfg).length === 6 && Object.values(cfg).every(v => v === 0));
     await motion(student, les, shot);
     // охота за паттернами в ремейке: пять пойманы — карты переворачиваются, на обороте честная замена
     await student.locator('#step-ohota').scrollIntoViewIfNeeded();

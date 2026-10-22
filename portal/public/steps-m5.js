@@ -219,16 +219,18 @@
     fade(g, W, H, t, 9, C19.deep);
   };
 
-  MOTION['reigns-echo'] = (g, t, W, H) => {
+  // переключатель pamyat (В3, урок 19): выключен — «карты забывают», кузнец не возвращается, урожай цел, выбор ничего не значит
+  MOTION['reigns-echo'] = (g, t, W, H, c = {}) => {
     t %= 10; hearth(g, W, H, t);
+    const mem = c.pamyat !== false;
     // весы: «нет» кузнецу — люди чуть вверх; пастуху «да» — стада; гостю «да» — гости; кузнец ушёл — урожай рушится
     const v = [0.66, 0.5, 0.48, 0.5];
-    v[1] += 0.07 * io(seg(t, 2.1, 2.5)); v[2] += 0.12 * io(seg(t, 3.4, 3.8)); v[3] += 0.12 * io(seg(t, 4.6, 5.0)); v[0] -= 0.5 * io(seg(t, 6.4, 7.0));
+    v[1] += 0.07 * io(seg(t, 2.1, 2.5)); v[2] += 0.12 * io(seg(t, 3.4, 3.8)); v[3] += 0.12 * io(seg(t, 4.6, 5.0)); if (mem) v[0] -= 0.5 * io(seg(t, 6.4, 7.0));
     const flash = {}, shake = {};
     if (t > 2.1 && t < 2.9) flash[1] = [C19.green, seg(t, 2.1, 2.9)];
     if (t > 3.4 && t < 4.2) flash[2] = [C19.green, seg(t, 3.4, 4.2)];
     if (t > 4.6 && t < 5.4) flash[3] = [C19.green, seg(t, 4.6, 5.4)];
-    if (t > 6.4 && t < 8.2) { flash[0] = [C19.red, (seg(t, 6.4, 8.2) * 3) % 1]; shake[0] = seg(t, 6.4, 7.1); }
+    if (mem && t > 6.4 && t < 8.2) { flash[0] = [C19.red, (seg(t, 6.4, 8.2) * 3) % 1]; shake[0] = seg(t, 6.4, 7.1); }
     deck19(g, 320, 182, 2);
     const CARDS = [['smith', 0.1, 0.8, 1.7, -1, 'Нет', 'Кузнец: дай угля для кузни'], ['shepherd', 2.3, 2.7, 3.0, 1, 'Да', 'Пастух: пустишь стадо на луг?'], ['guest', 3.5, 3.9, 4.2, 1, 'Да', 'Гость: можно переночевать?']];
     let ask = null;
@@ -236,7 +238,8 @@
       const p = swipe(t, a, b, c, dir); if (!p.on) return;
       card19(g, p.x, p.y, p.rot, p.s, who, lab, p.lean); if (t < c) ask = [s, seg(t, a + 0.1, a + 0.4)];
     });
-    if (t > 4.8) {
+    if (!mem && t > 4.8) { card19(g, 320, 182, 0, 0.9, 'smith', null, 0); ask = ['Кузнец: дай угля для кузни', seg(t, 5.0, 5.4)]; } // просто новая карта: прошлое забыто
+    if (mem && t > 4.8) {
       const k = ob(seg(t, 4.8, 5.3)), sh = t > 5.6 && t < 6.2 ? Math.sin(t * 40) * 3 * (1 - seg(t, 5.6, 6.2)) : 0;
       card19(g, 320 + sh, 182 + (1 - k) * 34, 0, 0.86 + 0.14 * k, 'gone', null, 0); ask = ['Кузнец: я ушёл в соседний аул', seg(t, 5.0, 5.4)];
     }
@@ -251,21 +254,22 @@
     // память: сыгранные карты слева
     const CH = [['Кузнец — нет', 1.95], ['Пастух — да', 3.2], ['Гость — да', 4.4]];
     CH.forEach(([s, a], i) => {
-      const k = ob(seg(t, a, a + 0.4)); if (k <= 0) return; const y = 130 + i * 36, hot = i === 0 && t > 6.0;
-      g.save(); g.globalAlpha = clamp(k, 0, 1); g.translate((1 - k) * 60, 0);
+      const k = ob(seg(t, a, a + 0.4)); if (k <= 0) return; const y = 130 + i * 36, hot = mem && i === 0 && t > 6.0;
+      g.save(); g.globalAlpha = clamp(k, 0, 1) * (mem ? 1 : Math.max(0.2, 1 - seg(t, 5.0, 6.0))); g.translate((1 - k) * 60, 0); // без памяти сыгранные карты тают
       rr(g, 18, y - 14, 150, 28, 9, hot ? 'rgba(90,20,30,.9)' : 'rgba(26,15,38,.78)', hot ? C19.red : 'rgba(243,226,192,.25)');
       text(g, s, 93, y + 1, hot ? '#ffd0d0' : C19.parch, 13, 'center', 700); g.restore();
     });
-    if (t > 6.0) {
+    if (mem && t > 6.0) {
       const k = io(seg(t, 6.0, 6.5)); g.setLineDash([6, 6]); g.strokeStyle = C19.red; g.lineWidth = 3;
       qcurve(g, 170, 130, 222, 128, 254, 168, k); g.stroke(); g.setLineDash([]);
       if (k >= 1) { const ag = Math.atan2(168 - 128, 254 - 222); poly(g, [[257, 171], [257 - Math.cos(ag - 0.5) * 13, 171 - Math.sin(ag - 0.5) * 13], [257 - Math.cos(ag + 0.5) * 13, 171 - Math.sin(ag + 0.5) * 13]], C19.red); }
     }
-    if (t > 6.6) {
+    if (mem && t > 6.6) {
       const k = ob(seg(t, 6.6, 7.0)); g.save(); g.translate(520, 168); g.scale(k, k);
       rr(g, -96, -30, 192, 60, 12, 'rgba(90,20,30,.9)', C19.red); text(g, 'нет кузнеца —', 0, -10, '#ffd0d0', 14); text(g, 'нет серпов и урожая', 0, 11, '#ffd0d0', 13, 'center', 700); g.restore();
     }
-    caps(g, t, [[0.3, 'Отказал кузнецу — весы почти не дрогнули'], [2.3, 'Прошли сезоны…'], [4.8, '…и кузнец вернулся с новостью'], [6.6, 'Видимое — сейчас, скрытое — потом']]);
+    caps(g, t, mem ? [[0.3, 'Отказал кузнецу — весы почти не дрогнули'], [2.3, 'Прошли сезоны…'], [4.8, '…и кузнец вернулся с новостью'], [6.6, 'Видимое — сейчас, скрытое — потом']]
+      : [[0.3, 'Отказал кузнецу — весы почти не дрогнули'], [2.3, 'Прошли сезоны…'], [4.8, '…кузнец пришёл, будто ничего не было'], [6.6, 'Карты забыли — выбор ничего не значил']]);
     fade(g, W, H, t, 10, C19.deep);
   };
 
@@ -496,8 +500,10 @@
     isoPoly(g, [[x + w, y, z], [x + w, y + d, z], [x + w, y + d, z + h], [x + w, y, z + h]], right);
     isoPoly(g, [[x, y, z + h], [x + w, y, z + h], [x + w, y + d, z + h], [x, y + d, z + h]], top);
   }
-  MOTION['room-reads'] = (g, t, W, H) => {
+  // переключатель chemodany (В3, урок 20): выключен — убрали одну вещь, чемоданы у двери, и история рассыпается
+  MOTION['room-reads'] = (g, t, W, H, c = {}) => {
     t %= 10; sky(g, W, H, '#3a2a22', '#22180f');
+    const bags = c.chemodany !== false;
     glow(g, 320, 120, 320, 'rgba(255,217,138,.16)');
     // стены и пол
     isoPoly(g, [[0, 0, 0], [7, 0, 0], [7, 0, 3], [0, 0, 3]], '#8a6248'); isoPoly(g, [[0, 0, 0], [0, 7, 0], [0, 7, 3], [0, 0, 3]], '#6e4c38');
@@ -511,8 +517,10 @@
     // коврик
     isoPoly(g, [[1.6, 2.6, 0], [4.6, 2.6, 0], [4.6, 5.8, 0], [1.6, 5.8, 0]], '#3f8f88'); isoPoly(g, [[1.9, 2.9, 0], [4.3, 2.9, 0], [4.3, 5.5, 0], [1.9, 5.5, 0]], '#4fa8a0');
     // чемоданы у двери
-    isoBox(g, 4.5, 0.55, 0, 0.7, 0.35, 1.3, '#e07a5a', '#a8503a', '#c0603f'); isoBox(g, 5.35, 0.7, 0, 0.75, 0.4, 1.0, '#7fd8cf', '#3f8f88', C20.teal);
-    { const [a, b] = ISO(4.85, 0.72, 1.3); rr(g, a - 6, b - 6, 12, 5, 2, '#5a2a1a'); }
+    if (bags) {
+      isoBox(g, 4.5, 0.55, 0, 0.7, 0.35, 1.3, '#e07a5a', '#a8503a', '#c0603f'); isoBox(g, 5.35, 0.7, 0, 0.75, 0.4, 1.0, '#7fd8cf', '#3f8f88', C20.teal);
+      const [a, b] = ISO(4.85, 0.72, 1.3); rr(g, a - 6, b - 6, 12, 5, 2, '#5a2a1a');
+    }
     // стол с билетом
     isoBox(g, 2.9, 2.5, 0, 1.6, 1.2, 0.9, '#c9965f', '#8a5f3e', '#a8774e');
     isoPoly(g, [[3.2, 2.85, 0.9], [4.05, 2.85, 0.9], [4.05, 3.3, 0.9], [3.2, 3.3, 0.9]], '#ffd0c0'); isoPoly(g, [[3.75, 2.85, 0.9], [3.82, 2.85, 0.9], [3.82, 3.3, 0.9], [3.75, 3.3, 0.9]], '#c0503a');
@@ -520,7 +528,7 @@
     isoBox(g, 0.7, 5.0, 0, 0.8, 0.8, 0.7, '#c9965f', '#8a5f3e', '#a8774e');
     { const [a, b] = ISO(1.1, 5.4, 0.7); rr(g, a - 7, b - 13, 14, 13, 4, C20.paper); g.strokeStyle = C20.paper; g.lineWidth = 2.5; g.beginPath(); g.arc(a + 8, b - 7, 4, -Math.PI / 2, Math.PI / 2); g.stroke(); g.fillStyle = '#a8643a'; g.beginPath(); g.ellipse(a, b - 12, 6, 2, 0, 0, TAU); g.fill(); }
     // улики по очереди
-    const CL = [{ p: ISO(5.1, 0.8, 0.7), s: 'два чемодана у двери', lx: 520, ly: 76 }, { p: ISO(3.6, 3.1, 0.9), s: 'билет на поезд', lx: 470, ly: 238 }, { p: ISO(1.1, 5.4, 0.95), s: 'недопитый чай', lx: 112, ly: 150 }];
+    const CL = [{ p: ISO(5.1, 0.8, 0.7), s: 'два чемодана у двери', lx: 520, ly: 76 }, { p: ISO(3.6, 3.1, 0.9), s: 'билет на поезд', lx: 470, ly: 238 }, { p: ISO(1.1, 5.4, 0.95), s: 'недопитый чай', lx: 112, ly: 150 }].filter((x, i) => bags || i > 0);
     CL.forEach((c, i) => {
       const a = 0.8 + i * 1.9, k = ob(seg(t, a, a + 0.45)); if (t < a) return;
       const cur = t < a + 1.9 && t < 6.6, [x, y] = c.p, pul = 1 + 0.12 * Math.sin(t * 6);
@@ -531,10 +539,10 @@
       g.save(); g.translate(c.lx, c.ly); g.scale(k, k); rr(g, -w / 2, -14, w, 28, 9, 'rgba(43,29,22,.92)', cur ? C20.lamp : 'rgba(255,217,138,.35)'); text(g, c.s, 0, 1, C20.paper, 14); g.restore();
     });
     // фраза собирается из трёх слов
-    const WORDS = ['Кто-то', 'уехал', 'в спешке'], FROM = [[112, 150], [520, 76], [470, 238]], px = 22;
+    const WORDS = bags ? ['Кто-то', 'уехал', 'в спешке'] : ['Кто-то', 'пил чай', 'и…?'], FROM = bags ? [[112, 150], [520, 76], [470, 238]] : [[112, 150], [470, 238], [320, 150]], px = 22;
     const ws = WORDS.map(s => tw(g, s, px)), total = ws.reduce((a, b) => a + b, 0) + 12 * 2;
     if (t > 6.6) {
-      const done = ob(seg(t, 7.9, 8.3));
+      const done = bags ? ob(seg(t, 7.9, 8.3)) : 0;
       if (done > 0) { g.save(); g.translate(320, 34); g.scale(0.85 + 0.15 * done, 0.85 + 0.15 * done); glow(g, 0, 0, 160, 'rgba(255,217,138,.4)', done); rr(g, -total / 2 - 20, -22, total + 40, 44, 14, C20.lamp); g.restore(); }
       let x = 320 - total / 2;
       WORDS.forEach((s, i) => {
@@ -543,7 +551,7 @@
         text(g, s, lerp(fx, tx, k), lerp(fy, 34, k) - bell(k) * 30, done > 0 ? C20.ink : C20.lamp, px);
       });
     }
-    caps(g, t, [[0.3, 'Gone Home: комнату читают, как письмо'], [6.6, 'Вещи — это улики: история сложилась сама']], { bg: 'rgba(43,29,22,.9)', col: C20.paper });
+    caps(g, t, [[0.3, 'Gone Home: комнату читают, как письмо'], [6.6, bags ? 'Вещи — это улики: история сложилась сама' : 'Убрали чемоданы — и уже не понять, что случилось']], { bg: 'rgba(43,29,22,.9)', col: C20.paper });
     fade(g, W, H, t, 10, '#22180f');
   };
 
@@ -682,10 +690,11 @@
     for (let i = 1; i <= 4; i++) g.lineTo(7 - i * 7, -26 + Math.sin(t * 9 + i * 1.2) * 1.4 * i + i * 1.3); g.stroke();
     g.restore();
   }
-  MOTION['palette-five'] = (g, t, W, H) => {
-    t %= 9; const p = SUNSET, ACID = '#a6ff2b', COLS = ['#ffcf7a', '#ff8a5c', '#6a4c93', '#2b2d5a', '#f2efe6'];
+  // переключатель six (В3, урок 21): включён — шестой, кислотный цвет не уходит, и мир так и спорит сам с собой
+  MOTION['palette-five'] = (g, t, W, H, c = {}) => {
+    t %= 9; const p = SUNSET, ACID = '#a6ff2b', COLS = ['#ffcf7a', '#ff8a5c', '#6a4c93', '#2b2d5a', '#f2efe6'], keep = c.six === true;
     alto(g, W, H, p, t);
-    const tx = 470, ty = surf(470) - 26, fl = seg(t, 3.2, 3.7), gone = io(seg(t, 5.0, 5.7)), hitK = seg(t, 3.7, 4.0);
+    const tx = 470, ty = surf(470) - 26, fl = seg(t, 3.2, 3.7), gone = keep ? 0 : io(seg(t, 5.0, 5.7)), hitK = seg(t, 3.7, 4.0);
     if (t > 3.7 && gone < 1) alpha(g, 1 - gone, () => {
       const s = 1 + 0.12 * bell(hitK); pine(g, tx, surf(tx) + 3, 1.25 * s, ACID);
       for (let j = 0; j < 10; j++) { const a = pr(j) * TAU, r = (22 + pr(j + 5) * 26) * oc(hitK); disc(g, tx + Math.cos(a) * r, ty + Math.sin(a) * r * 0.8, 2 + pr(j + 9) * 4, ACID); }
@@ -704,7 +713,7 @@
       if (i === 5) cross(g, x, 253, 14, seg(t, 4.4, 4.8) * (1 - gone));
     }
     cross(g, tx, ty - 8, 22, seg(t, 4.4, 4.8) * (1 - gone));
-    caps(g, t, [[0.3, 'Alto: весь мир — из пяти красок'], [3.8, 'Шестой, кислотный — и мир будто сломался'], [5.8, 'Пять цветов — и мир цельный']], { y: 30, bg: '#2b2d5a', col: '#f2efe6' });
+    caps(g, t, [[0.3, 'Alto: весь мир — из пяти красок'], [3.8, 'Шестой, кислотный — и мир будто сломался'], [5.8, keep ? 'Шестой цвет остался — глаз спотыкается о него' : 'Пять цветов — и мир цельный']], { y: 30, bg: '#2b2d5a', col: '#f2efe6' });
   };
 
   const MOODS = [
@@ -1028,9 +1037,10 @@
   };
 
   const LOOP = [['засыхает сам', 'тревога', '#ff5d7a'], ['тянется к тебе', 'забота', '#4fbf72'], ['ждёт, пока ты занят', 'вина', '#8a6fe0']];
-  MOTION['feel-loop'] = (g, t, W, H) => {
+  // переключатель shkala (В3, урок 22): включён — росток стал просто шкалой воды, правило то же, а чувство не приходит
+  MOTION['feel-loop'] = (g, t, W, H, c = {}) => {
     t %= 9; pastel(g, W, H, t, '#fbf7ff', '#eef8ff');
-    const L = Math.floor(t / 3), lt = t - L * 3, [rule, feel, col] = LOOP[L];
+    const bar = c.shkala === true, L = Math.floor(t / 3), lt = t - L * 3, [rule, feel0, col] = LOOP[L], feel = bar ? 'ничего' : feel0;
     const cx = 320, cy = 136, rx = 200, ry = 90, pos = a => [cx + Math.cos(a * Math.PI / 180) * rx, cy + Math.sin(a * Math.PI / 180) * ry];
     g.setLineDash([2, 9]); g.strokeStyle = 'rgba(74,59,107,.4)'; g.lineWidth = 4; g.beginPath(); g.ellipse(cx, cy, rx, ry, 0, 0, TAU); g.stroke(); g.setLineDash([]);
     [-30, 90, 210].forEach(a => { const [x, y] = pos(a), [x2, y2] = pos(a + 3); const ag = Math.atan2(y2 - y, x2 - x); poly(g, [[x + Math.cos(ag) * 9, y + Math.sin(ag) * 9], [x + Math.cos(ag + 2.4) * 9, y + Math.sin(ag + 2.4) * 9], [x + Math.cos(ag - 2.4) * 9, y + Math.sin(ag - 2.4) * 9]], 'rgba(74,59,107,.55)'); });
@@ -1041,10 +1051,16 @@
     { const [x, y] = pos(angAt(lt)); soft(g, x, y, 24, '255,255,255', 0.95); disc(g, x, y, 8, col); }
     // росток в центре — по правилу этого круга
     const pxp = cx, pyp = cy + 64;
-    if (L === 0) { sprout(g, pxp, pyp - 30, 0.9, 0.05 + Math.sin(t * 20) * 0.03, 0.55); }
-    if (L === 1) { sprout(g, pxp, pyp - 30, 0.9, 0.4 * Math.sin(lt * 1.5) + 0.25, 0); }
-    if (L === 2) { sprout(g, pxp, pyp - 30, 0.9, 0, 0.75); }
-    pot(g, pxp, pyp);
+    if (bar) { // полоска воды вместо ростка: та же вода, тот же полив — а смотреть не на кого
+      const wv = clamp(0.35 + 0.5 * io(seg(lt, 0.9, 1.6)) - 0.2 * seg(lt, 1.6, 3.0), 0, 1);
+      rr(g, pxp - 60, pyp - 44, 120, 22, 11, '#ffffff', 'rgba(74,59,107,.4)'); rr(g, pxp - 57, pyp - 41, Math.max(16, 114 * wv), 16, 8, '#7fc8ff');
+      text(g, 'вода ' + Math.round(wv * 100) + ' %', pxp, pyp - 8, 'rgba(74,59,107,.8)', 13, 'center', 700);
+    } else {
+      if (L === 0) { sprout(g, pxp, pyp - 30, 0.9, 0.05 + Math.sin(t * 20) * 0.03, 0.55); }
+      if (L === 1) { sprout(g, pxp, pyp - 30, 0.9, 0.4 * Math.sin(lt * 1.5) + 0.25, 0); }
+      if (L === 2) { sprout(g, pxp, pyp - 30, 0.9, 0, 0.75); }
+      pot(g, pxp, pyp);
+    }
     const NODES = [{ a: -90, h: 'ПРАВИЛО', v: rule, at: 0 }, { a: 30, h: 'ДЕЙСТВИЕ ИГРОКА', v: 'поливаешь', at: 0.9 }, { a: 150, h: 'ЧУВСТВО', v: feel, at: 1.8 }];
     NODES.forEach((nd, i) => {
       const [x, y] = pos(nd.a), pulse = bell(seg(lt, nd.at, nd.at + 0.35)) + (i === 0 ? bell(seg(lt, 2.7, 3.0)) : 0), w = 198, h = 56;
@@ -1059,7 +1075,7 @@
       g.restore();
     });
     LOOP.forEach((p, i) => disc(g, 588 + i * 16, 22, i === L ? 6 : 4, i === L ? p[2] : 'rgba(74,59,107,.25)'));
-    caps(g, t, [[0.2, 'Поменяй правило — поменяется и чувство']], { bg: 'rgba(74,59,107,.9)', col: '#fff4f8' });
+    caps(g, t, [[0.2, bar ? 'Росток — просто шкала: правило есть, а чувства нет' : 'Поменяй правило — поменяется и чувство']], { bg: 'rgba(74,59,107,.9)', col: '#fff4f8' });
     fade(g, W, H, t, 9, '#fbf7ff');
   };
 })();

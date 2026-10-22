@@ -575,8 +575,10 @@
         if (!form.feel && !form.fix && !(form.text || '').trim()) { toast('Выбери чувство или напиши строку'); return; }
         send.disabled = true;
         try {
-          K = (await api('/api/karusel/note', { round: r, game: K.target.id, feel: form.feel, fix: form.fix, text: form.text })).karusel;
-          v.notes[r] = { game: K.target && K.target.title, feel: form.feel, fix: form.fix, text: form.text }; v.given = K.given; ctx.save(v, ctx.done || v.given >= Math.min(3, K.rounds));
+          const tg = K.target;
+          K = (await api('/api/karusel/note', { round: r, game: tg.id, feel: form.feel, fix: form.fix, text: form.text })).karusel;
+          // game — последняя игра круга: шаг с about: 'karusel' (UX-аудит урока 24) берёт её, как игру соседа из шага arcade
+          v.notes[r] = { game: tg.title, feel: form.feel, fix: form.fix, text: form.text }; v.game = tg.id; v.title = tg.title; v.given = K.given; ctx.save(v, ctx.done || v.given >= Math.min(3, K.rounds));
           beep('good'); paint();
         } catch (e) { toast(e.message, 'err'); send.disabled = false; if (/сменился|закончилась/.test(e.message)) load(); }
       } }, K.sent ? 'Отправить заново' : 'Отправить отзыв');

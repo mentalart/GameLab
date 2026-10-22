@@ -46,6 +46,7 @@ const GAME = {
     sunset: { value: 0, min: 0, max: 1, step: 1, label: 'Свет меняется по пути: утро → закат', names: ['нет', 'да'] },
     lift: { value: 0, min: 0, max: 1, step: 1, label: 'Туман рассеивается от каждой находки', names: ['нет', 'да'] },
     hunt: { value: 0, min: 0, max: 1, step: 1, label: 'Охота за секретами на время', restart: true, names: ['нет', 'да'], hint: 'Одно плато: кто найдёт три секрета быстрее' },
+    kvest: { value: 0, min: 0, max: 1, step: 1, label: 'Урок-квест: три плато — одна большая карта класса', restart: true, names: ['нет', 'да'], hint: 'Секреты общие: что нашёл одноклассник, отмечено и у тебя (урок 16)' },
     speed: { value: 6, min: 2, max: 12, step: 0.5, label: 'Скорость шага, м/с' },
     turn: { value: 2.6, min: 1, max: 5, step: 0.1, label: 'Скорость поворота' },
     limit: { value: 360, min: 60, max: 900, step: 30, label: 'Время на партию, с' },
@@ -160,15 +161,27 @@ const GAME = {
     ]],
   ],
 
+  // урок-квест (урок 16, Г4 аудита): три плато — одна карта 108 × 26. В стенах между плато проходы (строки KVEST_GATES),
+  // старт — только на первом плато, свет на вершине — только на последнем; остальные «@» и «A» стали тропой. Все 9 секретов и вершина
+  // достижимы со старта (проверено поиском в ширину). Карту берёт и урок: план квеста на шаге kvest и на проекторе.
+  KVEST_GATES: [[8, 9, 21], [3, 4, 14, 15]],
+  kvestMap() {
+    const rows = this.MAPS.map(([, r]) => r.map(x => x.split('')));
+    this.KVEST_GATES.forEach((gs, i) => gs.forEach(r => { rows[i][r][35] = '.'; rows[i + 1][r][0] = '.'; }));
+    rows.forEach((m, i) => m.forEach(row => row.forEach((ch, k) => { if ((ch === 'A' && i < 2) || (ch === '@' && i > 0)) row[k] = ','; })));
+    return rows[0].map((_, r) => rows.map(m => m[r].join('')).join(''));
+  },
   ownLevels(lab) {
-    const c = lab.cfg, maps = Math.round(c.hunt) ? [this.MAPS[0]] : this.MAPS;
+    const c = lab.cfg;
+    if (Math.round(c.kvest)) return [{ name: 'Большое плато класса', map: (c.landmark < 0.5 ? this.kvestMap().map(r => r.replace(/L/g, '.')) : this.kvestMap()).join('\n') }];
+    const maps = Math.round(c.hunt) ? [this.MAPS[0]] : this.MAPS;
     return maps.map(([name, rows]) => ({ name, map: (c.landmark < 0.5 ? rows.map(r => r.replace(/L/g, '.')) : rows).join('\n') }));
   },
 
   start(lab, scene) {
     const st = lab.state, c = lab.cfg;
     Object.assign(st, { li: -1, lv: [], score0: 0, summits: 0, secretsGot: 0, secretsAll: 0, levelT0: 0, times: [], pass: 0, chain: 0, chainT: -9, callT: -9,
-      fogK: 1, mood: -1, moodT: 0, guide: c.secret > 0.5, hunt: Math.round(c.hunt) > 0, done: false });
+      fogK: 1, mood: -1, moodT: 0, guide: c.secret > 0.5, hunt: Math.round(c.hunt) > 0, kvest: Math.round(c.kvest) > 0, classFound: 0, done: false });
     st.list = lab.levels(this.ownLevels(lab), this.LEGEND);
     st.hero = this.buildHero(lab);
     lab.hero(st.hero.node);
@@ -197,6 +210,7 @@ const GAME = {
     h.walk = lab.damp(h.walk, Math.abs(h.v) / c.speed, 10, dt);
     if (p.pressed.a && lab.t - st.callT > 0.9) this.call(lab, L);
     this.touch(lab, L, h);
+    if (st.kvest) this.classSecrets(lab, L);
     this.animHero(lab, h, dt);
     this.aim(lab, dt);
     const [cx, cy] = this.toCell(L, h.x, h.z);
@@ -326,7 +340,7 @@ const GAME = {
       const [x, z] = this.toWorld(L, k, r);
       const base = lab.cyl(0.7, 0.85, 0.3, '#8a8fa3', { at: [x, 0.15, z], parent: root, sides: 7 });
       const gem = lab.mesh(new T.OctahedronGeometry(0.42, 0), lab.mat('#b49bff', { glow: 1.1 }), { at: [x, 1.1, z], parent: root });
-      L.secrets.push({ x, z, k, r, got: false, base, gem, hintT: 0 });
+      L.secrets.push({ x, z, k, r, key: k + ',' + r, got: false, base, gem, hintT: 0 });
     }
     st.secretsAll += L.secrets.length;
     // ориентир: каменный великан, глаза светятся и видны сквозь туман
@@ -433,6 +447,7 @@ const GAME = {
     for (const s of L.secrets) if (!s.got && lab.flat([s.x, 0, s.z], me) < 1.6) {
       s.got = true; L.got++; st.secretsGot++; s.gem.visible = false;
       lab.spot('secret', s.k + 0.5, s.r + 0.5);
+      if (st.kvest) lab.net.send({ secret: s.key }); // урок-квест: находка уходит классу
       lab.count('секреты'); lab.sfx.power(); lab.flash('#b49bff', 0.25); lab.shake(0.15);
       lab.burst([s.x, 1.2, s.z], { count: 26, colors: ['#b49bff', '#e4d9ff', '#ffffff'], speed: 5, up: 4, size: 0.16 });
       lab.addScore(st.hunt ? 500 : 200, [s.x, 2, s.z], '#d8c8ff');
@@ -453,6 +468,15 @@ const GAME = {
       lab.popup([L.goalW.x, 4, L.goalW.z], `Вершина за ${sec.toFixed(0)} с`, '#fff3b0', 24);
       lab.count('вершины');
       st.pass = 2; L.goalW = null;
+    }
+  },
+  // урок-квест: секреты, которые нашёл класс, гаснут до серого камня с ником — их уже открыли; свои находки — как обычно
+  classSecrets(lab, L) {
+    const st = lab.state, room = (lab.net.on && lab.net.room) || {}, found = room.found || {};
+    st.classFound = Object.keys(found).length; st.classTotal = room.total || L.secrets.length;
+    for (const s of L.secrets) if (!s.got && !s.taken && found[s.key]) {
+      s.taken = found[s.key]; s.gem.scale.setScalar(0.45);
+      if (lab.flat([s.x, 0, s.z], [st.hero.x, 0, st.hero.z]) < 30) lab.popup([s.x, 2.4, s.z], `Нашёл(а) ${String(s.taken).slice(0, 16)}`, '#d8c8ff', 16);
     }
   },
   finish(lab) {
@@ -508,7 +532,8 @@ const GAME = {
   },
   hud(lab, L) {
     const st = lab.state, c = lab.cfg, h = st.hero, left = Math.max(0, Math.round(c.limit - lab.t));
-    lab.hud('info', st.hunt ? `✨ Секреты ${L.got} из ${L.secrets.length} · ⏱ ${(lab.t - st.levelT0).toFixed(1)} с` : `Плато ${st.li + 1} из ${st.list.length} · ✨ секретов ${st.secretsGot} · ⏱ ${left} с`, { color: '#ffffff', size: 15 });
+    lab.hud('info', st.kvest ? `🗺 Класс нашёл ${Math.max(st.classFound, st.secretsGot)} из ${st.classTotal || L.secrets.length} · ✨ твоих ${st.secretsGot} · ⏱ ${left} с`
+      : st.hunt ? `✨ Секреты ${L.got} из ${L.secrets.length} · ⏱ ${(lab.t - st.levelT0).toFixed(1)} с` : `Плато ${st.li + 1} из ${st.list.length} · ✨ секретов ${st.secretsGot} · ⏱ ${left} с`, { color: '#ffffff', size: 15 });
     if (c.compass > 0.5 && L.goalW) {
       const dx = L.goalW.x - h.x, dz = L.goalW.z - h.z, ang = Math.atan2(dx, dz) - h.yaw;
       const a = ((ang % (Math.PI * 2)) + Math.PI * 3) % (Math.PI * 2) - Math.PI, arrows = ['⬇', '↙', '⬅', '↖', '⬆', '↗', '➡', '↘'];

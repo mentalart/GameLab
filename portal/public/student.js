@@ -86,7 +86,7 @@ function listen() {
   // уровни класса (модуль 4): новый уровень, партия, оценка — галерея и редактор обновляются сами
   es.addEventListener('levels', e => { const d = JSON.parse(e.data); S.hooks.forEach(h => h('levels', d)); });
   // модуль 7: забег арены, турнирная сетка, команда джема — шаги arena, bracket, team и другие обновляются сами; модуль 8: питчи и Фестиваль (proekt)
-  ['arena', 'bracket', 'team', 'proekt', 'sabotage', 'karusel'].forEach(ev => es.addEventListener(ev, e => { const d = JSON.parse(e.data); S.hooks.forEach(h => h(ev, d)); }));
+  ['arena', 'bracket', 'team', 'proekt', 'sabotage', 'karusel', 'kvest', 'sovet'].forEach(ev => es.addEventListener(ev, e => { const d = JSON.parse(e.data); S.hooks.forEach(h => h(ev, d)); }));
   // джем: товарищ по команде заполнил общий шаг (team: true) — ответ и игра команды приходят сюда; шаг перерисуется, если в нём не печатают
   es.addEventListener('team', e => {
     const d = JSON.parse(e.data);

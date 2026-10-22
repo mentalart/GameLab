@@ -26,7 +26,7 @@ async function boot() {
   const q = new URLSearchParams(location.search);
   try { P.code = q.get('code') || localStorage.getItem('lab:teacher:class'); } catch (e) { P.code = q.get('code'); }
   if (!P.code) { $('#pj-lesson').append(el('div', { class: 'card' }, 'Сначала создайте класс в панели учителя.')); return; }
-  if (['demo', 'day', 'poll', 'final', 'fail', 'pair', 'm7', 'm8', 'teatr', 'goal', 'sab', 'kar'].includes(q.get('tab'))) P.tab = q.get('tab');
+  if (['demo', 'day', 'poll', 'final', 'fail', 'pair', 'm7', 'm8', 'teatr', 'goal', 'sab', 'kar', 'kv', 'sv'].includes(q.get('tab'))) P.tab = q.get('tab');
   P.reacts = LabKlassPult.reacts(); P.reactBuf = [];
   await refresh();
   listenPj();
@@ -44,6 +44,8 @@ function listenPj() {
   es.addEventListener('theater', e => { if (P.teatr) P.teatr.event(JSON.parse(e.data)); });
   es.addEventListener('sabotage', () => { if (P.sab) P.sab.event(); });
   es.addEventListener('karusel', () => { if (P.kar) P.kar.event(); });
+  es.addEventListener('kvest', () => { if (P.kv) P.kv.event(); });
+  es.addEventListener('sovet', () => { if (P.sv) P.sv.event(); });
   es.addEventListener('goal', e => { const d = JSON.parse(e.data); if (P.o) { P.o.goal = d.off ? null : d; if (P.tab === 'goal' && P.goalPult) P.goalPult.draw(); if (P.tab === 'lesson') drawLesson(); } });
   es.addEventListener('fails', () => { if (P.failGal) P.failGal.load(); });
 }
@@ -110,6 +112,13 @@ async function refresh() {
   $('#karTab').hidden = !kar;
   if (!kar && P.tab === 'kar') P.tab = 'lesson';
   if (P.kar && P.karLesson !== o.lesson.id) { P.kar.destroy(); P.kar = null; }
+  // урок-квест и совет аула (сессия 6): вкладки есть, если в уроке шаг kvest или sovet
+  for (const [tab, type] of [['kv', 'kvest'], ['sv', 'sovet']]) {
+    const has = o.lesson.checkpoints.some(c => c.steps.some(s => s.type === type));
+    $('#' + tab + 'Tab').hidden = !has;
+    if (!has && P.tab === tab) P.tab = 'lesson';
+    if (P[tab] && P[tab + 'Lesson'] !== o.lesson.id) { P[tab].destroy(); P[tab] = null; }
+  }
   showTab();
   if (P.tab === 'lesson') drawLesson();
   else if (P.tab === 'day') await refreshDay();
@@ -121,6 +130,7 @@ async function refresh() {
   else if (P.tab === 'teatr') P.teatr.refresh();
   else if (P.tab === 'sab') P.sab.refresh();
   else if (P.tab === 'kar') P.kar.refresh();
+  else if (P.tab === 'kv' || P.tab === 'sv') { /* живут по событиям класса */ }
   else if (P.tab === 'goal') P.goalPult.draw();
   else if (P.mode === 'wow') await refreshWow();
   else await refreshDemo();
@@ -145,6 +155,11 @@ function showTab() {
   $('#pj-kar').hidden = P.tab !== 'kar';
   if (P.tab === 'kar' && !P.kar) { P.kar = LabStepsM3.karuselPult($('#pj-kar'), { code: () => P.code, lesson: () => P.o && P.o.lesson }); P.karLesson = P.o.lesson.id; }
   if (P.tab !== 'kar' && P.kar) { P.kar.destroy(); P.kar = null; }
+  for (const [tab, make] of [['kv', 'kvestPult'], ['sv', 'sovetPult']]) {
+    $('#pj-' + tab).hidden = P.tab !== tab;
+    if (P.tab === tab && !P[tab]) { P[tab] = LabStepsM47[make]($('#pj-' + tab), { code: () => P.code, lesson: () => P.o && P.o.lesson }); P[tab + 'Lesson'] = P.o.lesson.id; }
+    if (P.tab !== tab && P[tab]) { P[tab].destroy(); P[tab] = null; }
+  }
   $('#pj-goal').hidden = P.tab !== 'goal';
   if (P.tab === 'goal' && !P.goalPult) P.goalPult = LabKlassPult.goal($('#pj-goal'), { code: () => P.code, get: () => P.o && P.o.goal });
   if (P.tab !== 'goal' && P.goalPult) { P.goalPult = null; $('#pj-goal').innerHTML = ''; }

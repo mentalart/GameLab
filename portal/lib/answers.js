@@ -37,6 +37,11 @@ function answerText(step, a, game) {
     case 'slomano': return v.pick ? `сломано: ${v.pick}${v.correct ? ` — нашёл за ${v.t} с` : v.trap ? ' — ловушка' : ' — не то'}` : v.rounds ? `партий ${v.rounds}, ищет` : '';
     case 'bumaga': return v.voted ? `ответ: ${v.pick || val(v.own)}` : v.played ? 'сыграли' : v.t0 ? 'играют' : '';
     case 'koloda': return v.line ? `главное: ${v.line}` : (v.seen || []).length ? `перевернул ${v.seen.length} из ${(step.cards || []).length}` : '';
+    // модули 4–7 (сессия 6 аудита): гость, урок-квест, совет аула, музей
+    case 'gost': return v.pick ? `ответ гостю: ${v.pick}${v.correct ? ' — верно' : ''}` : v.t0 ? 'слушает гостя' : '';
+    case 'kvest': return [v.found ? `секретов нашёл: ${v.found}` : v.rounds ? `партий ${v.rounds}` : '', v.pick ? `что привело: ${v.pick}` : '', val(v.own) ? 'свои слова: ' + val(v.own) : ''].filter(Boolean).join('; ');
+    case 'sovet': return [v.votes ? `голосов в совете: ${v.votes}` : '', v.pick ? `ответ: ${v.pick}` : ''].filter(Boolean).join('; ');
+    case 'muzei': return Object.keys(v.notes || {}).length ? `залов: ${Object.keys(v.notes).length}; ` + Object.values(v.notes).map(n => `«${n.title}»: ${[n.emotion, n.story].filter(Boolean).join(' ')}`).join('; ') : '';
     case 'obyasni': return (v.tries || []).length ? `объяснил${v.partner ? ' соседу ' + v.partner : ''}: ${v.tries.map(t => (t === 'got' ? 'понял' : 'не понял')).join(' → ')}` : '';
     case 'factory': return [v.level ? `уровень: ${(step.levels.find(l => l.id === v.level) || {}).label || v.level}` : '', v.limit && v.level === 'boss' ? `карта ограничения: ${v.limit.text}` : '']
       .concat(step.fields.filter(x => val((v.fields || {})[x.id])).map(x => `${x.label}: ${dice(v.fields[x.id])}`)).filter(Boolean).join('\n');

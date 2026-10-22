@@ -8,7 +8,7 @@ const m4 = require('./e2e-m4');
 
 module.exports = function m7(H) {
   const { check, gameFrame, playRound, sleep, mock, lessons } = H;
-  const { open, choice, donor, hunt, motion, variety, final } = m4(Object.assign({}, H, { lessons: {} })).helpers;
+  const { open, choice, donor, hunt, motion, variety, paper, final } = m4(Object.assign({}, H, { lessons: {} })).helpers;
   const stepOf = (les, id) => les.checkpoints.flatMap(c => c.steps).find(s => s.id === id);
   const tapi = (teacher, path, body) => teacher.evaluate(([p, b]) => Lab.api(p, b), [path, body]);
   const sapi = (student, path, body) => student.evaluate(([p, b]) => Lab.api(p, b), [path, body]);
@@ -167,6 +167,7 @@ module.exports = function m7(H) {
     if (shot) await shot(student, 'm7-27-kartochki');
     // мозговой штурм: 10 идей (две — от второго участника вживую), голос, «Берём» — идея становится твистом
     await student.click('.cp >> text=Мозговой штурм');
+    await paper(student, les, 'shturm-bumaga', teacher); // Г3: бумажный штурм — три стопки карточек на столе
     await student.waitForSelector('#step-shturm input');
     const ideaReq = { sent: 0, done: 0, fail: [] };
     student.on('request', r => { if (r.url().includes('/api/team/idea') && !r.url().includes('vote')) ideaReq.sent++; });

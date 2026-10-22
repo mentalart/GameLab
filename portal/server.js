@@ -883,14 +883,15 @@ function m6Tally(code, les, step, me) {
     voted.forEach(r => { if (r.v.pick in pick) pick[r.v.pick]++; (r.v.why || []).slice(0, 2).filter(t => (step.reasons || []).includes(t)).forEach(t => { count[t] = (count[t] || 0) + 1; }); });
     return { hidden: me != null && !mine.voted, n: voted.length, pick, top: Object.entries(count).sort((a, b) => b[1] - a[1]).slice(0, 6).map(([text, n]) => ({ text, n })) };
   }
-  if (step.type === 'zagadka' || step.type === 'slomano' || step.type === 'koloda' || step.type === 'bumaga') {
+  // гость (урок 17, 22) и совет аула (урок 19) — тоже ответы по вариантам (сессия 6 аудита)
+  if (['zagadka', 'slomano', 'koloda', 'bumaga', 'gost', 'sovet', 'kvest'].includes(step.type)) {
     const labels = step.type === 'koloda' ? step.cards.map(c => [c.id, c.name]) : step.options.map(o => [o, o]);
     const voted = rows.filter(r => r.v.pick);
     return { hidden: me != null && !mine.pick, n: voted.length, rows: labels.map(([id, label]) => ({ label, n: voted.filter(r => r.v.pick === id).length })) };
   }
   return { hidden: true };
 }
-const M6_TALLY = ['setka', 'debate', 'kodeks', 'spor', 'zagadka', 'slomano', 'koloda', 'bumaga'];
+const M6_TALLY = ['setka', 'debate', 'kodeks', 'spor', 'zagadka', 'slomano', 'koloda', 'bumaga', 'gost', 'sovet', 'kvest'];
 route('GET', '/api/m6/tally', (ctx) => {
   const { w, les } = needStudent(ctx);
   const step = les.checkpoints.flatMap(c => c.steps).find(x => x.id === ctx.url.searchParams.get('step') && M6_TALLY.includes(x.type));
@@ -2087,6 +2088,7 @@ route('POST', '/api/fail/consent', (ctx) => {
 const K = require('./lib/klass')({ route, needStudent, needTeacher, broadcast, store, lesson, stepOf, failMembers });
 // карусель (Г5 аудита, сессия 5): обмен игр по кругу, каждые 4 минуты игра уходит следующему, автор видит, где отзывы совпали
 require('./lib/karusel')({ route, needStudent, needTeacher, broadcast, store, lesson, stepOf, classGames });
+require('./lib/m47')({ route, needStudent, needTeacher, broadcast, store, lesson, stepOf }); // урок-квест и совет аула (сессия 6 аудита)
 // ответы класса по уроку: таблица «ученик × шаг», разбор квизов по карточкам; выгрузка CSV — на странице учителя
 route('GET', '/api/teacher/answers', (ctx) => {
   needTeacher(ctx);
