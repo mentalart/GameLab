@@ -42,6 +42,7 @@ function answerText(step, a, game) {
     case 'kvest': return [v.found ? `секретов нашёл: ${v.found}` : v.rounds ? `партий ${v.rounds}` : '', v.pick ? `что привело: ${v.pick}` : '', val(v.own) ? 'свои слова: ' + val(v.own) : ''].filter(Boolean).join('; ');
     case 'sovet': return [v.votes ? `голосов в совете: ${v.votes}` : '', v.pick ? `ответ: ${v.pick}` : ''].filter(Boolean).join('; ');
     case 'muzei': return Object.keys(v.notes || {}).length ? `залов: ${Object.keys(v.notes).length}; ` + Object.values(v.notes).map(n => `«${n.title}»: ${[n.emotion, n.story].filter(Boolean).join(' ')}`).join('; ') : '';
+    case 'karta': return v.room ? `комната ${v.room}: ${v.title || ''}` + (val(v.why) ? `; почему: ${dice(v.why)}` : '') : ''; // карта курса (Д1, урок 36)
     case 'obyasni': return (v.tries || []).length ? `объяснил${v.partner ? ' соседу ' + v.partner : ''}: ${v.tries.map(t => (t === 'got' ? 'понял' : 'не понял')).join(' → ')}` : '';
     case 'factory': return [v.level ? `уровень: ${(step.levels.find(l => l.id === v.level) || {}).label || v.level}` : '', v.limit && v.level === 'boss' ? `карта ограничения: ${v.limit.text}` : '']
       .concat(step.fields.filter(x => val((v.fields || {})[x.id])).map(x => `${x.label}: ${dice(v.fields[x.id])}`)).filter(Boolean).join('\n');

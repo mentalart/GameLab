@@ -14,7 +14,7 @@ const PUBLIC = path.join(PORTAL, 'public');
 const TYPES = {
   '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8',
   '.json': 'application/json; charset=utf-8', '.md': 'text/markdown; charset=utf-8', '.txt': 'text/plain; charset=utf-8',
-  '.wasm': 'application/wasm', '.png': 'image/png', '.jpg': 'image/jpeg', '.svg': 'image/svg+xml', '.glb': 'model/gltf-binary', '.ico': 'image/x-icon', '.mp3': 'audio/mpeg',
+  '.wasm': 'application/wasm', '.png': 'image/png', '.jpg': 'image/jpeg', '.svg': 'image/svg+xml', '.glb': 'model/gltf-binary', '.ico': 'image/x-icon', '.gif': 'image/gif', '.mp3': 'audio/mpeg',
 };
 
 /* ---------------- уроки ---------------- */
@@ -293,6 +293,7 @@ function downloadPage(res, gameId, n) {
   const html = fs.readFileSync(path.join(PORTAL, 'engine', 'game.html'), 'utf8')
     .replace(/<script type="importmap">[^<]*<\/script>\n?/, '')
     .replace('<script type="module" src="lab-three.js"></script>', '')
+    .replace('<script src="moment.js"></script>\n', '') // запись лучшего момента — только в рамке портала
     .replace('<!--GAME-->', () => inlineScript(code) + '\n' + threeLoader())
     .replace('<title>Лаборатория игр</title>', () => `<title>${String(g.title || 'Моя игра').replace(/[<>&]/g, '')} · Лаборатория игр</title>`);
   const name = `${(g.title || 'igra').replace(/[\\/:*?"<>|]+/g, '').trim() || 'igra'} v${v}.html`;
@@ -501,6 +502,7 @@ function gameCard(code, g, viewer) {
     plays: store.plays(g.id).filter(p => p.type === 'over' && p.nick !== g.nick).length,
     again: store.plays(g.id).filter(p => p.type === 'again' && p.nick !== g.nick).length, // «ещё раз» чужих игроков — главный тест курса
     poster: g.poster ? `/poster/${g.id}.jpg?v=${g.poster.version}` : null,
+    moment: KM.momentOf(g), // лучший момент игры роликом GIF (Д4): на обложке аркады, в студии, на открытке и в раскадровке трейлера
     guests: (g.guestLevels || []).map(x => ({ code: x.code, name: x.name, author: x.author })), // уровни гостей, принятые автором (урок 18)
     team: g.team || null, members: g.members || null, // игра команды джема (модуль 7): моя у каждого участника
     hidden: !!g.hidden, mine: g.nick === viewer || (g.members || []).includes(viewer), knob: g.knob || null, effect: les && g.plan && g.plan.secret ? secretEffect(les, g.plan.secret.title) : '', emblem: (store.getStudent(code, g.nick) || {}).emblem || '',
@@ -606,7 +608,7 @@ function studio(w, cls, s) {
   const playsOf = id => { if (!plays.has(id)) plays.set(id, store.plays(id)); return plays.get(id); };
   const cards = classGames(w.class).map(g => gameCard(w.class, g, w.nick));
   const mine = cards.filter(c => c.mine).sort((a, b) => ((a.lesson || {}).number || 0) - ((b.lesson || {}).number || 0))
-    .map(c => Object.assign(c, { discovery: discovery(store.getGame(c.id)) }));
+    .map(c => { const g = store.getGame(c.id); return Object.assign(c, { discovery: discovery(g), moments: KM.momentsOf(g) }); }); // moments — ролики лучшего момента (Д4)
   const worked = all.filter(l => s.lessons && s.lessons[l.id] && Object.keys(s.lessons[l.id].answers || {}).length);
   // колоды: донор и линза каждого пройденного урока — карты, которые остаются у ученика
   const deck = worked.map(l => ({ lesson: l.number, title: l.title, donor: l.donor || '', lens: l.lens || '', goal: l.goal || '' }));
@@ -2089,6 +2091,8 @@ const K = require('./lib/klass')({ route, needStudent, needTeacher, broadcast, s
 // карусель (Г5 аудита, сессия 5): обмен игр по кругу, каждые 4 минуты игра уходит следующему, автор видит, где отзывы совпали
 require('./lib/karusel')({ route, needStudent, needTeacher, broadcast, store, lesson, stepOf, classGames });
 require('./lib/m47')({ route, needStudent, needTeacher, broadcast, store, lesson, stepOf }); // урок-квест и совет аула (сессия 6 аудита)
+// карта курса «36 комнат» (Д1) и лучший момент игры роликом GIF (Д4) — сессия 8 аудита
+const KM = require('./lib/karta')({ route, needStudent, broadcast, store, lessons, classGame });
 // ответы класса по уроку: таблица «ученик × шаг», разбор квизов по карточкам; выгрузка CSV — на странице учителя
 route('GET', '/api/teacher/answers', (ctx) => {
   needTeacher(ctx);
@@ -2481,9 +2485,11 @@ async function handle(req, res) {
   }
   const pm = /^\/poster\/([\w-]{6,20})\.jpg$/.exec(p);
   if (pm) return serveFile(res, path.join(store.gameDir(pm[1]), 'poster.jpg'));
+  const mm = /^\/moment\/([\w-]{6,20})\/(\w+)\.gif$/.exec(p);
+  if (mm) { const f = KM.momentFile(mm[1], mm[2]); return f ? serveFile(res, f) : send(res, 404, 'Не найдено', 'text/plain; charset=utf-8'); }
   if (p.startsWith('/engine/') || p.startsWith('/games/')) return staticUnder(PORTAL, p, res, CORS);
   if (p === '/' ) return serveFile(res, path.join(PUBLIC, 'index.html'));
-  if (p === '/student' || p === '/teacher' || p === '/arcade' || p === '/projector' || p === '/studio' || p === '/sheet') return serveFile(res, path.join(PUBLIC, p.slice(1) + '.html'));
+  if (p === '/student' || p === '/teacher' || p === '/arcade' || p === '/projector' || p === '/studio' || p === '/sheet' || p === '/karta') return serveFile(res, path.join(PUBLIC, p.slice(1) + '.html'));
   return staticUnder(PUBLIC, p, res);
 }
 

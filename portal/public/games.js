@@ -15,13 +15,16 @@ const Games = (() => {
   // одновременно (проектор «Спрятанная механика рядом»): запуск одной не останавливает другую. onShow — ход и итог показа бота (botShow).
   // onLevels — игра сообщила свои уровни и легенду (модуль 4, portal.levels / lab.levels), onLevel — начался уровень, onClear — уровень пройден.
   // onNet — игра сообщила положение игрока для сети класса (lab.net.send, урок 26); ответ сервера уходит в игру через post({ type: 'net', ... }).
-  function frame({ src, key, info, cfg, data, label, onReady, onOver, onScore, onAgain, onError, onPlaytest, onPlaytestStep, onPoster, onShow, onLevels, onLevel, onClear, onNet, autostart, score = true, challenge, ghost, reveal, pair }) {
+  // Лучший момент (Д4): у игры ученика (ключ game:<id>) мост держит последние 5 секунд кадров; личный рекорд сам сохраняет ролик GIF,
+  // кнопка «🎬 Момент» под игрой — когда угодно. moment: false — без роликов (рамки сравнения, проверки).
+  function frame({ src, key, info, cfg, data, label, onReady, onOver, onScore, onAgain, onError, onPlaytest, onPlaytestStep, onPoster, onShow, onLevels, onLevel, onClear, onNet, autostart, score = true, challenge, ghost, reveal, pair, moment = true }) {
     const box = el('div', { class: 'gamebox' });
     const veil = el('div', { class: 'veil' });
     let iframe = null, timer = null, ready = false, roundAt = 0; // roundAt — начало партии: секунда партии для реакций класса на проекторе (Д3)
     const extra = () => (info ? info() || {} : {});
     const post = m => { try { iframe && iframe.contentWindow.postMessage(Object.assign({ target: 'lab-game' }, m), '*'); } catch (e) { /* рамка закрыта */ } };
-    const postRecords = r => { const t = r.challenge || r; post({ type: 'records', record: t.record, best: t.mine }); };
+    const postRecords = r => { const t = r.challenge || r; post({ type: 'records', record: t.record, best: t.mine }); if (!r.challenge) best = Math.max(best, Number(r.mine) || 0); };
+    let best = 0, momentAt = 0; const asks = new Map(); // best — мой рекорд в этой игре до партии: новый рекорд сохраняет ролик
     async function sendRecords() {
       const x = extra();
       try { postRecords(await api('/api/records?game=' + encodeURIComponent(key()) + (x.challenge ? '&challenge=' + encodeURIComponent(x.challenge) : ''))); } catch (e) { /* без рекордов */ }
@@ -33,9 +36,18 @@ const Games = (() => {
       if (['ready', 'start', 'again', 'over'].includes(m.type)) roundAt = performance.now();
       if (m.type === 'ready') { ready = true; clearTimeout(timer); h.meta = m.meta || {}; h.changed = {}; if (score) sendRecords(); if (data) post({ type: 'data', data }); if (cfg) post({ type: 'setCfg', cfg }); if (reveal) post({ type: 'reveal', title: reveal }); if (challenge) post({ type: 'challengeOn' }); if (ghost) post({ type: 'ghost', ghost }); if (onReady) onReady(m.meta || {}); if (h.onCfg) h.onCfg(h.changed); }
       if (m.type === 'over' && score) {
-        api('/api/score', Object.assign({ game: key(), score: m.score, seed: m.seed, tele: m.tele }, extra()))
-          .then(r => { postRecords(r); if (onScore) onScore(m, r); }).catch(() => {});
+        const before = best, x = extra();
+        api('/api/score', Object.assign({ game: key(), score: m.score, seed: m.seed, tele: m.tele }, x))
+          .then(r => {
+            postRecords(r); if (onScore) onScore(m, r);
+            // личный рекорд в игре ученика — ролик последних 5 секунд партии (Д4), не чаще раза в 20 секунд
+            if (h.momentable() && !x.challenge && m.score > 0 && m.score > before && Date.now() - momentAt > 20000) {
+              const cls = r.record && r.record.score === m.score && Number(r.mine) === m.score; // мой рекорд и есть рекорд класса
+              h.moment({ kind: 'record', from: 'over', score: m.score, quiet: true }).then(mo => { if (mo) toast(`🎬 Новый рекорд ${m.score} — момент сохранён` + (cls ? ': это рекорд класса!' : ''), 'ok'); }).catch(() => {});
+            }
+          }).catch(() => {});
       }
+      if (m.type === 'moment' && asks.has(m.id)) { const a = asks.get(m.id); asks.delete(m.id); a(m); }
       if (m.type === 'over' && onOver) onOver(m);
       if (m.type === 'again' && score) {
         if (/^game:/.test(key())) api('/api/play/again', { game: key().slice(5) }).catch(() => {});
@@ -81,6 +93,25 @@ const Games = (() => {
       get src() { return iframe ? iframe.getAttribute('src') : null; },
       get shown() { return !!(iframe && iframe.isConnected && iframe.offsetParent); }, // рамка с игрой видна на странице (не на скрытой вкладке)
       sec() { return ready ? Math.max(0, Math.round((performance.now() - roundAt) / 1000)) : 0; },
+      // ролики лучшего момента: только игра ученика в аркаде класса (ключ game:<id>) и только с записью партий
+      momentable() { try { return !!(moment && score && /^game:[\w-]+$/.test(key() || '')); } catch (e) { return false; } },
+      // ролик: кадры из моста (from 'over' — до конца партии, 'now' — последние 5 секунд) → GIF → сервер. Возвращает { moment, best } или null
+      async moment({ kind = 'button', from = 'now', score: sc = 0, quiet = false } = {}) {
+        if (!iframe || !ready) { if (!quiet) toast('Сначала запусти игру', 'err'); return null; }
+        const id = Math.random().toString(36).slice(2);
+        const got = await new Promise(res => { asks.set(id, res); post({ type: 'moment', id, from }); setTimeout(() => { if (asks.has(id)) { asks.delete(id); res(null); } }, 8000); });
+        if (!got || got.error || !(got.frames || []).length) { if (!quiet) toast(got && got.error ? 'Момент не записался: ' + got.error : 'Игра не отдала кадры: момент записывают игры класса', 'err'); return null; }
+        momentAt = Date.now();
+        const label = kind === 'record' && sc ? '🏆 ' + sc : '';
+        const bytes = await gif(got.frames.map(b => new Uint8ClampedArray(b)), got.w, got.h, Math.round(100 / (got.fps || 10)), label);
+        const x = extra();
+        try {
+          const r = await api('/api/game/moment', { game: key().slice(5), version: x.version, kind, score: sc, data: 'data:image/gif;base64,' + b64(bytes) });
+          h.lastMoment = r.moment;
+          return r;
+        } catch (e) { if (!quiet) toast(e.message, 'err'); return null; }
+      },
+      lastMoment: null,
     };
     box.append(veil);
     frames.push(h);
@@ -98,8 +129,99 @@ const Games = (() => {
     return el('div', { class: 'gamebar' },
       el('span', {}, 'Кликни по игре, чтобы управлять. Tab — ручки, R — заново.'),
       el('span', { class: 'grow' }), extra || null,
+      h.momentable && h.momentable() ? momentBtn(h) : null,
       el('button', { class: 'btn ghost small', type: 'button', onclick: () => h.fullscreen() }, '⛶ На весь экран'));
   }
+  // «🎬 Момент» (Д4): последние 5 секунд игры роликом — в аркаду, на открытку и в раскадровку трейлера
+  function momentBtn(h) {
+    const b = el('button', { class: 'btn ghost small', type: 'button', 'data-moment': '', title: 'Сохранить последние 5 секунд игры коротким роликом: он попадёт в аркаду, на открытку и в раскадровку трейлера' }, '🎬 Момент');
+    b.addEventListener('click', async () => {
+      b.disabled = true; b.textContent = '🎬 Сохраняю…';
+      const r = await h.moment({ kind: 'button', from: 'now' });
+      b.disabled = false; b.textContent = '🎬 Момент';
+      if (r) { beep('good'); toast('🎬 Момент сохранён: 5 секунд игры — в аркаде, на открытке и в раскадровке трейлера', 'ok'); }
+      try { h.box.querySelector('iframe').focus(); } catch (e) { /* фокус по клику */ }
+    });
+    return b;
+  }
+
+  /* ---------- GIF лучшего момента (Д4) ---------- */
+  // frames — кадры RGBA одного размера w × h, delay — сотые доли секунды на кадр, label — подпись в углу (счёт рекорда).
+  // Палитра одна на ролик: частые цвета (5 бит на канал), разнесённые друг от друга; ближайший цвет — по таблице на 32 768 ячеек.
+  // Сжатие — LZW по стандарту GIF89a, ролик крутится по кругу. Кадры собираются по одному с паузой — страница не замирает.
+  async function gif(frames, w, h, delay, label) {
+    if (label) {
+      const cv = document.createElement('canvas'); cv.width = w; cv.height = h;
+      const c = cv.getContext('2d', { willReadFrequently: true }), img = c.createImageData(w, h), px = Math.max(10, Math.round(h / 9));
+      frames = frames.map(f => {
+        img.data.set(f); c.putImageData(img, 0, 0);
+        c.font = `800 ${px}px system-ui,sans-serif`; c.textBaseline = 'top';
+        const tw = c.measureText(label).width;
+        c.fillStyle = 'rgba(0,0,0,.6)'; c.fillRect(4, 4, tw + 10, px + 6); c.fillStyle = '#ffd34d'; c.fillText(label, 9, 7);
+        return c.getImageData(0, 0, w, h).data;
+      });
+    }
+    const bin = (r, g, b) => (r >> 3) << 10 | (g >> 3) << 5 | b >> 3;
+    const hist = new Uint32Array(32768);
+    for (const f of frames) for (let i = 0; i < f.length; i += 12) hist[bin(f[i], f[i + 1], f[i + 2])]++;
+    const bins = []; for (let i = 0; i < 32768; i++) if (hist[i]) bins.push(i);
+    bins.sort((a, b) => hist[b] - hist[a]);
+    const rgb = i => [(i >> 10 & 31) * 8 + 4, (i >> 5 & 31) * 8 + 4, (i & 31) * 8 + 4];
+    const pal = [], used = new Set();
+    for (const d of [700, 160, 0]) for (const b of bins) {
+      if (pal.length >= 256) break;
+      if (used.has(b)) continue;
+      const c = rgb(b);
+      if (d && pal.some(p => (p[0] - c[0]) ** 2 + (p[1] - c[1]) ** 2 + (p[2] - c[2]) ** 2 < d)) continue;
+      used.add(b); pal.push(c);
+    }
+    while (pal.length < 256) pal.push([0, 0, 0]);
+    const lut = new Int16Array(32768).fill(-1);
+    const near = k => {
+      const c = rgb(k); let bi = 0, bd = 1e9;
+      for (let i = 0; i < 256; i++) { const p = pal[i], d = (p[0] - c[0]) ** 2 + (p[1] - c[1]) ** 2 + (p[2] - c[2]) ** 2; if (d < bd) { bd = d; bi = i; } }
+      return (lut[k] = bi);
+    };
+    const out = [];
+    const u16 = v => out.push(v & 255, v >> 8 & 255);
+    out.push(...[...'GIF89a'].map(ch => ch.charCodeAt(0))); u16(w); u16(h); out.push(0xF7, 0, 0);
+    pal.forEach(p => out.push(p[0], p[1], p[2]));
+    out.push(0x21, 0xFF, 11, ...[...'NETSCAPE2.0'].map(ch => ch.charCodeAt(0)), 3, 1, 0, 0, 0); // по кругу
+    const idx = new Uint8Array(w * h);
+    for (const f of frames) {
+      for (let i = 0, j = 0; j < idx.length; i += 4, j++) { const k = bin(f[i], f[i + 1], f[i + 2]); idx[j] = lut[k] >= 0 ? lut[k] : near(k); }
+      out.push(0x21, 0xF9, 4, 0, delay & 255, delay >> 8 & 255, 0, 0);
+      out.push(0x2C); u16(0); u16(0); u16(w); u16(h); out.push(0);
+      lzw(idx, 8, out);
+      await new Promise(r => setTimeout(r, 0));
+    }
+    out.push(0x3B);
+    return new Uint8Array(out);
+  }
+  // LZW кадра GIF: коды переменной длины до 12 бит, сброс словаря при 4096 кодах; таблица — массивы с поколением вместо Map
+  const LZW = { code: new Int32Array(1 << 20), gen: new Int32Array(1 << 20), g: 0 };
+  function lzw(idx, min, out) {
+    const clear = 1 << min, eoi = clear + 1, bytes = [];
+    let size = min + 1, next = eoi + 1, cur = 0, bits = 0;
+    const emit = c => { cur |= c << bits; bits += size; while (bits >= 8) { bytes.push(cur & 255); cur >>>= 8; bits -= 8; } };
+    LZW.g++;
+    emit(clear);
+    let pre = idx[0];
+    for (let i = 1; i < idx.length; i++) {
+      const k = idx[i], key = pre << 8 | k;
+      if (LZW.gen[key] === LZW.g) { pre = LZW.code[key]; continue; }
+      emit(pre);
+      if (next === 4096) { emit(clear); LZW.g++; next = eoi + 1; size = min + 1; }
+      else { if (next >= 1 << size) size++; LZW.gen[key] = LZW.g; LZW.code[key] = next++; }
+      pre = k;
+    }
+    emit(pre); emit(eoi);
+    if (bits > 0) bytes.push(cur & 255);
+    out.push(min);
+    for (let i = 0; i < bytes.length; i += 255) { const n = Math.min(255, bytes.length - i); out.push(n); for (let j = 0; j < n; j++) out.push(bytes[i + j]); }
+    out.push(0);
+  }
+  function b64(bytes) { let s = ''; for (let i = 0; i < bytes.length; i += 0x8000) s += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000)); return btoa(s); }
   function stopAll() { frames.slice().forEach(f => f.destroy()); }
   // игра, которая сейчас видна на странице (проектор: какую игру смотрит класс — для живых реакций, Д3)
   function shownFrame() { return frames.find(f => f.shown) || null; }
@@ -144,7 +266,10 @@ const Games = (() => {
     const h = hue(c.id);
     // кадр из игры автора, пока его нет — цветная обложка по id
     const bg = `linear-gradient(140deg,hsl(${h} 65% 34%),hsl(${(h + 50) % 360} 70% 16%))`;
-    return el('div', { class: 'cover' + (c.poster ? ' shot' : ''), style: c.poster ? `background:linear-gradient(180deg,transparent 40%,#000a),url("${c.poster}") center/cover,${bg}` : `background:${bg}` },
+    // лучший момент (Д4): наведи на обложку или фокус на карточке — играет ролик последних 5 секунд
+    const mo = c.moment && c.moment.url;
+    return el('div', { class: 'cover' + (c.poster ? ' shot' : '') + (mo ? ' mo' : ''), style: (c.poster ? `background:linear-gradient(180deg,transparent 40%,#000a),url("${c.poster}") center/cover,${bg}` : `background:${bg}`) + (mo ? `;--mo:url("${mo}")` : '') },
+      mo ? el('span', { class: 'cv-mo', title: 'Лучший момент: наведи на обложку' }, '🎬 момент') : null,
       el('h3', { class: 'cv-title' }, c.title), el('span', { class: 'cv-ver' }, 'v' + c.version));
   }
   const DEC = [['feeling', 'Чувство'], ['honesty', 'Честность'], ['choice', 'Выбор']];
@@ -453,5 +578,5 @@ const Games = (() => {
     return trait ? [el('span', { class: 'cn' }, name), el('span', { class: 'ct' }, trait)] : [text];
   }
 
-  return { cardParts, cardFace, frames, frame, teacherFrame, bar, withLevels, stopAll, shownFrame, card, scores, challenge, challengeStage, openChallenge, board, challengeEvent, linkBox, playtestBox, discovery, feedback };
+  return { gif, cardParts, cardFace, frames, frame, teacherFrame, bar, withLevels, stopAll, shownFrame, card, scores, challenge, challengeStage, openChallenge, board, challengeEvent, linkBox, playtestBox, discovery, feedback };
 })();

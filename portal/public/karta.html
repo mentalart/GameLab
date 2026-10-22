@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="ru" data-role="student">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Карта курса · Лаборатория игр</title>
+<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+<header class="top kt-top">
+  <div class="logo"><i></i> Лаборатория игр · карта курса</div>
+  <div class="muted small" id="className"></div>
+  <div class="who"><a class="btn small" href="/student">Войти в урок →</a><a class="btn ghost small" href="/studio">🎨 Моя студия</a><a class="btn ghost small" href="/arcade">🕹 Аркада</a><span id="nick"></span><button class="btn ghost small" id="logout" type="button">Выйти</button></div>
+</header>
+<main class="apage kt-page">
+  <section class="stack" style="gap:6px">
+    <div class="eyebrow">36 комнат лаборатории</div>
+    <h1>Карта курса</h1>
+    <p class="muted">Этаж — модуль, комната — урок. Пройденная комната светится: в ней лежат твоя игра, донор и линза урока. На крыше — дорога к Фестивалю.</p>
+  </section>
+  <div id="karta"><p class="muted">Загрузка…</p></div>
+</main>
+<script src="/common.js"></script>
+<script src="/karta.js"></script>
+<script>
+(async () => {
+  let d;
+  try { d = await Lab.api('/api/karta'); } catch (e) {
+    if (e.status === 401) { location.href = '/?next=' + encodeURIComponent(location.pathname); return; }
+    Lab.toast(e.message, 'err'); return;
+  }
+  document.querySelector('#nick').textContent = (d.emblem ? d.emblem + ' ' : '') + d.nick + ' · класс ' + d.class.code;
+  document.querySelector('#className').textContent = d.class.name;
+  const room = Number(new URLSearchParams(location.search).get('room')) || d.today || null;
+  LabKarta.draw(document.querySelector('#karta'), d, { room });
+})();
+document.querySelector('#logout').addEventListener('click', () => { Lab.token.clear(); location.href = '/'; });
+</script>
+</body>
+</html>

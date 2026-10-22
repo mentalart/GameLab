@@ -12,6 +12,7 @@
      portal.net — сеть класса (урок 26): on — портал передаёт игроков, others — [{ nick, x, y, z, ... }] соседей, room — правила и фаза забега,
        now() — часы сервера в мс, send({ x, y, ... }) — моё положение (портал отправляет не чаще 10 раз в секунду).
      portal.share('Узор дня 3/6\n🟨⬛🟩⬛⬛\n…') — сетка-результат без спойлеров (модуль 6): уходит порталу с концом партии.
+     Лучший момент (Д4 аудита): мост подгружает engine/moment.js — кольцо последних 5 секунд кадров; портал просит ролик после рекорда или по кнопке.
      portal.input — 'pad' или 'keys': чем игрок управляет сейчас. Подписи кнопок игра пишет парой <span class="keys-only">Пробел</span><span class="pad-only">A</span>,
        мост показывает нужную: геймпад подключён или нажата его кнопка — pad-only, нажата клавиша — keys-only.
    Страховка конца партии: Start на геймпаде после portal.over(), если игра сама не начала новую партию, нажимает за неё Enter, потом R.
@@ -51,6 +52,7 @@
     },
     over: function (final) {
       isOver = true;
+      if (window.LabMoment) window.LabMoment.hold(); // ролик лучшего момента кончается концом партии
       var s = Math.round(Number(final != null ? final : score) || 0);
       while (tele.line.length < Math.min(600, Math.floor(t) + 1)) tele.line.push(s);
       send({ type: 'over', score: s, tele: teleData() }); reset();
@@ -244,6 +246,13 @@
   });
   addEventListener('error', function (e) { send({ type: 'error', phase: ready ? 'update' : 'загрузка', message: String(e.message || 'ошибка'), line: e.lineno || null }); });
   addEventListener('unhandledrejection', function (e) { send({ type: 'error', phase: 'update', message: String((e.reason && e.reason.message) || e.reason || 'ошибка'), line: null }); });
+  // лучший момент (Д4): запись кадров — только в рамке портала (в скачанной игре одним файлом её нет)
+  (function () {
+    if (window.parent === window || !/^https?:$/.test(location.protocol)) return;
+    var s = document.createElement('script'); s.src = '/engine/moment.js';
+    s.onload = function () { if (window.LabMoment) window.LabMoment.auto(); };
+    (document.head || document.documentElement).appendChild(s);
+  })();
   // игра без ручек всё равно «запустилась»: через 3 секунды после загрузки
   addEventListener('load', function () { setTimeout(hello, 3000); });
 })();

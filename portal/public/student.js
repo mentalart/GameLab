@@ -222,6 +222,12 @@ function renderMain() {
   const cp = cpById(S.cpId);
   if (!isOpen(cp)) {
     main.append(el('div', { class: 'card locked-msg' }, el('h2', {}, 'Ждём учителя'), el('p', { style: 'margin-top:8px' }, 'Учитель откроет первый чекпоинт, и урок начнётся. Страницу обновлять не нужно.')));
+    // пока урок не начался — карта курса (Д1): сегодняшняя комната мигает, пройденные светятся; щелчок — комната на /karta
+    if (typeof LabKarta !== 'undefined') {
+      const k = el('section', { class: 'kt-wait', 'aria-label': 'Карта курса' }, el('div', { class: 'row' }, el('h3', { class: 'grow' }, `🗺 Сегодня — комната ${S.lesson.number}`), el('a', { class: 'btn ghost small', href: '/karta', target: '_blank', rel: 'noopener' }, 'Вся карта курса ↗')));
+      main.append(k);
+      api('/api/karta').then(d => { const box = el('div'); k.append(box); LabKarta.draw(box, d, { compact: true }); }).catch(() => k.remove());
+    }
     return;
   }
   const idx = S.lesson.checkpoints.indexOf(cp);
@@ -434,8 +440,10 @@ STEPS.postcard = ctx => {
       title: g.title || vars.title || 'Моя игра', emblem: g.emblem || '', lesson: S.lesson.number, feeling: myFeeling(), emotions: emo,
       secret: vars.secret || '', felt: b.felt || 0, voted: b.voted || 0, record: g.record ? { nick: g.record.nick, score: g.record.score } : null,
       players: d.players || 0, version: g.version || 1, at: new Date().toISOString().slice(0, 10),
+      moment: g.moment ? g.moment.url : null, // лучший момент игры роликом (Д4)
     });
     host.innerHTML = '';
+    if (!card.moment) host.append(el('p', { class: 'small muted' }, '🎬 Поставь рекорд или нажми «🎬 Момент» под своей игрой — на открытку ляжет ролик лучшего момента.'));
     host.append(postcardView(card), el('div', { class: 'row' },
       el('button', { type: 'button', class: 'btn' + (ctx.done ? ' ghost' : ''), 'data-postcard': 'save', onclick: e => { ctx.save({ card }, true, true); e.currentTarget.textContent = '✓ На полке'; toast('Открытка на полке «Моей студии»', 'ok'); } },
         ctx.done ? '↻ Обновить открытку на полке' : '📮 Положить на полку «Моей студии»'),
@@ -447,6 +455,7 @@ STEPS.postcard = ctx => {
 function postcardView(c) {
   return el('div', { class: 'postcard' },
     el('div', { class: 'pc-top' }, el('span', { class: 'pc-emb' }, c.emblem || '🎮'), el('div', {}, el('div', { class: 'eyebrow' }, `Моя первая игра · урок ${c.lesson} · v${c.version}`), el('h3', {}, c.title))),
+    c.moment ? el('img', { class: 'pc-mo', src: c.moment, alt: 'Лучший момент игры', onerror: e => e.currentTarget.remove() }) : null,
     c.feeling ? el('div', {}, el('span', { class: 'small muted' }, 'Задумал: '), c.feeling) : null,
     el('div', {}, el('span', { class: 'small muted' }, 'Соседи почувствовали: '), c.emotions.length ? c.emotions.join(' ') : 'ещё никто не оставил отзыв'),
     c.secret ? el('div', {}, el('span', { class: 'small muted' }, 'Спрятано: '), c.secret, c.voted ? el('span', { class: 'tag', style: 'margin-left:6px' }, `заметили ${c.felt} из ${c.voted}`) : null) : null,

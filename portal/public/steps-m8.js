@@ -9,7 +9,8 @@
 //   observe   — наблюдение за плейтестом: метки по времени (застрял, смеётся, спросил…), живая лента и сводка «что увидели новые игроки»;
 //   moscow    — «Должно / Хорошо бы / Потом»: ножницы режут треть задуманного, кольцо показывает долю вырезанного;
 //   kontent   — карта контента на 10 минут: события на ленте и кривая интереса игрока, проигрыш «десять минут за десять секунд»;
-//   trailer   — раскадровка трейлера на 30 секунд: пять кадров и просмотр раскадровки анимацией;
+//   trailer   — раскадровка трейлера на 30 секунд: пять кадров и просмотр раскадровки анимацией; к кадру можно приложить
+//               лучший момент своей игры (ролик GIF, Д4 аудита) — раскадровка проигрывает его вместо значка;
 //   stand     — карточка стенда Фестиваля: название, авторы, управление, «по мотивам», QR аркады, печать и файл игры для дома;
 //   fest      — стенд на Фестивале: заставка, партия гостя, реакция и «ещё раз», живые рекорды;
 //   sertifikat — сертификат курса из «Моей студии»: игры, версии, плейтесты, значки — открывается анимацией.
@@ -1033,16 +1034,28 @@
   /* ---------------- trailer: раскадровка на 30 секунд ---------------- */
   STEPS.trailer = ctx => {
     const st = ctx.step, shots = st.shots || [];
-    let v = Object.assign({ shots: {}, watched: false }, ctx.value);
+    let v = Object.assign({ shots: {}, watched: false, clips: {} }, ctx.value);
     const host = el('div', { class: 'stack' }), list = el('div', { class: 'm8-shots' }), cv = el('canvas', { width: 640, height: 240, class: 'm8-tcv' }), g = cv.getContext('2d');
+    let moms = []; // лучшие моменты игры команды (Д4): ролики по 5 секунд из рекордов и кнопки «🎬 Момент»
+    const momHint = el('p', { class: 'small muted' }, '🎬 Ролики из игры появятся здесь: поставь рекорд или нажми «🎬 Момент» под своей игрой. Ролик можно положить в любой кадр.');
     const total = shots.reduce((a, s) => a + s.sec, 0) || 30;
     const ok = () => shots.every(s => valText(v.shots[s.id])) && v.watched;
     let t0 = -1, raf = 0, drawn = 0;
     function draw() {
       list.replaceChildren(...shots.map((s, i) => el('div', { class: 'm8-shot', style: `--c:${s.col || '#5fe0ff'};--w:${s.sec}` },
         el('div', { class: 'm8-shead' }, el('span', {}, s.icon), el('b', {}, s.label), el('span', { class: 'small muted' }, `${s.sec} с`)),
-        fieldEditor({ id: s.id, label: s.hint, deck: s.deck }, v.shots[s.id], nv => { v.shots = Object.assign({}, v.shots, { [s.id]: nv }); ctx.save(v, ok() ? true : null); }, { idPrefix: st.id }))));
+        fieldEditor({ id: s.id, label: s.hint, deck: s.deck }, v.shots[s.id], nv => { v.shots = Object.assign({}, v.shots, { [s.id]: nv }); ctx.save(v, ok() ? true : null); }, { idPrefix: st.id }),
+        moms.length ? el('div', { class: 'm8-clips', 'data-shot': s.id }, el('span', { class: 'small muted' }, '🎬 Кадр из игры:'), moms.map(m => el('button', {
+          type: 'button', class: 'm8-clip' + (v.clips[s.id] === m.url ? ' on' : ''), 'aria-pressed': String(v.clips[s.id] === m.url), title: m.kind === 'record' ? `рекорд ${m.score} · ${m.nick}` : `момент · ${m.nick}`,
+          onclick: () => { const c = Object.assign({}, v.clips); if (c[s.id] === m.url) delete c[s.id]; else c[s.id] = m.url; v.clips = c; ctx.save(v, ok() ? true : null); draw(); beep('tick'); },
+        }, el('img', { src: m.url, alt: 'Момент игры' })))) : null)));
     }
+    if (hasGame()) api('/api/game/moments?game=' + encodeURIComponent(S.game.id)).then(r => {
+      moms = (r.moments || []).slice(0, 6);
+      const urls = new Set(moms.map(m => m.url)); // ролик убрали в студии — из кадра тоже
+      v.clips = Object.fromEntries(Object.entries(v.clips || {}).filter(([, u]) => urls.has(u)));
+      momHint.hidden = moms.length > 0; draw();
+    }).catch(() => {});
     function loop(now) {
       if (!cv.isConnected) { cancelAnimationFrame(raf); return; } raf = requestAnimationFrame(loop);
       if (window.LAB_LOWRES && now - drawn < 150) return; drawn = now;
@@ -1054,7 +1067,14 @@
       if (t0 < 0) { text(g, '▶ Посмотреть раскадровку', 320, 110, '#f2efe6', 18); text(g, `${total} секунд · ${shots.length} кадров`, 320, 140, '#9aa3c7', 12); }
       else if (curS) {
         const col = curS.col || '#5fe0ff', z = 1 + local * 0.08; // медленный наезд камеры
-        g.save(); g.translate(320, 110); g.scale(z, z); glow(g, 0, 0, 160, col + '55'); emo(g, curS.icon, 0, -30, 46); wrap(g, valText(v.shots[curS.id]) || curS.label, 0, 34, 480, 22, '#ffffff', 18, 'center', 800); g.restore();
+        // ролик лучшего момента в кадре: анимированная миниатюра на странице — её текущий кадр рисуется на холст
+        const im = v.clips[curS.id] && list.querySelector(`[data-shot="${curS.id}"] .m8-clip.on img`);
+        if (im && im.complete && im.naturalWidth) {
+          const k = Math.max(640 / im.naturalWidth, 204 / im.naturalHeight) * z, w = im.naturalWidth * k, h = im.naturalHeight * k;
+          g.drawImage(im, 320 - w / 2, 120 - h / 2, w, h);
+          g.fillStyle = 'rgba(5,7,15,.35)'; g.fillRect(0, 150, 640, 72);
+          wrap(g, valText(v.shots[curS.id]) || curS.label, 320, 190, 560, 22, '#ffffff', 18, 'center', 800);
+        } else { g.save(); g.translate(320, 110); g.scale(z, z); glow(g, 0, 0, 160, col + '55'); emo(g, curS.icon, 0, -30, 46); wrap(g, valText(v.shots[curS.id]) || curS.label, 0, 34, 480, 22, '#ffffff', 18, 'center', 800); g.restore(); }
         if (local < 0.12) { g.fillStyle = `rgba(255,255,255,${0.6 * (1 - local / 0.12)})`; g.fillRect(0, 0, 640, 240); } // вспышка на склейке
         g.fillStyle = '#000'; g.fillRect(0, 0, 640, 18); g.fillRect(0, 222, 640, 18); // кинополосы
       }
@@ -1063,7 +1083,7 @@
     }
     cv.addEventListener('click', () => { t0 = performance.now(); beep('good'); });
     draw(); raf = requestAnimationFrame(loop);
-    host.append(cv, list, el('p', { class: 'small muted' }, st.howto || 'Запись из игры: Win + Alt + R (Xbox Game Bar в Windows) или OBS. Записывай кадр за кадром по раскадровке, потом склей.'));
+    host.append(cv, momHint, list, el('p', { class: 'small muted' }, st.howto || 'Запись из игры: Win + Alt + R (Xbox Game Bar в Windows) или OBS. Записывай кадр за кадром по раскадровке, потом склей.'));
     return host;
   };
 
@@ -1168,7 +1188,7 @@
       case 'observe': return `наблюдений ${(v.sessions || []).length}: ` + (v.sessions || []).map(s => `${s.who} ${mmss(s.len || 0)} — ${s.marks.map(m => (MARKS.find(x => x[0] === m.k) || [0, m.k])[1]).join('')}`).join('; ') + (v.top ? `; находка: ${v.top}` : '');
       case 'moscow': return BASK.map(([b, n]) => `${n}: ${(v.items || []).filter(i => i.b === b).map(i => i.t).join(', ') || '—'}`).join('; ');
       case 'kontent': return `событий ${(v.beats || []).length}: ` + (v.beats || []).slice().sort((a, b) => a.at - b.at).map(b => `${b.at} мин ${BEAT_K[b.kind] ? BEAT_K[b.kind].label : b.kind}`).join(', ');
-      case 'trailer': return Object.entries(v.shots || {}).map(([k, x]) => `${k}: ${valText(x)}`).join('; ') + (v.watched ? '; раскадровка просмотрена' : '');
+      case 'trailer': return Object.entries(v.shots || {}).map(([k, x]) => `${k}: ${valText(x)}`).join('; ') + (v.watched ? '; раскадровка просмотрена' : '') + (Object.keys(v.clips || {}).length ? `; роликов из игры: ${Object.keys(v.clips).length}` : '');
       case 'stand': return `карточка стенда: ${Object.entries(v.fields || {}).map(([k, x]) => `${k}: ${valText(x)}`).join('; ')}${v.printed ? '; напечатана' : ''}`;
       case 'fest': return `гостей ${v.guests || 0}, партий ${v.plays || 0}, «ещё раз» ${v.again || 0}, 🤩 ${(v.likes || {}).wow || 0}`;
       case 'sertifikat': return `игр ${v.games || 0}, версий ${v.versions || 0}, релизов ${v.releases || 0}, значков ${v.badges || 0}`;

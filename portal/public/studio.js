@@ -21,6 +21,7 @@ function drawPostcards() {
   if (!(D.postcards || []).length) { host.append(el('p', { class: 'muted' }, 'Открытка появится в финале урока: «Открытка первой игры».')); return; }
   D.postcards.forEach(c => host.append(el('div', { class: 'postcard' },
     el('div', { class: 'pc-top' }, el('span', { class: 'pc-emb' }, c.emblem || '🎮'), el('div', {}, el('div', { class: 'eyebrow' }, `Урок ${c.lesson} · v${c.version}`), el('h3', {}, c.title))),
+    c.moment ? el('img', { class: 'pc-mo', src: c.moment, alt: 'Лучший момент игры', loading: 'lazy', onerror: e => e.currentTarget.remove() }) : null,
     c.feeling ? el('div', {}, el('span', { class: 'small muted' }, 'Задумал: '), c.feeling) : null,
     el('div', {}, el('span', { class: 'small muted' }, 'Соседи почувствовали: '), (c.emotions || []).length ? c.emotions.join(' ') : '—'),
     c.secret ? el('div', {}, el('span', { class: 'small muted' }, 'Спрятано: '), c.secret, c.voted ? el('span', { class: 'tag', style: 'margin-left:6px' }, `заметили ${c.felt} из ${c.voted}`) : null) : null,
@@ -61,12 +62,28 @@ function drawShelf() {
   if (!D.games.length) { host.append(el('p', { class: 'muted' }, 'Полка пустая. Первая игра встанет сюда, как только ты соберёшь её на уроке.')); return; }
   D.games.forEach(c => {
     const d = c.discovery || {};
-    host.append(Games.card(c, { actions: [
+    host.append(Games.card(c, { extra: moments(c), actions: [
       el('a', { class: 'btn small', href: '/arcade?game=' + encodeURIComponent(c.id) }, '▶ Играть'),
       el('a', { class: 'btn ghost small', href: `/download/${c.id}/${c.version}.html`, download: '', title: 'Один файл .html: открывается в браузере без портала и без интернета. Можно отправить друзьям.' }, '⬇ Одним файлом'),
       el('span', { class: 'small muted' }, `версий ${c.versions}` + (c.balanced ? `, из них баланс ${c.balanced}` : '') + (d.players ? ` · играли ${d.players}` : '') + (c.hidden ? ' · скрыта из аркады' : '')),
     ] }));
   });
+}
+
+// лучшие моменты игры (Д4): ролики по 5 секунд — после рекорда или кнопкой «🎬 Момент»; 📌 — какой идёт на обложку аркады,
+// открытку и в раскадровку трейлера, ✕ — убрать ролик
+function moments(c) {
+  const box = el('div', { class: 'stack', style: 'gap:6px', 'data-moments': c.id }, el('div', { class: 'eyebrow' }, '🎬 Лучшие моменты'));
+  if (!(c.moments || []).length) { box.append(el('p', { class: 'small muted' }, 'Поставь рекорд или нажми «🎬 Момент» под игрой — последние 5 секунд станут роликом.')); return box; }
+  const act = async (url, body, msg) => { try { await api(url, Object.assign({ game: c.id }, body)); toast(msg, 'ok'); await load(); } catch (e) { toast(e.message, 'err'); } };
+  const best = c.moment && c.moment.id;
+  box.append(el('div', { class: 'moments' }, c.moments.map(m => el('div', { class: 'moment' + (m.id === best ? ' pinned' : '') },
+    el('img', { src: m.url, alt: `Момент: ${m.kindLabel}`, loading: 'lazy' }),
+    el('span', {}, (m.id === best ? '★ ' : '') + (m.kind === 'record' ? `рекорд ${m.score}` : 'кнопка') + ` · ${m.nick}`),
+    el('div', { class: 'row' },
+      el('button', { class: 'btn ghost small', type: 'button', 'aria-pressed': String(!!m.pinned), 'data-pin': m.id, title: 'Этот момент — на обложку, открытку и в трейлер', onclick: () => act('/api/game/moment/pick', { id: m.id }, m.pinned ? 'Момент откреплён' : 'Этот момент теперь лучший') }, m.pinned ? '📌 открепить' : '📌'),
+      el('button', { class: 'btn ghost small', type: 'button', title: 'Убрать ролик', onclick: () => act('/api/game/moment/remove', { id: m.id }, 'Момент убран') }, '✕'))))));
+  return box;
 }
 
 function drawBadges() {

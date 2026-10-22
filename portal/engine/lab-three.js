@@ -1280,6 +1280,7 @@ function end(kind, text) {
   showRecord();
   showScreen('overScreen');
   disarm();
+  if (window.LabMoment) window.LabMoment.hold(); // ролик лучшего момента кончается концом партии
   post({ type: 'over', kind, text, score, best: lab.best, isBest, seed: lab.seed, round: lab.round, restarts: session.restarts, tele: teleData(), cfg: changedCfg() });
 }
 
@@ -1321,6 +1322,7 @@ function render() {
   if (a) { cam.rotateZ(-roll); cam.translateY(-oy); cam.translateX(-ox); }
   frameNo++;
   if (posterWanted) { posterWanted = false; poster(); }
+  if (window.LabMoment && !bot) window.LabMoment.grab(canvas); // лучший момент (Д4): кадр в кольцо 5 секунд, пока буфер цел
   for (let i = frameWaiters.length - 1; i >= 0; i--) if (frameNo >= frameWaiters[i].at) { frameWaiters[i].res(); frameWaiters.splice(i, 1); }
 }
 let posterWanted = false, renderDt = 0;
