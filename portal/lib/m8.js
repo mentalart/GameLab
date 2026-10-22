@@ -8,6 +8,8 @@
 // Подключается из server.js: require('./lib/m8')({ route, needStudent, needDayClass, broadcast, store, saveStudentField, lessons, M7, rostOf, rostGrowth }).
 'use strict';
 
+const { DECK } = require('../lessons/proekt'); // полная колода: ученику уходят карты без правил (CARDS), второму донору в Фабрике — правила для Qwen
+
 const bad = (msg, status = 400) => Object.assign(new Error(msg), { status });
 const str = (v, n = 200) => String(v == null ? '' : v).trim().replace(/\s+/g, ' ').slice(0, n);
 const HEARTS = 3; // «хочу сыграть»: сердец у каждого ученика
@@ -128,7 +130,8 @@ module.exports = function m8({ route, needStudent, needDayClass, broadcast, stor
     const { w, cls, les } = needStudent(ctx);
     const fac = les.plan && les.plan.factory, step = fac && les.checkpoints.flatMap(c => c.steps).find(s => s.id === fac);
     if (!step || !step.donors) throw bad('В этом уроке нет Фабрики с колодой доноров');
-    const a = step.donors.find(d => d.id === ctx.body.donor), b = ctx.body.cross ? step.donors.find(d => d.id === ctx.body.cross) : null;
+    const full = id => (step.donors.some(d => d.id === id) ? DECK.find(d => d.id === id) || step.donors.find(d => d.id === id) : null);
+    const a = full(ctx.body.donor), b = ctx.body.cross ? full(ctx.body.cross) : null;
     if (!a) throw bad('Нет такого донора');
     if (b && b.id === a.id) throw bad('Скрещивают двух разных доноров');
     const t = M7.teamOf(cls.code, w.nick), who = t ? t.members : [w.nick];

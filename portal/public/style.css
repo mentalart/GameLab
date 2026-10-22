@@ -1275,6 +1275,32 @@ button.m7-teamcard{cursor:pointer}button.m7-teamcard:hover{border-color:var(--ac
 .m8-mini span{font-size:30px}.m8-mini.empty{border-style:dashed;border-color:var(--line2);color:var(--muted)}
 .m8-pickcards.two .m8-mini:last-child{border-color:var(--warm)}
 .m8-x{font-size:30px;font-weight:900;color:var(--warm)}
+.m8-show{display:grid;grid-template-columns:minmax(0,1.6fr) minmax(0,1fr);gap:12px;align-items:stretch}
+@media (max-width:760px){.m8-show{grid-template-columns:1fr}}
+.m8-screen{align-self:start;border-radius:14px;overflow:hidden;background:#0b1020;border:2px solid var(--line2)}
+.m8-screen .gamebox{border:0;border-radius:0}
+.m8-poster-loop{height:100%;min-height:220px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;text-align:center;padding:12px}
+.m8-poster-loop .m8-dic{font-size:56px}
+.m8-sside{display:flex;flex-direction:column;gap:8px}
+.m8-dcard.big{animation:none}.m8-dcard.big .m8-dface{min-height:150px}.m8-dcard.big .m8-dfront b{font-size:18px}.m8-dcard.big .m8-dback b{font-size:17px;line-height:1.3}
+.m8-live-cap{min-height:1.2em}
+.m8-deck{grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:8px}
+.m8-dmini{position:relative;display:flex;flex-direction:column;align-items:flex-start;gap:2px;padding:8px 10px;border-radius:12px;border:2px solid var(--line2);background:linear-gradient(165deg,var(--panel2),var(--panel));color:var(--text);text-align:left;font:inherit;cursor:pointer;animation:m8In .4s var(--d,0ms) both;transition:transform .15s,border-color .15s}
+.m8-dmini:hover{transform:translateY(-2px)}
+.m8-dmini .m8-dic{font-size:24px}.m8-dmini b{font-size:13px;line-height:1.2}.m8-dmini .small{color:var(--muted);line-height:1.25}
+.m8-dmini.focus{border-color:var(--info);box-shadow:0 0 0 3px rgba(95,224,255,.25)}
+.m8-dmini.on{border-color:var(--accent)}.m8-dmini.x{border-color:var(--warm)}
+.m8-dmini.played::after{content:'✓';position:absolute;top:6px;right:8px;font-size:12px;color:var(--accent)}
+/* мастер по одному полю (питч-карта, диздок) */
+.m8-wiz{display:flex;flex-direction:column;gap:10px;padding:14px;border-radius:14px;background:var(--panel);border:1px solid var(--line)}
+.m8-wiz h3{margin:0;font-size:20px}
+.m8-wiz input,.m8-wiz textarea{font-size:17px}
+.m8-wdots{display:flex;gap:6px;align-items:center;flex-wrap:wrap}
+.m8-wdots button{width:14px;height:14px;padding:0;border-radius:50%;border:2px solid var(--line2);background:transparent;cursor:pointer}
+.m8-wdots button.ok{background:var(--accent);border-color:var(--accent)}
+.m8-wdots button.on{transform:scale(1.35);border-color:var(--info)}
+.m8-wdots button.rh{width:auto;height:auto;border-radius:999px;padding:0 6px;font-size:13px}
+.m8-poster .now{outline:2px dashed var(--info);outline-offset:3px;border-radius:6px;transition:outline-color .2s}
 /* питч-карта */
 .m8-pitch{display:grid;grid-template-columns:minmax(0,1.3fr) minmax(0,1fr);gap:14px;align-items:start}
 @media (max-width:760px){.m8-pitch{grid-template-columns:1fr}}
@@ -1390,7 +1416,7 @@ button.m7-teamcard{cursor:pointer}button.m7-teamcard:hover{border-color:var(--ac
   body.m8-print-doc .m8-doc,body.m8-print-doc .m8-doc *,body.m8-print-stand .m8-stand,body.m8-print-stand .m8-stand *,body.m8-print-cert .m8-cert,body.m8-print-cert .m8-cert *{visibility:visible;animation:none!important}
   body.m8-print-doc .m8-doc,body.m8-print-stand .m8-stand,body.m8-print-cert .m8-cert{position:absolute;left:0;top:0;width:100%;box-shadow:none}
 }
-@media (prefers-reduced-motion:reduce){.m8-dcard,.m8-poster>*,.m8-poster.sent,.m8-wcard,.m8-stagebar,.m8-doc dt,.m8-doc dd,.m8-stamp.slam,.m8-mark.pop,.m8-feat,.m8-feat.cut,.m8-stand>*,.m8-fattract,.m8-flike,.m8-fttl,.m8-cert,.m8-cseal,.m8-cstats>div,.m8-cbadges span,.m8-nom,.m8-pickcards.boom .m8-mini{animation:none!important}.m8-dface,.m8-hbar i{transition:none}}
+@media (prefers-reduced-motion:reduce){.m8-dcard,.m8-dmini,.m8-poster>*,.m8-poster.sent,.m8-wcard,.m8-stagebar,.m8-doc dt,.m8-doc dd,.m8-stamp.slam,.m8-mark.pop,.m8-feat,.m8-feat.cut,.m8-stand>*,.m8-fattract,.m8-flike,.m8-fttl,.m8-cert,.m8-cseal,.m8-cstats>div,.m8-cbadges span,.m8-nom,.m8-pickcards.boom .m8-mini{animation:none!important}.m8-dface,.m8-hbar i{transition:none}}
 /* колода ограничений «🃏 Усложни мне» в Фабрике (А5) */
 .limit-card{display:grid;grid-template-columns:auto 1fr;gap:6px 12px;align-items:center;padding:12px 14px;border-radius:12px;border:1px dashed var(--line2);background:var(--bg2);animation:limitIn .45s cubic-bezier(.3,1.4,.5,1)}
 .limit-card.on{border-style:solid;border-color:var(--danger);background:linear-gradient(160deg,#2a0f16,var(--panel))}

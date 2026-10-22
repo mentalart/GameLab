@@ -1822,6 +1822,12 @@ STEPS.factory = ctx => {
   function drawDonor() {
     if (!st.donors) return;
     donorHost.innerHTML = '';
+    // donorPick — донора выбирают в другом шаге (урок 29: колода доноров, Б4 аудита): здесь только его карта одной строкой, без ряда из 22 кнопок
+    if (st.donorPick) {
+      const d = donor();
+      donorHost.append(el('div', { class: 'donor-card' }, el('div', { class: 'ico' }, d.icon || '🎮'), el('div', {}, el('div', { class: 'eyebrow' }, st.donorPick), el('h3', {}, d.title), el('p', { class: 'muted' }, d.line || d.text || ''))));
+      return;
+    }
     const seg = el('div', { class: 'seg', role: 'radiogroup', 'aria-label': 'Донор' });
     st.donors.forEach(d => seg.append(el('button', { type: 'button', class: 'opt' + (d.id === v.donor ? ' on' : ''), 'aria-pressed': String(d.id === v.donor), 'data-donor': d.id, onclick: () => {
       if (d.id === v.donor) return;

@@ -206,6 +206,36 @@
     text(g, '0:00', 40, 176, '#9aa3c7', 10); text(g, '2:00', 600, 176, '#9aa3c7', 10);
     cap(g, 'Срез обещает всю игру: в двух минутах видно, во что превратится игра целиком', t, 0.2);
   };
+  // В6 аудита: что обещают две минуты настоящей игры — пролог Celeste; «Без звука и сочности» — те же правила, но обещания нет
+  MOTION['demo-promise'] = (g, t, W, H, c = {}) => {
+    const dry = !!c.dry, T = Math.min(t % 12, 9.4), k = clamp(T / 8, 0, 1), sec = k * 120;
+    sky(g, W, H, dry ? '#3a3d46' : '#1d2350', dry ? '#4a4e58' : '#5a4a8a');
+    // гора: силуэт и тропа героя
+    g.fillStyle = dry ? '#5a5e68' : '#2a2a55'; g.beginPath(); g.moveTo(0, 200); g.lineTo(140, 120); g.lineTo(260, 170); g.lineTo(420, 60); g.lineTo(560, 140); g.lineTo(640, 110); g.lineTo(640, 300); g.lineTo(0, 300); g.fill();
+    if (!dry) for (let i = 0; i < 26; i++) { const x = (i * 97 + t * 30) % 660 - 10, y = (i * 53 + t * 40) % 210; disc(g, x, y, 1.6, 'rgba(255,255,255,.7)'); } // снег
+    const B = [[0, '🏔️', 'Шаг и прыжок по снегу'], [35, '😱', 'Мост рушится за спиной'], [75, '🐦', 'Птица учит рывку'], [95, '💨', 'Рывок через пропасть!'], [118, '🔁', '«Это гора Селеста» — хочу дальше']];
+    const X = 40, Wd = 560, Y = 226;
+    rr(g, X, Y, Wd, 8, 4, dry ? '#6a6e78' : '#2a3560'); rr(g, X, Y, Wd * k, 8, 4, dry ? '#9a9ea8' : '#ffd23f');
+    text(g, '0:00', X, Y + 20, '#c9d0ee', 10); text(g, '2:00', X + Wd, Y + 20, '#c9d0ee', 10);
+    let lit = 0;
+    B.forEach(([s, ic, name], i) => {
+      const x = X + Wd * s / 120, on = sec >= s, z = on ? ob(seg(sec, s, s + 6)) : 0; if (on) lit++;
+      disc(g, x, Y + 4, on ? 8 : 5, on ? (dry ? '#b0b4bc' : '#ffd23f') : '#3a4880');
+      if (!on) return;
+      const y = i % 2 ? 150 : 104, sh = !dry && sec - s < 4 ? Math.sin(t * 50) * 3 * (1 - (sec - s) / 4) : 0; // тряска на ударе — только с сочностью
+      g.save(); g.translate(x + sh, y); g.scale(dry ? 1 : 0.6 + 0.4 * z, dry ? 1 : 0.6 + 0.4 * z);
+      if (dry) { disc(g, 0, -14, 12, '#8a8e98'); text(g, '·', 0, -14, '#3a3d46', 18); } else emo(g, ic, 0, -14, 24);
+      g.restore();
+      wrap(g, name, x, y + 16, 118, 13, dry ? '#d6d8dd' : '#f2efe6', 11);
+      if (!dry && sec - s < 6) { confetti(g, x, y - 14, clamp((sec - s) / 6, 0, 0.99), 10, i + 3); text(g, '♪', x + 26, y - 30 - (sec - s) * 3, `rgba(255,224,138,${1 - (sec - s) / 6})`, 16); }
+    });
+    // справа сверху — обещание: хочется ли дальше
+    const want = dry ? 0.12 + lit * 0.04 : 0.1 + lit * 0.18;
+    rr(g, 470, 14, 156, 30, 8, 'rgba(11,16,32,.8)'); text(g, 'хочу играть дальше', 536, 29, '#c9d0ee', 11); emo(g, want > 0.6 ? '🤩' : want > 0.3 ? '🙂' : '😐', 612, 29, 16);
+    rr(g, 470, 48, 156, 10, 5, '#1a2445'); rr(g, 470, 48, 156 * clamp(want, 0, 1), 10, 5, want > 0.6 ? '#7cf5a8' : '#ffb547');
+    text(g, 'Пролог Celeste', 90, 26, dry ? '#d6d8dd' : '#ffe08a', 14);
+    cap(g, dry ? 'Те же правила без звука и сочности: понятно, но ничего не обещает' : 'Две минуты: понял, испугался, научился, победил — хочу дальше!', t, 0.2);
+  };
   // --- урок 32: плейтест и урезание ---
   MOTION['cut-third'] = (g, t, W, H, c = {}) => {
     g.fillStyle = '#0d1226'; g.fillRect(0, 0, W, H);
@@ -302,6 +332,22 @@
     });
     cap(g, 'Контент — это данные: уровни, числа и история меняются без кода. Соседи строят и проверяют', t, 0.2);
   };
+  // В6 аудита: темп нового на шкале 10 минут известной игры — первый мир Super Mario Bros.; «Всё новое в первую минуту» — интерес гаснет
+  const MARIO = [[0.1, 'vrag', '🍄', 'Первый враг'], [0.4, 'nagrada', '❓', 'Гриб: растёшь'], [0.8, 'vrag', '🐢', 'Черепаха'], [1.4, 'nagrada', '⭐', 'Звезда'], [2, 'otdyh', '🚩', 'Флаг: 1-1'],
+    [2.6, 'mesto', '🕳️', 'Подземелье 1-2'], [4.4, 'mesto', '🌳', 'Над пропастью 1-3'], [6.4, 'mesto', '🏰', 'Замок 1-4'], [7.6, 'vrag', '🔥', 'Огненные палки'], [9, 'boss', '🐲', 'Боузер']];
+  MOTION['tempo-10'] = (g, t, W, H, c = {}) => {
+    g.fillStyle = '#0d1226'; g.fillRect(0, 0, W, H);
+    const rush = !!c.rush, beats = MARIO.map(([at, kind, ic, name], i) => ({ at: rush ? 0.1 + i * 0.09 : at, kind, ic, name }));
+    const vals = interest(beats), X = 50, Y = 64, Wd = 540, Hd = 150;
+    g.strokeStyle = '#2a3560'; g.lineWidth = 1; for (let m = 0; m <= 10; m++) { g.beginPath(); g.moveTo(X + Wd * m / 10, Y); g.lineTo(X + Wd * m / 10, Y + Hd); g.stroke(); text(g, m + '′', X + Wd * m / 10, Y + Hd + 12, '#6a7090', 9); }
+    g.fillStyle = 'rgba(255,93,110,.12)'; g.fillRect(X, Y + Hd * 0.75, Wd, Hd * 0.25); text(g, 'скучно — уйду', X + 6, Y + Hd * 0.88, '#ff5d6e', 10, 'left');
+    const k = Math.min(1, (t % 9) / 7.5), p = curveDraw(g, X, Y, Wd, Hd, vals, k, rush ? '#ffb547' : '#7cf5a8');
+    // новинки над лентой: зажигаются, когда кривая до них дошла; подписи — только без «всё сразу», иначе их не прочесть
+    beats.forEach((b, i) => { const x = X + Wd * b.at / 10, on = k * 10 >= b.at; g.globalAlpha = on ? 1 : 0.35; emo(g, b.ic, x, (rush ? 30 + (i % 2) * 16 : 36), 16); g.globalAlpha = 1; if (!rush && on && i % 2 === 0) text(g, b.name, x, 14, '#9aa3c7', 9); if (!rush && on && i % 2) text(g, b.name, x, 54, '#9aa3c7', 9); });
+    emo(g, p.v > 0.55 ? '🤩' : p.v > 0.3 ? '🙂' : '😴', p.x, p.y - 18, 22);
+    const quit = vals.findIndex(v => v < 0.25), qm = quit < 0 ? null : quit / (vals.length - 1) * 10;
+    cap(g, rush ? `Всё новое в первую минуту: взлёт — и пусто. Игрок заскучает на ${qm == null ? 10 : qm.toFixed(1).replace('.', ',')}-й минуте` : 'Новое каждые минуту-две, передышка у флага, босс в конце', t, 0.2);
+  };
   // --- урок 34: внешний плейтест ---
   MOTION.stranger = (g, t, W, H, c = {}) => {
     t %= 9; sky(g, W, H, '#16203a', '#253256');
@@ -314,6 +360,37 @@
     if (str && t > 2) bubble(g, 440, 190, 'А что нажимать?', seg(t, 2, 2.4), '#c9f6ff');
     if (!str && t > 2) bubble(g, 430, 190, 'Да всё понятно!', seg(t, 2, 2.4), '#c9f6ff');
     cap(g, str ? 'Чужой не знает того, что знаешь ты. Его вопросы — самые честные находки' : 'Свой знает игру заранее: он не увидит, что непонятно. Включи «Чужой»', t, 0.2);
+  };
+  // В6 аудита: как наблюдать за гостем — во время партии молчать и ставить метки, после — спросить открытым вопросом.
+  // «Автор подсказывает» — гость проходит, а находка пропала; «Спросить „Понравилось?“» — ответ «ну да» ничего не говорит
+  MOTION['guest-watch'] = (g, t, W, H, c = {}) => {
+    const hint = !!c.hint, bad = !!c.bad, T = Math.min(t % 12, 10.5), after = T >= 5.5;
+    sky(g, W, H, '#16203a', '#253256');
+    rr(g, 150, 24, 220, 120, 10, '#141c36', '#3a4880'); // экран игры
+    text(g, after ? 'партия окончена' : 'игра гостя', 260, 38, '#6a7090', 10);
+    // герой гостя на экране: без подсказки топчется у пропасти, потом догадывается; с подсказкой проходит сразу
+    const stuck = !hint && T > 1.6 && T < 4.2, hx = after ? 340 : hint ? 170 + Math.min(1, T / 3) * 170 : stuck ? 230 + Math.sin(T * 7) * 8 : T < 1.6 ? 170 + T * 38 : 230 + Math.min(1, (T - 4.2) / 1.6) * 110;
+    rr(g, 160, 112, 90, 10, 3, '#5d6b9a'); rr(g, 300, 112, 60, 10, 3, '#5d6b9a'); disc(g, hx, 102, 8, '#ff7ad9');
+    hero(g, 120, 240, 22, '#ffb547', 1); hero(g, 420, 240, 22, '#5fe0ff', -1); // гость и автор
+    text(g, 'гость', 120, 274, '#9aa3c7', 11); text(g, 'автор', 420, 274, '#9aa3c7', 11);
+    // лента меток справа: что увидел автор
+    const marks = hint ? [] : [[1.8, '😕', 'застрял у пропасти'], [3, '❓', '«а как прыгать?»'], [4.4, '💡', 'догадался сам']].filter(m => T > m[0]);
+    const answers = after && T > 7 && !hint && !bad ? [['Не понял, как прыгать', 7], ['Хотел бросить у пропасти', 7.6]].filter(a => T > a[1]) : []; // с подсказкой гость не застревал — и после сказать нечего
+    rr(g, 470, 24, 156, 170, 10, 'rgba(11,16,32,.8)'); text(g, 'Находки автора', 548, 40, '#f2efe6', 12);
+    marks.forEach(([, e, s], i) => { emo(g, e, 488, 64 + i * 26, 16); text(g, s, 502, 64 + i * 26, '#c9d0ee', 10, 'left', 700); });
+    answers.forEach(([s], i) => { emo(g, '🗣️', 488, 64 + (marks.length + i) * 26, 14); text(g, s, 502, 64 + (marks.length + i) * 26, '#7cf5a8', 10, 'left', 700); });
+    const n = marks.length + answers.length;
+    text(g, `находок: ${n}`, 548, 182, n ? '#7cf5a8' : '#ff5d6e', 13);
+    if (!after) {
+      if (hint) { bubble(g, 420, 206, 'Жми прыжок дольше! Туда!', seg(T, 1.4, 1.8), '#ffe08a'); emo(g, '🙂', 120, 206, 20); }
+      else { emo(g, '🤐', 420, 206, 22); if (stuck) bubble(g, 125, 206, 'А как тут прыгать?', seg(T, 2.8, 3.2), '#c9f6ff'); }
+      text(g, 'Во время партии', 260, 162, '#ffe08a', 13);
+    } else {
+      text(g, 'После партии', 260, 162, '#ffe08a', 13);
+      bubble(g, 420, 206, bad ? 'Понравилось?' : 'Где было непонятно?', seg(T, 5.8, 6.2), '#ffe08a');
+      if (T > 6.6) bubble(g, 125, 206, bad ? 'Ну… да' : hint ? 'Да всё понятно было' : 'У пропасти. И я не знал…', seg(T, 6.6, 7), '#c9f6ff');
+    }
+    cap(g, hint ? 'Автор подсказал — гость прошёл, а находок ноль. На Фестивале тебя рядом не будет' : bad ? '«Понравилось?» — «Ну да». Такой вопрос ничего не даёт: спроси, где было непонятно' : after ? 'После партии — открытый вопрос: «Где было непонятно? Где хотелось бросить?»' : 'Во время партии молчи и ставь метки: застрял, спросил, догадался', t, 0.2);
   };
   MOTION['observe-marks'] = (g, t, W, H) => {
     t %= 10; g.fillStyle = '#0d1226'; g.fillRect(0, 0, W, H);
@@ -472,43 +549,84 @@
   const field = (o, k) => valText((o || {})[k]);
 
   /* ---------------- donordeck: колода доноров ---------------- */
+  // Б4 аудита (урок 29 легче для чтения): карта — значок, название и одна строка; описание заменяет живая петля — донор играет сам
+  // в рамке без звука (бот оболочки, botShow с mute), петля за петлёй. «Сыграть самому» — та же рамка, обычная партия.
+  // На обороте карты — спрятанная механика одной строкой. При LAB_LOWRES петля не стартует сама: кнопка «Смотреть» под рамкой
+  const LOOP_SEC = 24;
   STEPS.donordeck = ctx => {
     const st = ctx.step, deck = st.deck || [];
-    let v = Object.assign({ donor: null, cross: null, played: [], flipped: [] }, ctx.value);
-    let crossing = !!v.cross, frame = null;
-    const host = el('div', { class: 'stack' }), grid = el('div', { class: 'm8-deck' }), pick = el('div', { class: 'm8-pick' }), play = el('div', { class: 'stack' });
+    let v = Object.assign({ donor: null, cross: null, played: [], flipped: [], watched: [] }, ctx.value);
+    let crossing = !!v.cross, frame = null, mode = 'loop', seedN = 0;
     const fac = facV(); if (!v.donor && fac.donor) v.donor = fac.donor;
+    let focus = deck.find(d => d.id === (v.focus || v.donor)) || deck[0]; // урок перерисовался (учитель открыл чекпоинт) — витрина та же
+    const host = el('div', { class: 'stack' }), grid = el('div', { class: 'm8-deck' }), pick = el('div', { class: 'm8-pick' });
+    const show = el('div', { class: 'm8-show' }), screen = el('div', { class: 'm8-screen' }), side = el('div', { class: 'm8-sside' }), live = el('div', { class: 'small muted m8-live-cap', 'aria-live': 'polite' });
     function choose(id) {
       if (crossing && v.donor && v.donor !== id) v.cross = v.cross === id ? null : id;
       else { v.donor = v.donor === id && !crossing ? null : id; if (v.cross === v.donor) v.cross = null; }
       beep('tick'); ctx.save(v); draw();
     }
-    function flip(d, card) { card.classList.toggle('flip'); if (!v.flipped.includes(d.id)) { v.flipped = v.flipped.concat(d.id); ctx.save(v); } }
-    function try1(d) {
-      if (frame) { frame.destroy(); frame = null; }
-      play.replaceChildren(el('div', { class: 'eyebrow' }, `${d.icon} Пробуем: ${d.title}`));
-      frame = Games.frame({ src: () => '/engine/game.html?game=../' + d.game, key: () => 'remake:deck:' + d.id, label: 'Играть: ' + d.title, autostart: true, onOver: () => { if (!v.played.includes(d.id)) { v.played = v.played.concat(d.id); ctx.save(v); draw(); } } });
-      play.append(frame.box, Games.bar(frame)); play.scrollIntoView({ block: 'nearest', behavior: calm() ? 'auto' : 'smooth' });
+    function flip(d) { const card = side.querySelector('.m8-dcard'); if (card) card.classList.toggle('flip'); if (!v.flipped.includes(d.id)) { v.flipped = v.flipped.concat(d.id); ctx.save(v); } }
+    // одна рамка на всю колоду: mode 'loop' — бот играет без звука, 'self' — играет ученик
+    function start(m) {
+      mode = m;
+      if (!frame) {
+        frame = Games.frame({ src: () => '/engine/game.html?game=../' + focus.game, key: () => 'remake:deck:' + focus.id, label: 'Смотреть: ' + focus.title, autostart: false,
+          onReady: () => { if (mode === 'loop') loop(); else live.textContent = 'Твоя партия: кликни по игре и играй со звуком.'; },
+          onShow: m2 => {
+            if (mode !== 'loop') return;
+            if (m2.type === 'showStep') { live.textContent = `▶ Донор играет сам, без звука · ${m2.t} с`; if (!v.watched.includes(focus.id)) { v.watched = v.watched.concat(focus.id); ctx.save(v); } return; }
+            if (m2.error) { live.textContent = 'Петля не запустилась — сыграй сам.'; return; }
+            if (screen.isConnected) loop(); // петля за петлёй
+          },
+          onOver: () => { if (mode === 'self' && !v.played.includes(focus.id)) { v.played = v.played.concat(focus.id); ctx.save(v); paintSide(); paintGrid(); } } });
+      }
+      if (!screen.contains(frame.box)) screen.replaceChildren(frame.box);
+      frame.start();
+      paintSide();
+    }
+    function loop() { seedN++; frame.post({ type: 'botShow', options: { seconds: LOOP_SEC, seed: 1000 + seedN * 7, strategy: 'random', mute: true } }); }
+    function focusOn(d) {
+      if (focus === d) return;
+      focus = d; v.focus = d.id; ctx.save(v); beep('tick');
+      if (frame) { if (window.LAB_LOWRES) frame.stop(); else start('loop'); }
+      paintSide(); paintGrid();
+      if (!calm()) show.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
     }
     async function take() {
       try { await api('/api/proekt/donor', { donor: v.donor, cross: v.cross || null }); v.taken = true; ctx.save(v, true, true); beep('done'); draw(true);
         // Фабрика ниже уже нарисована со старым донором: берём её ответ с сервера и перерисовываем урок
         const fid = (S.lesson.plan || {}).factory; if (fid) api('/api/me').then(r => { S.answers[fid] = r.answers[fid]; renderMain(); }).catch(() => {}); toast(v.cross ? 'Скрестили! Оба донора — в Фабрике команды' : 'Донор — в Фабрике команды', 'ok'); } catch (e) { toast(e.message, 'err'); }
     }
-    function draw(boom) {
-      grid.innerHTML = '';
-      deck.forEach((d, i) => {
-        const on = v.donor === d.id, x = v.cross === d.id;
-        const card = el('div', { class: 'm8-dcard' + (on ? ' on' : '') + (x ? ' x' : '') + (v.played.includes(d.id) ? ' played' : ''), style: `--d:${i * 30}ms`, 'data-donor': d.id },
+    const pickLabel = d => (v.donor === d.id ? '★ Донор' : v.cross === d.id ? '✚ Второй' : crossing && v.donor ? '✚ Скрестить' : 'Беру');
+    function paintSide() {
+      const d = focus, on = v.donor === d.id || v.cross === d.id;
+      side.replaceChildren(
+        el('div', { class: 'm8-dcard big' + (v.played.includes(d.id) ? ' played' : ''), 'data-donor': d.id },
           el('div', { class: 'm8-dface' },
-            el('div', { class: 'm8-dfront' }, el('span', { class: 'm8-dic' }, d.icon), el('b', {}, d.title), el('span', { class: 'small muted' }, `урок ${d.lesson} · глагол: ${d.verb}`)),
-            el('div', { class: 'm8-dback' }, el('b', {}, '🤫 ' + d.secret), el('p', { class: 'small' }, d.rules))),
-          el('div', { class: 'm8-dbtns' },
-            el('button', { type: 'button', class: 'btn ghost small', title: 'Перевернуть: спрятанная механика и правила', onclick: e => flip(d, e.target.closest('.m8-dcard')) }, '↻'),
-            el('button', { type: 'button', class: 'btn ghost small', onclick: () => try1(d) }, '▶'),
-            el('button', { type: 'button', class: 'btn small' + (on || x ? '' : ' ghost'), 'aria-pressed': String(on || x), onclick: () => choose(d.id) }, on ? '★ Донор' : x ? '✚ Второй' : crossing && v.donor ? '✚ Скрестить' : 'Беру')));
-        grid.append(card);
-      });
+            el('div', { class: 'm8-dfront' }, el('span', { class: 'm8-dic' }, d.icon), el('b', {}, d.title), el('span', {}, d.line), el('span', { class: 'small muted' }, `урок ${d.lesson} · глагол «${d.verb}»`)),
+            el('div', { class: 'm8-dback' }, el('span', { class: 'eyebrow' }, 'Спрятанная механика'), el('b', {}, '🤫 ' + d.secret)))),
+        el('div', { class: 'm8-dbtns' },
+          el('button', { type: 'button', class: 'btn ghost small', title: 'Перевернуть: спрятанная механика', 'data-deck': 'flip', onclick: () => flip(d) }, '↻ Секрет'),
+          el('button', { type: 'button', class: 'btn ghost small', 'data-deck': 'self', onclick: () => start('self') }, mode === 'self' && frame ? '↻ Ещё партия' : '🎮 Сыграть самому'),
+          el('button', { type: 'button', class: 'btn small' + (on ? '' : ' ghost'), 'aria-pressed': String(on), 'data-deck': 'pick', onclick: () => choose(d.id) }, pickLabel(d))),
+        live);
+      if (!frame || !frame.src) {
+        screen.replaceChildren(el('div', { class: 'm8-poster-loop' }, el('span', { class: 'm8-dic' }, d.icon),
+          el('button', { type: 'button', class: 'btn', 'data-deck': 'watch', onclick: () => start('loop') }, '▶ Смотреть, как он играет'),
+          el('span', { class: 'small muted' }, 'Донор сыграет сам, без звука')));
+        live.textContent = '';
+      }
+    }
+    function paintGrid() {
+      grid.replaceChildren(...deck.map((d, i) => {
+        const on = v.donor === d.id, x = v.cross === d.id;
+        return el('button', { type: 'button', class: 'm8-dmini' + (on ? ' on' : '') + (x ? ' x' : '') + (d === focus ? ' focus' : '') + (v.played.includes(d.id) ? ' played' : ''), style: `--d:${i * 25}ms`, 'data-donor': d.id, 'aria-pressed': String(d === focus), onclick: () => focusOn(d) },
+          el('span', { class: 'm8-dic' }, d.icon), el('b', {}, d.title.replace(/\s*\(.*\)$/, '')), el('span', { class: 'small' }, d.line));
+      }));
+    }
+    function draw(boom) {
+      paintGrid(); paintSide();
       const a = deck.find(d => d.id === v.donor), b = deck.find(d => d.id === v.cross);
       pick.replaceChildren(
         el('div', { class: 'm8-pickcards' + (boom ? ' boom' : '') + (b ? ' two' : '') },
@@ -520,55 +638,86 @@
           el('span', { class: 'grow' }),
           el('button', { type: 'button', class: 'btn', disabled: !a, onclick: take }, v.taken ? '✓ В Фабрике — обновить' : '✓ Берём в Фабрику')));
     }
+    show.append(screen, side);
     draw();
-    host.append(pick, grid, play);
+    host.append(show, pick, grid); // выбор — сразу под витриной: до кнопки «Берём» не листать всю колоду
+    if (!window.LAB_LOWRES) setTimeout(() => { if (host.isConnected && !frame) start('loop'); }, 0); // живая петля сразу — когда шаг уже на странице
     return host;
   };
 
   /* ---------------- pitch: питч-карта и репетиция ---------------- */
+  // Б4 аудита: питч-карта по одному полю на экран с прогрессом (точки сверху — можно прыгнуть к любому), карта слева растёт на глазах;
+  // поля из Фабрики уже заполнены — «Дальше» их принимает. Последний экран — репетиция 60 секунд и «На стену питчей»
+  const PITCH_FIELDS = [
+    ['phrase', 'Одна фраза', 'Это игра, где ты…', 'Это игра, где ты пчелой спасаешь последний цветок', 200],
+    ['title', 'Название', 'Как зовут игру?', 'Пчела и зима', 60],
+    ['twist', 'Твист', 'Чего нет у донора?', '', 200],
+    ['world', 'Мир', 'Где это происходит?', '', 120],
+    ['feeling', 'Чувство', 'Что почувствует игрок?', '', 80],
+    ['who', 'Для кого', 'Кто будет играть?', 'Младший брат, 9 лет', 120],
+  ];
+  const donorTitle = id => { for (const s of S.lesson.checkpoints.flatMap(c => c.steps)) { const d = (s.donors || s.deck || []).find(x => x && x.id === id); if (d) return d.title; } return ''; };
   STEPS.pitch = ctx => {
-    const st = ctx.step;
-    const f = facV(), ff = f.fields || {}, dec = decV(), deck = st.deck || [];
-    const donor = (deck.find(d => d.id === f.donor) || {}).title || '', cross = field(ff, 'cross').split(':')[0];
+    const f = facV(), ff = f.fields || {}, dec = decV();
+    const donor = donorTitle(f.donor), cross = field(ff, 'cross').split(':')[0];
     const portrait = stepVal('portrait', (s, x) => valText((x.fields || {}).kto)) || '';
     let v = Object.assign({ card: {}, rehearsals: 0, best: null, sent: false }, ctx.value);
     const auto = { title: field(ff, 'title'), donor: donor + (cross ? ' × ' + cross : ''), twist: field(ff, 'twist'), world: field(ff, 'world'), feeling: field(dec, 'feeling'), who: portrait };
     const C = () => Object.assign({}, auto, Object.fromEntries(Object.entries(v.card).filter(([, x]) => x)));
-    const host = el('div', { class: 'stack' }), poster = el('div', { class: 'm8-poster' }), cv = el('canvas', { width: 300, height: 260, class: 'm8-rehearse', 'aria-label': 'Таймер питча' });
-    const g = cv.getContext('2d');
-    let run = 0, t0 = 0, raf = 0, drawn = 0, lastBeat = '';
+    const host = el('div', { class: 'stack' }), poster = el('div', { class: 'm8-poster' }), wiz = el('div', { class: 'm8-wiz' });
+    const cv = el('canvas', { width: 300, height: 260, class: 'm8-rehearse', 'aria-label': 'Таймер питча' }), g = cv.getContext('2d');
+    const N = PITCH_FIELDS.length;
+    let at = v.sent ? N : clamp(v.at || 0, 0, N), run = 0, t0 = 0, raf = 0, drawn = 0, lastBeat = '';
     const set = (k, val) => { v.card = Object.assign({}, v.card, { [k]: val }); ctx.save(v); paint(); };
-    const input = (k, label, ph, max = 140) => el('label', { class: 'm8-pf' }, el('span', { class: 'small muted' }, label),
-      el('input', { type: 'text', maxlength: String(max), value: v.card[k] || '', placeholder: auto[k] || ph, 'data-pf': k, oninput: e => set(k, e.target.value) }));
+    const cur = () => (PITCH_FIELDS[at] || [])[0];
     function paint() {
-      const c = C();
+      const c = C(), mark = k => ({ 'data-k': k, class: cur() === k ? 'now' : '' });
       poster.replaceChildren(
-        el('div', { class: 'm8-ptitle' }, c.title || 'Название игры'),
-        el('div', { class: 'm8-pphrase' }, c.phrase || 'Это игра, где ты…'),
-        el('div', { class: 'm8-pformula' }, el('span', {}, '🕹️ ' + (c.donor || 'донор')), el('i', {}, '×'), el('span', {}, '🌀 ' + (c.twist || 'твист')), el('i', {}, '×'), el('span', {}, '🌍 ' + (c.world || 'мир'))),
-        el('div', { class: 'm8-pfoot' }, el('span', {}, '❤ ' + (c.feeling || 'чувство')), el('span', {}, '🙂 для: ' + (c.who || 'кого'))));
+        el('div', Object.assign(mark('title'), { class: 'm8-ptitle ' + (cur() === 'title' ? 'now' : '') }), c.title || 'Название игры'),
+        el('div', Object.assign(mark('phrase'), { class: 'm8-pphrase ' + (cur() === 'phrase' ? 'now' : '') }), c.phrase || 'Это игра, где ты…'),
+        el('div', { class: 'm8-pformula' }, el('span', {}, '🕹️ ' + (c.donor || 'донор')), el('i', {}, '×'), el('span', mark('twist'), '🌀 ' + (c.twist || 'твист')), el('i', {}, '×'), el('span', mark('world'), '🌍 ' + (c.world || 'мир'))),
+        el('div', { class: 'm8-pfoot' }, el('span', mark('feeling'), '❤ ' + (c.feeling || 'чувство')), el('span', mark('who'), '🙂 для: ' + (c.who || 'кого'))));
+    }
+    function dots() {
+      return el('div', { class: 'm8-wdots', role: 'tablist', 'aria-label': 'Поля питч-карты' }, ...PITCH_FIELDS.map(([k, label], i) => el('button', { type: 'button', class: (i === at ? 'on' : '') + (C()[k] ? ' ok' : ''), 'data-pstep': k, title: label, 'aria-label': label, onclick: () => go(i) })),
+        el('button', { type: 'button', class: 'rh' + (at === N ? ' on' : '') + (v.rehearsals ? ' ok' : ''), 'data-pstep': 'rehearse', title: 'Репетиция', 'aria-label': 'Репетиция', onclick: () => go(N) }, '🎤'));
+    }
+    function go(i) { at = clamp(i, 0, N); v.at = at; ctx.save(v); beep('tick'); wizard(); paint(); const inp = wiz.querySelector('input'); if (inp) inp.focus(); }
+    const status = el('span', { class: 'small muted' });
+    const btn = el('button', { type: 'button', class: 'btn ghost', onclick: () => { run = 1; t0 = performance.now(); lastBeat = ''; btn.textContent = '⏱ Идёт…'; beep('tick'); if (!raf) raf = requestAnimationFrame(loop); } });
+    function wizard() {
+      if (at < N) {
+        const [k, label, q, ph, max] = PITCH_FIELDS[at], fromFac = !v.card[k] && auto[k];
+        const inp = el('input', { type: 'text', maxlength: String(max), value: v.card[k] || '', placeholder: auto[k] || ph || q, 'data-pf': k, 'aria-label': label,
+          oninput: e => set(k, e.target.value), onkeydown: e => { if (e.key === 'Enter') { e.preventDefault(); go(at + 1); } } });
+        wiz.replaceChildren(dots(), el('div', { class: 'eyebrow' }, `${at + 1} из ${N} · ${label}`), el('h3', {}, q), inp,
+          el('span', { class: 'small muted' }, fromFac ? '✓ Уже есть из Фабрики — можно оставить' : k === 'phrase' ? 'Кто ты, что делаешь и что особенного' : ' '),
+          el('div', { class: 'row' }, el('button', { type: 'button', class: 'btn ghost small', disabled: at === 0, onclick: () => go(at - 1) }, '←'), el('span', { class: 'grow' }),
+            el('button', { type: 'button', class: 'btn', 'data-pnext': '', onclick: () => go(at + 1) }, at === N - 1 ? '🎤 К репетиции' : 'Дальше →')));
+        return;
+      }
+      btn.textContent = v.rehearsals ? '↻ Ещё репетиция' : '⏱ Репетиция 60 секунд';
+      status.textContent = v.rehearsals ? `Репетиций: ${v.rehearsals}` : 'Расскажи соседу вслух. Кольцо подскажет, о чём сейчас.';
+      wiz.replaceChildren(dots(), el('div', { class: 'eyebrow' }, 'Репетиция'), el('div', { class: 'stack', style: 'align-items:center' }, cv, btn, status),
+        el('div', { class: 'row' }, el('button', { type: 'button', class: 'btn ghost small', onclick: () => go(N - 1) }, '←'), el('span', { class: 'grow' }),
+          el('button', { type: 'button', class: 'btn', onclick: send }, v.sent ? '↻ Обновить на стене' : '📌 На стену питчей')));
     }
     function loop(now) {
-      if (!cv.isConnected) { cancelAnimationFrame(raf); raf = 0; return; }
+      if (!cv.isConnected && !host.isConnected) { cancelAnimationFrame(raf); raf = 0; return; }
       raf = requestAnimationFrame(loop);
+      if (!cv.isConnected) return;
       if (window.LAB_LOWRES && now - drawn < 200) return; drawn = now;
       const sec = run ? (now - t0) / 1000 * (fast() ? 20 : 1) : 0;
       g.clearRect(0, 0, 300, 260); g.fillStyle = '#0d1226'; g.fillRect(0, 0, 300, 260);
-      const cur = pitchRing(g, 150, 120, 96, sec);
-      if (run && cur[2] !== lastBeat) { lastBeat = cur[2]; beep('tick'); }
-      if (run && sec >= 60) { run = 0; v.rehearsals++; ctx.save(v, v.sent ? true : null); beep('good'); btn.textContent = '↻ Ещё репетиция'; status.textContent = `Репетиций: ${v.rehearsals}. Уложился? Если нет — вычеркни слово.`; }
+      const c = pitchRing(g, 150, 120, 96, sec);
+      if (run && c[2] !== lastBeat) { lastBeat = c[2]; beep('tick'); }
+      if (run && sec >= 60) { run = 0; v.rehearsals++; ctx.save(v, v.sent ? true : null); beep('good'); btn.textContent = '↻ Ещё репетиция'; status.textContent = `Репетиций: ${v.rehearsals}. Уложился? Если нет — вычеркни слово.`; wiz.querySelector('[data-pstep=rehearse]') && wiz.querySelector('[data-pstep=rehearse]').classList.add('ok'); }
     }
-    const status = el('span', { class: 'small muted' }, v.rehearsals ? `Репетиций: ${v.rehearsals}` : 'Расскажи соседу вслух, кольцо подскажет, о чём сейчас говорить.');
-    const btn = el('button', { type: 'button', class: 'btn ghost', onclick: () => { run = 1; t0 = performance.now(); lastBeat = ''; btn.textContent = '⏱ Идёт…'; beep('tick'); if (!raf) raf = requestAnimationFrame(loop); } }, v.rehearsals ? '↻ Ещё репетиция' : '⏱ Репетиция 60 секунд');
     async function send() {
-      const c = C();
-      try { await api('/api/proekt/pitch', { card: c }); v.sent = true; ctx.save(v, true, true); beep('done'); poster.classList.add('sent'); toast('Питч-карта на стене класса', 'ok'); } catch (e) { toast(e.message, 'err'); }
+      try { await api('/api/proekt/pitch', { card: C() }); v.sent = true; ctx.save(v, true, true); beep('done'); poster.classList.add('sent'); wizard(); toast('Питч-карта на стене класса', 'ok'); } catch (e) { toast(e.message, 'err'); }
     }
-    paint(); raf = requestAnimationFrame(loop);
-    host.append(el('div', { class: 'm8-pitch' }, poster, el('div', { class: 'stack', style: 'align-items:center' }, cv, btn, status)),
-      el('div', { class: 'm8-pfields' }, input('title', 'Название', 'Пчела и зима', 60), input('phrase', 'Одна фраза: «Это игра, где ты…»', 'Это игра, где ты пчелой спасаешь последний цветок', 200),
-        input('donor', 'Донор (из колоды)', '', 120), input('twist', 'Твист', '', 200), input('world', 'Мир', '', 120), input('feeling', 'Чувство', '', 80), input('who', 'Для кого', '', 120)),
-      el('div', { class: 'row' }, el('button', { type: 'button', class: 'btn', onclick: send }, v.sent ? '↻ Обновить на стене' : '📌 На стену питчей'), el('span', { class: 'small muted' }, 'Пустые поля возьмутся из Фабрики и решений.')));
+    paint(); wizard(); raf = requestAnimationFrame(loop);
+    host.append(el('div', { class: 'm8-pitch' }, poster, wiz));
     return host;
   };
 
@@ -603,49 +752,84 @@
   };
 
   /* ---------------- dizdok: одностраничный диздок ---------------- */
+  // Б4 аудита: сначала по одной строке на экран с прогрессом — главные строки и все пустые; строку можно дописать прямо здесь,
+  // она уходит туда, откуда взялась (Фабрика, решения, портрет, питч-карта), — урок 30 соберёт игру по ней. Последний экран — страница целиком,
+  // «На утверждение», печать учителя падает на страницу
+  const DOC_KEY = ['phrase', 'cikl', 'kryuchok', 'who', 'rezhem'];
   STEPS.dizdok = ctx => {
-    const st = ctx.step, deck = st.deck || [];
-    const host = el('div', { class: 'stack' }), page = el('article', { class: 'm8-doc' }), status = el('div', { class: 'row' });
+    const host = el('div', { class: 'stack' }), page = el('article', { class: 'm8-doc' }), status = el('div', { class: 'row' }), wiz = el('div', { class: 'm8-wiz m8-dwiz' });
+    const plan = S.lesson.plan || {}, facId = plan.factory || 'fabrika', decId = plan.decisions || 'resheniya';
+    const idOf = type => { const x = S.lesson.checkpoints.flatMap(c => c.steps).find(s => s.type === type); return x ? x.id : null; };
+    // строка диздока: k — ключ, label — подпись, v — текст, src — [шаг, 'fields' | 'card', поле] для правки (у донора и команды правки нет)
     function lines() {
       const f = facV(), ff = f.fields || {}, dec = decV();
-      const donor = (deck.find(d => d.id === f.donor) || {}).title || '—', cross = field(ff, 'cross').split(':')[0];
+      const donor = donorTitle(f.donor) || '—', cross = field(ff, 'cross').split(':')[0];
       const pitch = stepVal('pitch', (s, x) => x.card || {}) || {};
       const por = stepVal('portrait', (s, x) => x.fields || {}) || {};
       const team = stepVal('team', (s, x) => x) || {};
+      const fab = k => [k, field(ff, k), [facId, 'fields', k]], de = k => [k, field(dec, k), [decId, 'fields', k]];
       const L = [
-        ['Фраза', valText(pitch.phrase) || '—'],
-        ['Донор', donor + (cross ? ' × ' + cross : '')],
-        ['Твист', field(ff, 'twist') || '—'], ['Мир', field(ff, 'world') || '—'], ['Герой', field(ff, 'hero') || '—'],
-        ['Основной цикл', field(ff, 'cikl') || '—'], ['Крючок: зачем ещё раз', field(ff, 'kryuchok') || '—'],
-        ['Чувство', field(dec, 'feeling') || '—'], ['Честность', field(dec, 'honesty') || '—'], ['Выбор', field(dec, 'choice') || '—'],
-        ['Для кого', [valText(por.kto), valText(por.lyubit), valText(por.kogda)].filter(Boolean).join(' · ') || '—'],
-        ['Режем первым, если не успеем', field(ff, 'rezhem') || '—'],
-        ['Команда', team.team ? `«${team.team}»: ${(team.members || []).join(', ')}` : 'делаю один'],
+        ['Фраза', 'phrase', valText(pitch.phrase), [idOf('pitch'), 'card', 'phrase']],
+        ['Донор', 'donor', donor + (cross ? ' × ' + cross : ''), null],
+        ['Твист', ...fab('twist')], ['Мир', ...fab('world')], ['Герой', ...fab('hero')],
+        ['Основной цикл', ...fab('cikl')], ['Крючок: зачем ещё раз', ...fab('kryuchok')],
+        ['Чувство', ...de('feeling')], ['Честность', ...de('honesty')], ['Выбор', ...de('choice')],
+        ['Для кого', 'who', [valText(por.kto), valText(por.lyubit), valText(por.kogda)].filter(Boolean).join(' · '), [idOf('portrait'), 'fields', 'kto']],
+        ['Режем первым, если не успеем', ...fab('rezhem')],
+        ['Команда', 'team', team.team ? `«${team.team}»: ${(team.members || []).join(', ')}` : 'делаю один', null],
       ];
-      return { title: field(ff, 'title') || valText(pitch.title) || 'Моя игра', lines: L.map(([k, x]) => ({ k, v: x })) };
+      return { title: field(ff, 'title') || valText(pitch.title) || 'Моя игра', lines: L.map(([k, key, x, src]) => ({ k, key, v: x || '—', src: src && src[0] ? src : null })) };
     }
-    function draw(stamp) {
+    // экраны: главные строки и все пустые, которые можно дописать; последний — страница
+    const screens = () => lines().lines.filter(l => l.src && (DOC_KEY.includes(l.key) || l.v === '—'));
+    let list = screens(), at = (ctx.value || {}).sent ? list.length : clamp((ctx.value || {}).at || 0, 0, list.length); // где остановился — после перерисовки урока там же
+    function put(l, text) {
+      const [id, kind, key] = l.src, cur = ans(id).value || {};
+      if (kind === 'card') save(id, Object.assign({}, cur, { card: Object.assign({}, cur.card, { [key]: text }) }));
+      else save(id, Object.assign({}, cur, { fields: Object.assign({}, cur.fields, { [key]: text ? { text } : null }) }));
+    }
+    function go(i) { list = i >= list.length ? screens() : list; at = clamp(i, 0, list.length); ctx.save(Object.assign({}, ctx.value, { at })); beep('tick'); paint(); const t = wiz.querySelector('textarea'); if (t) t.focus(); }
+    function dots() {
+      return el('div', { class: 'm8-wdots', 'aria-label': 'Строки диздока' }, ...list.map((l, i) => el('button', { type: 'button', class: (i === at ? 'on' : '') + (lines().lines.find(x => x.key === l.key).v !== '—' ? ' ok' : ''), 'data-dstep': l.key, title: l.k, 'aria-label': l.k, onclick: () => go(i) })),
+        el('button', { type: 'button', class: 'rh' + (at === list.length ? ' on' : ''), 'data-dstep': 'page', title: 'Страница целиком', 'aria-label': 'Страница целиком', onclick: () => go(list.length) }, '📄'));
+    }
+    function paint(stamp) {
+      if (at < list.length) {
+        const l = lines().lines.find(x => x.key === list[at].key), empty = l.v === '—';
+        const t = el('textarea', { rows: 2, maxlength: 300, 'data-dline': l.key, 'aria-label': l.k, placeholder: 'Допиши одной фразой' }); t.value = empty ? '' : l.v;
+        t.addEventListener('input', () => put(l, t.value.trim()));
+        t.addEventListener('keydown', e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); go(at + 1); } });
+        wiz.replaceChildren(dots(), el('div', { class: 'eyebrow' }, `${at + 1} из ${list.length} · диздок`), el('h3', {}, l.k), t,
+          el('span', { class: 'small muted' }, empty ? 'Пустая строка: допиши здесь — она попадёт и в Фабрику' : '✓ Уже есть — поправь, если нужно'),
+          el('div', { class: 'row' }, el('button', { type: 'button', class: 'btn ghost small', disabled: at === 0, onclick: () => go(at - 1) }, '←'), el('span', { class: 'grow' }),
+            el('button', { type: 'button', class: 'btn', 'data-dnext': '', onclick: () => go(at + 1) }, at === list.length - 1 ? '📄 Вся страница' : 'Дальше →')));
+        page.hidden = true; status.hidden = true;
+        return;
+      }
+      wiz.replaceChildren(dots());
+      page.hidden = false; status.hidden = false;
       const d = lines(), a = PJ.data || {}, approved = a.approved, sent = a.doc;
       page.replaceChildren(el('header', {}, el('span', { class: 'eyebrow' }, 'Диздок на одну страницу'), el('h2', {}, d.title)),
         el('dl', {}, ...d.lines.flatMap((l, i) => [el('dt', { style: `--d:${i * 40}ms` }, l.k), el('dd', { style: `--d:${i * 40}ms`, class: l.v === '—' ? 'empty' : '' }, l.v)])),
-        approved ? el('div', { class: 'm8-stamp' + (stamp ? ' slam' : '') }, 'УТВЕРЖДЕНО') : null);
+        ...(approved ? [el('div', { class: 'm8-stamp' + (stamp ? ' slam' : '') }, 'УТВЕРЖДЕНО')] : [])); // replaceChildren(null) печатал «null» под страницей
       const empty = d.lines.filter(l => l.v === '—').length;
       status.replaceChildren(
         el('button', { type: 'button', class: 'btn', onclick: send }, sent ? '↻ Отправить заново' : '📨 На утверждение учителю'),
         el('button', { type: 'button', class: 'btn ghost small', onclick: () => { document.body.classList.add('m8-print-doc'); window.print(); setTimeout(() => document.body.classList.remove('m8-print-doc'), 500); } }, '🖨 Печать'),
-        el('span', { class: 'small muted' }, approved ? '✓ Учитель утвердил диздок — можно собирать прототип.' : sent ? 'Ждём учителя: он поставит печать.' : empty ? `Пустых строк: ${empty} — дополни Фабрику и решения выше.` : 'Все строки на месте.'));
+        el('span', { class: 'small muted' }, approved ? '✓ Учитель утвердил диздок — можно собирать прототип.' : sent ? 'Ждём учителя: он поставит печать.' : empty ? `Пустых строк: ${empty} — нажми точку сверху и допиши.` : 'Все строки на месте.'));
       if (approved && stamp) { beep('done'); }
     }
     async function send() {
-      try { PJ.data = Object.assign({}, PJ.data, await api('/api/proekt/doc', { doc: lines(), changed: !!(PJ.data && PJ.data.doc) })); ctx.save({ sent: true, title: lines().title }, true, true); beep('good'); draw(); toast('Диздок у учителя', 'ok'); } catch (e) { toast(e.message, 'err'); }
+      try { await flushSaves(); PJ.data = Object.assign({}, PJ.data, await api('/api/proekt/doc', { doc: lines(), changed: !!(PJ.data && PJ.data.doc) })); ctx.save({ sent: true, title: lines().title, at }, true, true); beep('good'); paint(); toast('Диздок у учителя', 'ok'); } catch (e) { toast(e.message, 'err'); }
     }
     let was = null;
-    const redraw = () => { const now = !!(PJ.data && PJ.data.approved); draw(was === false && now); if (now && !(ctx.value || {}).approved) ctx.save(Object.assign({}, ctx.value, { approved: true }), true, true); was = now; };
+    const redraw = () => { const now = !!(PJ.data && PJ.data.approved); if (at === list.length) paint(was === false && now); if (now && !(ctx.value || {}).approved) ctx.save(Object.assign({}, ctx.value, { approved: true }), true, true); was = now; };
     live(host, redraw);
-    S.hooks.push(kind => { if ((kind === 'plan' || kind === 'answer') && host.isConnected) draw(); });
-    loadPJ().then(redraw).catch(() => draw());
-    draw();
-    host.append(page, status);
+    // свой ввод тоже меняет Фабрику: экран строки не перерисовываем, чтобы не сбить курсор; страницу — да
+    S.hooks.push(kind => { if ((kind === 'plan' || kind === 'answer' || kind === 'team') && host.isConnected && at === list.length) paint(); });
+    loadPJ().then(redraw).catch(() => paint());
+    paint();
+    host.append(wiz, page, status);
     return host;
   };
 

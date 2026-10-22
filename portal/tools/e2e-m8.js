@@ -70,19 +70,29 @@ module.exports = function m8(H) {
     await open(teacher, student, les, '#step-vopros-uroka');
     await choice(student, 'vopros-uroka', 4);
     await motion(student, les, 'doroga', shot);
-    // колода доноров: перевернуть, сыграть, скрестить двух
+    // колода доноров (Б4 аудита): карта — строка, донор играет сам в рамке без звука; перевернуть, сыграть самому, скрестить двух
     await cp(student, 'Колода доноров');
-    await student.waitForSelector('#step-koloda .m8-dcard');
-    check('Урок 29: колода — 22 донора курса', await student.locator('#step-koloda .m8-dcard').count() === 22);
-    await student.click('#step-koloda .m8-dcard[data-donor=roy] button[title^="Перевернуть"]');
-    check('Карта донора переворачивается: спрятанная механика на обороте', await student.locator('#step-koloda .m8-dcard[data-donor=roy].flip').count() === 1);
-    await student.click('#step-koloda .m8-dcard[data-donor=roy] button:has-text("▶")');
+    await student.waitForSelector('#step-koloda .m8-dmini');
+    const minis = await student.$$eval('#step-koloda .m8-dmini', a => a.map(x => x.textContent));
+    check('Урок 29: колода — 22 донора курса, на карте значок, название и одна строка', minis.length === 22 && minis.every(t => t.length < 90), String(Math.max(...minis.map(t => t.length))));
+    check('На странице колоды нет правил доноров — их показывает живая петля', !/Строй врагов идёт рядами/.test(await student.textContent('#step-koloda')));
+    await student.click('#step-koloda .m8-dmini[data-donor=roy]');
+    await student.waitForSelector('#step-koloda .m8-dcard.big[data-donor=roy]');
+    await student.click('#step-koloda [data-deck=flip]');
+    check('Карта донора переворачивается: спрятанная механика на обороте', await student.locator('#step-koloda .m8-dcard.big.flip').count() === 1 && /из трёх улучшений/.test(await student.textContent('#step-koloda .m8-dback')));
+    await student.click('#step-koloda [data-deck=watch]');
+    await gameFrame(student, 'roy', 0);
+    await student.waitForFunction(() => /Донор играет сам/.test(document.querySelector('#step-koloda .m8-live-cap').textContent), null, { timeout: 30000 });
+    check('Живая петля: донор «Рой» играет сам, без звука', true);
+    await student.click('#step-koloda [data-deck=self]');
+    await student.waitForFunction(() => /Твоя партия/.test(document.querySelector('#step-koloda .m8-live-cap').textContent), null, { timeout: 60000 });
     const gf = await gameFrame(student, 'roy', 0);
     await playRound(gf, { score: 300 });
-    await student.waitForSelector('#step-koloda .m8-dcard[data-donor=roy].played', { timeout: 10000 });
-    await student.click('#step-koloda .m8-dcard[data-donor=roy] button:has-text("Беру")');
+    await student.waitForSelector('#step-koloda .m8-dmini[data-donor=roy].played', { timeout: 10000 });
+    await student.click('#step-koloda [data-deck=pick]');
     await student.click('#step-koloda .m8-pick .m6-tog');
-    await student.click('#step-koloda .m8-dcard[data-donor=zagon] button:has-text("Скрестить")');
+    await student.click('#step-koloda .m8-dmini[data-donor=zagon]');
+    await student.click('#step-koloda [data-deck=pick]');
     check('Скрещивание: две карты и знак ×', await student.locator('#step-koloda .m8-pickcards.two').count() === 1);
     await student.click('#step-koloda >> text=✓ Берём в Фабрику');
     await student.waitForSelector('#step-koloda.done', { timeout: 10000 });
@@ -96,7 +106,11 @@ module.exports = function m8(H) {
     await cp(student, 'Питч');
     await student.waitForSelector('#step-pitch .m8-poster');
     check('Питч-карта собралась из Фабрики: название и донор', /Пчела и зима/.test(await student.textContent('#step-pitch .m8-poster')) && /×/.test(await student.textContent('#step-pitch .m8-pformula')));
+    check('Питч-карта по одному полю: на экране одно поле и прогресс из семи точек', await student.locator('#step-pitch [data-pf]').count() === 1 && await student.locator('#step-pitch .m8-wdots button').count() === 7);
     await student.fill('#step-pitch [data-pf=phrase]', 'Это игра, где ты пчелой спасаешь последний цветок зимой');
+    await student.click('#step-pitch [data-pnext]');
+    check('Второе поле — название, уже из Фабрики', await student.getAttribute('#step-pitch [data-pf=title]', 'placeholder') === 'Пчела и зима');
+    await student.click('#step-pitch [data-pstep=rehearse]');
     await student.click('#step-pitch button:has-text("Репетиция")');
     await student.waitForFunction(() => /Репетиций: 1/.test(document.querySelector('#step-pitch').textContent), null, { timeout: 15000 });
     check('Репетиция питча: кольцо прошло 60 секунд', true);
@@ -142,9 +156,21 @@ module.exports = function m8(H) {
     await cp(student, 'Диздок');
     await decisions(student);
     await portrait(student);
+    // диздок по одной строке: фраза из питча первой, основной цикл правим здесь — он уходит в Фабрику; потом страница целиком
+    await student.waitForSelector('#step-dizdok .m8-wiz textarea');
+    check('Диздок по одной строке: первая — фраза питча', await student.locator('#step-dizdok textarea').count() === 1 && /пчелой спасаешь/.test(await student.inputValue('#step-dizdok textarea')));
+    for (let i = 0; i < 16 && await student.locator('#step-dizdok textarea').count(); i++) {
+      const key = await student.getAttribute('#step-dizdok textarea', 'data-dline');
+      if (key === 'cikl') await student.fill('#step-dizdok textarea', 'Лечу → собираю пыльцу → грею улей');
+      else if (!(await student.inputValue('#step-dizdok textarea'))) await student.fill('#step-dizdok textarea', 'Строка из проверки');
+      await student.click('#step-dizdok [data-dnext]');
+    }
     await student.waitForSelector('#step-dizdok .m8-doc dl');
+    await sleep(900);
+    const meD = await sapi(student, '/api/me');
+    check('Строка, дописанная в диздоке, ушла в Фабрику', /грею улей/.test((((meD.answers.fabrika || {}).value || {}).fields || {}).cikl ? meD.answers.fabrika.value.fields.cikl.text : ''), JSON.stringify((((meD.answers.fabrika || {}).value || {}).fields || {}).cikl || null));
     const doc = (await student.textContent('#step-dizdok .m8-doc')).replace(/\s+/g, ' ');
-    check('Диздок на одну страницу: фраза питча, донор × второй, основной цикл, портрет, команда', /пчелой спасаешь/.test(doc) && /Рой.*× Овечий загон/.test(doc) && /Пчёлы/.test(doc), doc.slice(0, 200));
+    check('Диздок на одну страницу: фраза питча, донор × второй, основной цикл, портрет, команда', /пчелой спасаешь/.test(doc) && /Рой.*× Овечий загон/.test(doc) && /грею улей/.test(doc) && /Пчёлы/.test(doc), doc.slice(0, 200));
     await student.click('#step-dizdok >> text=📨 На утверждение учителю');
     await student.waitForSelector('#step-dizdok.done', { timeout: 10000 });
     await teacher.waitForSelector('#tab-m8 [data-approve]', { timeout: 10000 });
@@ -239,6 +265,12 @@ module.exports = function m8(H) {
     await choice(student, 'vopros-uroka', 1);
     await team(student, les);
     await motion(student, les, 'karta-story', null);
+    // Г5 аудита: карусель игр команд — ждёт учителя; у класса одна игра команды «Пчёлы» (два участника — одно место в круге)
+    await student.click('.cp >> text="Плейтест"');
+    await student.waitForSelector('#step-karusel .m2-wait', { timeout: 10000 });
+    check('Урок 32: карусель ждёт учителя', /Карусель запустит учитель/.test(await student.textContent('#step-karusel')));
+    const kErr = await tapi(teacher, '/api/teacher/karusel', { code: await teacher.evaluate('T.code'), action: 'start' }).then(() => '', e => e.message);
+    check('Урок 32: в круг встают игры команд урока 30 — у «Пчёл» одно место на двоих, с одной игрой карусель не стартует', /игры команд \(сейчас 1\)/.test(kErr), kErr);
     await cp(student, 'Ножницы');
     await motion(student, les, 'nozhnicy-story', shot);
     for (let i = 0; i < 6; i++) await student.click('#step-nozhnicy .chipbtn >> nth=0');

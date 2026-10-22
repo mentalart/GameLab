@@ -3,6 +3,8 @@
 // свою — никогда. Кругов — rounds шага (5), но не больше, чем игроков минус один. Ученик без своей игры тоже играет — игру по хешу ника.
 // На каждой игре — короткий отзыв: чувство, что поправить, строка своими словами. Отзыв уходит автору и карточкой плейтеста (для «Правки 2»).
 // Автор видит сводку: что совпало у всех или у большинства, а что заметил один. Состояние — cls.karusel.
+// Уроки с командами (поле урока teamGroup, модуль 8, урок 32): место в круге — у игры команды, её участники (members) играют игры
+// других команд, свою — никогда; игра команды собрана в одном из уроков группы (урок 30), а не в этом.
 // Подключается из server.js: require('./lib/karusel')({ route, needStudent, needTeacher, broadcast, store, lesson, stepOf, classGames }).
 'use strict';
 const crypto = require('crypto');
@@ -23,9 +25,13 @@ module.exports = function karusel({ route, needStudent, needTeacher, broadcast, 
     return Math.min(k.rounds, Math.floor((t - k.at) / (k.sec * 1000)));
   }
   const live = cls => { const k = cls.karusel; return k && k.lesson === cls.lesson ? k : null; };
+  // место в круге — автор или участник команды-автора
+  const mine = (x, nick) => (x.members || [x.nick]).includes(nick);
+  const players = k => k.ring.flatMap(x => x.members || [x.nick]);
+  const seatName = x => (x.team && x.members && x.members.length > 1 ? x.team : x.nick); // «Делаю один» — по нику, а не «Студия …»
   // чью игру играет ник в круге r: место в круге или место по хешу ника для тех, у кого игры нет
   function targetOf(k, nick, r) {
-    const n = k.ring.length, i = k.ring.findIndex(x => x.nick === nick);
+    const n = k.ring.length, i = k.ring.findIndex(x => mine(x, nick));
     if (r < 0 || r >= k.rounds || n < 2) return null;
     return i >= 0 ? k.ring[(i + r + 1) % n] : k.ring[(hash(nick) + r) % n];
   }
@@ -46,16 +52,17 @@ module.exports = function karusel({ route, needStudent, needTeacher, broadcast, 
     const out = { step: k.step, phase: done ? 'end' : 'run', round: r, rounds: k.rounds, sec: k.sec, at: k.at, now: now(), size: k.ring.length,
       ends: done ? null : k.at + (r + 1) * k.sec * 1000 };
     if (viewer === 'teacher') {
-      out.ring = k.ring.map(x => ({ nick: x.nick, title: x.title }));
+      out.ring = k.ring.map(x => ({ nick: seatName(x), title: x.title }));
       out.notes = k.notes.length;
-      out.sent = done ? null : k.ring.filter(x => k.notes.some(n => n.from === x.nick && n.round === r)).length;
+      out.size = players(k).length; // игроков, а не мест: в команде их двое-трое
+      out.sent = done ? null : players(k).filter(nick => k.notes.some(n => n.from === nick && n.round === r)).length;
       return out;
     }
-    const me = k.ring.find(x => x.nick === viewer);
+    const me = k.ring.find(x => mine(x, viewer));
     out.inRing = !!me;
     if (!done) {
       const tg = targetOf(k, viewer, r);
-      if (tg) { const g = store.getGame(tg.game); out.target = g && g.current ? { id: g.id, version: g.current, title: g.title || tg.title, nick: g.nick } : null; }
+      if (tg) { const g = store.getGame(tg.game); out.target = g && g.current ? { id: g.id, version: g.current, title: g.title || tg.title, nick: seatName(tg) === tg.team ? `команда «${tg.team}»` : g.nick } : null; }
       const sent = k.notes.find(x => x.from === viewer && x.round === r);
       if (sent) out.sent = { feel: sent.feel, fix: sent.fix, text: sent.text };
     }
@@ -73,10 +80,18 @@ module.exports = function karusel({ route, needStudent, needTeacher, broadcast, 
     if (b.action === 'start') {
       const st = stepIn(les, b.step) || firstStep(les);
       if (!st) throw bad('В этом уроке нет карусели');
-      const games = classGames(cls.code).filter(g => g.lesson === les.id && !g.hidden && g.current);
+      // игры урока; у командных уроков — игры команд группы (урок 30 собрал, урок 32 играет), свежие первыми: у ученика одно место в круге
+      const group = les.teamGroup, ofLesson = g => (group ? ((lesson(g.lesson) || {}).teamGroup === group) : g.lesson === les.id);
+      const last = g => (g.versions[g.versions.length - 1] || {}).created || g.created || '';
+      const games = classGames(cls.code).filter(g => ofLesson(g) && !g.hidden && g.current).sort((a, b) => String(last(b)).localeCompare(String(last(a))));
       const seen = new Set(), ring = [];
-      for (const g of games) if (!seen.has(g.nick)) { seen.add(g.nick); ring.push({ nick: g.nick, game: g.id, title: g.title || 'Игра' }); }
-      if (ring.length < 2) throw bad('Для карусели нужны хотя бы две собранные игры этого урока');
+      for (const g of games) {
+        const members = group && Array.isArray(g.members) && g.members.length ? g.members.slice() : [g.nick];
+        if (members.some(n => seen.has(n))) continue;
+        members.forEach(n => seen.add(n));
+        ring.push(Object.assign({ nick: g.nick, game: g.id, title: g.title || 'Игра' }, group ? { members, team: g.team || null } : {}));
+      }
+      if (ring.length < 2) throw bad(`Для карусели нужны хотя бы две собранные игры ${group ? 'команд' : 'этого урока'} (сейчас ${ring.length})`);
       for (let i = ring.length - 1; i > 0; i--) { const j = crypto.randomInt(i + 1); [ring[i], ring[j]] = [ring[j], ring[i]]; }
       const sec = Math.max(30, Math.min(900, Number(b.sec) || (st.minutes || 4) * 60));
       cls.karusel = { lesson: les.id, step: st.id, ring, rounds: Math.min(st.rounds || 5, ring.length - 1), sec, at: now(), phase: 'run', notes: [] };
@@ -108,7 +123,7 @@ module.exports = function karusel({ route, needStudent, needTeacher, broadcast, 
     k.notes = k.notes.filter(x => !(x.from === w.nick && x.round === r));
     k.notes.push({ from: w.nick, game: g.id, author: g.nick, round: r, feel, fix, text, at: store.now() });
     // карточка плейтеста автору: чувство — эмоция, «что поправить» — «Хочется», строка — «Нравится»
-    if (g.nick !== w.nick) store.addPlay(g.id, { type: 'card', nick: w.nick, card: { emotions: feel ? [feel] : [], like: { text, dice: false }, want: { text: fix || '', dice: false }, whatif: { text: '', dice: false }, karusel: true } });
+    if (!mine(tg, w.nick)) store.addPlay(g.id, { type: 'card', nick: w.nick, card: { emotions: feel ? [feel] : [], like: { text, dice: false }, want: { text: fix || '', dice: false }, whatif: { text: '', dice: false }, karusel: true } });
     store.saveClass(cls); event(cls);
     broadcast(cls.code, 'arcade', { game: g.id, author: g.nick });
     return { karusel: view(cls, w.nick) };
